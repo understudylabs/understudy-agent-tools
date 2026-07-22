@@ -53,7 +53,7 @@ export const EXECUTOR_VERSION: string = (() => {
  * Old executors predate `requires` entirely, hence the belt-and-braces
  * EXECUTOR_VERSION stamps above.
  */
-export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout"] as const;
+export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout", "prompt_overrides"] as const;
 
 /** The `requires` entries of a request this executor cannot honor (empty = safe to run). */
 export function unsupportedRequirements(request: Pick<RunRequest, "requires">, capabilities: readonly string[] = EXECUTOR_CAPABILITIES): string[] {
@@ -75,6 +75,30 @@ export type ArmKind = (typeof ARM_KINDS)[number];
 /** The trivial calibration arms (agentic-benchmarks floor discipline: a do-nothing agent must score ~0). */
 export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent"] as const;
 export type TrivialArmKind = (typeof TRIVIAL_ARM_KINDS)[number];
+/**
+ * A prompt-override experiment arm: the SAME model as `model`, with
+ * `system_prompt_suffix` appended to the task's system/operating prompt at
+ * rollout time (run-scoped only — task files are never mutated). Rows are
+ * labeled with the additive `arm_label` so the override arm is a distinct
+ * leaderboard arm from the bare model arm; the suffix's sha256 rides each row
+ * for provenance while the full text lives in the run's overrides sidecar
+ * (runs/<run_id>-overrides.json). Override arms are always arm_kind
+ * "candidate" — only the bare incumbent arm feeds calibration.
+ */
+export type PromptOverride = {
+  arm_label: string;
+  model: string;
+  system_prompt_suffix: string;
+};
+
+/** Provenance hash of an override suffix (sha256 of the raw text — rows carry this, never the text). */
+export const promptSuffixHash = (suffix: string): string => createHash("sha256").update(suffix).digest("hex");
+
+/** The overrides sidecar carrying the FULL override text (rows carry only the hash). */
+export function runOverridesPath(benchmarkDir: string, runId: string): string {
+  return join(runsDir(benchmarkDir), `${sanitizeForFile(runId)}-overrides.json`);
+}
+
 /** Default incumbent-pass threshold on the strict contract score. */
 export const DEFAULT_CALIBRATION_THRESHOLD = 1;
 /** A trivial arm passing more than this fraction of tasks flags the benchmark floor_exceeded. */
@@ -121,6 +145,13 @@ export type RunRequest = {
   requires?: string[];
   /** Additive: per-rollout wall-clock budget in seconds (default DEFAULT_ROLLOUT_TIMEOUT_SECONDS). */
   rollout_timeout_seconds?: number;
+  /**
+   * Additive (absent when unused): prompt-override experiment arms. Each runs
+   * the named model with the suffix appended to the task's system prompt at
+   * rollout time; rows are labeled with the arm_label. Requires the
+   * "prompt_overrides" capability (old executors skip, never run bare).
+   */
+  prompt_overrides?: PromptOverride[];
   /** Additive: the executor that atomically claimed this request (stale-watcher hijack guard). */
   claimed_by?: RunClaim | null;
   /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
@@ -255,6 +286,8 @@ export type RunRequestInput = {
   trivial_arms?: unknown;
   /** Optional (additive): per-rollout wall-clock budget in seconds. */
   rollout_timeout_seconds?: unknown;
+  /** Optional (additive): prompt-override experiment arms ({arm_label, model, system_prompt_suffix}). */
+  prompt_overrides?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -314,13 +347,34 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
     errors.push("rollout_timeout_seconds must be a positive number of seconds");
   }
+  const overrides = input.prompt_overrides;
+  if (overrides !== undefined) {
+    if (!Array.isArray(overrides) || overrides.length === 0) {
+      errors.push("prompt_overrides must be a non-empty array of {arm_label, model, system_prompt_suffix}");
+    } else {
+      const labels = new Set<string>();
+      for (const entry of overrides) {
+        const o = asObject(entry);
+        const label = typeof o.arm_label === "string" ? o.arm_label.trim() : "";
+        if (!label) errors.push("prompt_overrides: arm_label must be a non-empty string");
+        else if (labels.has(label)) errors.push(`prompt_overrides: duplicate arm_label ${label}`);
+        else labels.add(label);
+        // The label is a leaderboard arm AND a rows-file key: it must never
+        // collide with a bare model arm (that would merge two arms' rows).
+        if (label && Array.isArray(models) && models.includes(label)) errors.push(`prompt_overrides: arm_label ${label} collides with a model arm`);
+        if (typeof o.model !== "string" || !o.model.trim()) errors.push("prompt_overrides: model must be a non-empty string");
+        else if (Array.isArray(models) && !models.includes(o.model)) errors.push(`prompt_overrides: model ${o.model} must be one of the run's models`);
+        if (typeof o.system_prompt_suffix !== "string" || !o.system_prompt_suffix.trim()) errors.push("prompt_overrides: system_prompt_suffix must be a non-empty string");
+      }
+    }
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; prompt_overrides?: PromptOverride[] },
   now: Date = new Date(),
 ): RunRequest {
   // Writers declare the capabilities their feature use depends on, so an old
@@ -330,6 +384,7 @@ export function createRunRequest(
   if (input.trivial_arms && input.trivial_arms.length > 0) requires.push("trivial_arms");
   if ((input.incumbent_models && input.incumbent_models.length > 0) || input.calibration_threshold !== undefined) requires.push("calibration");
   if (input.rollout_timeout_seconds !== undefined) requires.push("rollout_timeout");
+  if (input.prompt_overrides && input.prompt_overrides.length > 0) requires.push("prompt_overrides");
   const request: RunRequest = {
     schema_version: RUN_REQUEST_SCHEMA,
     run_id: `run-${hash({ ...input, at: now.toISOString(), nonce: Math.random() }).slice(0, 16)}`,
@@ -349,9 +404,22 @@ export function createRunRequest(
     ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
     ...(input.trivial_arms && input.trivial_arms.length > 0 ? { trivial_arms: input.trivial_arms } : {}),
     ...(input.rollout_timeout_seconds !== undefined ? { rollout_timeout_seconds: input.rollout_timeout_seconds } : {}),
+    ...(input.prompt_overrides && input.prompt_overrides.length > 0 ? { prompt_overrides: input.prompt_overrides } : {}),
     ...(requires.length > 0 ? { requires } : {}),
   };
   writeRunRequest(benchmarkDir, request);
+  // Provenance sidecar: rows carry only the suffix hash; the FULL override
+  // text is written once per run next to the queue (never onto task files).
+  if (request.prompt_overrides && request.prompt_overrides.length > 0) {
+    const sidecar = {
+      run_id: request.run_id,
+      benchmark_id: request.benchmark_id,
+      created_at: request.created_at,
+      overrides: request.prompt_overrides.map((o) => ({ ...o, system_prompt_suffix_sha256: promptSuffixHash(o.system_prompt_suffix) })),
+    };
+    mkdirSync(runsDir(benchmarkDir), { recursive: true });
+    writeFileSync(runOverridesPath(benchmarkDir, request.run_id), `${JSON.stringify(sidecar, null, 2)}\n`, { mode: 0o600 });
+  }
   return request;
 }
 
@@ -506,6 +574,10 @@ export type ArmRunner = (args: {
   runId?: string;
   /** Additive: per-rollout wall-clock budget in seconds (runners spawning subprocesses enforce it on the child). */
   rolloutTimeoutSeconds?: number;
+  /** Additive (prompt-override arms only): the arm's leaderboard label — runners key caches/work dirs on it so an override arm never shares state with the bare model arm. */
+  armLabel?: string;
+  /** Additive (prompt-override arms only): suffix appended to each task's system prompt at rollout time, run-scoped (task files are never mutated). */
+  systemPromptSuffix?: string;
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
@@ -631,13 +703,20 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // Arms = the requested model arms plus any trivial calibration arms. Trivial
   // arms are deterministic, so they run exactly ONE rollout per task no matter
   // what rollouts_per_task says (repeats add nothing but identical rows).
-  type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number };
+  type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number; override?: PromptOverride };
   const arms: Arm[] = request.models.map((model) => ({
     model,
     kind: ((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind,
     runner: options.runner,
     rollouts: request.rollouts_per_task,
   }));
+  // Prompt-override experiment arms: same underlying model, a run-scoped
+  // system-prompt suffix, rows labeled with the arm_label. ALWAYS candidates —
+  // an override arm is not the incumbent baseline, so it never feeds
+  // calibration even when its base model is the incumbent.
+  for (const override of request.prompt_overrides ?? []) {
+    arms.push({ model: override.arm_label, kind: "candidate", runner: options.runner, rollouts: request.rollouts_per_task, override });
+  }
   for (const kind of request.trivial_arms ?? []) {
     if (!TRIVIAL_ARM_KINDS.includes(kind)) continue;
     arms.push({ model: kind, kind, runner: kind === "null_agent" ? nullAgentRunner() : spamAgentRunner(), rollouts: 1 });
@@ -712,7 +791,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           let timer: ReturnType<typeof setTimeout> | undefined;
           const TIMED_OUT = Symbol("rollout_timeout");
           try {
-            const attempt = arm.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds });
+            // Override arms invoke the BASE model; the arm label only labels
+            // rows/files. The suffix + label ride the additive runner args.
+            const attempt = arm.runner({ benchmarkDir: dir, model: arm.override?.model ?? model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds, ...(arm.override ? { armLabel: arm.override.arm_label, systemPromptSuffix: arm.override.system_prompt_suffix } : {}) });
             const raced = await Promise.race([attempt, new Promise<typeof TIMED_OUT>((res) => { timer = setTimeout(() => res(TIMED_OUT), Math.max(1, Math.round(timeoutSeconds * 1000))); })]);
             if (raced === TIMED_OUT) {
               attempt.catch(() => { /* late settle of the abandoned rollout is irrelevant */ });
@@ -780,6 +861,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             writes: result.writes,
             ...(typeof result.tool_call_count === "number" ? { tool_call_count: result.tool_call_count } : {}),
             ...(typeof result.final_response_chars === "number" ? { final_response_chars: result.final_response_chars } : {}),
+            // Additive override provenance: base model + suffix hash (full
+            // text lives in runs/<run_id>-overrides.json, never on rows).
+            ...(arm.override ? { prompt_override: { arm_label: arm.override.arm_label, base_model: arm.override.model, system_prompt_suffix_sha256: promptSuffixHash(arm.override.system_prompt_suffix) } } : {}),
             // Additive oracle diagnostic: missing-gold rows render "unverifiable", never a bare fail.
             ...(result.oracle && result.oracle.missing_gold.length > 0 ? { oracle: result.oracle } : {}),
             // Marked, not dropped: the primary anomaly plus the full list.
@@ -1302,7 +1386,15 @@ export type VerifiersArmOptions = {
   timeoutSeconds?: number | null;
   /** Unique per-invocation tag (run_id + arm) — the eval runs in its own work dir so trace attribution is structural, never mtime-based. */
   invocationTag?: string | null;
+  /** Run-scoped prompt-override suffix: appended to each selected task's system prompt for THIS invocation only (the temp-rewrite pattern; the source rows are restored after). */
+  systemPromptSuffix?: string | null;
 };
+
+/** Apply a run-scoped override suffix to one generated-environment task row (pure; used by the temp-rewrite below and its tests). */
+export function applySystemPromptSuffix(row: Obj, suffix: string): Obj {
+  const existing = typeof row.system_prompt === "string" ? row.system_prompt : "";
+  return { ...row, system_prompt: existing.length > 0 ? `${existing}\n\n${suffix}` : suffix };
+}
 
 export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null, journalPath: string | null = null, options: VerifiersArmOptions = {}): Map<string, RolloutResult> {
   const dir = resolve(benchmarkDir);
@@ -1313,9 +1405,13 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
   // pattern runTraceReplays uses for context variants — and restore after.
   const taskRowsPath = join(environment, "understudy_trace_env", "tasks.json");
   const allTaskRows: Obj[] | null = existsSync(taskRowsPath) ? ((JSON.parse(readFileSync(taskRowsPath, "utf8")) as unknown[]).map(asObject)) : null;
-  const sourceTaskRows = taskIds !== null ? allTaskRows : null;
+  const suffix = options.systemPromptSuffix?.trim() ? options.systemPromptSuffix : null;
+  // A rewrite happens when the run scopes to a task subset OR carries a
+  // prompt-override suffix; either way the SOURCE rows are restored after —
+  // the override is run-scoped only, never a persistent task-file mutation.
+  const sourceTaskRows = taskIds !== null || suffix !== null ? allTaskRows : null;
   const wanted = taskIds === null ? null : new Set(taskIds);
-  const filteredRows = sourceTaskRows?.filter((row) => wanted!.has(String(row.task_id))) ?? null;
+  const filteredRows = taskIds === null ? null : (allTaskRows ?? []).filter((row) => wanted!.has(String(row.task_id)));
   const splits = filteredRows === null ? ["train", "dev", "holdout"] : [...new Set(filteredRows.map((row) => String(row.split)))];
   // Split → task ids the eval will attempt: sizes the per-split subprocess
   // timeout budget and names the tasks a killed split leaves unresolved.
@@ -1324,7 +1420,9 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
     const split = String(row.split);
     taskIdsBySplit.set(split, [...(taskIdsBySplit.get(split) ?? []), String(row.task_id)]);
   }
-  if (filteredRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(filteredRows, null, 2)}\n`, { mode: 0o600 });
+  const effectiveRows = filteredRows ?? allTaskRows;
+  const rowsToWrite = suffix !== null && effectiveRows !== null ? effectiveRows.map((row) => applySystemPromptSuffix(row, suffix)) : filteredRows;
+  if (sourceTaskRows !== null && rowsToWrite !== null) writeFileSync(taskRowsPath, `${JSON.stringify(rowsToWrite, null, 2)}\n`, { mode: 0o600 });
   try {
     return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits, journalPath, { ...options, taskIdsBySplit });
   } finally {
@@ -1407,14 +1505,18 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
  */
 export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): ArmRunner {
   const armCache = new Map<string, Map<string, RolloutResult> | Error>();
-  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath, runId, rolloutTimeoutSeconds }) => {
-    const key = `${benchmarkDir}::${runId ?? ""}::${model}::${[...selectedTaskIds].sort().join(",")}`;
+  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath, runId, rolloutTimeoutSeconds, armLabel, systemPromptSuffix }) => {
+    // Cache/work-dir key on the arm LABEL: an override arm never shares its
+    // memoized eval (or its output isolation) with the bare model arm.
+    const arm = armLabel ?? model;
+    const key = `${benchmarkDir}::${runId ?? ""}::${arm}::${systemPromptSuffix ? promptSuffixHash(systemPromptSuffix) : ""}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
         armCache.set(key, runVerifiersArm(benchmarkDir, model, VERIFIERS_MAX_EXAMPLES, parentEnv, selectedTaskIds, journalPath, {
           timeoutSeconds: rolloutTimeoutSeconds ?? null,
           // run_id + arm in the path: structural per-invocation isolation.
-          invocationTag: runId ? `${runId}--${model}` : null,
+          invocationTag: runId ? `${runId}--${arm}` : null,
+          systemPromptSuffix: systemPromptSuffix ?? null,
         }));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));
