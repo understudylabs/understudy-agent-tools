@@ -43,22 +43,25 @@ export function registerTracesCommand(program: Command): void {
     .option("--limit <count>", "Author at most N tasks")
     .option("--only-unauthored", "Skip tasks that already carry an authored block", true)
     .option("--no-only-unauthored", "Re-author tasks even if already authored")
-    .option("--compare-models <ids>", "Comma-separated model ids: author the same tasks with each and report agreement (no tasks.jsonl writeback)")
+    .option("--compare-models <ids>", "Comma-separated model ids: author the same tasks with each and report agreement (no tasks.jsonl writeback; resumable via authoring-results.jsonl)")
     .option("--experiment-out <path>", "Write the comparison report JSON here instead of stdout only")
-    .action(async (options: { benchmark: string; model?: string; limit?: string; onlyUnauthored: boolean; compareModels?: string; experimentOut?: string }) => {
+    .option("--concurrency <count>", "Concurrent in-flight authoring calls", "8")
+    .action(async (options: { benchmark: string; model?: string; limit?: string; onlyUnauthored: boolean; compareModels?: string; experimentOut?: string; concurrency: string }) => {
       const auth = resolveGatewayAuth();
       const model = options.model ?? await resolveDefaultModel(auth.baseUrl, auth.apiKey);
       const limit = options.limit === undefined ? undefined : Number(options.limit);
       if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) throw new Error("--limit must be a positive integer");
+      const concurrency = Number(options.concurrency);
+      if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error("--concurrency must be a positive integer");
       const client = gatewayClient(auth.baseUrl, auth.apiKey);
       if (options.compareModels) {
         const models = options.compareModels.split(",").map((id) => id.trim()).filter(Boolean);
-        const report = await compareAuthoringModels(resolve(options.benchmark), models, { limit, client, onlyUnauthored: false });
+        const report = await compareAuthoringModels(resolve(options.benchmark), models, { limit, client, onlyUnauthored: false, concurrency, progressStream: process.stderr, partialResultsPath: options.experimentOut ? `${resolve(options.experimentOut)}.partial.jsonl` : undefined });
         if (options.experimentOut) { const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(resolve(options.experimentOut, ".."), { recursive: true }); writeFileSync(resolve(options.experimentOut), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); console.error(`comparison: ${resolve(options.experimentOut)}`); console.log(JSON.stringify({ runs: report.runs, agreement: { ...report.agreement, per_task: undefined } }, null, 2)); }
         else console.log(JSON.stringify(report, null, 2));
         return;
       }
-      const result = await authorTasks(resolve(options.benchmark), { model, client, limit, onlyUnauthored: options.onlyUnauthored });
+      const result = await authorTasks(resolve(options.benchmark), { model, client, limit, onlyUnauthored: options.onlyUnauthored, concurrency, progressStream: process.stderr });
       console.log(JSON.stringify({ ...result, results: undefined }, null, 2));
     });
   traces.command("import-reviews")

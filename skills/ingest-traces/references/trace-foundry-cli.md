@@ -120,3 +120,16 @@ For analysis, `--compare-models a,b,c --experiment-out report.json` authors the
 same tasks with several models (no `tasks.jsonl` writeback) and reports
 contract-agreement Jaccard, consensus rates, category/difficulty agreement,
 per-arm grounding pass rates, and ambiguity overlap.
+
+### Long-running foundry commands must stream
+
+Rule for any foundry verb that can run longer than about a minute (compile
+batch loops, `author-tasks`, replay runs): persist every increment the moment
+it completes and report progress as it happens — never buffer everything for
+one final write. Precedents: the compile batch-loop perf fix (bulk artifacts
+written once, ledger/goal appended per batch) and `author-tasks`, which appends
+one `authoring-events.jsonl` line and one partial-result row per completed
+task-model call, prints `[n/total] model task-id 12s grounding=verified` to
+stderr, runs calls through a bounded `--concurrency` pool (default 8), and
+resumes by skipping already-persisted task-model pairs. Final reports and
+summary JSON are assemblies of already-persisted rows, not the only copy.

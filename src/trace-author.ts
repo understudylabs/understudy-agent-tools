@@ -33,7 +33,23 @@ export type AuthorTasksOptions = {
   taskIds?: string[];
   maxContextTokens?: number;
   now?: Date;
+  /** Append each authored task×model row here as soon as it completes (crash-safe partial results). */
+  partialResultsPath?: string;
+  /** Per-call progress lines ("[12/72] model task 34s grounding=verified"); pass process.stderr from the CLI. */
+  progressStream?: { write: (line: string) => unknown } | null;
+  progressOffset?: number;
+  progressTotal?: number;
+  /** Concurrent in-flight authoring calls (promise pool); calls are independent. */
+  concurrency?: number;
 };
+
+async function promisePool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const lanes = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) { const index = next; next += 1; await worker(items[index], index); }
+  });
+  await Promise.all(lanes);
+}
 
 const AUTHORING_SCHEMA_VERSION = "understudy.task_authoring.v1";
 const DIFFICULTIES = ["easy", "medium", "hard"];
@@ -308,14 +324,20 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
   const captures = await readJsonlWhere(join(benchmarkDir, "normalized-captures.jsonl"), (row) => neededKeys.has(String(row.capture_key)));
   const capturesByKey = new Map(captures.map((row) => [String(row.capture_key), row]));
 
-  const results: AuthoredResult[] = [];
-  const events: Obj[] = [];
-  for (const task of selected) {
+  // Long-running contract: every completed call is persisted IMMEDIATELY
+  // (audit event + partial result row) and reported on the progress stream.
+  // Final summaries/reports are assemblies of already-persisted increments.
+  const eventsPath = join(benchmarkDir, "authoring-events.jsonl");
+  const results: AuthoredResult[] = new Array(selected.length);
+  let completed = 0;
+  await promisePool(selected, options.concurrency ?? 1, async (task, index) => {
+    const startedAt = Date.now();
     const context = buildAuthoringContext(task, capturesByKey, options.maxContextTokens ?? 20_000);
     const calls = observedCalls((task.source?.node_ids ?? []).map((id: string) => capturesByKey.get(id)).filter(Boolean));
     let content = "", usage: AuthorUsage = {};
     let violations: string[] = [];
     let authored: Obj | null = null;
+    let callError: string | null = null;
     try {
       const reply = await client({ model: options.model, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `EVIDENCE:\n${JSON.stringify(context)}\nOUTPUT:` }] });
       content = reply.content; usage = reply.usage ?? {};
@@ -323,10 +345,12 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       if (parsed === null) violations = ["unparseable_llm_output: model reply was not a JSON object"];
       else authored = parsed;
     } catch (error) {
-      violations = [`llm_call_failed: ${(error as Error).message}`];
+      callError = (error as Error).message;
+      violations = [`llm_call_failed: ${callError}`];
     }
     const grounding = authored ? groundAuthoredTask(task, authored, calls) : { status: "failed" as const, violations };
     const cost = costEstimate(options.model, usage);
+    const ms = Date.now() - startedAt;
     const authoredBlock = {
       schema_version: AUTHORING_SCHEMA_VERSION,
       model: options.model,
@@ -335,19 +359,20 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       grounding_violations: grounding.violations,
       ...(authored ?? {}),
     };
-    results.push({ task_id: task.task_id, authored: authored ? authoredBlock : null, grounding: grounding.status, violations: grounding.violations, usage, cost_estimate_usd: cost });
-    events.push({ schema_version: "understudy.authoring_event.v1", at: now.toISOString(), task_id: task.task_id, model: options.model, grounding: grounding.status, violations: grounding.violations, tokens: { prompt: usage.prompt_tokens ?? null, completion: usage.completion_tokens ?? null }, cost_estimate_usd: cost });
+    results[index] = { task_id: task.task_id, authored: authored ? authoredBlock : null, grounding: grounding.status, violations: grounding.violations, usage, cost_estimate_usd: cost };
+    // Persist the increment BEFORE moving on: one audit event line + one partial-result row per completed call.
+    appendJsonl(eventsPath, [{ schema_version: "understudy.authoring_event.v1", at: new Date().toISOString(), task_id: task.task_id, model: options.model, ms, status: callError === null ? "ok" : "error", error: callError, grounding: grounding.status, violations: grounding.violations, tokens: { prompt: usage.prompt_tokens ?? null, completion: usage.completion_tokens ?? null }, cost_estimate_usd: cost }]);
+    if (options.partialResultsPath) appendJsonl(options.partialResultsPath, [{ schema_version: "understudy.authoring_partial.v1", at: new Date().toISOString(), task_id: task.task_id, model: options.model, ms, authored: authored ? authoredBlock : null, grounding: grounding.status, violations: grounding.violations, usage, cost_estimate_usd: cost }]);
+    completed += 1;
+    options.progressStream?.write(`[${(options.progressOffset ?? 0) + completed}/${options.progressTotal ?? (options.progressOffset ?? 0) + selected.length}] ${options.model} ${task.task_id} ${Math.round(ms / 1000)}s grounding=${grounding.status}\n`);
     if (writeback) {
       task.authored = authoredBlock;
       // Grounding failure: deterministic contract stays authoritative, task needs human review.
       if (grounding.status === "failed" && task.status === "machine_proposed") task.status = "needs_review";
       // Verified pass changes nothing about status: high-confidence tasks stay machine_proposed; authored output remains a proposal.
     }
-  }
-  if (writeback && results.length > 0) {
-    writeJsonl(tasksPath, tasks);
-    appendJsonl(join(benchmarkDir, "authoring-events.jsonl"), events);
-  }
+  });
+  if (writeback && results.length > 0) writeJsonl(tasksPath, tasks);
   const verified = results.filter((row) => row.grounding === "verified").length;
   return {
     schema_version: "understudy.task_authoring_run.v1",
@@ -358,7 +383,7 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
     grounding: { verified, failed: results.length - verified },
     tokens: { prompt: results.reduce((sum, row) => sum + (row.usage.prompt_tokens ?? 0), 0), completion: results.reduce((sum, row) => sum + (row.usage.completion_tokens ?? 0), 0) },
     cost_estimate_usd: Number(results.reduce((sum, row) => sum + row.cost_estimate_usd, 0).toFixed(4)),
-    events: writeback ? join(benchmarkDir, "authoring-events.jsonl") : null,
+    events: eventsPath,
     results,
     privacy: { provider_called: options.client === undefined, gateway_only: true },
   };
@@ -409,14 +434,36 @@ export function agreementReport(models: string[], perModel: Map<string, Authored
   };
 }
 
-/** Author the same task set with several models (no tasks.jsonl writeback) and score agreement. */
+/**
+ * Author the same task set with several models (no tasks.jsonl writeback) and
+ * score agreement. Crash-safe and resumable: every task×model row is appended
+ * to `partialResultsPath` the moment it completes, already-persisted pairs are
+ * skipped on rerun, and the returned report is an assembly of persisted rows.
+ */
 export async function compareAuthoringModels(benchmarkDir: string, models: string[], options: Omit<AuthorTasksOptions, "model"> & { clients?: Map<string, AuthorClient> }): Promise<Obj> {
+  const tasks = readJsonl(join(resolve(benchmarkDir), "tasks.jsonl"));
+  const selectedIds = tasks.slice(0, options.limit ?? Number.POSITIVE_INFINITY).map((task) => String(task.task_id));
+  const partialPath = options.partialResultsPath ?? join(resolve(benchmarkDir), "authoring-results.jsonl");
+  const persisted = readJsonl(partialPath).filter((row) => row.schema_version === "understudy.authoring_partial.v1");
+  const doneKeys = new Set(persisted.map((row) => `${row.model}::${row.task_id}`));
+  const total = models.length * selectedIds.length;
+  let offset = 0;
   const perModel = new Map<string, AuthoredResult[]>();
   const runs: Obj[] = [];
   for (const model of models) {
-    const run = await authorTasks(benchmarkDir, { ...options, model, client: options.clients?.get(model) ?? options.client, writeback: false, onlyUnauthored: false });
-    perModel.set(model, run.results as AuthoredResult[]);
-    runs.push({ model, grounding: run.grounding, tokens: run.tokens, cost_estimate_usd: run.cost_estimate_usd });
+    const remaining = selectedIds.filter((id) => !doneKeys.has(`${model}::${id}`));
+    const resumed = persisted.filter((row) => row.model === model && selectedIds.includes(String(row.task_id))).map((row) => ({ task_id: row.task_id, authored: row.authored ?? null, grounding: row.grounding, violations: row.violations ?? [], usage: row.usage ?? {}, cost_estimate_usd: row.cost_estimate_usd ?? 0 }) as AuthoredResult);
+    offset += resumed.length;
+    let fresh: AuthoredResult[] = [];
+    if (remaining.length > 0) {
+      const run = await authorTasks(benchmarkDir, { ...options, model, client: options.clients?.get(model) ?? options.client, writeback: false, onlyUnauthored: false, limit: undefined, taskIds: remaining, partialResultsPath: partialPath, progressOffset: offset, progressTotal: total });
+      fresh = run.results as AuthoredResult[];
+      offset += fresh.length;
+    }
+    const rows = [...resumed, ...fresh];
+    perModel.set(model, rows);
+    const verified = rows.filter((row) => row.grounding === "verified").length;
+    runs.push({ model, authored: rows.length, resumed: resumed.length, grounding: { verified, failed: rows.length - verified }, tokens: { prompt: rows.reduce((sum, row) => sum + (row.usage.prompt_tokens ?? 0), 0), completion: rows.reduce((sum, row) => sum + (row.usage.completion_tokens ?? 0), 0) }, cost_estimate_usd: Number(rows.reduce((sum, row) => sum + row.cost_estimate_usd, 0).toFixed(4)) });
   }
-  return { schema_version: "understudy.authoring_comparison.v1", runs, agreement: agreementReport(models, perModel), authored_by_model: Object.fromEntries([...perModel.entries()].map(([model, rows]) => [model, rows])) };
+  return { schema_version: "understudy.authoring_comparison.v1", partial_results: partialPath, runs, agreement: agreementReport(models, perModel), authored_by_model: Object.fromEntries([...perModel.entries()].map(([model, rows]) => [model, rows])) };
 }
