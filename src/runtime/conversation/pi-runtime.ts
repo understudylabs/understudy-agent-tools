@@ -35,7 +35,25 @@ import {
   enforceShellToolCall,
   piCommandGuardExtension,
 } from "./command-guard.js";
+import {
+  PI_BENCHMARK_TOOL_NAMES,
+  piBenchmarkLabExtension,
+} from "./benchmark-extension.js";
 import { packagePath } from "../../internal/package-root.js";
+
+/**
+ * The explicit, deliberately small preinstall allowlist of packaged skills.
+ * `noSkills` keeps user/project skills disabled; only these load. The
+ * orchestrator (skills/understudy) routes benchmark-lab requests to
+ * skills/operate-benchmark-lab via a relative link, so the lab skill must be
+ * preinstalled alongside it for that route to resolve in the embedded chat.
+ */
+export function piPreinstalledSkillPaths(): string[] {
+  return [
+    packagePath("skills", "understudy", "SKILL.md"),
+    packagePath("skills", "operate-benchmark-lab", "SKILL.md"),
+  ];
+}
 
 function runtimeHome(): string {
   return resolve(
@@ -547,8 +565,10 @@ async function createPiRuntimeSession(options: {
   persistent: boolean;
   maxTokens?: number;
   toolsEnabled?: boolean;
+  benchmarkLab?: boolean;
 }) {
   const { request, target, root, messages, persistent } = options;
+  const benchmarkLab = options.benchmarkLab === true;
   const providerUrl = requireSafeProviderTargetUrl(target, request.allow_remote);
   const cwd = join(root, "cwd");
   const sessionDir = join(root, "sessions");
@@ -598,13 +618,18 @@ async function createPiRuntimeSession(options: {
       .filter(Boolean)
       .join("\n\n") ||
     "You are the Understudy conversation runtime. Use only explicitly provided tools.";
-  const understudyRootSkill = packagePath("skills", "understudy", "SKILL.md");
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir: join(root, "agent"),
     settingsManager,
     extensionFactories: [
       { name: "understudy-command-guard", factory: piCommandGuardExtension },
+      // The benchmark-lab operator tools load only for primary (persistent
+      // desktop-chat) sessions — never for supervised student/teacher
+      // segments, whose tool surfaces are frozen by the supervision contract.
+      ...(benchmarkLab
+        ? [{ name: "understudy-benchmark-lab", factory: piBenchmarkLabExtension }]
+        : []),
       ...(request.conformance_deterministic_compaction
         ? [
             {
@@ -617,11 +642,11 @@ async function createPiRuntimeSession(options: {
     // Keep user/project extensions disabled. Inline runtime extensions above
     // still load, so the safety boundary is deterministic and app-owned.
     noExtensions: true,
-    // The packaged Understudy orchestrator is the one preinstalled skill.
+    // Preinstalled packaged skills only (explicit allowlist above).
     // `noSkills` keeps project/user skills disabled while additional paths
     // remain loadable by Pi. The app-owned system prompt tells the model to
     // disclose specialist instructions through the restricted CLI tool.
-    additionalSkillPaths: [understudyRootSkill],
+    additionalSkillPaths: piPreinstalledSkillPaths(),
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
@@ -639,7 +664,10 @@ async function createPiRuntimeSession(options: {
     agentDir: join(root, "agent"),
     model: selectedModel,
     thinkingLevel: request.provider_kind === "anthropic" ? "medium" : "off",
-    tools: tools.map((tool) => tool.name),
+    tools: [
+      ...tools.map((tool) => tool.name),
+      ...(benchmarkLab ? PI_BENCHMARK_TOOL_NAMES : []),
+    ],
     noTools: "all",
     customTools: tools,
     resourceLoader,
@@ -1334,6 +1362,7 @@ export async function runPiConversation(
     root,
     messages: request.messages,
     persistent: true,
+    benchmarkLab: true,
   });
   let lengthContinuationAttempts = 0;
   let lengthContinuationFailure: unknown;
