@@ -856,3 +856,117 @@ describe("per-invocation output isolation (cross-run trace attribution)", () => 
     assert.match(files[0], /outputs\/understudy-trace-env--gemma-4--bash\/traces\.jsonl$/);
   });
 });
+
+describe("prompt-override experiment arms", () => {
+  let mod;
+  it("loads the prompt-override exports", async () => {
+    mod = await import("../dist/run-executor.js");
+    assert.equal(typeof mod.applySystemPromptSuffix, "function");
+    assert.ok(mod.EXECUTOR_CAPABILITIES.includes("prompt_overrides"));
+  });
+
+  const override = { arm_label: "model-a+sop-fix", model: "model-a", system_prompt_suffix: "Always include metadata." };
+
+  it("validates prompt_overrides (shape, label collisions, model membership, suffix)", () => {
+    const base = { models: ["model-a", "model-b"], split: "all", tasks: "all", rollouts_per_task: 1 };
+    const known = ["t1", "t2"];
+    assert.deepEqual(validateRunRequestInput({ ...base, prompt_overrides: [override] }, known), []);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: "nope" }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [{ ...override, arm_label: "" }] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [{ ...override, arm_label: "model-b" }] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [override, override] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [{ ...override, model: "not-in-run" }] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, prompt_overrides: [{ ...override, system_prompt_suffix: "  " }] }, known).length > 0);
+  });
+
+  it("createRunRequest capability-gates the feature and writes the full-text overrides sidecar", () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { prompt_overrides: [override] });
+    assert.ok(run.requires.includes("prompt_overrides"));
+    assert.deepEqual(run.prompt_overrides, [override]);
+    const sidecar = JSON.parse(fs.readFileSync(mod.runOverridesPath(dir, run.run_id), "utf8"));
+    assert.equal(sidecar.run_id, run.run_id);
+    assert.equal(sidecar.overrides[0].system_prompt_suffix, override.system_prompt_suffix);
+    assert.equal(sidecar.overrides[0].system_prompt_suffix_sha256, mod.promptSuffixHash(override.system_prompt_suffix));
+  });
+
+  it("an old executor (no prompt_overrides capability) skips the request instead of running bare", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { prompt_overrides: [override] });
+    const out = await executeRunRequest(dir, run.run_id, {
+      runner: async () => ({ score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [] }),
+      capabilities: ["trivial_arms", "calibration", "rollout_timeout"],
+    });
+    assert.equal(out.status, "queued");
+    assert.deepEqual(out.unsupported.missing, ["prompt_overrides"]);
+  });
+
+  it("applySystemPromptSuffix appends run-scoped (and stands alone when the task has no system prompt)", () => {
+    assert.equal(mod.applySystemPromptSuffix({ system_prompt: "Base." }, "Suffix.").system_prompt, "Base.\n\nSuffix.");
+    assert.equal(mod.applySystemPromptSuffix({ system_prompt: null }, "Suffix.").system_prompt, "Suffix.");
+    assert.equal(mod.applySystemPromptSuffix({}, "Suffix.").system_prompt, "Suffix.");
+  });
+
+  it("runs the override arm against the BASE model with the suffix, labels rows with arm_label + provenance hash, and keeps calibration incumbent-only", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, {
+      models: ["model-a"],
+      incumbent_models: ["model-a"],
+      prompt_overrides: [override],
+    });
+    const invocations = [];
+    const runner = async ({ model, armLabel, systemPromptSuffix, task, journalPath }) => {
+      invocations.push({ model, armLabel, systemPromptSuffix, task_id: task.task_id });
+      if (journalPath) fs.appendFileSync(journalPath, JSON.stringify({ kind: "call", tool: "update-record" }) + "\n");
+      // The override arm "fixes" t2; the bare incumbent fails it.
+      const pass = systemPromptSuffix ? 1 : task.task_id === "t1" ? 1 : 0;
+      return { score: pass, subscores: { final_state: pass }, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-record", arguments: {} }], tool_call_count: 1, final_response_chars: 10 };
+    };
+    const out = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(out.status, "done");
+    // The runner always receives the BASE model; the suffix rides only the override arm.
+    assert.ok(invocations.every((i) => i.model === "model-a"));
+    const overrideCalls = invocations.filter((i) => i.systemPromptSuffix === override.system_prompt_suffix);
+    assert.equal(overrideCalls.length, 2);
+    assert.ok(overrideCalls.every((i) => i.armLabel === override.arm_label));
+    const rows = readRows(dir);
+    const bare = rows.filter((r) => r.model === "model-a");
+    const arm = rows.filter((r) => r.model === override.arm_label);
+    assert.equal(bare.length, 2);
+    assert.equal(arm.length, 2);
+    assert.ok(bare.every((r) => r.arm_kind === "incumbent" && r.prompt_override === undefined));
+    assert.ok(arm.every((r) => r.arm_kind === "candidate"));
+    assert.ok(arm.every((r) => r.prompt_override.arm_label === override.arm_label && r.prompt_override.base_model === "model-a" && r.prompt_override.system_prompt_suffix_sha256 === mod.promptSuffixHash(override.system_prompt_suffix)));
+    // Calibration derives from the BARE incumbent arm only: t2 fails even though the override arm passed it.
+    const calibration = JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
+    assert.deepEqual(calibration.failed_task_ids, ["t2"]);
+    assert.equal(calibration.passed_count, 1);
+  });
+
+  it("runVerifiersArm temp-applies the suffix to the environment tasks.json and restores the source rows", () => {
+    const dir = makeBenchmarkDir();
+    const envPkg = path.join(dir, "environment", "understudy_trace_env");
+    fs.mkdirSync(envPkg, { recursive: true });
+    const sourceRows = [
+      { task_id: "t1", split: "train", prompt: "do t1", system_prompt: "You are the operator." },
+      { task_id: "t2", split: "train", prompt: "do t2", system_prompt: null },
+    ];
+    fs.writeFileSync(path.join(envPkg, "tasks.json"), JSON.stringify(sourceRows, null, 2) + "\n");
+    // Stub `uv`: snapshot tasks.json as seen by the subprocess, then emit one parsable trace.
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), "fake-uv-"));
+    fs.writeFileSync(
+      path.join(bin, "uv"),
+      `#!/bin/sh\ncp "${path.join(envPkg, "tasks.json")}" "${path.join(bin, "seen.json")}"\nmkdir -p outputs/run\necho '{"traces":[{"task":{"data":{"task_id":"t1"}},"rewards":{"final_state":1},"ok":true}]}' > outputs/run/traces.jsonl\n`,
+      { mode: 0o755 },
+    );
+    const env = { PATH: `${bin}:${process.env.PATH}`, HOME: process.env.HOME, UNDERSTUDY_GATEWAY_URL: "http://localhost:9", UNDERSTUDY_API_KEY: "sk_test" };
+    const results = mod.runVerifiersArm(dir, "model-a", 10, env, ["t1", "t2"], null, { invocationTag: "run-x--model-a+sop-fix", systemPromptSuffix: "Suffix line." });
+    assert.equal(results.get("t1").score, 1);
+    const seen = JSON.parse(fs.readFileSync(path.join(bin, "seen.json"), "utf8"));
+    assert.equal(seen.find((r) => r.task_id === "t1").system_prompt, "You are the operator.\n\nSuffix line.");
+    assert.equal(seen.find((r) => r.task_id === "t2").system_prompt, "Suffix line.");
+    // Run-scoped only: the on-disk task rows are restored byte-identically.
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(envPkg, "tasks.json"), "utf8")), sourceRows);
+  });
+});
