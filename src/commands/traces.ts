@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { join, resolve } from "node:path";
 import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays } from "../trace-foundry.js";
 import { serveTraceFoundry } from "../trace-foundry-server.js";
+import { authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveGatewayAuth } from "../trace-author.js";
 import { renderTraceViewer } from "../trace-viewer.js";
 
 export function registerTracesCommand(program: Command): void {
@@ -34,6 +35,34 @@ export function registerTracesCommand(program: Command): void {
       const result = compileTraceFoundry(resolve(options.source), resolve(options.output), Number(options.maxAgeDays), new Date(), { workload: options.workload, batchSize: Number(options.batchSize) });
       console.log(JSON.stringify(result, null, 2));
       console.error(`viewer: ${join(result.output_dir, "viewer", "index.html")}`);
+    });
+  traces.command("author-tasks")
+    .description("LLM-author legible task definitions over a compiled benchmark, grounding-verified against the deterministic evidence (Understudy gateway only)")
+    .requiredOption("--benchmark <dir>", "Benchmark output directory (tasks.jsonl + normalized-captures.jsonl)")
+    .option("--model <id>", "Gateway model id; defaults to a cheap capable model from /v1/models")
+    .option("--limit <count>", "Author at most N tasks")
+    .option("--only-unauthored", "Skip tasks that already carry an authored block", true)
+    .option("--no-only-unauthored", "Re-author tasks even if already authored")
+    .option("--compare-models <ids>", "Comma-separated model ids: author the same tasks with each and report agreement (no tasks.jsonl writeback; resumable via authoring-results.jsonl)")
+    .option("--experiment-out <path>", "Write the comparison report JSON here instead of stdout only")
+    .option("--concurrency <count>", "Concurrent in-flight authoring calls", "8")
+    .action(async (options: { benchmark: string; model?: string; limit?: string; onlyUnauthored: boolean; compareModels?: string; experimentOut?: string; concurrency: string }) => {
+      const auth = resolveGatewayAuth();
+      const model = options.model ?? await resolveDefaultModel(auth.baseUrl, auth.apiKey);
+      const limit = options.limit === undefined ? undefined : Number(options.limit);
+      if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) throw new Error("--limit must be a positive integer");
+      const concurrency = Number(options.concurrency);
+      if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error("--concurrency must be a positive integer");
+      const client = gatewayClient(auth.baseUrl, auth.apiKey);
+      if (options.compareModels) {
+        const models = options.compareModels.split(",").map((id) => id.trim()).filter(Boolean);
+        const report = await compareAuthoringModels(resolve(options.benchmark), models, { limit, client, onlyUnauthored: false, concurrency, progressStream: process.stderr, partialResultsPath: options.experimentOut ? `${resolve(options.experimentOut)}.partial.jsonl` : undefined });
+        if (options.experimentOut) { const { writeFileSync, mkdirSync } = await import("node:fs"); mkdirSync(resolve(options.experimentOut, ".."), { recursive: true }); writeFileSync(resolve(options.experimentOut), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); console.error(`comparison: ${resolve(options.experimentOut)}`); console.log(JSON.stringify({ runs: report.runs, agreement: { ...report.agreement, per_task: undefined } }, null, 2)); }
+        else console.log(JSON.stringify(report, null, 2));
+        return;
+      }
+      const result = await authorTasks(resolve(options.benchmark), { model, client, limit, onlyUnauthored: options.onlyUnauthored, concurrency, progressStream: process.stderr });
+      console.log(JSON.stringify({ ...result, results: undefined }, null, 2));
     });
   traces.command("import-reviews")
     .description("Apply exported human judgments to a compiled benchmark")

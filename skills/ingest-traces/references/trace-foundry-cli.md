@@ -76,3 +76,60 @@ Treat `benchmark.json.promotion_blockers` as authoritative. A scripted oracle
 must score 1, sentinels must be rejected, the source DAG must validate, novel
 held-out semantics must be resolved without using held-out data to author the
 rule, and human judgments must be imported before promotion.
+
+## Author legible task definitions (LLM pass, grounding-verified)
+
+The compiled tasks are deterministic but not legible: titles are raw
+first-user-message text, contracts are observed mutating calls with raw
+arguments. `author-tasks` adds a human-readable proposal on top of that
+evidence:
+
+```sh
+understudy traces author-tasks \
+  --benchmark .understudy/benchmarks/automation \
+  --limit 25            # optional bound
+  # --model gemma-4-31b-it   (default: a cheap capable model from /v1/models)
+```
+
+The contract is deterministic-evidence + LLM-authoring + grounding-verification:
+
+- One structured-output call per task (Understudy gateway ONLY — key from
+  `UNDERSTUDY_API_KEY` or `~/.understudy/credentials.json`; the command refuses
+  to run against any other provider) produces
+  `understudy.task_authoring.v1`: statement, success_criteria,
+  category_proposal, difficulty, intent_summary, a semantic contract
+  (required/preserved/forbidden), confidence, and ambiguities for a human to
+  decide.
+- A deterministic validator then cross-checks every authored `required` entry
+  against the observed tool calls (exact tool name; `arguments_semantic`
+  token-matched under the same normalization as the semantic scorer;
+  `maps_to_observed` ids must exist) and rejects preserved/forbidden entries
+  naming tools outside the task's surface. Violations stamp
+  `authored.grounding: "failed"` with the specific violations, the task keeps
+  `needs_review`, and the deterministic contract remains authoritative.
+- The machine never approves its own inferences: a verified authored block is
+  still a PROPOSAL for human confirmation in the viewer/hub; it changes no
+  review status and no promotion gate.
+
+Authored blocks are written into `tasks.jsonl` rows (field `authored`) and an
+append-only `authoring-events.jsonl` audit records model, tokens, cost
+estimate, and grounding result per task. Re-runs are idempotent
+(`--only-unauthored` defaults on).
+
+For analysis, `--compare-models a,b,c --experiment-out report.json` authors the
+same tasks with several models (no `tasks.jsonl` writeback) and reports
+contract-agreement Jaccard, consensus rates, category/difficulty agreement,
+per-arm grounding pass rates, and ambiguity overlap.
+
+### Long-running foundry commands must stream
+
+Rule for any foundry verb that can run longer than about a minute (compile
+batch loops, `author-tasks`, replay runs): persist every increment the moment
+it completes and report progress as it happens — never buffer everything for
+one final write. Precedents: the compile batch-loop perf fix (bulk artifacts
+written once, ledger/goal appended per batch) and `author-tasks`, which appends
+one `authoring-events.jsonl` line and one partial-result row per completed
+task-model call, prints `[n/total] model task-id 12s grounding=verified` to
+stderr, runs calls through a bounded `--concurrency` pool (default 8), and
+resumes by skipping already-persisted task-model pairs. Final reports and
+summary JSON are assemblies of already-persisted rows, not the only copy.
