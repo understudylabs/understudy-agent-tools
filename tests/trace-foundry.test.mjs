@@ -621,3 +621,70 @@ test("compile + regenerate-env: observation tightening lands in schemas.json and
   assert.ok(validation.tasks.every((row) => !row.sentinels.enum_violation || row.sentinels.enum_violation.score < 1), "enum sentinel discriminates offline");
   assert.ok(validation.tasks.some((row) => row.sentinels.enum_violation), "enum sentinel present for the enum-carrying tool");
 });
+
+test("generation-time self-check: structural sentinels per task, stamped on tasks.jsonl and the manifest", async () => {
+  const { selfCheckTask, runFoundrySelfCheck } = await import("../dist/trace-foundry.js");
+  // Unit: each check fires on its own fixture.
+  const goodTask = {
+    task_id: "task-good",
+    title: "email: quarterly report",
+    outcome_contract: { required: [{ type: "state_effect", tool: "update-record", observed_arguments: { id: 7 } }] },
+    tool_definitions: [{ name: "update-record" }],
+    source: { captures: [{ capture_id: "c1", pointer: "captures.jsonl#L1", sha256: "x" }] },
+  };
+  assert.deepEqual(selfCheckTask(goodTask, { task_id: "task-good", prompt: "Set synthetic record 7 active" }, { schemasPresent: true }), []);
+  const failures = selfCheckTask(
+    {
+      task_id: "task-bad",
+      title: "email: quarterly report",
+      outcome_contract: { required: [] },
+      tool_definitions: [],
+      source: { captures: [{ capture_id: "c2", pointer: "/Users/somebody/captures/x.jsonl#L1", sha256: "y" }] },
+    },
+    { task_id: "task-bad", prompt: "email: quarterly report" },
+    { schemasPresent: false },
+  );
+  const checks = failures.map((f) => f.check);
+  assert.ok(checks.includes("prompt_equals_title"), "the display-title-instead-of-prompt class is structural, not case-by-case");
+  assert.ok(checks.includes("empty_contract"));
+  assert.ok(checks.includes("schemas_missing"));
+  assert.ok(checks.includes("absolute_path"));
+  // missing_tool_definitions fires when the contract requires calls.
+  const noDefs = selfCheckTask(
+    { ...goodTask, tool_definitions: [] },
+    { task_id: "task-good", prompt: "Set synthetic record 7 active" },
+    { schemasPresent: true },
+  );
+  assert.deepEqual(noDefs.map((f) => f.check), ["missing_tool_definitions"]);
+  // prompt row missing entirely.
+  assert.ok(selfCheckTask(goodTask, null, { schemasPresent: true }).some((f) => f.check === "prompt_missing"));
+
+  // Integration: a fresh compile stamps task.self_check + manifest.self_check.
+  const root = mkdtempSync(join(tmpdir(), "understudy-selfcheck-"));
+  const source = join(root, "captures"), output = join(root, "out");
+  mkdirSync(source, { recursive: true });
+  const row = capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], stop_reason: "tool_use" });
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(row) + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  assert.equal(result.self_check.schema_version, "understudy.foundry_self_check.v1");
+  assert.equal(result.self_check.checked, 1);
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(tasks.every((task) => task.self_check && typeof task.self_check.ok === "boolean"), "self_check stamped on every task");
+  const manifest = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.self_check, result.self_check);
+  // runFoundrySelfCheck is re-runnable in place (regenerate-env path).
+  const rerun = runFoundrySelfCheck(output, tasks);
+  assert.equal(rerun.checked, tasks.length);
+});
+
+test("fallback rubric records binding anchor caps as visible cap_warning claims (no silent caps)", async () => {
+  const { ensureJudgeableContract } = await import("../dist/trace-foundry.js");
+  const task = { task_id: "task-caps", title: "cap test", outcome_contract: { required: [] }, claims: [] };
+  // Five distinct id-shaped anchors in the final response — the rubric keeps 3.
+  const finalText = [1, 2, 3, 4, 5].map((i) => `created automation auto-3301928475610${i} ok`).join("\n");
+  assert.equal(ensureJudgeableContract(task, finalText, ""), true);
+  const capClaims = task.claims.filter((claim) => claim.provenance === "cap_warning");
+  assert.equal(capClaims.length, 1);
+  assert.match(capClaims[0].claim, /kept 3 of 5/);
+  assert.equal(task.outcome_contract.required.filter((rule) => rule.kind === "contains_category").length, 3);
+});

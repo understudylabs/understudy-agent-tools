@@ -117,6 +117,8 @@ export type RunRequestInput = {
 
 export const MAX_MODELS_PER_RUN = 8;
 export const MAX_ROLLOUTS_PER_TASK = 20;
+/** Per-arm eval-example cap passed to the verifiers subprocess (-n); binding it is recorded, never silent. */
+export const VERIFIERS_MAX_EXAMPLES = 1000;
 
 /**
  * Validate a run-request body against the benchmark's known task ids.
@@ -203,8 +205,98 @@ export type RolloutResult = {
   cost: number | null;
   /** Mutating tool calls the arm performed — feeds the hub's per-arm accumulation replay. */
   writes: { tool: string; arguments: unknown }[];
+  /** Total tool calls (reads AND writes) the arm made; null = the runner cannot tell (anomaly checks fall back to writes). */
+  tool_call_count?: number | null;
+  /** Character count of the final assistant response; null = the runner cannot tell (never treated as empty). */
+  final_response_chars?: number | null;
   error?: string | null;
 };
+
+/* ------------------------------------------------------------------ */
+/* Rollout anomaly sentinels — the "silent zero" gate                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Structural sentinels evaluated after every rollout, BEFORE its score is
+ * trusted. Each kind is a failure class we have already shipped once:
+ * display-title-instead-of-prompt (fixed in defa40d), journals rendering
+ * empty (#323), and all-zero scores indistinguishable from harness failure.
+ * Anomalous rows are marked (`anomaly` on the row) and excluded from
+ * leaderboard aggregates by default — never silently dropped.
+ */
+export type RolloutAnomalyKind =
+  | "empty_prompt"
+  | "no_tool_calls"
+  | "empty_final_response"
+  | "no_journal_events"
+  | "zero_score_zero_calls";
+
+export type RolloutAnomaly = { kind: RolloutAnomalyKind; detail: string };
+
+const textOfContent = (content: unknown): string =>
+  typeof content === "string" ? content : Array.isArray(content) ? content.map((b) => String(asObject(b).text ?? "")).join("") : "";
+
+export function detectRolloutAnomalies(args: {
+  /** Sidecar task (understudy.benchmark_task.v1) — carries the outcome contract + title. */
+  task: Obj;
+  result: RolloutResult;
+  /** The prompt actually sent to the model (generated environment tasks.json row); undefined = unknown, skip the check. */
+  promptSent?: string | null;
+  /** The task's stored source prompt (first user message of source_messages); undefined = unknown. */
+  storedPrompt?: string | null;
+  /** Bytes present in the arm's live journal after this rollout; undefined = unknown, skip the check. */
+  journalBytes?: number | null;
+}): RolloutAnomaly[] {
+  const anomalies: RolloutAnomaly[] = [];
+  const { task, result } = args;
+  const title = String(task.title ?? "").trim();
+
+  // (a) empty or near-empty prompt sent to the model — including the
+  // display-title-instead-of-full-prompt class (defa40d).
+  if (args.promptSent !== undefined && args.promptSent !== null) {
+    const prompt = String(args.promptSent).trim();
+    const stored = String(args.storedPrompt ?? "").trim();
+    if (prompt.length === 0) {
+      anomalies.push({ kind: "empty_prompt", detail: "prompt sent to the model is empty" });
+    } else if (stored.length >= 32 && prompt === title && title !== stored) {
+      anomalies.push({ kind: "empty_prompt", detail: `prompt sent equals the display title (${prompt.length} chars) while the stored task prompt is ${stored.length} chars` });
+    } else if (stored.length >= 400 && prompt.length < stored.length * 0.1) {
+      anomalies.push({ kind: "empty_prompt", detail: `prompt sent is ${prompt.length} chars vs ${stored.length} chars stored for the task` });
+    }
+  }
+
+  // Sentinels below judge completed rollouts only: error/unscored rows are
+  // already untrusted by every aggregate.
+  if (result.status !== "ok") return anomalies;
+  const required = ((asObject(task.outcome_contract).required ?? []) as unknown[]).map(asObject);
+  const calls = typeof result.tool_call_count === "number" ? result.tool_call_count : result.writes.length;
+
+  // (b) zero tool calls on a task whose contract requires state effects.
+  const stateRules = required.filter((rule) => String(rule.type ?? "state_effect") === "state_effect").length;
+  if (stateRules > 0 && calls === 0) {
+    anomalies.push({ kind: "no_tool_calls", detail: `contract requires ${stateRules} state effect(s) but the rollout made zero tool calls` });
+  }
+
+  // (c) empty final response where the contract carries response obligations.
+  const responseRules = required.filter(
+    (rule) => String(rule.type ?? "") === "response_obligation" || (String(rule.type ?? "") === "value_propagation" && asObject(rule.must_reach).kind === "final_response"),
+  ).length;
+  if (responseRules > 0 && result.final_response_chars === 0) {
+    anomalies.push({ kind: "empty_final_response", detail: `contract has ${responseRules} response obligation(s) but the final response is empty` });
+  }
+
+  // (d) journal/row write anomaly: a completed rollout left zero live-journal events.
+  if (args.journalBytes === 0) {
+    anomalies.push({ kind: "no_journal_events", detail: "rollout completed but the live journal recorded zero events" });
+  }
+
+  // (e) all-zero contract score with zero tool calls — indistinguishable from
+  // a harness failure, so it must never be trusted as an honest 0.
+  if (result.score === 0 && calls === 0) {
+    anomalies.push({ kind: "zero_score_zero_calls", detail: "score is 0 and the rollout made zero tool calls — indistinguishable from harness failure" });
+  }
+  return anomalies;
+}
 
 export type ArmRunner = (args: {
   benchmarkDir: string;
@@ -221,7 +313,7 @@ export type RunEvent = {
   schema_version: "understudy.run_event.v1";
   ts: string;
   run_id: string;
-  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed";
+  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning";
   model?: string;
   task_id?: string;
   rollout?: number;
@@ -229,6 +321,10 @@ export type RunEvent = {
   status?: string;
   error?: string | null;
   progress?: { completed: number; total: number };
+  /** Structural sentinel that fired on this rollout (additive; absent when clean). */
+  anomaly?: RolloutAnomaly | null;
+  /** Explicit no-silent-caps record: present on cap_warning events when a hard cap binds. */
+  warning?: string;
 };
 
 function appendEvent(benchmarkDir: string, event: RunEvent, onEvent?: (event: RunEvent) => void): void {
@@ -304,6 +400,20 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   request = { ...request, status: "running", started_at: now().toISOString(), progress: { completed: 0, total } };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
+  // No silent caps: the verifiers arm evals at most VERIFIERS_MAX_EXAMPLES
+  // tasks per split (-n); a selection past that would be silently dropped by
+  // the eval harness, so the binding cap is recorded as an explicit event.
+  if (selected.length > VERIFIERS_MAX_EXAMPLES) {
+    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "cap_warning", warning: `selected ${selected.length} tasks exceeds the per-arm eval cap of ${VERIFIERS_MAX_EXAMPLES}; tasks beyond the cap may be dropped by the eval harness` }, options.onEvent);
+  }
+
+  // Generated-environment task rows (prompt actually sent + stored source
+  // messages) feed the prompt sentinels; absent/unreadable = checks skipped.
+  let envTaskRows = new Map<string, Obj>();
+  try {
+    const parsed = JSON.parse(readFileSync(join(dir, "environment", "understudy_trace_env", "tasks.json"), "utf8"));
+    if (Array.isArray(parsed)) envTaskRows = new Map(parsed.map((row: unknown) => [String(asObject(row).task_id), asObject(row)]));
+  } catch { /* no generated environment — prompt sentinels skipped */ }
 
   const cancelled = (): boolean => readRunRequest(file)?.status === "cancelled";
   let completed = 0;
@@ -357,6 +467,19 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           if (((asObject(sidecar.outcome_contract).required ?? []) as unknown[]).length === 0 && result.status === "ok") {
             result = { ...result, score: null, subscores: null, status: "unscored", error: "empty contract — not judgeable; regenerate-env synthesizes a fallback rubric" };
           }
+          // Structural sentinels before the score is trusted: anomalous rows
+          // are marked on the row (and its event), never silently dropped —
+          // the hub excludes them from aggregates but keeps the counts visible.
+          const envRow = envTaskRows.get(taskId);
+          let journalBytes: number | null = null;
+          try { journalBytes = statSync(journalPath).size; } catch { journalBytes = 0; }
+          const anomalies = detectRolloutAnomalies({
+            task: sidecar,
+            result,
+            promptSent: envRow === undefined ? undefined : String(envRow.prompt ?? ""),
+            storedPrompt: envRow === undefined ? undefined : textOfContent(((Array.isArray(envRow.source_messages) ? envRow.source_messages : []).map(asObject).find((m) => m.role === "user") ?? {}).content),
+            journalBytes,
+          });
           const row: Obj = {
             schema_version: "understudy.eval_result.v1",
             run_id: runId,
@@ -376,6 +499,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             // Extension: the arm's mutating calls, so the hub can replay the
             // contract accumulation for this arm next to the oracle.
             writes: result.writes,
+            ...(typeof result.tool_call_count === "number" ? { tool_call_count: result.tool_call_count } : {}),
+            ...(typeof result.final_response_chars === "number" ? { final_response_chars: result.final_response_chars } : {}),
+            // Marked, not dropped: the primary anomaly plus the full list.
+            ...(anomalies.length > 0 ? { anomaly: anomalies[0], anomalies } : {}),
             ...(result.error ? { error: result.error } : {}),
           };
           appendFileSync(rowsFile, `${JSON.stringify(row)}\n`, { mode: 0o600 });
@@ -394,6 +521,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
               status: result.status,
               error: result.error ?? null,
               progress: { completed, total },
+              ...(anomalies.length > 0 ? { anomaly: anomalies[0] } : {}),
             },
             options.onEvent,
           );
@@ -476,6 +604,8 @@ export function oracleRunner(): ArmRunner {
       latency_ms: Math.max(1, Date.now() - started),
       cost: 0,
       writes,
+      tool_call_count: writes.length,
+      final_response_chars: null,
     };
   };
 }
@@ -544,9 +674,18 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
   const rate = COST_PER_MTOKEN[model] ?? COST_PER_MTOKEN.default;
   const cost = calls.length > 0 ? (promptTokens * rate.input + completionTokens * rate.output) / 1_000_000 : null;
   // Mutating tool calls from the trace's message nodes → per-arm replay input.
+  // Total call count (reads AND writes) + final assistant text feed the
+  // structural anomaly sentinels.
   const writes: { tool: string; arguments: unknown }[] = [];
+  let toolCallCount = 0;
+  let finalAssistantText: string | null = null;
   for (const node of (Array.isArray(trace.nodes) ? trace.nodes : []).map(asObject)) {
     const message = asObject(node.message);
+    if (message.role === "assistant") {
+      const text = typeof message.content === "string" ? message.content : Array.isArray(message.content) ? message.content.map((b: unknown) => String(asObject(b).text ?? "")).join("") : "";
+      finalAssistantText = text;
+    }
+    toolCallCount += (Array.isArray(message.tool_calls) ? message.tool_calls : []).length;
     for (const tc of (Array.isArray(message.tool_calls) ? message.tool_calls : []).map(asObject)) {
       const fn = asObject(tc.function);
       // Tool names arrive mcp-server-prefixed ("world_toolset_<tool>"); the
@@ -567,6 +706,8 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
       latency_ms: latencyMs > 0 ? latencyMs : null,
       cost,
       writes,
+      tool_call_count: toolCallCount,
+      final_response_chars: finalAssistantText === null ? null : finalAssistantText.trim().length,
       error: failed ? String(errors[0]?.type ?? "RolloutError") + ": " + String(errors[0]?.message ?? "rollout not ok").slice(0, 500) : null,
     },
   };
@@ -653,7 +794,7 @@ export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): Arm
     const key = `${benchmarkDir}::${model}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
-        armCache.set(key, runVerifiersArm(benchmarkDir, model, 1000, parentEnv, selectedTaskIds, journalPath));
+        armCache.set(key, runVerifiersArm(benchmarkDir, model, VERIFIERS_MAX_EXAMPLES, parentEnv, selectedTaskIds, journalPath));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));
       }

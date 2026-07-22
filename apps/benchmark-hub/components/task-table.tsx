@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { binHistogram, scoreColor } from "@/lib/trajectory-core";
 import { formatScore } from "@/lib/scores";
 import { InlineHistogram } from "@/components/histogram";
-import { Badge, ConfidenceChip, DecisionBadge, SplitChip } from "@/components/badges";
+import { AnomalyBadge, Badge, ConfidenceChip, DecisionBadge, SplitChip } from "@/components/badges";
 
 export type TaskTableRow = {
   taskId: string;
@@ -17,6 +17,10 @@ export type TaskTableRow = {
   /** promoted */
   rollouts?: number;
   avgScore?: number | null;
+  /** promoted: eval rows a structural sentinel flagged (excluded from aggregates). */
+  anomalies?: number;
+  /** proposed: generation-time self-check failure count for this task. */
+  selfCheckFailures?: number;
   /** proposed */
   confidence?: string | null;
   reviewDecision?: string | null;
@@ -128,6 +132,12 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
                     {r.closeCall && <Badge className="border-warn/40 text-warn">close call</Badge>}
                     {r.frontier && <Badge className="border-warn/40 text-warn">frontier</Badge>}
                     {r.complexityMismatch && <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>}
+                    {(r.selfCheckFailures ?? 0) > 0 && <AnomalyBadge count={r.selfCheckFailures as number} label="self-check" />}
+                  </span>
+                )}
+                {stage === "promoted" && (r.anomalies ?? 0) > 0 && (
+                  <span className="mt-0.5 flex flex-wrap gap-1">
+                    <AnomalyBadge count={r.anomalies as number} />
                   </span>
                 )}
               </td>

@@ -10,6 +10,7 @@ import {
   formatLatency,
   formatScore,
   hasSplits,
+  isAnomalousRow,
 } from "@/lib/scores";
 import { OriginBadge, SourceBadge, SplitChip, StageBadge, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
@@ -148,6 +149,13 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
     .map(([s, n]) => `${n} ${s}`)
     .join(" · ");
   const contamination = m.splits?.contamination ?? "unknown";
+  // Structural-sentinel counts: anomalous rows are excluded from every
+  // aggregate on this page but the counts stay visible (marked, not dropped).
+  const anomalousRows = entry.rows.filter(isAnomalousRow);
+  const anomaliesByTask = anomalousRows.reduce<Record<string, number>>((acc, r) => {
+    acc[r.task_id] = (acc[r.task_id] ?? 0) + 1;
+    return acc;
+  }, {});
   const noLinkedEval = entry.warnings.some((w) => w.kind === "no-linked-eval");
   const otherWarnings = entry.warnings.filter(
     (w) => w.kind !== "no-linked-eval" && w.kind !== "contamination" && w.kind !== "no-splits",
@@ -212,6 +220,17 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             {noLinkedEval && <span className="warnline">no linked eval</span>}
           </div>
         </div>
+        {anomalousRows.length > 0 && (
+          <span className="u-foot-note" style={{ color: "var(--bad)" }}>
+            {"// " +
+              anomalousRows.length +
+              " eval row" +
+              (anomalousRows.length === 1 ? "" : "s") +
+              " flagged by structural rollout sentinels (" +
+              [...new Set(anomalousRows.map((r) => r.anomaly?.kind))].join(", ") +
+              ") — excluded from every aggregate on this page, marked on affected tasks below"}
+          </span>
+        )}
         {benchmarkFlagged && (
           <span className="u-foot-note" style={{ color: "var(--bad)" }}>
             {"// this benchmark has an open whole-benchmark flag"}
@@ -366,6 +385,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
                   split: task?.split ?? "none",
                   rollouts: a.rollouts,
                   avgScore: a.avgScore,
+                  anomalies: anomaliesByTask[a.taskId] ?? 0,
                   promptLength: a.promptLength,
                 };
               })}

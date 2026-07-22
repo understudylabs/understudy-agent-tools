@@ -85,6 +85,8 @@ export type EvalRow = {
   benchmark_id?: string;
   category_id?: string | null;
   trace_ref?: { branch_leaf?: string; branch_depth?: number } | null;
+  /** Structural rollout sentinel that fired (executor-side). Anomalous rows are excluded from aggregates by default — marked, never dropped. */
+  anomaly?: { kind: string; detail: string } | null;
   [key: string]: unknown;
 };
 
@@ -298,6 +300,8 @@ export type FoundryTask = {
   review: { decision: string };
   /** LLM-authored legible definition (understudy.task_authoring.v1), when `traces author-tasks` has run. */
   authored?: AuthoredBlock | null;
+  /** Generation-time structural self-check stamped by the foundry (absent on older builds). */
+  self_check?: { ok: boolean; failures: { check: string; detail: string }[] } | null;
   [key: string]: unknown;
 };
 

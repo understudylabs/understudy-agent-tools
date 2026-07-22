@@ -21,6 +21,8 @@ export type ModelSummary = {
   scoredCount: number;
   unscoredCount: number;
   errorCount: number;
+  /** Rows a structural sentinel flagged (row.anomaly) — EXCLUDED from score/cost/latency aggregates by default, but always counted here. */
+  anomalousCount: number;
   /** Σ cost over SCORED rows carrying a numeric cost; null when none do. */
   totalCost: number | null;
   /** Σ cost ÷ scored rows ÷ mean strict score; null when undefined (guards ÷0). */
@@ -34,7 +36,14 @@ export type ModelSummary = {
 export type LeaderboardOptions = {
   excludeTaskIds?: Set<string>;
   split?: TaskSplit | "all";
+  /** Include anomaly-flagged rows in score aggregates (default false: marked rows are excluded, counts stay visible). */
+  includeAnomalous?: boolean;
 };
+
+/** True when the executor's structural sentinels flagged this row (row.anomaly is an object with a kind). */
+export function isAnomalousRow(row: EvalRow): boolean {
+  return row.anomaly != null && typeof row.anomaly === "object" && typeof row.anomaly.kind === "string";
+}
 
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -99,7 +108,10 @@ export function computeLeaderboard(
   const denseMetric = manifest.verifier.dense_metric ?? null;
   const summaries: ModelSummary[] = [];
   for (const [model, modelRows] of byModel) {
-    const scored = modelRows.filter((r) => r.status === "ok" && typeof r.score === "number");
+    // Anomaly-flagged rows never enter score/cost/latency aggregates unless
+    // explicitly opted in — they are marked (counted below), not dropped.
+    const trusted = options.includeAnomalous ? modelRows : modelRows.filter((r) => !isAnomalousRow(r));
+    const scored = trusted.filter((r) => r.status === "ok" && typeof r.score === "number");
     const perCategory: Record<string, number | null> = {};
     const categoryDetail: Record<string, CategoryDetail> = {};
     for (const cat of manifest.taxonomy) {
@@ -138,6 +150,7 @@ export function computeLeaderboard(
       scoredCount: scored.length,
       unscoredCount: modelRows.filter((r) => r.status === "unscored" || r.status === "skipped").length,
       errorCount: modelRows.filter((r) => r.status === "error").length,
+      anomalousCount: modelRows.filter(isAnomalousRow).length,
       totalCost,
       costPerSuccess,
       p50LatencyMs: median(latencies),
@@ -155,7 +168,8 @@ export function categoryScoreSummary(
   excludeTaskIds?: Set<string>,
 ): Record<string, { score: number | null; n: number }> {
   const categories = taskCategoryMap(manifest);
-  const pool = excludeTaskIds ? rows.filter((r) => !excludeTaskIds.has(r.task_id)) : rows;
+  // Same trust discipline as the leaderboard: anomaly-flagged rows never enter means.
+  const pool = (excludeTaskIds ? rows.filter((r) => !excludeTaskIds.has(r.task_id)) : rows).filter((r) => !isAnomalousRow(r));
   const out: Record<string, { score: number | null; n: number }> = {};
   for (const cat of manifest.taxonomy) {
     const scored = pool.filter(

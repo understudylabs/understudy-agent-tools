@@ -295,7 +295,7 @@ export type TaskAggregate = {
 
 export function aggregatePromotedTasks(
   tasks: { task_id: string }[],
-  rows: { task_id: string; score?: number | null; status: string }[],
+  rows: { task_id: string; score?: number | null; status: string; anomaly?: { kind: string } | null }[],
   displayNames: Record<string, string> = {},
   promptLengths: Record<string, number> = {},
 ): TaskAggregate[] {
@@ -303,7 +303,8 @@ export function aggregatePromotedTasks(
   for (const r of rows) {
     const agg = byTask.get(r.task_id) ?? { scores: [], n: 0 };
     agg.n += 1;
-    if (r.status === "ok" && typeof r.score === "number") agg.scores.push(r.score);
+    // Anomaly-flagged rows count as rollouts but never enter the score mean.
+    if (r.status === "ok" && typeof r.score === "number" && r.anomaly == null) agg.scores.push(r.score);
     byTask.set(r.task_id, agg);
   }
   return tasks.map((t) => {

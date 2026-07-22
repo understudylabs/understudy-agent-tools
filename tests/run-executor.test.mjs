@@ -285,3 +285,146 @@ describe("live journal wiring", () => {
     assert.equal(lines.length, 4); // 2 tasks × (call + result)
   });
 });
+
+describe("rollout anomaly sentinels (the silent-zero gate)", () => {
+  let detectRolloutAnomalies;
+  let VERIFIERS_MAX_EXAMPLES;
+  it("loads the sentinel exports", async () => {
+    ({ detectRolloutAnomalies, VERIFIERS_MAX_EXAMPLES } = await import("../dist/run-executor.js"));
+    assert.equal(typeof detectRolloutAnomalies, "function");
+    assert.ok(Number.isInteger(VERIFIERS_MAX_EXAMPLES));
+  });
+
+  const stateTask = {
+    task_id: "t1",
+    title: "Set record active",
+    outcome_contract: { required: [{ type: "state_effect", tool: "update-record", observed_arguments: { id: "r1" } }] },
+  };
+  const okResult = (over = {}) => ({
+    score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0,
+    writes: [{ tool: "update-record", arguments: { id: "r1" } }], tool_call_count: 1, ...over,
+  });
+
+  it("clean rollout: no anomalies", () => {
+    const anomalies = detectRolloutAnomalies({
+      task: stateTask,
+      result: okResult(),
+      promptSent: "Please set record r1 active in the synthetic project board today.",
+      storedPrompt: "Please set record r1 active in the synthetic project board today.",
+      journalBytes: 512,
+    });
+    assert.deepEqual(anomalies, []);
+  });
+
+  it("(a) empty prompt and display-title-instead-of-prompt both flag empty_prompt", () => {
+    const empty = detectRolloutAnomalies({ task: stateTask, result: okResult(), promptSent: "  " });
+    assert.deepEqual(empty.map((a) => a.kind), ["empty_prompt"]);
+    const titled = detectRolloutAnomalies({
+      task: stateTask,
+      result: okResult(),
+      promptSent: "Set record active",
+      storedPrompt: "A very long stored task prompt that the environment should have carried through verbatim.",
+    });
+    assert.equal(titled[0].kind, "empty_prompt");
+    assert.match(titled[0].detail, /display title/);
+  });
+
+  it("(b) zero tool calls on a state-effect contract flags no_tool_calls", () => {
+    const anomalies = detectRolloutAnomalies({ task: stateTask, result: okResult({ writes: [], tool_call_count: 0 }) });
+    assert.ok(anomalies.some((a) => a.kind === "no_tool_calls"));
+  });
+
+  it("(c) empty final response with response obligations flags empty_final_response; unknown (null) never does", () => {
+    const task = { task_id: "t9", title: "x", outcome_contract: { required: [{ type: "response_obligation", kind: "json_parses" }] } };
+    const flagged = detectRolloutAnomalies({ task, result: okResult({ final_response_chars: 0 }) });
+    assert.ok(flagged.some((a) => a.kind === "empty_final_response"));
+    const unknown = detectRolloutAnomalies({ task, result: okResult({ final_response_chars: null }) });
+    assert.ok(!unknown.some((a) => a.kind === "empty_final_response"));
+  });
+
+  it("(d) zero journal bytes on a completed rollout flags no_journal_events", () => {
+    const anomalies = detectRolloutAnomalies({ task: stateTask, result: okResult(), journalBytes: 0 });
+    assert.deepEqual(anomalies.map((a) => a.kind), ["no_journal_events"]);
+  });
+
+  it("(e) score 0 with zero tool calls flags zero_score_zero_calls", () => {
+    const anomalies = detectRolloutAnomalies({
+      task: { task_id: "t2", title: "x", outcome_contract: { required: [{ type: "response_obligation", kind: "json_parses" }] } },
+      result: okResult({ score: 0, writes: [], tool_call_count: 0, final_response_chars: 12 }),
+    });
+    assert.deepEqual(anomalies.map((a) => a.kind), ["zero_score_zero_calls"]);
+  });
+
+  it("error rollouts skip the completed-rollout sentinels (already untrusted)", () => {
+    const anomalies = detectRolloutAnomalies({
+      task: stateTask,
+      result: okResult({ status: "error", score: null, writes: [], tool_call_count: 0 }),
+      journalBytes: 0,
+    });
+    assert.deepEqual(anomalies, []);
+  });
+
+  it("executor marks anomalous rows + events but never drops them", async () => {
+    const dir = makeBenchmarkDir();
+    // Generated-environment task rows: t1's prompt is empty (a silent zero at the source).
+    const pkg = path.join(dir, "environment", "understudy_trace_env");
+    fs.mkdirSync(pkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(pkg, "tasks.json"),
+      JSON.stringify([
+        { task_id: "t1", prompt: "", source_messages: [{ role: "user", content: "Full original user request with plenty of detail" }] },
+        { task_id: "t2", prompt: "Full original user request with plenty of detail", source_messages: [{ role: "user", content: "Full original user request with plenty of detail" }] },
+      ]),
+    );
+    const run = queueRun(dir, { models: ["m1"], rollouts_per_task: 1, split: "all" });
+    // Runner completes "ok" with zero calls and zero score — a classic silent zero.
+    const runner = async () => ({ score: 0, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [], tool_call_count: 0 });
+    const result = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(result.status, "done");
+    const rows = readRows(dir);
+    assert.equal(rows.length, 2, "anomalous rows are written, never dropped");
+    for (const row of rows) {
+      assert.ok(row.anomaly, "row carries the primary anomaly");
+      assert.ok(Array.isArray(row.anomalies) && row.anomalies.length > 0);
+      const kinds = row.anomalies.map((a) => a.kind);
+      assert.ok(kinds.includes("no_tool_calls"));
+      assert.ok(kinds.includes("zero_score_zero_calls"));
+      assert.ok(kinds.includes("no_journal_events"), "no journal was ever written");
+      if (row.task_id === "t1") assert.ok(kinds.includes("empty_prompt"));
+    }
+    const events = fs
+      .readFileSync(path.join(dir, "runs", "events.jsonl"), "utf8")
+      .trim().split("\n").map((l) => JSON.parse(l))
+      .filter((e) => e.run_id === run.run_id && e.type === "rollout");
+    assert.ok(events.length > 0);
+    assert.ok(events.every((e) => e.anomaly && typeof e.anomaly.kind === "string"), "rollout events carry the anomaly");
+  });
+
+  it("emits an explicit cap_warning event when the selection exceeds the per-arm eval cap", async () => {
+    const { VERIFIERS_MAX_EXAMPLES: cap, createRunRequest: create } = await import("../dist/run-executor.js");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "run-exec-cap-"));
+    roots.push(dir);
+    const taskIds = Array.from({ length: cap + 1 }, (_, i) => `task-${i}`);
+    fs.writeFileSync(
+      path.join(dir, "benchmark.json"),
+      JSON.stringify({
+        schema_version: "understudy.benchmark.v1",
+        benchmark_id: "cap-bench",
+        provenance: { origin: "derived-from-traces" },
+        taxonomy: [{ category_id: "cat-a" }],
+        tasks: taskIds.map((task_id) => ({ task_id, category_id: "cat-a", genesis: "replayed", split: "train" })),
+        environment: { format: "verifiers.v1", package_ref: "environment" },
+        verifier: { kind: "final-state", strict_metric: "task_completed_correctly" },
+      }),
+    );
+    fs.writeFileSync(path.join(dir, "tasks.jsonl"), "");
+    const run = create(dir, { benchmark_id: "cap-bench", models: ["m1"], split: "all", tasks: "all", rollouts_per_task: 1 });
+    const events = [];
+    const runner = async () => ({ score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-x", arguments: {} }], tool_call_count: 1 });
+    const result = await executeRunRequest(dir, run.run_id, { runner, concurrency: 8, onEvent: (e) => events.push(e) });
+    assert.equal(result.status, "done");
+    const warning = events.find((e) => e.type === "cap_warning");
+    assert.ok(warning, "cap_warning event recorded when the cap binds");
+    assert.match(warning.warning, new RegExp(String(cap)));
+  });
+});

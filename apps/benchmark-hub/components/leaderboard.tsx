@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { computeLeaderboard, formatCost, formatLatency, formatScore, hasSplits } from "@/lib/scores";
+import { computeLeaderboard, formatCost, formatLatency, formatScore, hasSplits, isAnomalousRow } from "@/lib/scores";
 import type { BenchmarkManifest, EvalRow, TaskSplit } from "@/lib/types";
 import { RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
@@ -113,6 +113,7 @@ export function Leaderboard({
 
   const nCols = 6;
   const denseMetric = manifest.verifier.dense_metric;
+  const anomalousTotal = useMemo(() => rows.filter(isAnomalousRow).length, [rows]);
 
   return (
     <div>
@@ -227,6 +228,12 @@ export function Leaderboard({
                                     {s.errorCount}
                                   </span>
                                 </div>
+                                <div className="u-subt">
+                                  <span className="n">anomalous (excluded)</span>
+                                  <span className="v" style={s.anomalousCount > 0 ? { color: "var(--bad)" } : undefined}>
+                                    {s.anomalousCount}
+                                  </span>
+                                </div>
                               </div>
                               {manifest.taxonomy.map((c) => {
                                 const d = s.categoryDetail[c.category_id];
@@ -267,6 +274,11 @@ export function Leaderboard({
         <span className="u-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
         <span className="u-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
         <span className="u-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>
+        {anomalousTotal > 0 && (
+          <span className="u-foot-note !mt-0" style={{ color: "var(--bad)" }}>
+            {"// " + anomalousTotal + " row" + (anomalousTotal === 1 ? "" : "s") + " flagged by structural sentinels (empty prompt / zero tool calls / empty journal / zero-score-zero-calls) are EXCLUDED from every aggregate above — per-arm counts in the row expansion"}
+          </span>
+        )}
         <span className="u-foot-note !mt-0">
           {excludeFlagged
             ? `// flagged tasks are EXCLUDED right now (${flaggedTaskIds.length} open task flags)`
