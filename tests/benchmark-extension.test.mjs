@@ -22,6 +22,10 @@ import { BENCHMARKS_TOOLS, callBenchmarksTool } from "../dist/benchmarks-mcp.js"
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pi-benchmark-extension-"));
 process.env.BENCHMARK_HUB_DATA_DIR = tmp;
 delete process.env.BENCHMARK_HUB_DEMO;
+// Pin the trust posture to the absent-file default (local_sandbox) so a
+// developer machine's real ~/.understudy/trust.json never flips these tests.
+process.env.UNDERSTUDY_TRUST_FILE = path.join(tmp, "trust.json");
+const postureAt = (level) => ({ schema_version: "understudy.trust_posture.v1", level, set_at: null, overrides: {} });
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 /* ---------------- fixture: one promoted benchmark ---------------- */
@@ -94,7 +98,7 @@ describe("tool registration", () => {
     assert.equal(typeof guard, "function");
     const blocked = guard({ toolName: "queue_run", input: { slug: "x", models: ["a", "b"] } });
     assert.equal(blocked.block, true);
-    assert.match(blocked.reason, /benchmark\.queue-run-unconfirmed/);
+    assert.match(blocked.reason, /benchmark\.queue-run-below-posture/);
     assert.equal(guard({ toolName: "read_benchmark", input: { slug: "x" } }), undefined);
     // Shell tools remain the command guard's concern, not this guard's.
     assert.equal(guard({ toolName: "bash", input: { command: "rm -rf /" } }), undefined);
@@ -127,7 +131,7 @@ describe("spend-adjacent gating", () => {
     ]) {
       const decision = classifyBenchmarkToolCall("queue_run", args);
       assert.equal(decision.decision, "block");
-      assert.equal(decision.rule_id, "benchmark.queue-run-unconfirmed");
+      assert.equal(decision.rule_id, "benchmark.queue-run-below-posture");
       assert.match(benchmarkGuardBlockMessage(decision), /confirm: true/);
       assert.deepEqual(
         classifyBenchmarkToolCall("queue_run", { ...args, confirm: true }),
@@ -148,7 +152,7 @@ describe("spend-adjacent gating", () => {
         patch,
       });
       assert.equal(decision.decision, "block");
-      assert.equal(decision.rule_id, "benchmark.experiment-approval-unconfirmed");
+      assert.equal(decision.rule_id, "benchmark.experiment-approval-below-posture");
     }
     assert.deepEqual(
       classifyBenchmarkToolCall("update_experiment", {
@@ -160,10 +164,51 @@ describe("spend-adjacent gating", () => {
     );
   });
 
+  it("posture matrix: blocks below bounded_experiments, proceeds WITH a visible notice at bounded_experiments+", () => {
+    const spendy = { slug: "s", models: ["glm-5.2", "gemma-4-31b-it"], tasks: ["t1", "t2"], rollouts_per_task: 3 };
+    const blocked = classifyBenchmarkToolCall("queue_run", spendy, postureAt("local_sandbox"));
+    assert.equal(blocked.decision, "block");
+    assert.match(benchmarkGuardBlockMessage(blocked), /understudy trust set bounded_experiments/, "ONE action, not a per-call dialog");
+    for (const level of ["bounded_experiments", "hosted_ops"]) {
+      const allowed = classifyBenchmarkToolCall("queue_run", spendy, postureAt(level));
+      assert.equal(allowed.decision, "allow");
+      assert.match(allowed.notice, /2 arm\(s\)/, "notice carries the arm count");
+      assert.match(allowed.notice, /est\. gateway cost|est\. cost/, "notice carries a cost estimate");
+      assert.match(allowed.notice, /2 task\(s\) x 3 rollout\(s\)/);
+    }
+    // Trivial probes stay notice-free at every level.
+    for (const level of ["local_sandbox", "bounded_experiments", "hosted_ops"]) {
+      assert.deepEqual(
+        classifyBenchmarkToolCall("queue_run", { slug: "s", models: ["m"], tasks: ["t1"] }, postureAt(level)),
+        { decision: "allow" },
+      );
+    }
+    // Experiment approval patches follow the same matrix.
+    const patchArgs = { slug: "s", experiment_id: "e", patch: { status: "approved" } };
+    assert.equal(classifyBenchmarkToolCall("update_experiment", patchArgs, postureAt("local_sandbox")).decision, "block");
+    const noticed = classifyBenchmarkToolCall("update_experiment", patchArgs, postureAt("bounded_experiments"));
+    assert.equal(noticed.decision, "allow");
+    assert.match(noticed.notice, /approval\/status\/verdict/);
+  });
+
+  it("execute surfaces the posture notice ahead of the payload (never a silent proceed)", async () => {
+    fs.writeFileSync(
+      process.env.UNDERSTUDY_TRUST_FILE,
+      JSON.stringify({ schema_version: "understudy.trust_posture.v1", level: "bounded_experiments", set_at: null, overrides: {} }),
+    );
+    try {
+      const result = await execute("queue_run", { slug: discoveredSlug(), models: ["model-a", "model-b"], tasks: ["t1"], split: "holdout" });
+      assert.match(result.content[0].text, /Trust posture bounded_experiments/, "first content block is the notice");
+      assert.ok(result.details.run_id, "the run still queues through the shared writer");
+    } finally {
+      fs.rmSync(process.env.UNDERSTUDY_TRUST_FILE, { force: true });
+    }
+  });
+
   it("enforces the guard on execute, not just at the extension boundary", async () => {
     await assert.rejects(
       execute("queue_run", { slug: discoveredSlug(), models: ["a", "b"] }),
-      /benchmark\.queue-run-unconfirmed/,
+      /benchmark\.queue-run-below-posture/,
     );
   });
 });
