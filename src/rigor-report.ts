@@ -8,9 +8,10 @@
  * Pure derivation: everything is read from the benchmark dir's existing
  * file-based artifacts (benchmark.json, tasks.jsonl, rows-*.jsonl,
  * runs/events.jsonl, calibration.json) through the SHARED codecs. No network,
- * no model calls. Items we cannot check yet (leakage audit, confidence
- * intervals — being built separately) are reported as honest UNKNOWN rows,
- * never silently omitted.
+ * no model calls. The gold-leakage audit row reads the build-time
+ * manifest.json leakage_audit when present. Items we cannot check yet
+ * (confidence intervals — being built separately) are reported as honest
+ * UNKNOWN rows, never silently omitted.
  */
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -198,8 +199,35 @@ export function deriveRigorReport(benchmarkDir: string, now: Date = new Date()):
     detail: `provenance.origin = ${origin}${hasSplits ? "" : "; no split assignment recorded — holdout discipline unverifiable"}`,
   });
 
+  // Gold-leakage audit: read the build-time audit (manifest.json's
+  // leakage_audit, understudy.leakage_audit.v1) written next to benchmark.json
+  // by the trace foundry. Verbatim findings FLAG; fuzzy findings are advisory
+  // (they ride the detail, not the status) so heuristic matches don't create
+  // alarm fatigue. Pre-tier manifests (findings without a `tier`) count as
+  // verbatim — that is all the v1 audit could detect.
+  const foundryManifestPath = join(dir, "manifest.json");
+  const leakageAudit = existsSync(foundryManifestPath) ? asObject(asObject(JSON.parse(readFileSync(foundryManifestPath, "utf8"))).leakage_audit) : {};
+  if (String(leakageAudit.schema_version ?? "").startsWith("understudy.leakage_audit.")) {
+    const findings = (Array.isArray(leakageAudit.findings) ? leakageAudit.findings : []).map(asObject);
+    const verbatim = findings.filter((finding) => String(finding.tier ?? "verbatim") === "verbatim").length;
+    const fuzzy = findings.filter((finding) => String(finding.tier ?? "") === "fuzzy").length;
+    const other = findings.length - verbatim - fuzzy;
+    items.push({
+      item: "Leakage / contamination audit",
+      status: verbatim > 0 ? "FLAG" : "PASS",
+      value: `${verbatim} verbatim / ${fuzzy} fuzzy over ${Number(leakageAudit.checked_tasks ?? 0)} task(s)`,
+      detail:
+        verbatim > 0
+          ? `contract targets verbatim-readable in candidate surfaces — see manifest.leakage_audit${fuzzy > 0 ? `; plus ${fuzzy} advisory fuzzy finding(s)` : ""}`
+          : fuzzy > 0 || other > 0
+            ? `no verbatim leaks; ${fuzzy + other} advisory (fuzzy/semantic) finding(s) recorded in manifest.leakage_audit — review, do not alarm`
+            : "no contract target readable (verbatim or fuzzy) in candidate-facing fixtures/schemas",
+    });
+  } else {
+    items.push({ item: "Leakage / contamination audit", status: "UNKNOWN", value: "not checked", detail: "no manifest.json leakage_audit found — rebuild with `understudy traces build-benchmark` (the foundry writes the audit at generation time)" });
+  }
+
   // Honest UNKNOWNs: checks this report does not perform (built separately).
-  items.push({ item: "Leakage / contamination audit", status: "UNKNOWN", value: "not checked", detail: "task-content leakage audit is a separate workstream; this report only records split provenance" });
   items.push({ item: "Confidence intervals", status: "UNKNOWN", value: "not checked", detail: "score CIs / repeated-rollout variance reporting is being built separately" });
 
   const tasks: TaskComplexity[] = taskIds.map((taskId) => {

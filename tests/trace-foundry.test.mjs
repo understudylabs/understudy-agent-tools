@@ -790,6 +790,92 @@ test("build-benchmark records the leakage audit additively in manifest.json", ()
   assert.ok(Array.isArray(result.leakage_audit.findings));
   const manifest = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
   assert.deepEqual(manifest.leakage_audit, result.leakage_audit);
+  assert.equal(typeof result.leakage_audit.tier_counts, "object");
+});
+
+test("leakage audit fuzzy tier: shingle containment catches a restructured gold that verbatim misses", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const gold = "the quarterly rollback completed without any data loss across all seventeen regional replicas";
+  const tasks = [{ task_id: "t-para", outcome_contract: { required: [
+    { type: "response_obligation", kind: "contains_category", expected: gold },
+  ], forbidden: [] } }];
+  const taskRows = [{ task_id: "t-para", prompt: "Summarize the rollback status", system_prompt: "", source_messages: [] }];
+  // Fixture paraphrases: reorders and inserts words so no 12+ char verbatim
+  // normalized substring of ALL of the gold appears... actually verbatim
+  // substring matching needs the WHOLE gold; here only fragments survive.
+  const fixtures = [{ tool: "get-status", content: "Note: the quarterly rollback completed without any data loss (confirmed) across all seventeen regional replicas as of Friday." }];
+  // The whole normalized gold is NOT a substring (the "(confirmed)" insertion
+  // splits it) — tier 1 misses; most 5-gram shingles still match — tier 2a hits.
+  const audit = auditGoldLeakage(tasks, taskRows, fixtures, {});
+  assert.equal(audit.status, "advisory", "fuzzy-only findings are advisory, not alarms");
+  assert.equal(audit.tier_counts.verbatim, 0);
+  assert.equal(audit.tier_counts.fuzzy, 1);
+  const finding = audit.findings[0];
+  assert.equal(finding.tier, "fuzzy");
+  assert.ok(finding.similarity >= 0.5 && finding.similarity <= 1);
+  assert.match(finding.signal, /shingle containment/);
+  assert.equal(finding.task_id, "t-para");
+});
+
+test("leakage audit fuzzy tier: number/entity fingerprints survive full paraphrase", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const gold = "Send the meeting summary for acct_401 totaling $12,450 to ops-review@example.com by 2026-08-01";
+  const tasks = [{ task_id: "t-fp", outcome_contract: { required: [
+    { type: "state_effect", tool: "send-summary", observed_arguments: { body: gold } },
+  ], forbidden: [] } }];
+  const taskRows = [{ task_id: "t-fp", prompt: "Handle the pending account follow-ups", system_prompt: "", source_messages: [] }];
+  // Fully rewritten fixture text — zero shared 5-gram shingles — but the
+  // account id, the amount (different thousands formatting), the email, and
+  // the date all ride along.
+  const fixtures = [{ tool: "get-notes", content: "Reminder: account acct_401 owes 12450 dollars; loop in ops-review@example.com before 2026-08-01." }];
+  const audit = auditGoldLeakage(tasks, taskRows, fixtures, {});
+  assert.equal(audit.status, "advisory");
+  assert.equal(audit.tier_counts.fuzzy, 1);
+  const finding = audit.findings[0];
+  assert.equal(finding.tier, "fuzzy");
+  assert.match(finding.signal, /fingerprint:/);
+  assert.match(finding.signal, /acct_401/);
+  assert.match(finding.signal, /12450/);
+  assert.match(finding.signal, /ops-review@example\.com/);
+  assert.equal(finding.similarity, 1, "all informative fingerprints leaked");
+});
+
+test("leakage audit fuzzy tier: benign guards — common words, input-carried entities, short numbers", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const tasks = [{ task_id: "t-benign", outcome_contract: { required: [
+    // Common-word gold: shares vocabulary but no 5-gram run with the fixture.
+    { type: "response_obligation", kind: "contains_category", expected: "please update the record status and confirm the change was saved correctly today" },
+    // Entity gold whose id/date the PROMPT already carries — benign inputs.
+    { type: "state_effect", tool: "update-record", observed_arguments: { note: "close ticket tick_9077 opened 2026-07-01 per policy" } },
+    // Small numbers only (below the 5-digit fingerprint floor).
+    { type: "state_effect", tool: "update-record", observed_arguments: { note: "set retries to 3 and timeout to 900 for env 42" } },
+  ], forbidden: [] } }];
+  const taskRows = [{ task_id: "t-benign", prompt: "Please close tick_9077 (opened 2026-07-01) following the standard procedure", system_prompt: "", source_messages: [] }];
+  const fixtures = [{
+    tool: "get-record",
+    content: "The record was saved. Please confirm the status change today and update correctly. tick_9077 2026-07-01 retries 3 timeout 900 env 42",
+  }];
+  const audit = auditGoldLeakage(tasks, taskRows, fixtures, {});
+  assert.equal(audit.status, "clean", `expected clean, got: ${JSON.stringify(audit.findings)}`);
+  assert.deepEqual(audit.tier_counts, { verbatim: 0, fuzzy: 0, semantic: 0 });
+});
+
+test("leakage audit: verbatim finding keeps alarm status and subsumes fuzzy for the same surface; deterministic", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const gold = "confidential-report-Q3-final-9981 grand total 98765 dollars";
+  const tasks = [{ task_id: "t-mix", outcome_contract: { required: [
+    { type: "state_effect", tool: "update-record", observed_arguments: { document: gold } },
+  ], forbidden: [] } }];
+  const taskRows = [{ task_id: "t-mix", prompt: "Do the filing", system_prompt: "", source_messages: [] }];
+  const fixtures = [{ tool: "get-record", content: gold }];
+  const first = auditGoldLeakage(tasks, taskRows, fixtures, {});
+  assert.equal(first.status, "findings", "verbatim hits keep the alarm status");
+  assert.equal(first.tier_counts.verbatim, 1);
+  assert.equal(first.tier_counts.fuzzy, 0, "no duplicate fuzzy finding for a verbatim-hit surface");
+  assert.equal(first.findings[0].similarity, 1);
+  // Deterministic: identical inputs → identical audit (byte-for-byte).
+  const second = auditGoldLeakage(tasks, taskRows, fixtures, {});
+  assert.deepEqual(second, first);
 });
 
 // ---------------------------------------------------------------------------
