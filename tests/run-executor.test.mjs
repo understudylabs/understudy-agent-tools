@@ -219,6 +219,88 @@ describe("oracleRunner rows → hub projection integration", () => {
   });
 });
 
+describe("incumbent baseline arm + calibration gate", () => {
+  it("labels rows arm_kind incumbent/candidate and writes calibration.json from rows + run events", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["gpt-4o", "challenger"], incumbent_models: ["gpt-4o"], calibration_threshold: 0.9 });
+    // Incumbent passes t1 (score 1) and fails t2 (score 0.5 < 0.9); the candidate always passes.
+    const runner = async ({ model, task }) => ({
+      score: model === "gpt-4o" && task.task_id === "t2" ? 0.5 : 1,
+      subscores: null,
+      status: "ok",
+      latency_ms: 1,
+      cost: 0,
+      writes: [],
+    });
+    const result = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(result.status, "done");
+
+    const rows = readRows(dir);
+    assert.ok(rows.every((r) => ["incumbent", "candidate"].includes(r.arm_kind)));
+    assert.ok(rows.filter((r) => r.model === "gpt-4o").every((r) => r.arm_kind === "incumbent"));
+    assert.ok(rows.filter((r) => r.model === "challenger").every((r) => r.arm_kind === "candidate"));
+
+    const calibration = JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
+    assert.equal(calibration.schema_version, "understudy.calibration.v1");
+    assert.equal(calibration.benchmark_id, "exec-bench");
+    assert.equal(calibration.run_id, run.run_id);
+    assert.deepEqual(calibration.incumbent_models, ["gpt-4o"]);
+    assert.equal(calibration.threshold, 0.9);
+    assert.equal(calibration.passed_count, 1);
+    assert.equal(calibration.failed_count, 1);
+    assert.deepEqual(calibration.failed_task_ids, ["t2"]);
+    // Timestamps come from run events, never a fresh clock read.
+    const events = readEvents(dir).filter((e) => e.run_id === run.run_id);
+    assert.equal(calibration.started_at, events.find((e) => e.type === "run_started").ts);
+    assert.equal(calibration.finished_at, events.find((e) => e.type === "run_finished").ts);
+  });
+
+  it("marks every row candidate and writes no calibration when no incumbent is declared", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    await executeRunRequest(dir, run.run_id, { runner: oracleRunner() });
+    assert.ok(readRows(dir).every((r) => r.arm_kind === "candidate"));
+    assert.equal(fs.existsSync(path.join(dir, "calibration.json")), false);
+    // Additive contract: the queued request file omits the new fields entirely.
+    assert.ok(!("incumbent_models" in readRunRequest(runRequestPath(dir, run.run_id))));
+  });
+
+  it("validates incumbent_models subset + calibration_threshold range", () => {
+    const known = ["t1", "t2"];
+    const base = { models: ["a", "b"], split: "all", tasks: "all", rollouts_per_task: 1 };
+    assert.deepEqual(validateRunRequestInput({ ...base, incumbent_models: ["a"], calibration_threshold: 0.8 }, known), []);
+    assert.ok(validateRunRequestInput({ ...base, incumbent_models: ["nope"] }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, incumbent_models: "a" }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, calibration_threshold: 0 }, known).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, calibration_threshold: 1.5 }, known).length > 0);
+  });
+
+  it("deriveCalibrationSummary fails tasks with no ok incumbent row and defaults the threshold to 1", async () => {
+    const { deriveCalibrationSummary } = await import("../dist/run-executor.js");
+    const summary = deriveCalibrationSummary({
+      benchmarkId: "b",
+      runId: "run-x",
+      incumbentModels: ["inc"],
+      selectedTaskIds: ["t1", "t2", "t3"],
+      rows: [
+        { run_id: "run-x", model: "inc", task_id: "t1", status: "ok", score: 1 },
+        { run_id: "run-x", model: "inc", task_id: "t2", status: "error", score: null },
+        { run_id: "run-x", model: "other-candidate", task_id: "t3", status: "ok", score: 1 },
+        { run_id: "run-other", model: "inc", task_id: "t3", status: "ok", score: 1 },
+      ],
+      events: [
+        { run_id: "run-x", type: "run_started", ts: "2026-07-22T00:00:00Z" },
+        { run_id: "run-other", type: "run_finished", ts: "2026-07-22T09:00:00Z" },
+      ],
+    });
+    assert.equal(summary.threshold, 1);
+    assert.deepEqual(summary.failed_task_ids, ["t2", "t3"]);
+    assert.equal(summary.started_at, "2026-07-22T00:00:00Z");
+    assert.equal(summary.finished_at, null, "other runs' events never leak in");
+    assert.equal(summary.tasks.find((t) => t.task_id === "t1").passed, true);
+  });
+});
+
 describe("listRunRequests", () => {
   it("lists oldest first and ignores torn/foreign files", () => {
     const dir = makeBenchmarkDir();

@@ -148,6 +148,11 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
     .map(([s, n]) => `${n} ${s}`)
     .join(" · ");
   const contamination = m.splits?.contamination ?? "unknown";
+  // Incumbent baseline + calibration gate: the recorded capture-producing
+  // model, and the latest incumbent-rerun calibration sidecar when present.
+  const incumbentModel = m.incumbent?.model ?? null;
+  const calibration = entry.calibration ?? null;
+  const incumbentFailedIds = new Set(calibration?.failed_task_ids ?? []);
   const noLinkedEval = entry.warnings.some((w) => w.kind === "no-linked-eval");
   const otherWarnings = entry.warnings.filter(
     (w) => w.kind !== "no-linked-eval" && w.kind !== "contamination" && w.kind !== "no-splits",
@@ -249,11 +254,28 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             title="Run"
             explainer="Queue a benchmark run against gateway models. The hub only writes a run request file; a local `understudy runs execute --watch` daemon executes it and rows stream back into the leaderboard below."
           >
+            {calibration ? (
+              <p className="mono mt-3 text-xs" style={{ color: calibration.failed_count > 0 ? "var(--warn-ink)" : "var(--ok)" }}>
+                calibration: incumbent ({calibration.incumbent_models.join(", ")}) passed {calibration.passed_count}/
+                {calibration.passed_count + calibration.failed_count} tasks at threshold {calibration.threshold} · run{" "}
+                {calibration.run_id}
+                {calibration.finished_at ? ` · ${calibration.finished_at.slice(0, 19)}Z` : ""}
+                {calibration.failed_count > 0 && " — failed tasks are marked suspect below"}
+              </p>
+            ) : (
+              incumbentModel && (
+                <p className="mono mt-3 text-xs text-faint">
+                  no incumbent calibration yet — queue the incumbent baseline ({incumbentModel}) to verify the tasks are
+                  reproducible by the model that produced them
+                </p>
+              )
+            )}
             <div className="mt-4">
               <RunPanel
                 slug={entry.slug}
                 dir={entry.dir}
                 readOnly={entry.readOnly}
+                incumbentModel={incumbentModel}
                 taskCountBySplit={{
                   ...m.tasks.reduce<Record<string, number>>((acc, t) => {
                     acc[t.split] = (acc[t.split] ?? 0) + 1;
@@ -367,6 +389,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
                   rollouts: a.rollouts,
                   avgScore: a.avgScore,
                   promptLength: a.promptLength,
+                  incumbentFailed: incumbentFailedIds.has(a.taskId),
                 };
               })}
             />

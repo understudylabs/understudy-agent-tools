@@ -336,6 +336,48 @@ function taskTitles(rootTexts: Map<string, string>): Map<string, string> {
   return titles;
 }
 
+/**
+ * The task's INCUMBENT: the production model observed in the capture request
+ * metadata (routing.upstream_model wins over requested_model — it names what
+ * actually served the call). Multi-model tasks record every observed model
+ * with call counts; the dominant one (most observed_calls, ties by name) is
+ * the task's incumbent. Null when no capture carried a model id.
+ */
+export function taskIncumbent(captures: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const capture of captures) {
+    const routing = asObject(capture.routing);
+    const model = routing.upstream_model ?? routing.requested_model;
+    if (model == null) continue;
+    const key = String(model);
+    const entry = byModel.get(key) ?? { model: key, provider: routing.provider == null ? null : String(routing.provider), observed_calls: 0 };
+    entry.observed_calls += 1;
+    if (entry.provider === null && routing.provider != null) entry.provider = String(routing.provider);
+    byModel.set(key, entry);
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
+/** Manifest-level incumbent roll-up over per-task incumbents (all models listed; dominant first). */
+export function manifestIncumbent(tasks: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const task of tasks) {
+    for (const value of asObject(task.incumbent).models ?? []) {
+      const observed = asObject(value);
+      if (typeof observed.model !== "string") continue;
+      const entry = byModel.get(observed.model) ?? { model: observed.model, provider: observed.provider == null ? null : String(observed.provider), observed_calls: 0 };
+      entry.observed_calls += Number(observed.observed_calls ?? 0);
+      if (entry.provider === null && observed.provider != null) entry.provider = String(observed.provider);
+      byModel.set(observed.model, entry);
+    }
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
 function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
   const rootTexts = new Map<string, string>(
@@ -363,6 +405,9 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     // build's --workload filter is flagged for review — never silently
     // truncated into a fragment-task.
     task.grouping_label = group.grouping_label ?? "heuristic_grouped";
+    // Incumbent provenance (additive; excluded from task_hash so pre-existing
+    // reviews stay valid): the production model that produced these captures.
+    task.incumbent = taskIncumbent(captures);
     task.trace = { trace_id: group.trace_id ?? null, grouping_label: task.grouping_label, workloads: group.workloads ?? [], workloads_spanned: group.workloads_spanned ?? group.workloads ?? [] };
     const hiddenWorkloads = (task.trace.workloads_spanned as string[]).filter((workload) => !(task.trace.workloads as string[]).includes(workload));
     if (hiddenWorkloads.length > 0) {
@@ -962,7 +1007,7 @@ type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: strin
 function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
   const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
   const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
-  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
+  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, incumbent: manifestIncumbent(tasks), taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit, incumbent: task.incumbent ?? null })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
 }
 
 const ACCEPTING_DECISIONS = ["accept", "restrict"];

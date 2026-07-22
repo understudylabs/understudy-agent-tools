@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { computeLeaderboard, formatCost, formatLatency, formatScore, hasSplits } from "@/lib/scores";
 import type { BenchmarkManifest, EvalRow, TaskSplit } from "@/lib/types";
-import { RouteBadge } from "@/components/badges";
+import { Badge, RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 
 type SortKey = "model" | "overall" | "costPerSuccess" | "p50" | "tasks";
@@ -191,6 +191,7 @@ export function Leaderboard({
                       <td className="l">
                         <span className="u-mdl">
                           <span className="nm">{s.model}</span>
+                          {s.incumbent && <Badge className="border-warn/40 text-warn">incumbent</Badge>}
                           {showRoute && <RouteBadge route={s.route} />}
                         </span>
                       </td>
@@ -267,6 +268,9 @@ export function Leaderboard({
         <span className="u-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
         <span className="u-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
         <span className="u-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>
+        {summaries.some((s) => s.incumbent) && (
+          <span className="u-foot-note !mt-0">{"// incumbent = the model that produced the source captures, rerun through the environment (the calibration arm)"}</span>
+        )}
         <span className="u-foot-note !mt-0">
           {excludeFlagged
             ? `// flagged tasks are EXCLUDED right now (${flaggedTaskIds.length} open task flags)`

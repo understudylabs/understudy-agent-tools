@@ -10,6 +10,7 @@ import type {
   BenchmarkOverview,
   BenchmarkReview,
   BenchmarkVersion,
+  CalibrationSummary,
   CaptureRef,
   EntryDiagnostics,
   EvalRow,
@@ -180,6 +181,21 @@ function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: Entr
     rows.push(r);
   }
   return rows;
+}
+
+/**
+ * calibration.json (written by `understudy runs execute` after an incumbent
+ * rerun): null when absent, wrong schema, or written for another benchmark.
+ */
+function loadCalibration(dir: string, benchmarkId: string | null): CalibrationSummary | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
+    if (parsed?.schema_version !== "understudy.calibration.v1" || !Array.isArray(parsed.tasks)) return null;
+    if (benchmarkId !== null && typeof parsed.benchmark_id === "string" && parsed.benchmark_id !== benchmarkId) return null;
+    return parsed as CalibrationSummary;
+  } catch {
+    return null;
+  }
 }
 
 /** benchmark-overview.json (--overview pass); null when absent or wrong schema. */
@@ -470,6 +486,7 @@ function loadManifestEntry(
     warnings: computeWarnings(manifest),
     versions,
     diagnostics,
+    calibration: loadCalibration(dir, manifest.benchmark_id),
   };
 }
 
