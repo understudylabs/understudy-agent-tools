@@ -72,7 +72,9 @@ group it belongs to.
   who arrive with data instead of a harness: it turns existing production
   traces (an object-store bucket, provider log exports, or a gateway capture
   export) into local, redacted, deterministically classified and frozen
-  evaluation slices that `capture-evidence` and the optimizers consume. Its
+  evaluation slices that `capture-evidence` and the optimizers consume. It also
+  ships a private, serverless per-trace viewer for timelines, system prompts,
+  conversations, tool activity, and raw capture inspection. Its
   [`references/profile-captures.md`](ingest-traces/references/profile-captures.md)
   profiles a whole capture directory into a cost + call-type taxonomy with a
   ranked local-takeover candidate list.
