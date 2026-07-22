@@ -192,7 +192,8 @@ describe("GET /api/replay", () => {
     assert.equal(body.steps.at(-1).partial_credit, 1);
     // Environment bridge renders readiness + the exact CLI command.
     assert.equal(body.environment.exists, fs.existsSync(path.join(tmp, "replay-demo", "environment")));
-    assert.ok(body.environment.cli.includes("understudy traces run-replays --benchmark"));
+    // Accepted proposed tasks run through the same queue/executor as promoted.
+    assert.ok(body.environment.cli.includes("understudy runs execute --benchmark"));
     assert.deepEqual(body.arms, []);
   });
 

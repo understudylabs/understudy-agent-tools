@@ -41,6 +41,8 @@ type RewardFunction = { name: string; weight: number | null };
 type ReplayPayload = Accumulation & {
   label: string;
   stage: "proposed" | "promoted";
+  /** Latest review decision for proposed tasks (accept unlocks per-task runs). */
+  task_review: string | null;
   spine_missing: boolean;
   reward_functions: RewardFunction[];
   environment: { exists: boolean; oracle_pass: boolean | null; sentinel_pass: boolean | null; cli: string };
@@ -329,7 +331,22 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
           </Badge>
         </div>
         <div className="mt-3">
-          <RunTaskControls slug={slug} taskId={taskId} stage={data.stage} onRunFinished={load} />
+          <RunTaskControls
+            slug={slug}
+            taskId={taskId}
+            canRun={
+              data.stage === "promoted" ||
+              (data.task_review === "accept" && data.environment.exists && data.environment.oracle_pass === true)
+            }
+            disabledReason={
+              data.stage === "promoted"
+                ? null
+                : data.task_review !== "accept"
+                  ? "accept this task to run it"
+                  : "environment not ready — rebuild the benchmark"
+            }
+            onRunFinished={load}
+          />
         </div>
         <details className="mt-2">
           <summary className="mono cursor-pointer text-[10px] text-faint">CLI equivalent</summary>
@@ -338,7 +355,7 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
         <p className="mono mt-2 text-[10px] text-faint">
           {data.stage === "promoted"
             ? "the button only queues a run request file — a local `understudy runs execute --watch` daemon executes it; rows land here as selectable arms."
-            : "runs are CLI/daemon — results land as eval rows after promotion and their accumulation replays appear here next to the oracle."}
+            : "accepted tasks run pre-promotion: the button queues a single-task run request; a local `understudy runs execute --watch` daemon executes it and the arm lands here next to the oracle."}
         </p>
       </div>
     </div>

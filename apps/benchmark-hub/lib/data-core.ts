@@ -139,6 +139,49 @@ export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] 
   return warnings;
 }
 
+/**
+ * Eval rows next to a manifest: rows-*.jsonl at the dir root plus rows/*.jsonl.
+ * Shared by promoted AND proposed loaders (accepted proposed tasks are
+ * runnable, so their run rows land in the foundry dir before promotion).
+ * benchmarkId null skips the foreign-row check.
+ */
+function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: EntryDiagnostics): EvalRow[] {
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(dir);
+  } catch {
+    files = [];
+  }
+  const rawRows: EvalRow[] = [];
+  for (const f of files.filter((f) => /^rows-.*\.jsonl$/.test(f)).sort()) {
+    const { items, skipped } = readJsonl<EvalRow>(path.join(dir, f));
+    rawRows.push(...items);
+    diagnostics.skippedLines += skipped;
+  }
+  const rowsDir = path.join(dir, "rows");
+  if (fs.existsSync(rowsDir) && fs.statSync(rowsDir).isDirectory()) {
+    for (const f of fs.readdirSync(rowsDir).filter((f) => f.endsWith(".jsonl")).sort()) {
+      const { items, skipped } = readJsonl<EvalRow>(path.join(rowsDir, f));
+      rawRows.push(...items);
+      diagnostics.skippedLines += skipped;
+    }
+  }
+  const rows: EvalRow[] = [];
+  for (const r of rawRows) {
+    if (r?.schema_version !== "understudy.eval_result.v1") {
+      diagnostics.droppedRows += 1;
+      continue;
+    }
+    // A row that declares a benchmark_id must declare THIS benchmark.
+    if (benchmarkId !== null && typeof r.benchmark_id === "string" && r.benchmark_id !== benchmarkId) {
+      diagnostics.foreignRows += 1;
+      continue;
+    }
+    rows.push(r);
+  }
+  return rows;
+}
+
 /** benchmark-overview.json (--overview pass); null when absent or wrong schema. */
 function loadOverview(dir: string): BenchmarkOverview | null {
   try {
@@ -199,10 +242,13 @@ export function loadProposedEntryFromDir(
     // lineage section renders its empty state
   }
 
-  // Cross-check task ids against the colliding benchmark.json (only use).
+  // Cross-check task ids against the colliding benchmark.json; its
+  // benchmark_id also keys the foreign-row check for pre-promotion run rows.
   const crossCheckErrors: string[] = [];
+  let proposalBenchmarkId: string | null = null;
   try {
     const colliding = JSON.parse(fs.readFileSync(path.join(dir, "benchmark.json"), "utf8"));
+    if (typeof colliding?.benchmark_id === "string") proposalBenchmarkId = colliding.benchmark_id;
     const collidingIds = new Set(
       (Array.isArray(colliding?.tasks) ? colliding.tasks : []).map((t: { task_id?: string }) => t?.task_id),
     );
@@ -250,6 +296,8 @@ export function loadProposedEntryFromDir(
     tasks,
     dag,
     captureIndex: [...byId.values()],
+    // Accepted tasks are runnable pre-promotion; their rows live here too.
+    rows: loadEvalRows(dir, proposalBenchmarkId, diagnostics),
     reviews,
     latestReviewByTask,
     diagnostics,
@@ -383,33 +431,7 @@ function loadManifestEntry(
   } catch {
     files = [];
   }
-  const rawRows: EvalRow[] = [];
-  for (const f of files.filter((f) => /^rows-.*\.jsonl$/.test(f)).sort()) {
-    const { items, skipped } = readJsonl<EvalRow>(path.join(dir, f));
-    rawRows.push(...items);
-    diagnostics.skippedLines += skipped;
-  }
-  const rowsDir = path.join(dir, "rows");
-  if (fs.existsSync(rowsDir) && fs.statSync(rowsDir).isDirectory()) {
-    for (const f of fs.readdirSync(rowsDir).filter((f) => f.endsWith(".jsonl")).sort()) {
-      const { items, skipped } = readJsonl<EvalRow>(path.join(rowsDir, f));
-      rawRows.push(...items);
-      diagnostics.skippedLines += skipped;
-    }
-  }
-  const rows: EvalRow[] = [];
-  for (const r of rawRows) {
-    if (r?.schema_version !== "understudy.eval_result.v1") {
-      diagnostics.droppedRows += 1;
-      continue;
-    }
-    // A row that declares a benchmark_id must declare THIS benchmark.
-    if (typeof r.benchmark_id === "string" && r.benchmark_id !== manifest.benchmark_id) {
-      diagnostics.foreignRows += 1;
-      continue;
-    }
-    rows.push(r);
-  }
+  const rows = loadEvalRows(dir, manifest.benchmark_id, diagnostics);
 
   const traceFiles = files
     .filter((f) => /^traces.*\.jsonl$/.test(f))

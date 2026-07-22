@@ -1,6 +1,6 @@
 import type { FoundryTask } from "@/lib/types";
 import type { BenchmarkReview } from "@/lib/types";
-import { Badge, ConfidenceChip } from "@/components/badges";
+import { Badge } from "@/components/badges";
 import { ReviewBar } from "@/components/proposed/review-bar";
 
 /**
@@ -118,15 +118,14 @@ export function AuthoredStatementCard({ task }: { task: FoundryTask }) {
       ? (groundingRaw as { violations: string[] }).violations
       : ((authored.grounding_violations as string[] | undefined) ?? []);
   return (
-    <div className="mt-3" style={{ maxWidth: "82ch" }}>
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className={groundingStatus === "verified" ? "text-ok border-ok/50" : "text-bad border-bad/40"}>
-          grounding {groundingStatus}
-        </Badge>
-        <ConfidenceChip level={authored.confidence} />
-        {authored.model && <Badge>authored by {authored.model}</Badge>}
-        {authored.authored_at && <span className="mono text-[10px] text-faint">{authored.authored_at.slice(0, 10)}</span>}
-      </div>
+    <div className="mt-3">
+      {/* Trust chips are cut from the header (design feedback); a FAILED
+          grounding still surfaces loudly — that one is never decorative. */}
+      {groundingStatus !== "verified" && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="text-bad border-bad/40">grounding {groundingStatus}</Badge>
+        </div>
+      )}
       <p className="mt-3 text-base" style={{ lineHeight: 1.5 }}>{authored.statement}</p>
       {groundingViolations.length > 0 && (
         <ul className="mt-2 flex list-none flex-col gap-1 p-0">

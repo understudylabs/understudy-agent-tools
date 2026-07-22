@@ -204,6 +204,8 @@ export type ArmRunner = (args: {
   model: string;
   task: Obj;
   rollout: number;
+  /** Every task_id the run request selected — arm-level runners scope their eval to exactly these. */
+  selectedTaskIds: string[];
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
@@ -272,8 +274,11 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   let request: RunRequest = initial;
 
   const manifest = asObject(JSON.parse(readFileSync(join(dir, "benchmark.json"), "utf8")));
-  if (manifest.schema_version !== "understudy.benchmark.v1") {
-    throw new Error("Only promoted benchmarks (understudy.benchmark.v1) are executable; run `understudy traces promote` first.");
+  // Promoted manifests always run; proposal-stamped dirs run too — the hub
+  // API gates proposed queueing to single ACCEPTED tasks with a validated
+  // environment, and the generated environment/ is identical either way.
+  if (!["understudy.benchmark.v1", "understudy.benchmark_proposal.v1"].includes(String(manifest.schema_version))) {
+    throw new Error("benchmark.json is neither understudy.benchmark.v1 nor understudy.benchmark_proposal.v1; rebuild or promote the benchmark first.");
   }
   const manifestTasks = new Map((Array.isArray(manifest.tasks) ? manifest.tasks : []).map((t: Obj) => [String(t.task_id), asObject(t)]));
   // The foundry sidecar carries the outcome contracts the runners score against.
@@ -322,7 +327,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           const sidecar = sidecarTasks.get(taskId) ?? item.task;
           let result: RolloutResult;
           try {
-            result = await options.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout });
+            result = await options.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)) });
           } catch (err) {
             result = { score: null, subscores: null, status: "error", latency_ms: null, cost: null, writes: [], error: err instanceof Error ? `${err.constructor.name}: ${err.message}` : String(err) };
           }
@@ -540,9 +545,27 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
  * dir's outputs/) is projected onto per-task results. Throws
  * HarnessExecutionError with the subprocess tail on failure.
  */
-export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env): Map<string, RolloutResult> {
+export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null): Map<string, RolloutResult> {
   const dir = resolve(benchmarkDir);
   const environment = join(dir, "environment");
+  // Scope the eval to exactly the requested tasks (a single-task run on a
+  // large benchmark must never fan out to every env task): the taskset loads
+  // rows from tasks.json, so temporarily filter it — the same temp-rewrite
+  // pattern runTraceReplays uses for context variants — and restore after.
+  const taskRowsPath = join(environment, "understudy_trace_env", "tasks.json");
+  const sourceTaskRows = taskIds !== null && existsSync(taskRowsPath) ? (JSON.parse(readFileSync(taskRowsPath, "utf8")) as Obj[]) : null;
+  const wanted = taskIds === null ? null : new Set(taskIds);
+  const filteredRows = sourceTaskRows?.filter((row) => wanted!.has(String(row.task_id))) ?? null;
+  const splits = filteredRows === null ? ["train", "dev", "holdout"] : [...new Set(filteredRows.map((row) => String(row.split)))];
+  if (filteredRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(filteredRows, null, 2)}\n`, { mode: 0o600 });
+  try {
+    return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits);
+  } finally {
+    if (sourceTaskRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(sourceTaskRows, null, 2)}\n`, { mode: 0o600 });
+  }
+}
+
+function runVerifiersSplits(dir: string, environment: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv, splits: string[]): Map<string, RolloutResult> {
   // Gateway creds resolve the CLI's canonical way (env first, then
   // ~/.understudy/credentials.json) and are handed to buildReplayInvocation
   // through its own env contract — the executor ONLY talks to the Understudy
@@ -554,7 +577,7 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
   // fails its own eval harmlessly (the merged map decides success below).
   const results = new Map<string, RolloutResult>();
   const failures: string[] = [];
-  for (const split of ["train", "dev", "holdout"]) {
+  for (const split of splits) {
     const invocation = buildReplayInvocation(environment, model, "authentic_history", maxExamples, false, runnerEnv);
     invocation.args.push("--env.taskset.split", split);
     const started = Date.now();
@@ -588,11 +611,11 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
  */
 export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): ArmRunner {
   const armCache = new Map<string, Map<string, RolloutResult> | Error>();
-  return async ({ benchmarkDir, model, task }) => {
-    const key = `${benchmarkDir}::${model}`;
+  return async ({ benchmarkDir, model, task, selectedTaskIds }) => {
+    const key = `${benchmarkDir}::${model}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
-        armCache.set(key, runVerifiersArm(benchmarkDir, model, 1000, parentEnv));
+        armCache.set(key, runVerifiersArm(benchmarkDir, model, 1000, parentEnv, selectedTaskIds));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));
       }

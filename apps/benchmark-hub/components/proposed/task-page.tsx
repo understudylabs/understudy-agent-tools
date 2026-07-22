@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { taskDisplayName, type FoundryContractItem, type ProposedHubEntry } from "@/lib/types";
-import { complexityLabel } from "@/lib/trajectory-core";
 import { taskProvenance } from "@/lib/data";
-import { Badge, ConfidenceChip, DecisionBadge, SplitChip, StageBadge } from "@/components/badges";
+import { Badge, ConfidenceChip, DecisionBadge } from "@/components/badges";
 import { TaskViews } from "@/components/trajectory/task-views";
 import { AuthoredPanel, AuthoredStatementCard } from "@/components/trajectory/authored-panel";
 
@@ -52,11 +51,14 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         (task.authored?.category_proposal?.id != null && c.category_id === task.authored.category_proposal.id),
     ) ?? null;
 
-  const rail = (
+  // Full-width narrative block (design feedback: the old right-hand rail is
+  // gone — success + contract lead the page under the statement; the world
+  // model rides with the Replay tab).
+  const narrative = (
     <>
       {/* PRIMARY: what success looks like — authored rubric when present,
           the deterministic contract when unauthored. */}
-      <div className="u-card" style={{ padding: "12px 14px" }}>
+      <div className="u-card mt-4" style={{ padding: "12px 14px" }}>
         <h3>What success looks like</h3>
         {criteria.length > 0 ? (
           <ul className="mt-2 flex list-none flex-col gap-2 p-0">
@@ -75,54 +77,33 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         )}
       </div>
 
-      <div className="u-card" style={{ padding: "12px 14px" }}>
+      <div className="u-card mt-3" style={{ padding: "12px 14px" }}>
         <h3>Outcome contract — required effects</h3>
         <p className="mono mt-1 text-[11px] text-ink-muted">
           grading: {task.outcome_contract.grading.replaceAll("_", " ")} — resulting state is judged, never an exact
           trajectory.
         </p>
         <RequiredEffects items={task.outcome_contract.required ?? []} />
-      </div>
-
-      <div className="u-card" style={{ padding: "12px 14px" }}>
-        <h3>World model — initial state</h3>
-        <pre className="u-pre mt-2" style={{ maxHeight: 180 }}>{JSON.stringify(task.world_model?.initial_state ?? {}, null, 2)}</pre>
-        {(task.world_model?.transitions ?? []).length > 0 && (
-          <details className="mt-2">
-            <summary className="mono cursor-pointer text-[10px] text-faint">
-              {(task.world_model?.transitions ?? []).length} state transitions
-            </summary>
-            <pre className="u-pre mt-1" style={{ maxHeight: 180 }}>{JSON.stringify(task.world_model?.transitions, null, 2)}</pre>
-          </details>
-        )}
-      </div>
-      {task.claims.length > 0 && (
-        <div className="u-card" style={{ padding: "12px 14px" }}>
-          <h3>Machine claims ({task.claims.length})</h3>
-          <ul className="mt-2 flex list-none flex-col gap-1.5 p-0">
-            {task.claims.map((c, i) => (
-              <li key={i} className="text-xs">
-                <Badge className={c.kind === "observed" ? "text-ok border-ok/50" : "text-warn border-warn/40"}>{c.kind}</Badge>{" "}
-                {c.claim}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {task.tool_surface.length > 0 && (
-        <div className="u-card" style={{ padding: "12px 14px" }}>
-          <h3>Tool surface</h3>
-          <p className="mono mt-1 text-[11px] text-ink-muted">{task.tool_surface.join(" · ")}</p>
-        </div>
-      )}
-
-      {/* ONE compact provenance line for the task, collapsed behind a disclosure. */}
-      <div className="u-card" style={{ padding: "12px 14px" }}>
-        <details>
+        {/* Machine claims + tool surface + provenance fold into one quiet disclosure. */}
+        <details className="mt-3">
           <summary className="mono cursor-pointer text-[11px] text-ink-muted">
-            provenance — {provenance.captureCount} capture{provenance.captureCount === 1 ? "" : "s"}
-            {provenance.workloads.length > 0 ? ` · ${provenance.workloads.join(", ")}` : ""}
+            evidence — {task.claims.length} machine claim{task.claims.length === 1 ? "" : "s"} ·{" "}
+            {task.tool_surface.length} tool{task.tool_surface.length === 1 ? "" : "s"} · {provenance.captureCount} capture
+            {provenance.captureCount === 1 ? "" : "s"}
           </summary>
+          {task.tool_surface.length > 0 && (
+            <p className="mono mt-2 text-[11px] text-ink-muted">tools: {task.tool_surface.join(" · ")}</p>
+          )}
+          {task.claims.length > 0 && (
+            <ul className="mt-2 flex list-none flex-col gap-1.5 p-0">
+              {task.claims.map((c, i) => (
+                <li key={i} className="text-xs">
+                  <Badge className={c.kind === "observed" ? "text-ok border-ok/50" : "text-warn border-warn/40"}>{c.kind}</Badge>{" "}
+                  {c.claim}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="mono mt-2 flex flex-col gap-0.5 text-[11px] text-ink-muted" style={{ overflowWrap: "anywhere" }}>
             {provenance.workloads.length > 0 && <span>workload: {provenance.workloads.join(", ")}</span>}
             {provenance.traceIds.map((id) => (
@@ -135,6 +116,22 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
     </>
   );
 
+  // World model rides with the Replay tab (it IS the replay's initial state).
+  const replayExtras = (
+    <div className="u-card mt-3" style={{ padding: "12px 14px" }}>
+      <h3>World model — initial state</h3>
+      <pre className="u-pre mt-2" style={{ maxHeight: 180 }}>{JSON.stringify(task.world_model?.initial_state ?? {}, null, 2)}</pre>
+      {(task.world_model?.transitions ?? []).length > 0 && (
+        <details className="mt-2">
+          <summary className="mono cursor-pointer text-[10px] text-faint">
+            {(task.world_model?.transitions ?? []).length} state transitions
+          </summary>
+          <pre className="u-pre mt-1" style={{ maxHeight: 180 }}>{JSON.stringify(task.world_model?.transitions, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
+
   return (
     <div className="u-page">
       <section className="u-head">
@@ -144,27 +141,13 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         {/* Authored intent_summary wins as the display name; the raw machine
             title is demoted behind the disclosure in the authored panel. */}
         <h1 style={{ fontSize: "clamp(18px,2.6vw,28px)", overflowWrap: "anywhere" }}>{displayName}</h1>
-        <p className="mono u-desc text-xs" style={{ overflowWrap: "anywhere" }}>{task.task_id}</p>
+        {/* Header id + chip rows cut (design feedback) — the review decision
+            still shows, and a frontier-complexity contradiction stays loud. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <StageBadge stage="proposed" />
-          <SplitChip split={task.split} />
-          <ConfidenceChip level={task.machine_confidence} />
-          {typeof task.grouping_label === "string" && <Badge>{task.grouping_label}</Badge>}
-          {task.close_call && <Badge className="border-warn/40 text-warn">close call</Badge>}
-          <Badge>{task.status}</Badge>
           <DecisionBadge decision={review?.decision ?? null} />
-          {(() => {
-            const cx = entry.overview?.task_complexity?.[task.task_id];
-            if (!cx?.frontier) return null;
-            return (
-              <>
-                <Badge className="border-warn/40 text-warn">frontier · {complexityLabel(cx)}</Badge>
-                {task.authored?.difficulty === "easy" && (
-                  <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>
-                )}
-              </>
-            );
-          })()}
+          {task.authored?.difficulty === "easy" && entry.overview?.task_complexity?.[task.task_id]?.frontier && (
+            <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>
+          )}
         </div>
         {task.authored?.statement ? (
           <>
@@ -182,6 +165,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
             </Link>
           </p>
         ) : null}
+        {narrative}
       </section>
 
       <section className="u-section">
@@ -190,7 +174,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           <h2>Trajectory</h2>
         </div>
         <div className="mt-4">
-          <TaskViews slug={entry.slug} taskId={task.task_id} rail={rail} />
+          <TaskViews slug={entry.slug} taskId={task.task_id} replayExtras={replayExtras} />
         </div>
       </section>
 

@@ -413,3 +413,20 @@ test("generated taskset scores the widened contract kinds against events and the
   }
   assert.doesNotMatch(taskset, /str\(v\) in text/);
 });
+
+test("fixtures with bare JSON booleans generate valid Python (fixtures.json sidecar, never inlined)", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-boolfix-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  // A tool RESULT carrying bare true/false — inlining this into world.py used
+  // to produce `FIXTURES = [... {"enabled": false ...}]` → NameError in Python.
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [
+    { role: "user", content: "Create it" },
+    { role: "assistant", content: [{ type: "tool_use", id: "r1", name: "get-record", input: { id: 1 } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "r1", content: { enabled: false, archived: true, note: null } }] },
+  ], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1 } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+  assert.match(world, /FIXTURES = json\.loads\(\(Path\(__file__\)\.parent \/ "fixtures\.json"\)\.read_text\(\)\)/);
+  assert.doesNotMatch(world, /FIXTURES = \[/, "fixtures are never inlined into Python source");
+  const fixtures = JSON.parse(readFileSync(join(output, "environment", "understudy_trace_env", "servers", "fixtures.json"), "utf8"));
+  assert.ok(fixtures.some((f) => f.tool === "get-record"));
+});

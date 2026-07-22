@@ -99,8 +99,12 @@ export async function GET(request: Request) {
   // dirs retain the foundry tasks.jsonl as a sidecar.
   let task: Obj | null = null;
   let rows: EvalRow[] = [];
+  let taskReview: string | null = null;
   if (entry.kind === "proposed") {
     task = (entry.tasks.find((t) => t.task_id === taskId) as unknown as Obj) ?? null;
+    taskReview = entry.latestReviewByTask[taskId]?.decision ?? null;
+    // Accepted proposed tasks are runnable, so their run rows render as arms.
+    rows = entry.rows.filter((r) => r.task_id === taskId);
   } else {
     if (!entry.manifest.tasks.some((t) => t.task_id === taskId)) {
       return NextResponse.json({ error: "unknown task id" }, { status: 404 });
@@ -145,6 +149,9 @@ if (!task) return NextResponse.json({ error: "unknown task id (no contract sidec
   return NextResponse.json({
     task_id: taskId,
     stage: entry.kind === "proposed" ? "proposed" : "promoted",
+    // Per-task run gating inputs (proposed): latest review decision; the
+    // readiness chips below carry the environment half of the gate.
+    task_review: taskReview,
     label: "Oracle (captured trajectory) — expected result",
     spine_missing: spineMissing,
     ...replay,
@@ -153,13 +160,10 @@ if (!task) return NextResponse.json({ error: "unknown task id (no contract sidec
       exists: envExists,
       oracle_pass: oraclePass,
       sentinel_pass: sentinelPass,
-      cli:
-        entry.kind === "ok"
-          ? `understudy runs execute --benchmark ${entry.dir} --watch`
-          : `understudy traces run-replays --benchmark ${entry.dir} --model <model-id> --yes`,
+      cli: `understudy runs execute --benchmark ${entry.dir} --watch`,
     },
-    // Promoted benchmarks accumulate model attempts as eval rows; each arm
-    // replays here next to the oracle.
-    arms: entry.kind === "ok" ? armReplays(task, rows) : [],
+    // Model attempts accumulate as eval rows (promoted, or accepted proposed
+    // tasks run pre-promotion); each arm replays here next to the oracle.
+    arms: armReplays(task, rows),
   });
 }
