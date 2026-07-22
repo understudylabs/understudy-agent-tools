@@ -2,14 +2,8 @@ import Link from "next/link";
 import { taskDisplayName, type ProposedHubEntry } from "@/lib/types";
 import { complexityLabel } from "@/lib/trajectory-core";
 import { Badge, SourceBadge, StageBadge } from "@/components/badges";
-import { AnchorRail } from "@/components/anchor-rail";
 import { EmptyState } from "@/components/empty-state";
 import { TaskTable } from "@/components/task-table";
-
-const RAIL = [
-  { id: "narrative", label: "Narrative" },
-  { id: "tasks", label: "Tasks" },
-];
 
 /**
  * The foundry's promotion blockers for machine-compiled outputs. Mirrored
@@ -46,13 +40,47 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
           <SourceBadge entry={entry} />
           <Badge>machine-compiled · review pending</Badge>
         </div>
-        <p className="u-desc">
-          Compiled from captured traces by the trace foundry. Every task below is a machine proposal — human final
-          judgment gates promotion to an executable benchmark.
-        </p>
-        <div className="u-id">
-          <span>local only · contains customer payloads · no upload performed</span>
-        </div>
+
+        {/* workload-summary-slot */}
+        {entry.overview && (
+          <div className="mt-4">
+                <div className="u-card">
+                  <h3>What we&apos;ve seen in your workload</h3>
+                  {entry.overview.workload_summary ? (
+                    <WorkloadSummary text={entry.overview.workload_summary} />
+                  ) : (
+                    <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
+                  )}
+                  {(entry.overview.system_prompt_clusters ?? []).length > 0 && (
+                    <details className="mt-3">
+                      <summary className="mono cursor-pointer text-[11px] text-ink-muted">
+                        {(entry.overview.system_prompt_clusters ?? []).length === 1
+                          ? "one canonical system prompt"
+                          : `this workload runs ${(entry.overview.system_prompt_clusters ?? []).length} prompt variants`}
+                        {" · deterministic evidence"}
+                      </summary>
+                      <div className="mt-2 flex flex-col gap-2">
+                        {(entry.overview.system_prompt_clusters ?? []).map((c) => (
+                          <div key={c.hash}>
+                            <span className="mono text-[10px] text-faint">
+                              {c.hash} · {c.count} capture{c.count === 1 ? "" : "s"} · {(c.coverage * 100).toFixed(0)}% coverage
+                            </span>
+                            <pre className="u-pre mt-1" style={{ maxHeight: 140 }}>{c.representative_excerpt}</pre>
+                          </div>
+                        ))}
+                        {(entry.overview.tool_usage ?? []).length > 0 && (
+                          <ToolUsageTable rows={entry.overview.tool_usage ?? []} />
+                        )}
+                      </div>
+                    </details>
+                  )}
+                  <p className="mono mt-2 text-[10px] text-faint">
+                    authored by {entry.overview.model ?? "unknown model"}
+                    {entry.overview.authored_at ? ` · ${entry.overview.authored_at.slice(0, 10)}` : ""}
+                  </p>
+                </div>
+          </div>
+        )}
 
         <div className="u-stats">
           <div className="u-stat">
@@ -105,92 +133,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
         )}
       </header>
 
-      <div className="u-layout">
-        <AnchorRail sections={RAIL} />
-        <div>
-          <section className="u-sec" id="narrative">
-            <h2>How this became a benchmark</h2>
-            {entry.overview ? (
-              <div className="mt-4 flex flex-col gap-4">
-                <div className="u-card">
-                  <h3>What we&apos;ve seen in your workload</h3>
-                  {entry.overview.workload_summary ? (
-                    <WorkloadSummary text={entry.overview.workload_summary} />
-                  ) : (
-                    <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
-                  )}
-                  {(entry.overview.system_prompt_clusters ?? []).length > 0 && (
-                    <details className="mt-3">
-                      <summary className="mono cursor-pointer text-[11px] text-ink-muted">
-                        {(entry.overview.system_prompt_clusters ?? []).length === 1
-                          ? "one canonical system prompt"
-                          : `this workload runs ${(entry.overview.system_prompt_clusters ?? []).length} prompt variants`}
-                        {" · deterministic evidence"}
-                      </summary>
-                      <div className="mt-2 flex flex-col gap-2">
-                        {(entry.overview.system_prompt_clusters ?? []).map((c) => (
-                          <div key={c.hash}>
-                            <span className="mono text-[10px] text-faint">
-                              {c.hash} · {c.count} capture{c.count === 1 ? "" : "s"} · {(c.coverage * 100).toFixed(0)}% coverage
-                            </span>
-                            <pre className="u-pre mt-1" style={{ maxHeight: 140 }}>{c.representative_excerpt}</pre>
-                          </div>
-                        ))}
-                        {(entry.overview.tool_usage ?? []).length > 0 && (
-                          <ToolUsageTable rows={entry.overview.tool_usage ?? []} />
-                        )}
-                      </div>
-                    </details>
-                  )}
-                  <p className="mono mt-2 text-[10px] text-faint">
-                    authored by {entry.overview.model ?? "unknown model"}
-                    {entry.overview.authored_at ? ` · ${entry.overview.authored_at.slice(0, 10)}` : ""}
-                  </p>
-                </div>
-                <div>
-                  <h3 className="mb-2">The tasks we&apos;ve identified</h3>
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {entry.overview.categories.map((c) => {
-                      const members = new Set(c.representative_task_ids);
-                      const representatives = entry.tasks.filter((t) => members.has(t.task_id));
-                      return (
-                        <div key={c.category_id} className="u-card">
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="text-sm font-bold">{c.archetype_title ?? c.category_id}</span>
-                            <Badge>{c.task_count ?? c.representative_task_ids.length} task{(c.task_count ?? 1) === 1 ? "" : "s"}</Badge>
-                          </div>
-                          {c.archetype_description && <p className="mt-2 text-xs text-ink-muted">{c.archetype_description}</p>}
-                          {representatives.length > 0 && (
-                            <ul className="mt-3 flex list-none flex-col gap-1 p-0">
-                              {representatives.map((t) => {
-                                const cx = entry.overview?.task_complexity?.[t.task_id];
-                                return (
-                                  <li key={t.task_id} className="text-xs">
-                                    <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{taskDisplayName(t)}</Link>
-                                    {cx?.frontier && (
-                                      <span className="mono ml-1 text-[10px]" style={{ color: "var(--warn-ink)" }}>
-                                        upper bound: {complexityLabel(cx)}
-                                      </span>
-                                    )}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <EmptyState
-                what="No benchmark narrative yet — the overview pass writes a workload summary and per-category task archetypes grounded on the authored task blocks."
-                next={`understudy traces author-tasks --benchmark ${entry.dir} --overview`}
-              />
-            )}
-          </section>
-
+      <div>
           <section className="u-sec" id="tasks">
             <h2>Task inbox</h2>
             <p className="exp">
@@ -248,7 +191,43 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
             )}
           </section>
 
-        </div>
+        {entry.overview && entry.overview.categories.length > 0 && (
+          <section className="u-sec" id="identified">
+            <h2>The tasks we&apos;ve identified</h2>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {entry.overview.categories.map((c) => {
+                      const members = new Set(c.representative_task_ids);
+                      const representatives = entry.tasks.filter((t) => members.has(t.task_id));
+                      return (
+                        <div key={c.category_id} className="u-card">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="text-sm font-bold">{c.archetype_title ?? c.category_id}</span>
+                            <Badge>{c.task_count ?? c.representative_task_ids.length} task{(c.task_count ?? 1) === 1 ? "" : "s"}</Badge>
+                          </div>
+                          {c.archetype_description && <p className="mt-2 text-xs text-ink-muted">{c.archetype_description}</p>}
+                          {representatives.length > 0 && (
+                            <ul className="mt-3 flex list-none flex-col gap-1 p-0">
+                              {representatives.map((t) => {
+                                const cx = entry.overview?.task_complexity?.[t.task_id];
+                                return (
+                                  <li key={t.task_id} className="text-xs">
+                                    <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{taskDisplayName(t)}</Link>
+                                    {cx?.frontier && (
+                                      <span className="mono ml-1 text-[10px]" style={{ color: "var(--warn-ink)" }}>
+                                        upper bound: {complexityLabel(cx)}
+                                      </span>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+          </section>
+        )}
       </div>
     </div>
   );
