@@ -24,6 +24,9 @@ export type TraceFoundryOptions = {
 };
 
 const mutationPrefixes = ["add-", "apply-", "archive-", "cancel-", "create-", "delete-", "draft-", "mark-", "move-", "notify-", "promote-", "reassign-", "remove-", "save-", "send-", "set-", "share-", "update-", "write-"];
+
+/** The generated environment's write classifier — exported so replay views score with the SAME rule. */
+export const isMutatingTool = (name: string): boolean => mutationPrefixes.some((prefix) => name.toLowerCase().startsWith(prefix));
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const asObject = (value: unknown): Obj => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Obj : {};
 const jsonish = (value: unknown): unknown => {

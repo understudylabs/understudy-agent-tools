@@ -4,7 +4,7 @@ import { taskDisplayName, type FoundryContractItem, type ProposedHubEntry } from
 import { complexityLabel } from "@/lib/trajectory-core";
 import { taskProvenance } from "@/lib/data";
 import { Badge, ConfidenceChip, DecisionBadge, SplitChip, StageBadge } from "@/components/badges";
-import { TrajectoryExplorer } from "@/components/trajectory/explorer";
+import { TaskViews } from "@/components/trajectory/task-views";
 import { AuthoredPanel } from "@/components/trajectory/authored-panel";
 
 function RequiredEffects({ items }: { items: FoundryContractItem[] }) {
@@ -183,10 +183,11 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         </div>
         <p className="u-sec-sub">
           The captured conversation this task was assembled from, flattened to one history — success criteria and the
-          outcome contract on the rail.
+          outcome contract on the rail. The Replay tab walks the same trajectory through the deterministic contract
+          scorer.
         </p>
         <div className="mt-4">
-          <TrajectoryExplorer slug={entry.slug} taskId={task.task_id} mode="proposed" rail={rail} />
+          <TaskViews slug={entry.slug} taskId={task.task_id} rail={rail} />
         </div>
       </section>
 

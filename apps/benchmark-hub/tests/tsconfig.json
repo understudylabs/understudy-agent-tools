@@ -22,6 +22,8 @@
     "../lib/trace-viewer-core.ts",
     "../app/api/trace-viewer/route.ts",
     "../lib/trajectory-core.ts",
-    "../app/api/rollouts/route.ts"
+    "../app/api/rollouts/route.ts",
+    "../lib/replay-core.ts",
+    "../app/api/replay/route.ts"
   ]
 }

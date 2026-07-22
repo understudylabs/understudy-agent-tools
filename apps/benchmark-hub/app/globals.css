@@ -1421,6 +1421,82 @@ a {
   color: var(--primary);
 }
 
+/* Task-view tabs (Conversation | Replay) */
+.u-tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.u-tab {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 7px 0;
+  text-transform: uppercase;
+}
+.u-tab.on {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+/* Replay accumulation rows + running partial-credit meter */
+.u-replay-step.violation .u-replay-row {
+  border-color: var(--bad-border);
+}
+.u-replay-row {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 7px;
+  padding: 6px 9px;
+  text-align: left;
+  width: 100%;
+}
+.u-replay-row:hover {
+  background: var(--hover);
+}
+.u-replay-tool {
+  font-weight: 700;
+}
+.u-replay-preview {
+  color: var(--faint);
+  flex: 1;
+  min-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-meter {
+  background: var(--border);
+  border-radius: 4px;
+  display: inline-block;
+  height: 6px;
+  overflow: hidden;
+  width: 72px;
+}
+.u-meter-fill {
+  display: block;
+  height: 100%;
+  transition: width 0.2s;
+}
+.u-replay-credit {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  min-width: 34px;
+  text-align: right;
+}
+
 /* Inline divergence marker in the flattened conversation stream */
 .u-divergence {
   border-left: 2px solid var(--warn, #b58900);
