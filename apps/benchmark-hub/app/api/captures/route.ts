@@ -61,7 +61,16 @@ export async function GET(request: Request) {
       };
     });
     rounds.sort((a, b) => String(a.captured_at ?? "").localeCompare(String(b.captured_at ?? "")));
-    return NextResponse.json({ task_id: task, rounds });
+    // Source-DAG edges for the flattened view's inline divergence markers
+    // (retry/branch/mutation); prefix_append edges are the normal case and
+    // carry no marker.
+    const edges = (t.source?.edges ?? []).map((e) => ({
+      from: e.from,
+      to: e.to,
+      type: e.type,
+      common_prefix_messages: e.evidence?.common_prefix_messages ?? null,
+    }));
+    return NextResponse.json({ task_id: task, rounds, edges });
   }
   if (!id) return NextResponse.json({ error: "id query param is required" }, { status: 400 });
   const file = captureFilePath(entry, id);

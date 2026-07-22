@@ -201,6 +201,55 @@ export function dedupSystem(systems: (string | null)[]): { system: string | null
   return { system: first, diverged: nonEmpty.some((s) => s !== first) };
 }
 
+/* ---------------- flattened trajectory (one conversation, not rounds) ---------------- */
+
+export type DivergenceMarker = { turnIndex: number; label: string; fromRound: string; toRound: string };
+
+/** Edge shape the captures meta API forwards from the task's source DAG. */
+export type SpineEdge = { from: string; to: string; type: string; common_prefix_messages?: number | null };
+
+/**
+ * Capture rounds are prefix-growing snapshots of ONE conversation, so the
+ * LAST round carries the fullest history and becomes the spine. Rounds whose
+ * bodies are missing on disk cannot be a spine.
+ */
+export function spineRoundIndex(rounds: { body_missing?: boolean }[]): number {
+  for (let i = rounds.length - 1; i >= 0; i -= 1) {
+    if (!rounds[i].body_missing) return i;
+  }
+  return rounds.length - 1;
+}
+
+const MARKER_LABELS: Record<string, string> = {
+  retry: "retried from here",
+  branch: "branch",
+  destructive_mutation: "destructive mutation",
+  same_depth_mutation: "edited in place",
+};
+
+/**
+ * Where later rounds diverge from strict prefix-append (retries, branches,
+ * mutations), a small inline marker in the flattened stream is enough — no
+ * separate rounds UI. The marker lands at the divergence point: the edge's
+ * common-prefix message count, clamped to the spine's turn range. Multiple
+ * edges at one point dedupe to one marker per label.
+ */
+export function divergenceMarkers(edges: SpineEdge[], turnCount: number): DivergenceMarker[] {
+  const markers: DivergenceMarker[] = [];
+  const seen = new Set<string>();
+  for (const e of edges) {
+    if (!e || e.type === "prefix_append") continue;
+    const label = MARKER_LABELS[e.type] ?? e.type.replaceAll("_", " ");
+    const raw = typeof e.common_prefix_messages === "number" ? e.common_prefix_messages : turnCount;
+    const turnIndex = Math.max(0, Math.min(turnCount, raw));
+    const key = `${turnIndex}|${label}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    markers.push({ turnIndex, label, fromRound: e.from, toRound: e.to });
+  }
+  return markers.sort((a, b) => a.turnIndex - b.turnIndex);
+}
+
 /* ---------------- rollout summaries ---------------- */
 
 export type RolloutMeta = {

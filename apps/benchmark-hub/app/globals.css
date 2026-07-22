@@ -1421,6 +1421,17 @@ a {
   color: var(--primary);
 }
 
+/* Inline divergence marker in the flattened conversation stream */
+.u-divergence {
+  border-left: 2px solid var(--warn, #b58900);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  margin: 2px 0;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
 /* CENTER pane: collapsed-turn grammar */
 .u-conv-controls {
   align-items: center;

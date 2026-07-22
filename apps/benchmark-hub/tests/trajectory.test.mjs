@@ -12,7 +12,9 @@ import {
   captureRolloutMeta,
   conversationFromCapture,
   dedupSystem,
+  divergenceMarkers,
   entitySegments,
+  spineRoundIndex,
   firstLine,
   scoreColor,
 } from "./.build/lib/trajectory-core.js";
@@ -222,6 +224,54 @@ describe("GET /api/captures meta mode", () => {
   it("still requires id when meta mode is not requested", async () => {
     const res = await capturesGET(new Request(`http://x/api/captures?slug=${slug}`));
     assert.equal(res.status, 400);
+  });
+  it("returns the task's source-DAG edges for divergence markers", async () => {
+    const res = await capturesGET(
+      new Request(`http://x/api/captures?slug=${slug}&task=${encodeURIComponent(taskId())}&meta=1`),
+    );
+    const body = await res.json();
+    assert.ok(Array.isArray(body.edges));
+    for (const e of body.edges) {
+      assert.equal(typeof e.type, "string");
+      assert.ok("common_prefix_messages" in e);
+    }
+  });
+});
+
+describe("flattened trajectory (spine + divergence markers)", () => {
+  it("picks the LAST round with a body as the spine", () => {
+    assert.equal(spineRoundIndex([{ body_missing: false }, { body_missing: false }]), 1);
+    assert.equal(spineRoundIndex([{ body_missing: false }, { body_missing: true }]), 0);
+    assert.equal(spineRoundIndex([{ body_missing: true }, { body_missing: true }]), 1);
+    assert.equal(spineRoundIndex([]), -1 + 0); // degenerate: no rounds
+  });
+  it("emits no markers for pure prefix-append chains", () => {
+    const edges = [
+      { from: "a", to: "b", type: "prefix_append", common_prefix_messages: 1 },
+      { from: "b", to: "c", type: "prefix_append", common_prefix_messages: 3 },
+    ];
+    assert.deepEqual(divergenceMarkers(edges, 10), []);
+  });
+  it("marks retries and branches at the divergence turn, sorted and deduped", () => {
+    const edges = [
+      { from: "b", to: "d", type: "branch", common_prefix_messages: 5 },
+      { from: "a", to: "b", type: "retry", common_prefix_messages: 2 },
+      { from: "a", to: "c", type: "retry", common_prefix_messages: 2 }, // dupe point+label
+      { from: "c", to: "e", type: "same_depth_mutation", common_prefix_messages: null },
+    ];
+    const markers = divergenceMarkers(edges, 8);
+    assert.deepEqual(
+      markers.map((m) => [m.turnIndex, m.label]),
+      [
+        [2, "retried from here"],
+        [5, "branch"],
+        [8, "edited in place"], // null prefix clamps to end of stream
+      ],
+    );
+  });
+  it("clamps marker positions into the spine's turn range", () => {
+    const markers = divergenceMarkers([{ from: "a", to: "b", type: "retry", common_prefix_messages: 99 }], 4);
+    assert.deepEqual(markers.map((m) => m.turnIndex), [4]);
   });
 });
 

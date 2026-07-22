@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { entitySegments, firstLine, type ToolChip, type Turn } from "@/lib/trajectory-core";
+import { entitySegments, firstLine, type DivergenceMarker, type ToolChip, type Turn } from "@/lib/trajectory-core";
 
 /* ---------------- markdown-lite + entity pills ---------------- */
 
@@ -195,11 +195,14 @@ export function ConversationView({
   system,
   systemDiverged,
   turns,
+  markers,
   emptyLabel,
 }: {
   system: string | null;
   systemDiverged?: boolean;
   turns: Turn[];
+  /** Inline divergence markers (retry/branch) in the flattened stream, keyed by turn index. */
+  markers?: DivergenceMarker[];
   emptyLabel?: string;
 }) {
   const [openSet, setOpenSet] = useState<Set<number>>(new Set());
@@ -260,21 +263,36 @@ export function ConversationView({
       )}
 
       {turns.map((t, i) => (
-        <TurnRow
-          key={i}
-          turn={t}
-          open={openSet.has(i)}
-          highlight={hits != null && hits.has(i)}
-          onToggle={() =>
-            setOpenSet((s) => {
-              const next = new Set(s);
-              if (next.has(i)) next.delete(i);
-              else next.add(i);
-              return next;
-            })
-          }
-        />
+        <div key={i} className="contents">
+          {(markers ?? [])
+            .filter((m) => m.turnIndex === i)
+            .map((m, j) => (
+              <div key={"m" + j} className="u-divergence mono" role="note">
+                ⑂ {m.label}
+              </div>
+            ))}
+          <TurnRow
+            turn={t}
+            open={openSet.has(i)}
+            highlight={hits != null && hits.has(i)}
+            onToggle={() =>
+              setOpenSet((s) => {
+                const next = new Set(s);
+                if (next.has(i)) next.delete(i);
+                else next.add(i);
+                return next;
+              })
+            }
+          />
+        </div>
       ))}
+      {(markers ?? [])
+        .filter((m) => m.turnIndex >= turns.length)
+        .map((m, j) => (
+          <div key={"tail" + j} className="u-divergence mono" role="note">
+            ⑂ {m.label}
+          </div>
+        ))}
     </div>
   );
 }
