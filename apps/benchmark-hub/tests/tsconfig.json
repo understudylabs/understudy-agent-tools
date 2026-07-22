@@ -24,6 +24,8 @@
     "../lib/trajectory-core.ts",
     "../app/api/rollouts/route.ts",
     "../lib/replay-core.ts",
-    "../app/api/replay/route.ts"
+    "../app/api/replay/route.ts",
+    "../lib/runs-core.ts",
+    "../app/api/runs/route.ts"
   ]
 }

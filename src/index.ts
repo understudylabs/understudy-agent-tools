@@ -47,6 +47,7 @@ import { registerModelsCommand } from "./commands/models.js";
 import { registerProjectsCommand } from "./commands/projects.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
+import { registerRunsCommand } from "./commands/runs.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
 import { registerTrainingCommand } from "./commands/training.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
@@ -860,6 +861,7 @@ export function buildProgram(): Command {
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
+  registerRunsCommand(program);
   registerRuntimeCommand(program);
   registerTrainingCommand(program);
 

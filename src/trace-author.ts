@@ -57,7 +57,7 @@ const DIFFICULTIES = ["easy", "medium", "hard"];
 const CONFIDENCES = ["high", "medium", "low"];
 // Rough gateway cost heuristic (USD per million tokens) — recorded as an
 // ESTIMATE in the audit log, never presented as billing truth.
-const COST_PER_MTOKEN: Record<string, { input: number; output: number }> = {
+export const COST_PER_MTOKEN: Record<string, { input: number; output: number }> = {
   "gemma-4-31b-it": { input: 0.1, output: 0.3 },
   "glm-5.2": { input: 0.6, output: 2.2 },
   "gpt-5.5": { input: 1.25, output: 10 },

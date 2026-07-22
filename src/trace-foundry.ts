@@ -510,6 +510,8 @@ export function createTraceReplayPlan(outputInput: string, models: string[]): Ob
 const REPLAY_ENV_ALLOWLIST = ["PATH", "HOME", "TMPDIR", "TERM", "SHELL", "LANG", "LC_ALL", "USER", "LOGNAME", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "XDG_CACHE_HOME", "XDG_DATA_HOME", "PYTHONUNBUFFERED"];
 const REPLAY_ENV_ALLOWLIST_PREFIXES = ["UV_"];
 const REPLAY_KEY_VAR = "UNDERSTUDY_REPLAY_API_KEY";
+/** Harness-side uv resolution horizon — the audited-commit era (resolves mcp 1.28.x). */
+export const HARNESS_UV_EXCLUDE_NEWER = "2026-07-01T00:00:00Z";
 
 export type ReplayInvocation = { args: string[]; env: Record<string, string> };
 
@@ -519,7 +521,16 @@ export function buildReplayInvocation(environment: string, model: string, varian
     if (value === undefined) continue;
     if (REPLAY_ENV_ALLOWLIST.includes(key) || REPLAY_ENV_ALLOWLIST_PREFIXES.some((prefix) => key.startsWith(prefix))) env[key] = value;
   }
-  const args = ["run", "--project", environment, "eval", "understudy-trace-env", "-m", model, "-n", String(maxExamples), "--env.taskset.context-variant", variant, "--env.taskset.tools.runtime.type", "subprocess"];
+  const args = ["run", "--project", environment, "eval", "understudy-trace-env", "-m", model, "-n", String(maxExamples), "--env.taskset.context-variant", variant, "--env.taskset.tools.runtime.type", "subprocess",
+    // mcp version-skew pin: the pinned commit's bash harness is a PEP 723 uv
+    // script whose `mcp` dependency is UNPINNED, so a fresh resolve pulls an
+    // mcp 2.x beta whose client cannot initialize against the environment's
+    // mcp 1.28.x tool server — every rollout dies with HarnessError at
+    // `session.initialize()`. Excluding packages newer than the audited era
+    // keeps the harness-side resolve at mcp 1.28.x. (A stale cached script
+    // env under ~/.cache/uv/environments-v2 predating this pin is reused
+    // as-is by uv — clear it if HarnessError persists.)
+    "--env.agent.harness.id", "bash", "--env.agent.harness.env.UV_EXCLUDE_NEWER", HARNESS_UV_EXCLUDE_NEWER];
   // Model credentials are wired explicitly, never inherited wholesale; without
   // them the pinned client would default to Prime inference + PRIME_API_KEY.
   const baseUrl = parentEnv.UNDERSTUDY_GATEWAY_URL ?? parentEnv.OPENAI_BASE_URL ?? null;

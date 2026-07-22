@@ -10,7 +10,18 @@ import { ReplayView } from "@/components/trajectory/replay";
  * over the same trajectory) as peers. The server-rendered rail rides along
  * both tabs.
  */
-export function TaskViews({ slug, taskId, rail }: { slug: string; taskId: string; rail: React.ReactNode }) {
+export function TaskViews({
+  slug,
+  taskId,
+  rail,
+  mode = "proposed",
+}: {
+  slug: string;
+  taskId: string;
+  rail: React.ReactNode;
+  /** proposed = foundry captures; promoted = eval rows joined to trace branches. */
+  mode?: "proposed" | "promoted";
+}) {
   const [tab, setTab] = useState<"conversation" | "replay">("conversation");
   return (
     <div>
@@ -28,7 +39,7 @@ export function TaskViews({ slug, taskId, rail }: { slug: string; taskId: string
         ))}
       </div>
       {tab === "conversation" ? (
-        <TrajectoryExplorer slug={slug} taskId={taskId} mode="proposed" rail={rail} />
+        <TrajectoryExplorer slug={slug} taskId={taskId} mode={mode} rail={rail} />
       ) : (
         <div className="u-explorer" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(220px,320px)" }}>
           <section style={{ minWidth: 0 }}>
