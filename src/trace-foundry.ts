@@ -19,6 +19,8 @@ export type FoundryResult = {
   privacy: { local_only: true; contains_customer_payloads: true; upload_performed: false; provider_called: false };
   /** Generation-time structural self-check (understudy.foundry_self_check.v1): per-task failures + environment scan. */
   self_check?: Record<string, unknown>;
+  /** Gold-leakage audit (understudy.leakage_audit.v1): contract targets verbatim-readable in candidate-facing surfaces. Report-only. */
+  leakage_audit?: Record<string, unknown>;
 };
 
 export type TraceFoundryOptions = {
@@ -986,6 +988,122 @@ export function runFoundrySelfCheck(outputInput: string, tasks: Obj[]): Obj {
   };
 }
 
+/* ---------------------------------------------------------------------------
+ * Gold-leakage audit — environment-integrity check run at generation time.
+ *
+ * The candidate must be isolated from ground truth: if a contract target (a
+ * state_effect/read_obligation gold argument, a value_propagation value, or a
+ * response-obligation gold string) is verbatim-readable in a candidate-facing
+ * surface, the task can be passed by copying instead of doing the work.
+ *
+ * Candidate-readable surfaces scanned: fixtures.json (the seeded initial
+ * world state AND every tool-result template the world will return) and
+ * servers/schemas.json (validation schemas — observation-tightened enums and
+ * observed_error_example strings are echoed to the candidate in rejections).
+ * tasks.json's source_messages are NOT scanned: the taskset feeds the
+ * candidate only prompt + system_prompt, not the stored history.
+ *
+ * Benign-overlap heuristic (documented, deliberately conservative): a gold
+ * value is only a finding when it is NOT present in the task's own inputs
+ * (prompt, system prompt, or any user-role source message). Values the agent
+ * legitimately receives as inputs — the record id it is told to update — are
+ * expected everywhere and never flagged. Short strings (< MIN_GOLD_LEN
+ * normalized chars) are skipped: single tokens like "active" collide with
+ * ordinary fixture content and carry no copyable answer.
+ *
+ * REPORT-ONLY by design: findings land in the manifest (`leakage_audit`) and
+ * on stderr at build time. Nothing is auto-redacted — removing a value from
+ * a fixture changes task semantics, so a human (or a later reviewing agent)
+ * decides.
+ * ------------------------------------------------------------------------- */
+
+export type LeakageFinding = { task_id: string; location: string; kind: string; excerpt: string };
+export type LeakageAudit = { schema_version: "understudy.leakage_audit.v1"; status: "clean" | "findings"; checked_tasks: number; findings: LeakageFinding[]; heuristic: string };
+
+/** Minimum normalized length for a gold string to be leak-checkable (shorter values are un-copyable noise). */
+const MIN_GOLD_LEN = 12;
+
+const normalizeForLeak = (value: unknown): string =>
+  (typeof value === "string" ? value : JSON.stringify(value ?? "")).toLowerCase().replace(/\s+/g, " ").trim();
+
+/** All string leaf values of a JSON value (recursive; used over contract argument objects). */
+function stringLeaves(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringLeaves);
+  if (value !== null && typeof value === "object") return Object.values(value as Obj).flatMap(stringLeaves);
+  return [];
+}
+
+/** Gold/contract target values for one task, labeled by contract-entry kind. */
+function goldValues(task: Obj): Array<{ kind: string; value: string }> {
+  const out: Array<{ kind: string; value: string }> = [];
+  for (const ruleValue of asObject(task.outcome_contract).required ?? []) {
+    const rule = asObject(ruleValue);
+    const type = String(rule.type ?? "state_effect");
+    if (type === "state_effect" || type === "read_obligation") {
+      for (const leaf of [...stringLeaves(rule.observed_arguments), ...stringLeaves(rule.arguments_semantic)]) out.push({ kind: `${type}_value`, value: leaf });
+    } else if (type === "value_propagation" && typeof rule.value === "string") {
+      out.push({ kind: "value_propagation_value", value: rule.value });
+    } else if (type === "response_obligation" && typeof rule.expected === "string") {
+      out.push({ kind: "response_gold_string", value: rule.expected });
+    }
+  }
+  return out;
+}
+
+/**
+ * Scan candidate-readable environment surfaces for verbatim contract targets.
+ * Pure over the already-generated artifacts; see the block comment above for
+ * the heuristic. Findings are deduped per (task, location, excerpt).
+ */
+export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[], schemas: Obj): LeakageAudit {
+  const rowByTask = new Map(taskRows.map((row) => [String(asObject(row).task_id), asObject(row)]));
+  // Candidate-readable surfaces (global to the environment package).
+  const surfaces: Array<{ location: string; text: string }> = [
+    { location: "environment/understudy_trace_env/servers/fixtures.json", text: normalizeForLeak(fixtures) },
+    { location: "environment/understudy_trace_env/servers/schemas.json", text: normalizeForLeak(schemas) },
+  ];
+  const findings: LeakageFinding[] = [];
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    const row = rowByTask.get(String(task.task_id)) ?? {};
+    const userMessages = ((row.source_messages ?? []) as unknown[]).map(asObject).filter((m) => m.role === "user");
+    const inputs = normalizeForLeak([row.prompt ?? "", row.system_prompt ?? "", ...userMessages.map((m) => m.content)]);
+    for (const gold of goldValues(task)) {
+      const needle = normalizeForLeak(gold.value);
+      if (needle.length < MIN_GOLD_LEN) continue;
+      if (inputs.includes(needle)) continue; // benign: the agent legitimately holds this value as an input
+      for (const surface of surfaces) {
+        if (!surface.text.includes(needle)) continue;
+        const key = `${task.task_id} ${surface.location} ${needle}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        findings.push({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt: String(gold.value).slice(0, 160) });
+      }
+    }
+  }
+  return {
+    schema_version: "understudy.leakage_audit.v1",
+    status: findings.length > 0 ? "findings" : "clean",
+    checked_tasks: tasks.length,
+    findings,
+    heuristic: `flag contract/gold strings (>=${MIN_GOLD_LEN} normalized chars) verbatim in candidate-readable surfaces (fixtures.json, schemas.json) but absent from the task's own inputs (prompt / system prompt / user source messages); report-only, never auto-redacted`,
+  };
+}
+
+/** Build-time report: the audit is advisory, so it prints and moves on. */
+function printLeakageAudit(audit: LeakageAudit): void {
+  if (audit.status === "clean") {
+    console.error(`[leakage-audit] clean — no verbatim contract targets found in candidate-readable surfaces (${audit.checked_tasks} task(s) checked)`);
+    return;
+  }
+  console.error(`[leakage-audit] ${audit.findings.length} potential gold-leakage finding(s) across ${audit.checked_tasks} task(s) — recorded in manifest.leakage_audit (report-only, nothing redacted):`);
+  for (const finding of audit.findings.slice(0, 8)) {
+    console.error(`[leakage-audit]   ${finding.task_id} · ${finding.kind} · ${finding.location} · "${finding.excerpt.slice(0, 80)}"`);
+  }
+  if (audit.findings.length > 8) console.error(`[leakage-audit]   … ${audit.findings.length - 8} more (see manifest.json)`);
+}
+
 function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string, rows: Obj[] = []): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
   mkdirSync(servers, { recursive: true });
@@ -1095,7 +1213,10 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas));
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "servers", "fixtures.json"), join(pkg, "tasks.json")];
-  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)) };
+  // Gold-leakage audit over the exact artifacts just written (report-only).
+  const leakageAudit = auditGoldLeakage(tasks, taskRows, fixtures, validationSchemas);
+  printLeakageAudit(leakageAudit);
+  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)), leakage_audit: leakageAudit };
 }
 
 type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[] };
@@ -1431,7 +1552,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
@@ -1479,6 +1600,7 @@ export function regenerateEnvironment(benchmarkDirInput: string): { path: string
   if (existsSync(manifestPath)) {
     const manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
     manifest.self_check = selfCheck;
+    manifest.leakage_audit = environment.leakage_audit;
     writeJson(manifestPath, manifest);
   }
   return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
