@@ -652,14 +652,30 @@ export function detectRolloutAnomalies(args: {
     anomalies.push({ kind: "empty_final_response", detail: `contract has ${responseRules} response obligation(s) but the final response is empty` });
   }
 
-  // (d) journal/row write anomaly: a completed rollout left zero live-journal events.
-  if (args.journalBytes === 0) {
-    anomalies.push({ kind: "no_journal_events", detail: "rollout completed but the live journal recorded zero events" });
+  // Contract awareness for the tool-shaped sentinels (d)/(e): a response-only
+  // contract (response obligations / final-response value propagations only —
+  // e.g. classification workloads) legitimately produces zero tool calls and
+  // zero journal events, so those sentinels only apply when the contract
+  // actually obliges tool activity (state effects, read obligations, or
+  // tool-directed value propagations).
+  const toolObligations = required.filter((rule) => {
+    const type = String(rule.type ?? "state_effect");
+    if (type === "state_effect" || type === "read_obligation") return true;
+    return type === "value_propagation" && asObject(rule.must_reach).kind !== "final_response";
+  }).length;
+
+  // (d) journal/row write anomaly: a completed rollout left zero live-journal
+  // events on a task whose contract requires tool activity.
+  if (args.journalBytes === 0 && toolObligations > 0) {
+    anomalies.push({ kind: "no_journal_events", detail: `rollout completed but the live journal recorded zero events (contract has ${toolObligations} tool obligation(s))` });
   }
 
-  // (e) all-zero contract score with zero tool calls — indistinguishable from
-  // a harness failure, so it must never be trusted as an honest 0.
-  if (result.score === 0 && calls === 0) {
+  // (e) all-zero contract score with zero tool calls on a tool-obliging
+  // contract — indistinguishable from a harness failure, so it must never be
+  // trusted as an honest 0. A response-only contract scoring 0 with zero
+  // calls is an honest miss (the final response is the evidence), not a
+  // harness anomaly.
+  if (result.score === 0 && calls === 0 && toolObligations > 0) {
     anomalies.push({ kind: "zero_score_zero_calls", detail: "score is 0 and the rollout made zero tool calls — indistinguishable from harness failure" });
   }
   return anomalies;

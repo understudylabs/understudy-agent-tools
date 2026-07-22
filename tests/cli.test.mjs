@@ -2820,3 +2820,60 @@ describe("two-phase email login", () => {
     }
   });
 });
+
+describe("benchmarks review --accept-all-pending (bulk pending-mode review)", () => {
+  const makeBenchmarkDir = () => {
+    const dir = mkdtempSync(join(tmpdir(), "understudy-bulk-review-"));
+    const tasks = ["task-a", "task-b", "task-c"].map((task_id) => JSON.stringify({ task_id, title: task_id }));
+    writeFileSync(join(dir, "tasks.jsonl"), tasks.join("\n") + "\n");
+    return dir;
+  };
+
+  it("runs queue advertises --trivial-arms (null_agent, spam_agent)", () => {
+    const result = run(["runs", "queue", "--help"]);
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /--trivial-arms/);
+    assert.match(result.stdout, /null_agent, spam_agent/);
+  });
+
+  it("appends an accept review for every unreviewed task and is idempotent", () => {
+    const dir = makeBenchmarkDir();
+    try {
+      // Pre-existing review: task-b was already rejected — bulk accept must not touch it.
+      writeFileSync(join(dir, "reviews.jsonl"), JSON.stringify({ schema_version: "understudy.benchmark_review.v1", benchmark_id: "x", task_id: "task-b", decision: "reject", note: "", created_at: "2026-07-20T00:00:00Z" }) + "\n");
+      const first = run(["benchmarks", "review", dir, "--accept-all-pending"]);
+      assert.equal(first.status, 0, first.stderr);
+      const summary = JSON.parse(first.stdout);
+      assert.equal(summary.accepted, 2);
+      assert.equal(summary.already_reviewed, 1);
+      const lines = readFileSync(join(dir, "reviews.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+      assert.equal(lines.length, 3);
+      assert.deepEqual(lines.filter((l) => l.decision === "accept").map((l) => l.task_id).sort(), ["task-a", "task-c"]);
+      assert.ok(lines.filter((l) => l.decision === "accept").every((l) => l.source === "auto"));
+      assert.equal(lines.find((l) => l.task_id === "task-b").decision, "reject", "existing reviews are never superseded");
+      // Idempotent: a second invocation appends nothing.
+      const second = run(["benchmarks", "review", dir, "--accept-all-pending"]);
+      assert.equal(second.status, 0, second.stderr);
+      assert.equal(JSON.parse(second.stdout).accepted, 0);
+      assert.equal(readFileSync(join(dir, "reviews.jsonl"), "utf8").trim().split("\n").length, 3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses without --accept-all-pending and on non-benchmark dirs", () => {
+    const dir = makeBenchmarkDir();
+    try {
+      const noFlag = run(["benchmarks", "review", dir]);
+      assert.equal(noFlag.status, 1);
+      assert.match(noFlag.stderr, /--accept-all-pending/);
+      const empty = mkdtempSync(join(tmpdir(), "understudy-bulk-review-empty-"));
+      const bad = run(["benchmarks", "review", empty, "--accept-all-pending"]);
+      assert.equal(bad.status, 1);
+      assert.match(bad.stderr, /tasks\.jsonl/);
+      rmSync(empty, { recursive: true, force: true });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

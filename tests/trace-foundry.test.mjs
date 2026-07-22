@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { once } from "node:events";
-import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "../dist/trace-foundry.js";
+import { compileTraceFoundry, createTraceReplayPlan, extractJsonPayload, importTraceReviews, requestSystemPrompt, runTraceReplays } from "../dist/trace-foundry.js";
 import { serveTraceFoundry } from "../dist/trace-foundry-server.js";
 
 const capture = (id, ts, messages, response) => ({
@@ -974,4 +974,206 @@ test("two sequential rollouts: rollout 2 starts from the seeded initial state, n
   // gets the same seeded fixture reply, not a continuation of rollout 1's cursor.
   assert.equal(out.reply2, out.reply1, "fixture cursor resets per rollout");
   assert.deepEqual(out.final2.used_fixtures, out.final1.used_fixtures);
+});
+
+// ---------------------------------------------------------------------------
+// OpenAI-format captures (warp-domain-identification regression suite):
+// system prompt recovery, fence-tolerant JSON scoring (TS + generated python
+// in lockstep), nodes-shaped _final_text, and honest filter buckets.
+// ---------------------------------------------------------------------------
+
+const openaiCapture = (id, ts, messages, text, extra = {}) => ({
+  schema_version: 4, request_id: id, ts, workload_name: "domain-identification",
+  customer_request_body: JSON.stringify({ model: "gpt-4o", messages, tools: [] }),
+  response_body: JSON.stringify({ choices: [{ message: { role: "assistant", content: text } }] }),
+  status_code: 200, ...extra,
+});
+
+/** Stub verifiers.v1 + pydantic with enough surface to IMPORT the generated package (taskset.py + environment.py + world.py) — same offline-harness approach as the state-isolation test above. Returns the sys.path entry. */
+function stubVerifiersV1(root) {
+  const stub = join(root, "stub-taskset");
+  mkdirSync(join(stub, "verifiers"), { recursive: true });
+  writeFileSync(join(stub, "pydantic.py"), [
+    "class _F:",
+    "    def __init__(self, default_factory=None): self.default_factory = default_factory",
+    "def Field(default_factory=None, **kw): return _F(default_factory)",
+    "class BaseModel:",
+    "    def __init__(self, **kw):",
+    "        for k in dir(type(self)):",
+    "            v = getattr(type(self), k)",
+    "            if isinstance(v, _F): setattr(self, k, v.default_factory() if v.default_factory else None)",
+    "        self.__dict__.update(kw)",
+    "",
+  ].join("\n"));
+  writeFileSync(join(stub, "verifiers", "__init__.py"), "");
+  writeFileSync(join(stub, "verifiers", "v1.py"), [
+    "from typing import Generic, TypeVar",
+    "from pydantic import BaseModel",
+    "A = TypeVar('A'); B = TypeVar('B')",
+    "class State(BaseModel): pass",
+    "class ToolsetConfig(BaseModel): pass",
+    "class TasksetConfig(BaseModel): pass",
+    "class TaskData(BaseModel):",
+    "    def __init__(self, **kw): self.__dict__.update(kw)",
+    "class Trace: pass",
+    "class Runtime: pass",  // annotation-only in taskset.py — but pre-3.14 pythons evaluate annotations at class-body time
+    "class _Sub:",
+    "    def __class_getitem__(cls, item): return cls",
+    "class Task(_Sub, Generic[A, B]):",
+    "    def __init__(self, *a, **k): pass",
+    "class Taskset(_Sub, Generic[A, B]): pass",
+    "class Toolset(_Sub, Generic[A, B]):",
+    "    def __init__(self, state): self.state = state",
+    "class HarnessConfig(BaseModel): pass",
+    "class Harness(_Sub, Generic[A]):",
+    "    def __init__(self, *a, **k): pass",
+    "class EnvConfig(BaseModel): pass",
+    "class Env:",
+    "    def __init__(self, *a, **k): pass",
+    "def load_taskset(c): return None",
+    "def load_harness(c): return None",
+    "def tool(name=None):",
+    "    def deco(fn): return fn",
+    "    return deco",
+    "def stop(fn): return fn",
+    "def reward(weight=1.0):",
+    "    def deco(fn): return fn",
+    "    return deco",
+    "def metric(fn): return fn",
+    "",
+  ].join("\n"));
+  return stub;
+}
+
+test("requestSystemPrompt: Anthropic request.system, OpenAI system/developer messages, multi-system join, absent", () => {
+  assert.equal(requestSystemPrompt({ system: "anthropic sys", messages: [{ role: "system", content: "ignored" }] }), "anthropic sys");
+  assert.equal(requestSystemPrompt({ messages: [{ role: "system", content: "openai sys" }, { role: "user", content: "q" }] }), "openai sys");
+  assert.equal(requestSystemPrompt({ messages: [{ role: "developer", content: "dev sys" }, { role: "user", content: "q" }] }), "dev sys");
+  assert.equal(
+    requestSystemPrompt({ messages: [{ role: "system", content: "first" }, { role: "user", content: "q" }, { role: "system", content: "second" }] }),
+    "first\n\nsecond",
+  );
+  assert.equal(requestSystemPrompt({ messages: [{ role: "system", content: [{ type: "text", text: "block sys" }] }] }), "block sys");
+  assert.equal(requestSystemPrompt({ messages: [{ role: "user", content: "q" }] }), null);
+  assert.equal(requestSystemPrompt(undefined), null);
+});
+
+test("OpenAI captures: environment tasks.json carries the system prompt from messages[0]", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-openai-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    openaiCapture("with-system", "2026-07-20T12:00:00Z",
+      [{ role: "system", content: "You identify the primary domain. Respond with JSON." }, { role: "user", content: "Thread with bob@warp.dev — output JSON with conversationId and primaryDomain" }],
+      '```json\n{"conversationId": "c1", "primaryDomain": "warp.dev"}\n```'),
+    openaiCapture("without-system", "2026-07-20T12:05:00Z",
+      [{ role: "user", content: "A totally different workload question with no system message at all" }],
+      "plain text answer", { workload_name: "no-system-workload" }),
+  ];
+  writeFileSync(join(source, "captures.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  const tasks = JSON.parse(readFileSync(join(output, "environment", "understudy_trace_env", "tasks.json"), "utf8"));
+  const withSystem = tasks.find((t) => t.prompt.includes("bob@warp.dev"));
+  assert.equal(withSystem.system_prompt, "You identify the primary domain. Respond with JSON.");
+  const withoutSystem = tasks.find((t) => t.prompt.includes("no system message"));
+  assert.equal(withoutSystem.system_prompt, null, "system-absent captures stay null (never a fabricated preamble)");
+});
+
+test("extractJsonPayload: fenced, bare, prose-wrapped, and non-JSON inputs (deterministic first-match)", () => {
+  assert.deepEqual(extractJsonPayload('```json\n{"a": 1}\n```'), { a: 1 });
+  assert.deepEqual(extractJsonPayload('Here is the result:\n```json\n{"a": 1}\n```\nand also ```json\n{"b": 2}\n```'), { a: 1 });
+  assert.deepEqual(extractJsonPayload('```\n{"plain": "fence"}\n```'), { plain: "fence" });
+  assert.deepEqual(extractJsonPayload('{"bare": true}'), { bare: true });
+  assert.deepEqual(extractJsonPayload('The answer is {"a": [1, 2], "s": "br{ace\\"}"} — done.'), { a: [1, 2], s: 'br{ace"}' });
+  assert.deepEqual(extractJsonPayload('```json\n{broken\n```\nbut then {"ok": 1} in prose'), { ok: 1 });
+  assert.equal(extractJsonPayload("no json here"), undefined);
+  assert.equal(extractJsonPayload('"just a string"'), undefined);
+  assert.equal(extractJsonPayload(null), undefined);
+});
+
+// Shared fixture strings for the TS↔python lockstep check.
+const JSON_EXTRACTION_FIXTURES = [
+  '```json\n{"conversationId": "c1", "primaryDomain": "warp.dev"}\n```',
+  'Sure! Here is the classification:\n\n```json\n{"clean": true, "reasoning": "external party"}\n```\nLet me know if you need anything else.',
+  '{"bare": ["object", 2]}',
+  'prose first {"embedded": {"deep": "value"}} prose after',
+  '```json\n{not json\n```\nfallback {"ok": 1}',
+  "no json at all",
+  '[1, 2, {"three": 3}]',
+];
+
+test("fenced-JSON scoring lockstep: generated taskset._extract_json matches extractJsonPayload on every fixture", { skip: !pythonBin }, () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-lockstep-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(openaiCapture("r1", "2026-07-20T12:00:00Z",
+    [{ role: "system", content: "Classify." }, { role: "user", content: "Classify this thread into JSON" }], '```json\n{"clean": true}\n```')) + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  const env = join(output, "environment");
+  const driver = [
+    "import json, sys",
+    `sys.path.insert(0, ${JSON.stringify(stubVerifiersV1(root))})`,
+    `sys.path.insert(0, ${JSON.stringify(env)})`,
+    "import understudy_trace_env.taskset as ts",
+    `fixtures = json.loads(${JSON.stringify(JSON.stringify(JSON_EXTRACTION_FIXTURES))})`,
+    "print(json.dumps([ts._extract_json(f) for f in fixtures]))",
+  ].join("\n");
+  const proc = spawnSync(pythonBin, ["-c", driver], { encoding: "utf8" });
+  assert.equal(proc.status, 0, proc.stderr);
+  const python = JSON.parse(proc.stdout.trim().split("\n").at(-1));
+  const ts = JSON_EXTRACTION_FIXTURES.map((f) => { const v = extractJsonPayload(f); return v === undefined ? null : v; });
+  assert.deepEqual(python, ts, "python scorer and TS mirror must extract identical JSON from every fixture");
+  assert.deepEqual(python[0], { conversationId: "c1", primaryDomain: "warp.dev" });
+});
+
+test("generated taskset._final_text walks verifiers v1 trace.nodes (objects AND dicts) and legacy shapes", { skip: !pythonBin }, () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-finaltext-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(openaiCapture("r1", "2026-07-20T12:00:00Z",
+    [{ role: "system", content: "Classify." }, { role: "user", content: "Classify this thread into JSON please" }], '{"clean": true}')) + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  const env = join(output, "environment");
+  const driver = [
+    "import json, sys, types",
+    `sys.path.insert(0, ${JSON.stringify(stubVerifiersV1(root))})`,
+    `sys.path.insert(0, ${JSON.stringify(env)})`,
+    "import understudy_trace_env.taskset as ts",
+    "NS = types.SimpleNamespace",
+    "# live verifiers v1 shape: trace.nodes is a list of OBJECTS, node.message an object",
+    "live = NS(nodes=[",
+    "    NS(message=NS(role='system', content='default coding-agent preamble')),",
+    "    NS(message=NS(role='user', content='classify')),",
+    "    NS(message=NS(role='assistant', content='')),",
+    "    NS(message=NS(role='tool', content='{\"ok\": true}')),",
+    "    NS(message=NS(role='assistant', content='```json\\n{\"clean\": true}\\n```')),",
+    "])",
+    "dict_nodes = NS(nodes=[{'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'hello'}, {'type': 'text', 'text': 'world'}]}}])",
+    "legacy = NS(messages=[{'role': 'assistant', 'content': 'legacy text'}])",
+    "empty = NS(nodes=[NS(message=NS(role='user', content='q'))])",
+    "met = ts._entry_met({'type': 'response_obligation', 'kind': 'json_parses'}, [], ts._final_text(live))",
+    "keys = ts._entry_met({'type': 'response_obligation', 'kind': 'schema_valid', 'expected_keys': ['clean']}, [], ts._final_text(live))",
+    "print(json.dumps({'live': ts._final_text(live), 'dict': ts._final_text(dict_nodes), 'legacy': ts._final_text(legacy), 'empty': ts._final_text(empty), 'json_parses': met, 'schema_valid': keys}))",
+  ].join("\n");
+  const proc = spawnSync(pythonBin, ["-c", driver], { encoding: "utf8" });
+  assert.equal(proc.status, 0, proc.stderr);
+  const out = JSON.parse(proc.stdout.trim().split("\n").at(-1));
+  assert.equal(out.live, '```json\n{"clean": true}\n```', "last assistant text from object-shaped nodes");
+  assert.equal(out.dict, "hello world", "dict-shaped nodes with text blocks");
+  assert.equal(out.legacy, "legacy text", "legacy messages fallback still works");
+  assert.equal(out.empty, "", "no assistant text = empty string, never a crash");
+  assert.equal(out.json_parses, true, "response obligation json_parses now passes live (fenced output, nodes shape)");
+  assert.equal(out.schema_valid, true, "response obligation schema_valid now passes live");
+});
+
+test("filter buckets: non-normalizable captures are split into honest reasons (old key kept for compat)", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-buckets-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const good = openaiCapture("good", "2026-07-20T12:00:00Z", [{ role: "user", content: "hello there classify me" }], "ok");
+  const missingTs = { ...openaiCapture("missing", "x", [{ role: "user", content: "y" }], "z") };
+  delete missingTs.ts;
+  const malformedTs = openaiCapture("malformed", "not-a-date", [{ role: "user", content: "y" }], "z");
+  writeFileSync(join(source, "captures.jsonl"), [good, missingTs, malformedTs].map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  assert.equal(result.counts.not_normalizable_filtered, 2);
+  assert.deepEqual(result.counts.filtered_reasons, { missing_timestamp: 1, malformed_timestamp: 1 });
+  assert.equal(result.counts.invalid_timestamp_filtered, 2, "compat: legacy key stays populated with the total");
+  assert.equal(result.counts.captures, 1);
 });

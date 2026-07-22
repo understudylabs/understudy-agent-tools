@@ -131,6 +131,36 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("review <dir>")
+    .description(
+      "Bulk task review over <dir>/reviews.jsonl (append-only, newest per task wins). --accept-all-pending " +
+        "appends an accept for every task with no review yet — for pending-mode dirs where each task was " +
+        "already inspected another way",
+    )
+    .option("--accept-all-pending", "Append an accept review for every task that has no review yet", false)
+    .option("--note <text>", "Review note recorded on each appended line", "bulk accept via `understudy benchmarks review --accept-all-pending`")
+    .action(async (dir: string, options: { acceptAllPending: boolean; note: string }) => {
+      if (!options.acceptAllPending) throw new Error("nothing to do: pass --accept-all-pending (per-task reviews live in the hub UI / benchmarks mcp)");
+      const path = await import("node:path");
+      const fs = await import("node:fs");
+      const { latestReviewByTask, makeBenchmarkReview, readReviews, serializeReviewLine } = await import("../benchmark-artifacts.js");
+      const resolved = path.resolve(dir);
+      const tasksPath = path.join(resolved, "tasks.jsonl");
+      if (!fs.existsSync(tasksPath)) throw new Error(`not a benchmark dir (no tasks.jsonl): ${resolved}`);
+      const taskIds = fs.readFileSync(tasksPath, "utf8").split(/\r?\n/).filter(Boolean).flatMap((line) => {
+        try { const id = (JSON.parse(line) as { task_id?: unknown }).task_id; return typeof id === "string" ? [id] : []; } catch { return []; }
+      });
+      const reviewsPath = path.join(resolved, "reviews.jsonl");
+      const reviewed = latestReviewByTask(fs.existsSync(reviewsPath) ? readReviews(reviewsPath).reviews : []);
+      const pending = taskIds.filter((id) => reviewed[id] === undefined);
+      // Same codec the hub's submitReview uses: benchmark_id is the dir slug.
+      const lines = pending.map((taskId) => serializeReviewLine(makeBenchmarkReview({ benchmark_id: path.basename(resolved), task_id: taskId, decision: "accept", note: options.note, source: "auto" })));
+      if (lines.length > 0) fs.appendFileSync(reviewsPath, lines.join(""), "utf8");
+      console.error(`accepted ${pending.length} pending task(s); ${taskIds.length - pending.length} already reviewed`);
+      console.log(JSON.stringify({ dir: resolved, tasks: taskIds.length, accepted: pending.length, already_reviewed: taskIds.length - pending.length }, null, 2));
+    });
+
+  benchmarks
     .command("rigor <dir>")
     .description(
       "Generate rigor-report.md in the benchmark dir: ABC checklist (oracle solvability, null/spam trivial-agent " +

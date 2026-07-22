@@ -453,17 +453,58 @@ describe("rollout anomaly sentinels (the silent-zero gate)", () => {
     assert.ok(!unknown.some((a) => a.kind === "empty_final_response"));
   });
 
-  it("(d) zero journal bytes on a completed rollout flags no_journal_events", () => {
+  it("(d) zero journal bytes on a tool-obliging contract flags no_journal_events", () => {
     const anomalies = detectRolloutAnomalies({ task: stateTask, result: okResult(), journalBytes: 0 });
     assert.deepEqual(anomalies.map((a) => a.kind), ["no_journal_events"]);
   });
 
-  it("(e) score 0 with zero tool calls flags zero_score_zero_calls", () => {
+  it("(e) score 0 with zero tool calls on a tool-obliging contract flags zero_score_zero_calls", () => {
     const anomalies = detectRolloutAnomalies({
-      task: { task_id: "t2", title: "x", outcome_contract: { required: [{ type: "response_obligation", kind: "json_parses" }] } },
+      task: stateTask,
       result: okResult({ score: 0, writes: [], tool_call_count: 0, final_response_chars: 12 }),
     });
-    assert.deepEqual(anomalies.map((a) => a.kind), ["zero_score_zero_calls"]);
+    assert.deepEqual(anomalies.map((a) => a.kind).sort(), ["no_tool_calls", "zero_score_zero_calls"]);
+  });
+
+  // Contract awareness (warp-domain-identification regression): a
+  // response-only contract legitimately makes zero tool calls and writes zero
+  // journal events — the tool-shaped sentinels must stay quiet, for honest 0s
+  // AND honest 1s alike.
+  const responseOnlyTask = {
+    task_id: "t-resp",
+    title: "Classify the domain",
+    outcome_contract: {
+      required: [
+        { type: "response_obligation", kind: "json_parses" },
+        { type: "response_obligation", kind: "schema_valid", expected_keys: ["primaryDomain"] },
+        { type: "value_propagation", value: "warp.dev", must_reach: { kind: "final_response" } },
+      ],
+    },
+  };
+
+  it("(d)/(e) response-only contract: zero calls + zero journal events is NOT anomalous", () => {
+    const passed = detectRolloutAnomalies({
+      task: responseOnlyTask,
+      result: okResult({ score: 1, writes: [], tool_call_count: 0, final_response_chars: 64 }),
+      journalBytes: 0,
+    });
+    assert.deepEqual(passed, []);
+    const honestMiss = detectRolloutAnomalies({
+      task: responseOnlyTask,
+      result: okResult({ score: 0, writes: [], tool_call_count: 0, final_response_chars: 64 }),
+      journalBytes: 0,
+    });
+    assert.deepEqual(honestMiss, [], "a response-only 0 with a real final response is an honest miss, not a harness anomaly");
+  });
+
+  it("tool-directed value_propagation still counts as a tool obligation", () => {
+    const task = {
+      task_id: "t-vp",
+      title: "x",
+      outcome_contract: { required: [{ type: "value_propagation", value: "r1", must_reach: { kind: "tool_args", tool: "update-record" } }] },
+    };
+    const anomalies = detectRolloutAnomalies({ task, result: okResult({ score: 0, writes: [], tool_call_count: 0 }), journalBytes: 0 });
+    assert.deepEqual(anomalies.map((a) => a.kind).sort(), ["no_journal_events", "zero_score_zero_calls"]);
   });
 
   it("error rollouts skip the completed-rollout sentinels (already untrusted)", () => {

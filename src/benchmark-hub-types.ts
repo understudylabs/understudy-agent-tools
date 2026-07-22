@@ -204,7 +204,12 @@ export type FoundryManifest = {
     tasks: number;
     edges: number;
     stale_filtered: number;
+    /** Compat: historical bucket name — the total of ALL non-normalizable captures, not just timestamp ones. */
     invalid_timestamp_filtered: number;
+    /** Additive: honest total of captures normalize() dropped (all reasons). */
+    not_normalizable_filtered?: number;
+    /** Additive: accurate per-reason breakdown. */
+    filtered_reasons?: { missing_timestamp: number; malformed_timestamp: number };
   };
   privacy?: {
     local_only?: boolean;
