@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+// Shared capture-body derivation (dist/benchmark-artifacts.js) — the same
+// file-id the foundry uses at write time; never forked.
+import { captureBodyPath } from "./artifacts-core";
 
 /**
  * Task-scoped trace-viewer builds over the CLI's `renderTraceViewer`
@@ -34,13 +37,6 @@ function keyFor(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 24);
 }
 
-function captureBodyPath(dir: string, ref: CaptureRef): string {
-  const fileId = createHash("sha256")
-    .update(JSON.stringify({ capture_id: ref.capture_id, source_sha256: ref.sha256 }))
-    .digest("hex")
-    .slice(0, 40);
-  return path.join(dir, "viewer", "data", "captures", `${fileId}.json`);
-}
 
 /**
  * Capture body files for one task, from the benchmark dir's tasks.jsonl.

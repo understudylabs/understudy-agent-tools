@@ -80,6 +80,21 @@ export function StageBadge({ stage }: { stage: "proposed" | "promoted" }) {
   );
 }
 
+/**
+ * Structural-sentinel badge: rollout anomalies (executor) or generation
+ * self-check failures (foundry). Anomalous rows are excluded from aggregates
+ * by default, so the badge is the visible "marked, not dropped" counter.
+ */
+export function AnomalyBadge({ count, label = "anomalous" }: { count: number; label?: string }) {
+  if (count === 0) return null;
+  return (
+    <Badge className="border-bad/40 text-bad">
+      <AlertTriangle className="h-3 w-3" />
+      {count} {label}
+    </Badge>
+  );
+}
+
 export function FlagBadge({ count, resolved }: { count: number; resolved?: boolean }) {
   if (count === 0) return null;
   return (

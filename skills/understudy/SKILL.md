@@ -151,6 +151,11 @@ Identify the developer's current stage and load exactly one:
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
   (also owns repo inspection + eval-harness discovery/build).
+- **App is running but no traces exist yet** — the developer wants capture
+  flowing in minutes with no app-code changes ("instrument my app", "start
+  capturing my LLM calls") → [`../instrument/SKILL.md`](../instrument/SKILL.md)
+  (env-var redirect through the gateway, verified test call, then hands off
+  to `ingest-traces`).
 - **Traces already exist** — a bucket of captures, a provider log export, or
   gateway capture files are in hand and the developer wants them turned into
   local eval sets, profiled for where the spend goes, or triaged in bulk by

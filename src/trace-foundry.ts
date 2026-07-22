@@ -4,18 +4,21 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { validateBenchmarkManifest } from "./benchmark.js";
+import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
 
 export type FoundryResult = {
-  schema_version: "understudy.trace_foundry.v1";
+  schema_version: typeof TRACE_FOUNDRY_SCHEMA;
   source: string;
   output_dir: string;
   freshness: { max_age_days: number; cutoff_utc: string; newest_capture_utc: string };
   counts: { source_files: number; captures: number; tasks: number; edges: number; stale_filtered: number; invalid_timestamp_filtered: number };
   artifacts: Record<string, string>;
   privacy: { local_only: true; contains_customer_payloads: true; upload_performed: false; provider_called: false };
+  /** Generation-time structural self-check (understudy.foundry_self_check.v1): per-task failures + environment scan. */
+  self_check?: Record<string, unknown>;
 };
 
 export type TraceFoundryOptions = {
@@ -336,6 +339,48 @@ function taskTitles(rootTexts: Map<string, string>): Map<string, string> {
   return titles;
 }
 
+/**
+ * The task's INCUMBENT: the production model observed in the capture request
+ * metadata (routing.upstream_model wins over requested_model — it names what
+ * actually served the call). Multi-model tasks record every observed model
+ * with call counts; the dominant one (most observed_calls, ties by name) is
+ * the task's incumbent. Null when no capture carried a model id.
+ */
+export function taskIncumbent(captures: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const capture of captures) {
+    const routing = asObject(capture.routing);
+    const model = routing.upstream_model ?? routing.requested_model;
+    if (model == null) continue;
+    const key = String(model);
+    const entry = byModel.get(key) ?? { model: key, provider: routing.provider == null ? null : String(routing.provider), observed_calls: 0 };
+    entry.observed_calls += 1;
+    if (entry.provider === null && routing.provider != null) entry.provider = String(routing.provider);
+    byModel.set(key, entry);
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
+/** Manifest-level incumbent roll-up over per-task incumbents (all models listed; dominant first). */
+export function manifestIncumbent(tasks: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const task of tasks) {
+    for (const value of asObject(task.incumbent).models ?? []) {
+      const observed = asObject(value);
+      if (typeof observed.model !== "string") continue;
+      const entry = byModel.get(observed.model) ?? { model: observed.model, provider: observed.provider == null ? null : String(observed.provider), observed_calls: 0 };
+      entry.observed_calls += Number(observed.observed_calls ?? 0);
+      if (entry.provider === null && observed.provider != null) entry.provider = String(observed.provider);
+      byModel.set(observed.model, entry);
+    }
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
 function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
   const rootTexts = new Map<string, string>(
@@ -363,6 +408,9 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     // build's --workload filter is flagged for review — never silently
     // truncated into a fragment-task.
     task.grouping_label = group.grouping_label ?? "heuristic_grouped";
+    // Incumbent provenance (additive; excluded from task_hash so pre-existing
+    // reviews stay valid): the production model that produced these captures.
+    task.incumbent = taskIncumbent(captures);
     task.trace = { trace_id: group.trace_id ?? null, grouping_label: task.grouping_label, workloads: group.workloads ?? [], workloads_spanned: group.workloads_spanned ?? group.workloads ?? [] };
     const hiddenWorkloads = (task.trace.workloads_spanned as string[]).filter((workload) => !(task.trace.workloads as string[]).includes(workload));
     if (hiddenWorkloads.length > 0) {
@@ -457,27 +505,35 @@ const ANCHOR_VALUE_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
  * from prompt anchors that propagated into the final response. No LLM. Every
  * entry carries provenance:"fallback_minimal".
  */
-export function fallbackRubricEntries(finalText: string, promptText: string): Obj[] {
+export function fallbackRubricEntries(finalText: string, promptText: string, diagnostics?: { truncated: { what: string; kept: number; found: number }[] }): Obj[] {
   const entries: Obj[] = [];
   const trimmed = (finalText ?? "").trim();
+  // No silent caps: when a slice below binds, the binding is recorded so the
+  // caller can surface it (ensureJudgeableContract turns it into a claim).
+  const capped = <T>(what: string, values: T[], cap: number): T[] => {
+    if (values.length > cap) diagnostics?.truncated.push({ what, kept: cap, found: values.length });
+    return values.slice(0, cap);
+  };
   let parsed: unknown;
   try { parsed = trimmed.startsWith("{") || trimmed.startsWith("[") ? JSON.parse(trimmed) : undefined; } catch { parsed = undefined; }
   if (parsed !== undefined) {
     entries.push({ type: "response_obligation", kind: "json_parses", provenance: "fallback_minimal" });
     if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const keys = Object.keys(parsed as Obj).slice(0, 8);
+      const keys = capped("schema_valid expected_keys", Object.keys(parsed as Obj), 8);
       if (keys.length > 0) entries.push({ type: "response_obligation", kind: "schema_valid", expected_keys: keys, provenance: "fallback_minimal" });
     }
     return entries;
   }
   // Unstructured response: id-shaped anchor values that must appear (same
   // anchor canonicalization discipline as anchorArguments — discrete, never prose).
-  const idAnchors = [...new Set((trimmed.match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))].slice(0, 3);
+  const idAnchors = capped("response anchors", [...new Set((trimmed.match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))], 3);
   for (const anchor of idAnchors) entries.push({ type: "response_obligation", kind: "contains_category", expected: anchor, provenance: "fallback_minimal" });
   // Prompt anchors that propagated into the final response.
-  const promptAnchors = [...new Set(((promptText ?? "").match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))]
-    .filter((v) => !idAnchors.includes(v) && valueTokensPresent(v, trimmed))
-    .slice(0, 3);
+  const promptAnchors = capped(
+    "prompt anchors",
+    [...new Set(((promptText ?? "").match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))].filter((v) => !idAnchors.includes(v) && valueTokensPresent(v, trimmed)),
+    3,
+  );
   for (const anchor of promptAnchors) entries.push({ type: "value_propagation", value: anchor, must_reach: { kind: "final_response" }, provenance: "fallback_minimal" });
   if (entries.length === 0 && trimmed.length > 0) {
     // Last resort: the response's most distinctive short line as a category check.
@@ -496,7 +552,8 @@ export function fallbackRubricEntries(finalText: string, promptText: string): Ob
 export function ensureJudgeableContract(task: Obj, finalText: string, promptText: string): boolean {
   const contract = asObject(task.outcome_contract);
   if ((Array.isArray(contract.required) ? contract.required : []).length > 0) return false;
-  const entries = fallbackRubricEntries(finalText, promptText);
+  const diagnostics = { truncated: [] as { what: string; kept: number; found: number }[] };
+  const entries = fallbackRubricEntries(finalText, promptText, diagnostics);
   if (entries.length === 0) entries.push({ type: "response_obligation", kind: "contains_category", expected: String(task.title ?? task.task_id), provenance: "fallback_minimal" });
   contract.required = entries;
   contract.status = "fallback_minimal";
@@ -504,6 +561,10 @@ export function ensureJudgeableContract(task: Obj, finalText: string, promptText
   task.status = "needs_review";
   task.close_call = true;
   task.claims = [...(Array.isArray(task.claims) ? task.claims : []), { kind: "inferred", claim: "rubric is a minimal oracle-response check — confirm or enrich", confidence: "low", provenance: "fallback_minimal" }];
+  // No silent caps: record any binding anchor/key truncation as a visible claim.
+  for (const cap of diagnostics.truncated) {
+    task.claims.push({ kind: "inferred", claim: `fallback rubric truncated ${cap.what}: kept ${cap.kept} of ${cap.found}`, confidence: "high", provenance: "cap_warning" });
+  }
   return true;
 }
 
@@ -844,6 +905,87 @@ export function refreshOfflineValidation(benchmarkDir: string, tasks: Obj[]): bo
   return true;
 }
 
+/* ---------------------------------------------------------------------------
+ * Generation-time self-check — structural sentinels over each generated task,
+ * run after the environment is written. Detection is structural, not
+ * case-by-case: the checks encode failure classes already shipped once
+ * (display-title-instead-of-prompt, empty contracts, missing tool surface).
+ * Failures land in the manifest (`self_check`) and on each task
+ * (`task.self_check`) so the hub's proposed view can surface them.
+ * ------------------------------------------------------------------------- */
+
+export type SelfCheckFailure = { check: string; detail: string };
+
+/** Machine-identifying absolute local paths (never legitimate in a shareable artifact). */
+const ABSOLUTE_LOCAL_PATH_RE = /\/(?:Users|home)\/[A-Za-z0-9._-]+\//;
+
+export function selfCheckTask(task: Obj, envRow: Obj | null, options: { schemasPresent: boolean } = { schemasPresent: true }): SelfCheckFailure[] {
+  const failures: SelfCheckFailure[] = [];
+  const title = String(task.title ?? "").trim();
+  if (envRow === null) {
+    failures.push({ check: "prompt_missing", detail: "task has no row in the generated environment's tasks.json" });
+  } else {
+    const prompt = String(asObject(envRow).prompt ?? "").trim();
+    if (prompt.length === 0) failures.push({ check: "prompt_empty", detail: "generated prompt is empty" });
+    else if (prompt === title) failures.push({ check: "prompt_equals_title", detail: "generated prompt equals the display title — the source user message did not reach the environment" });
+  }
+  const required = ((asObject(task.outcome_contract).required ?? []) as unknown[]).map(asObject);
+  if (required.length === 0) failures.push({ check: "empty_contract", detail: "outcome contract has zero required obligations — not judgeable" });
+  const callRules = required.filter((rule) => ["state_effect", "read_obligation"].includes(String(rule.type ?? "state_effect")));
+  if (callRules.length > 0 && (Array.isArray(task.tool_definitions) ? task.tool_definitions : []).length === 0) {
+    failures.push({ check: "missing_tool_definitions", detail: `contract requires ${callRules.length} tool call(s) but the task carries no tool definitions` });
+  }
+  if (!options.schemasPresent) failures.push({ check: "schemas_missing", detail: "environment/understudy_trace_env/servers/schemas.json is absent" });
+  for (const capture of ((asObject(task.source).captures ?? []) as unknown[]).map(asObject)) {
+    const pointer = String(capture.pointer ?? "");
+    if (ABSOLUTE_LOCAL_PATH_RE.test(pointer)) {
+      failures.push({ check: "absolute_path", detail: `capture pointer carries an absolute local path: ${pointer.slice(0, 120)}` });
+    }
+  }
+  return failures;
+}
+
+/**
+ * Run the self-check over every generated task, stamp `task.self_check`,
+ * persist tasks.jsonl, and return the manifest summary block. Environment
+ * package files are additionally scanned for machine-identifying absolute
+ * paths (a generated artifact must be shareable as-is).
+ */
+export function runFoundrySelfCheck(outputInput: string, tasks: Obj[]): Obj {
+  const output = resolve(outputInput);
+  const pkg = join(output, "environment", "understudy_trace_env");
+  let envRows = new Map<string, Obj>();
+  try {
+    const parsed = JSON.parse(readFileSync(join(pkg, "tasks.json"), "utf8"));
+    if (Array.isArray(parsed)) envRows = new Map(parsed.map((row: unknown) => [String(asObject(row).task_id), asObject(row)]));
+  } catch { /* prompt checks report prompt_missing */ }
+  const schemasPresent = existsSync(join(pkg, "servers", "schemas.json"));
+  const environmentFailures: SelfCheckFailure[] = [];
+  for (const rel of ["pyproject.toml", "understudy_trace_env/servers/world.py", "understudy_trace_env/taskset.py", "understudy_trace_env/environment.py"]) {
+    const file = join(output, "environment", rel);
+    try {
+      if (ABSOLUTE_LOCAL_PATH_RE.test(readFileSync(file, "utf8"))) environmentFailures.push({ check: "absolute_path", detail: `${rel} contains an absolute local path` });
+    } catch { /* file absent — package_sha256 gate covers completeness */ }
+  }
+  const failing: Record<string, SelfCheckFailure[]> = {};
+  let capWarnings = 0;
+  for (const task of tasks) {
+    const failures = selfCheckTask(task, envRows.get(String(task.task_id)) ?? null, { schemasPresent });
+    task.self_check = { ok: failures.length === 0, failures };
+    if (failures.length > 0) failing[String(task.task_id)] = failures;
+    capWarnings += (Array.isArray(task.claims) ? task.claims : []).filter((claim: Obj) => asObject(claim).provenance === "cap_warning").length;
+  }
+  writeJsonl(join(output, "tasks.jsonl"), tasks);
+  return {
+    schema_version: FOUNDRY_SELF_CHECK_SCHEMA,
+    checked: tasks.length,
+    failed: Object.keys(failing).length,
+    cap_warnings: capWarnings,
+    environment_failures: environmentFailures,
+    tasks: failing,
+  };
+}
+
 function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string, rows: Obj[] = []): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
   mkdirSync(servers, { recursive: true });
@@ -962,11 +1104,12 @@ type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: strin
 function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
   const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
   const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
-  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
+  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, incumbent: manifestIncumbent(tasks), taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit, incumbent: task.incumbent ?? null })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
 }
 
 const ACCEPTING_DECISIONS = ["accept", "restrict"];
-const REVIEW_DECISION_VALUES = ["accept", "restrict", "needs_more", "reject"];
+/** Shared with the hub via dist/benchmark-artifacts.js — never fork the enum. */
+const REVIEW_DECISION_VALUES: readonly string[] = REVIEW_DECISIONS;
 
 /**
  * `understudy traces promote` — the reviewed-proposal → promoted-benchmark
@@ -987,8 +1130,7 @@ export function promoteTraceBenchmark(outputInput: string, options: { waiveDagRe
   for (const row of readJsonl(join(output, "review-decisions.jsonl"))) {
     if (typeof row.task_id === "string" && REVIEW_DECISION_VALUES.includes(row.decision)) decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.reviewed_at ?? row.created_at ?? null, source: "review-decisions.jsonl" });
   }
-  for (const row of readJsonl(join(output, "reviews.jsonl"))) {
-    if (row.schema_version !== "understudy.benchmark_review.v1" || typeof row.task_id !== "string" || !REVIEW_DECISION_VALUES.includes(row.decision)) continue;
+  for (const row of readReviews(join(output, "reviews.jsonl")).reviews) {
     decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.created_at ?? null, source: "reviews.jsonl" });
   }
   if (decisions.size === 0) throw new Error("Refusing to promote an unreviewed benchmark: no decisions found in reviews.jsonl or review-decisions.jsonl. Review the tasks in the Benchmark Hub (or run `understudy traces import-reviews`) first.");
@@ -1255,7 +1397,9 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   mkdirSync(capturesDir, { recursive: true });
   const captureIndex: Obj = {};
   for (const row of rows) {
-    const fileId = hash({ capture_id: row.capture_id, source_sha256: row.source.sha256 }).slice(0, 40);
+    // Shared file-id derivation (dist/benchmark-artifacts.js) — the hub
+    // RECOMPUTES this name from the pointer, so the two must never fork.
+    const fileId = captureFileId({ capture_id: String(row.capture_id), sha256: String(row.source.sha256) });
     const path = join(capturesDir, `${fileId}.json`);
     writeJson(path, row);
     captureIndex[row.capture_id] = { path: `data/captures/${fileId}.json`, source: row.source };
@@ -1264,6 +1408,10 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   // bulk artifacts are written here, exactly once per invocation.
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
   const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: row?.request.system ?? null, messages: row?.request.messages ?? [] }]; })), "cb9c84969186f8a0954b1027320f225e6b6b0afb", rows);
+  // Generation-time self-check: structural sentinels over every generated
+  // task + the environment package; stamps task.self_check and rewrites
+  // tasks.jsonl, and the summary lands on the manifest below.
+  const selfCheck = runFoundrySelfCheck(output, tasks);
   const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
   const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
   // Pre-promotion output is a PROPOSAL, stamped honestly: the schema name
@@ -1283,7 +1431,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
@@ -1324,5 +1472,14 @@ export function regenerateEnvironment(benchmarkDirInput: string): { path: string
   if (repaired > 0) writeJsonl(join(output, "tasks.jsonl"), tasks);
   const environment = writeVerifiersEnvironment(output, tasks, sourceContext, "cb9c84969186f8a0954b1027320f225e6b6b0afb", rows);
   refreshOfflineValidation(output, tasks);
+  // Re-run the generation self-check over the regenerated environment and
+  // keep the manifest's summary honest (older dirs simply gain the block).
+  const selfCheck = runFoundrySelfCheck(output, tasks);
+  const manifestPath = join(output, "manifest.json");
+  if (existsSync(manifestPath)) {
+    const manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
+    manifest.self_check = selfCheck;
+    writeJson(manifestPath, manifest);
+  }
   return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
 }

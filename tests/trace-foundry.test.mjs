@@ -91,6 +91,43 @@ test("serves the lazy local viewer and capture JSON", async () => {
   try { const address = server.address(); assert.equal(typeof address, "object"); const base = `http://127.0.0.1:${address.port}`; const page = await fetch(base); assert.equal(page.status, 200); assert.match(await page.text(), /benchmark orchard/); const name = readdirSync(join(output, "viewer", "data", "captures"))[0]; const captureResponse = await fetch(`${base}/data/captures/${name}`); assert.equal(captureResponse.status, 200); assert.equal((await captureResponse.json()).capture_id, "one"); } finally { server.close(); }
 });
 
+test("records the incumbent model from capture metadata on tasks and the manifest, handling multi-model sets", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-incumbent-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  // Task A: two gpt-4o captures (upstream_model wins over requested_model).
+  const a1 = capture("a-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Set record 1 active please" }], { content: [{ type: "tool_use", id: "c1", name: "update-record", input: { id: 1 } }] });
+  a1.provider = "openai"; a1.requested_model = "gpt-4o-alias"; a1.upstream_model = "gpt-4o";
+  const a2 = capture("a-2", "2026-07-20T00:00:01Z", [{ role: "user", content: "Set record 1 active please" }, { role: "assistant", content: [{ type: "tool_use", id: "c1", name: "update-record", input: { id: 1 } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "c1", content: "ok" }] }], { content: [{ type: "text", text: "Done" }] });
+  a2.provider = "openai"; a2.upstream_model = "gpt-4o";
+  // Task B: a different workload/prompt served by a Claude model (requested_model fallback).
+  const b1 = capture("b-1", "2026-07-20T01:00:00Z", [{ role: "user", content: "Archive stale record 9 now" }], { content: [{ type: "tool_use", id: "c2", name: "archive-record", input: { id: 9 } }] });
+  b1.workload_name = "other-workload"; b1.provider = "anthropic"; b1.requested_model = "claude-x-1";
+  writeFileSync(join(source, "rows.json"), JSON.stringify([a1, a2, b1]));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  const taskA = tasks.find((task) => task.tool_surface.includes("update-record"));
+  const taskB = tasks.find((task) => task.tool_surface.includes("archive-record"));
+  assert.deepEqual(taskA.incumbent, { model: "gpt-4o", provider: "openai", observed_calls: 2, models: [{ model: "gpt-4o", provider: "openai", observed_calls: 2 }] });
+  assert.equal(taskB.incumbent.model, "claude-x-1");
+  assert.equal(taskB.incumbent.provider, "anthropic");
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8"));
+  // Manifest lists ALL observed models, dominant first; per-task entries carry their own incumbent.
+  assert.equal(benchmark.incumbent.model, "gpt-4o");
+  assert.deepEqual(benchmark.incumbent.models.map((m) => m.model), ["gpt-4o", "claude-x-1"]);
+  assert.equal(benchmark.tasks.find((t) => t.task_id === taskA.task_id).incumbent.model, "gpt-4o");
+  assert.equal(benchmark.tasks.find((t) => t.task_id === taskB.task_id).incumbent.model, "claude-x-1");
+});
+
+test("incumbent is null when captures carry no model metadata", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-no-incumbent-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("bare", "2026-07-20T00:00:00Z", [{ role: "user", content: "No model recorded" }], {})));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.equal(task.incumbent, null);
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8"));
+  assert.equal(benchmark.incumbent, null);
+  assert.equal(benchmark.tasks[0].incumbent, null);
+});
+
 test("uses unique capture keys when request ids collide and exposes DAG mutation evidence", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-dag-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const first = capture("duplicate", "2026-07-20T00:00:00Z", [{ role: "user", content: "Do it" }, { role: "assistant", content: "A" }], {});
@@ -620,4 +657,71 @@ test("compile + regenerate-env: observation tightening lands in schemas.json and
   const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
   assert.ok(validation.tasks.every((row) => !row.sentinels.enum_violation || row.sentinels.enum_violation.score < 1), "enum sentinel discriminates offline");
   assert.ok(validation.tasks.some((row) => row.sentinels.enum_violation), "enum sentinel present for the enum-carrying tool");
+});
+
+test("generation-time self-check: structural sentinels per task, stamped on tasks.jsonl and the manifest", async () => {
+  const { selfCheckTask, runFoundrySelfCheck } = await import("../dist/trace-foundry.js");
+  // Unit: each check fires on its own fixture.
+  const goodTask = {
+    task_id: "task-good",
+    title: "email: quarterly report",
+    outcome_contract: { required: [{ type: "state_effect", tool: "update-record", observed_arguments: { id: 7 } }] },
+    tool_definitions: [{ name: "update-record" }],
+    source: { captures: [{ capture_id: "c1", pointer: "captures.jsonl#L1", sha256: "x" }] },
+  };
+  assert.deepEqual(selfCheckTask(goodTask, { task_id: "task-good", prompt: "Set synthetic record 7 active" }, { schemasPresent: true }), []);
+  const failures = selfCheckTask(
+    {
+      task_id: "task-bad",
+      title: "email: quarterly report",
+      outcome_contract: { required: [] },
+      tool_definitions: [],
+      source: { captures: [{ capture_id: "c2", pointer: "/Users/somebody/captures/x.jsonl#L1", sha256: "y" }] },
+    },
+    { task_id: "task-bad", prompt: "email: quarterly report" },
+    { schemasPresent: false },
+  );
+  const checks = failures.map((f) => f.check);
+  assert.ok(checks.includes("prompt_equals_title"), "the display-title-instead-of-prompt class is structural, not case-by-case");
+  assert.ok(checks.includes("empty_contract"));
+  assert.ok(checks.includes("schemas_missing"));
+  assert.ok(checks.includes("absolute_path"));
+  // missing_tool_definitions fires when the contract requires calls.
+  const noDefs = selfCheckTask(
+    { ...goodTask, tool_definitions: [] },
+    { task_id: "task-good", prompt: "Set synthetic record 7 active" },
+    { schemasPresent: true },
+  );
+  assert.deepEqual(noDefs.map((f) => f.check), ["missing_tool_definitions"]);
+  // prompt row missing entirely.
+  assert.ok(selfCheckTask(goodTask, null, { schemasPresent: true }).some((f) => f.check === "prompt_missing"));
+
+  // Integration: a fresh compile stamps task.self_check + manifest.self_check.
+  const root = mkdtempSync(join(tmpdir(), "understudy-selfcheck-"));
+  const source = join(root, "captures"), output = join(root, "out");
+  mkdirSync(source, { recursive: true });
+  const row = capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], stop_reason: "tool_use" });
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(row) + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  assert.equal(result.self_check.schema_version, "understudy.foundry_self_check.v1");
+  assert.equal(result.self_check.checked, 1);
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.ok(tasks.every((task) => task.self_check && typeof task.self_check.ok === "boolean"), "self_check stamped on every task");
+  const manifest = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.self_check, result.self_check);
+  // runFoundrySelfCheck is re-runnable in place (regenerate-env path).
+  const rerun = runFoundrySelfCheck(output, tasks);
+  assert.equal(rerun.checked, tasks.length);
+});
+
+test("fallback rubric records binding anchor caps as visible cap_warning claims (no silent caps)", async () => {
+  const { ensureJudgeableContract } = await import("../dist/trace-foundry.js");
+  const task = { task_id: "task-caps", title: "cap test", outcome_contract: { required: [] }, claims: [] };
+  // Five distinct id-shaped anchors in the final response — the rubric keeps 3.
+  const finalText = [1, 2, 3, 4, 5].map((i) => `created automation auto-3301928475610${i} ok`).join("\n");
+  assert.equal(ensureJudgeableContract(task, finalText, ""), true);
+  const capClaims = task.claims.filter((claim) => claim.provenance === "cap_warning");
+  assert.equal(capClaims.length, 1);
+  assert.match(capClaims[0].claim, /kept 3 of 5/);
+  assert.equal(task.outcome_contract.required.filter((rule) => rule.kind === "contains_category").length, 3);
 });

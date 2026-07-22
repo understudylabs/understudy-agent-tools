@@ -68,6 +68,14 @@ group it belongs to.
   success criteria — before any model comparison or vibe-check questions are
   written. Single-run tool-call forensics live in its
   [`references/tool-trace-forensics.md`](understand-workload/references/tool-trace-forensics.md).
+- [`instrument`](instrument/SKILL.md) is the zero-friction on-ramp for
+  developers whose app is running but has no traces yet: it detects the
+  provider SDK, redirects it through the Understudy gateway (capture on by
+  default) via env vars with no app-code changes, verifies with a test call
+  that a capture actually landed (`understudy instrument --check` for the
+  local sanity check), and hands off to `ingest-traces`/`capture-evidence`
+  once traces exist. Per-SDK env-var behavior and fallback paths in its
+  [`reference.md`](instrument/reference.md).
 - [`ingest-traces`](ingest-traces/SKILL.md) is the front door for developers
   who arrive with data instead of a harness: it turns existing production
   traces (an object-store bucket, provider log exports, or a gateway capture

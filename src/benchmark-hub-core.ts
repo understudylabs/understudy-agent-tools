@@ -1,7 +1,7 @@
 /**
  * Benchmark-hub loaders + write validation over the file-based benchmark
  * sidecars (manifest.json / benchmark.json, tasks.jsonl, reviews.jsonl,
- * rows-*.jsonl, runs/queue/*.json). LIFTED from
+ * rows-*.jsonl, calibration.json, runs/queue/*.json). LIFTED from
  * apps/benchmark-hub/lib/data-core.ts into the CLI package so the compiled
  * dist is the single source of truth: the Next app's lib/data-core.ts and
  * /api/reviews + /api/runs routes re-import from dist/ (anti-drift pattern),
@@ -11,7 +11,23 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { validateBenchmarkManifest } from "./benchmark.js";
-import { createHash } from "node:crypto";
+// Shared writer/reader codecs — the same module the executor/foundry write with.
+import {
+  BENCHMARK_OVERVIEW_SCHEMA,
+  BENCHMARK_FLAG_SCHEMA,
+  BENCHMARK_TASK_SCHEMA,
+  CALIBRATION_SCHEMA,
+  EVAL_RESULT_SCHEMA,
+  PROMOTION_RECORD_SCHEMA,
+  SOURCE_DAG_SCHEMA,
+  TRACE_FOUNDRY_SCHEMA,
+  captureBodyPath as sharedCaptureBodyPath,
+  isBenchmarkReview,
+  latestReviewByTask as sharedLatestReviewByTask,
+  makeBenchmarkReview,
+  readJsonlFile,
+  serializeReviewLine,
+} from "./benchmark-artifacts.js";
 import {
   cancelRunRequest,
   createRunRequest,
@@ -27,6 +43,7 @@ import type {
   BenchmarkOverview,
   BenchmarkReview,
   BenchmarkVersion,
+  CalibrationSummary,
   CaptureRef,
   EntryDiagnostics,
   EvalRow,
@@ -40,8 +57,7 @@ import type {
 } from "./benchmark-hub-types.js";
 import { REVIEW_DECISIONS, type ReviewDecision } from "./benchmark-hub-types.js";
 
-/**
- * Data-dir contract:
+export type { CalibrationSummary } from "./benchmark-hub-types.js";
  * - BENCHMARK_HUB_DATA_DIR: colon-separated list of directories whose
  *   subdirectories are benchmarks. Each benchmark dir holds benchmark.json
  *   (understudy.benchmark.v1), optional rows-*.jsonl and/or rows/*.jsonl
@@ -99,27 +115,8 @@ function slugRoots(): { prefix: string; root: string; source: HubEntry["source"]
   return roots;
 }
 
-function readJsonl<T>(file: string): { items: T[]; skipped: number } {
-  const items: T[] = [];
-  let skipped = 0;
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return { items, skipped };
-  }
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      items.push(JSON.parse(trimmed) as T);
-    } catch {
-      // count malformed lines rather than failing the page
-      skipped += 1;
-    }
-  }
-  return { items, skipped };
-}
+/** Tolerant JSONL read — the SHARED codec (dist/benchmark-artifacts.js). */
+const readJsonl = readJsonlFile;
 
 export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] {
   const warnings: EvidenceWarning[] = [];
@@ -186,7 +183,7 @@ function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: Entr
   }
   const rows: EvalRow[] = [];
   for (const r of rawRows) {
-    if (r?.schema_version !== "understudy.eval_result.v1") {
+    if (r?.schema_version !== EVAL_RESULT_SCHEMA) {
       diagnostics.droppedRows += 1;
       continue;
     }
@@ -200,11 +197,26 @@ function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: Entr
   return rows;
 }
 
+/**
+ * calibration.json (written by `understudy runs execute` after an incumbent
+ * rerun): null when absent, wrong schema, or written for another benchmark.
+ */
+function loadCalibration(dir: string, benchmarkId: string | null): CalibrationSummary | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
+    if (parsed?.schema_version !== CALIBRATION_SCHEMA || !Array.isArray(parsed.tasks)) return null;
+    if (benchmarkId !== null && typeof parsed.benchmark_id === "string" && parsed.benchmark_id !== benchmarkId) return null;
+    return parsed as CalibrationSummary;
+  } catch {
+    return null;
+  }
+}
+
 /** benchmark-overview.json (--overview pass); null when absent or wrong schema. */
 function loadOverview(dir: string): BenchmarkOverview | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "benchmark-overview.json"), "utf8"));
-    if (parsed?.schema_version !== "understudy.benchmark_overview.v1" || !Array.isArray(parsed.categories)) return null;
+    if (parsed?.schema_version !== BENCHMARK_OVERVIEW_SCHEMA || !Array.isArray(parsed.categories)) return null;
     return parsed as BenchmarkOverview;
   } catch {
     return null;
@@ -235,7 +247,7 @@ export function loadProposedEntryFromDir(
   } catch {
     return null;
   }
-  if (foundry?.schema_version !== "understudy.trace_foundry.v1") return null;
+  if (foundry?.schema_version !== TRACE_FOUNDRY_SCHEMA) return null;
   const tasksPath = path.join(dir, "tasks.jsonl");
   if (!fs.existsSync(tasksPath)) return null;
 
@@ -245,7 +257,7 @@ export function loadProposedEntryFromDir(
   diagnostics.skippedLines += tasksRead.skipped;
   const tasks: FoundryTask[] = [];
   for (const t of tasksRead.items) {
-    if (t?.schema_version !== "understudy.benchmark_task.v1" || typeof t.task_id !== "string") {
+    if (t?.schema_version !== BENCHMARK_TASK_SCHEMA || typeof t.task_id !== "string") {
       diagnostics.droppedRows += 1;
       continue;
     }
@@ -255,7 +267,7 @@ export function loadProposedEntryFromDir(
   let dag: SourceDag | null = null;
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "source-dag.json"), "utf8"));
-    if (parsed?.schema_version === "understudy.source_dag.v1") dag = parsed;
+    if (parsed?.schema_version === SOURCE_DAG_SCHEMA) dag = parsed;
   } catch {
     // lineage section renders its empty state
   }
@@ -291,17 +303,11 @@ export function loadProposedEntryFromDir(
     }
   }
 
+  // Review validity + superseding rules come from the shared codec.
   const reviewsRead = readJsonl<BenchmarkReview>(path.join(dir, "reviews.jsonl"));
   diagnostics.skippedLines += reviewsRead.skipped;
-  const reviews: BenchmarkReview[] = reviewsRead.items.filter(
-    (r) =>
-      r?.schema_version === "understudy.benchmark_review.v1" &&
-      typeof r.task_id === "string" &&
-      REVIEW_DECISIONS.includes(r.decision),
-  );
-  // Superseding: append-only file, newest line per task wins.
-  const latestReviewByTask: Record<string, BenchmarkReview> = {};
-  for (const r of reviews) latestReviewByTask[r.task_id] = r;
+  const reviews: BenchmarkReview[] = reviewsRead.items.filter(isBenchmarkReview);
+  const latestReviewByTask = sharedLatestReviewByTask(reviews) as Record<string, BenchmarkReview>;
 
   return {
     kind: "proposed",
@@ -342,11 +348,7 @@ export function captureFilePath(entry: ProposedHubEntry, captureId: string): str
  * can resolve oracle spines after promotion too.
  */
 export function captureBodyPath(dir: string, ref: CaptureRef): string {
-  const fileId = createHash("sha256")
-    .update(JSON.stringify({ capture_id: ref.capture_id, source_sha256: ref.sha256 }))
-    .digest("hex")
-    .slice(0, 40);
-  return path.join(dir, "viewer", "data", "captures", `${fileId}.json`);
+  return sharedCaptureBodyPath(dir, ref);
 }
 
 /**
@@ -391,7 +393,7 @@ export function loadEntryFromDir(
       let promotionRecord: Record<string, unknown> | null = null;
       try {
         const parsed = JSON.parse(fs.readFileSync(path.join(dir, "promotion-record.json"), "utf8"));
-        if (parsed?.schema_version === "understudy.promotion_record.v1") promotionRecord = parsed;
+        if (parsed?.schema_version === PROMOTION_RECORD_SCHEMA) promotionRecord = parsed;
       } catch {
         // record unreadable — the promoted manifest still stands on its own
       }
@@ -399,12 +401,7 @@ export function loadEntryFromDir(
       promoted.diagnostics.skippedLines += reviewsRead.skipped;
       promoted.promotionRecord = promotionRecord;
       promoted.overview = loadOverview(dir);
-      promoted.reviews = reviewsRead.items.filter(
-        (r) =>
-          r?.schema_version === "understudy.benchmark_review.v1" &&
-          typeof r.task_id === "string" &&
-          REVIEW_DECISIONS.includes(r.decision),
-      );
+      promoted.reviews = reviewsRead.items.filter(isBenchmarkReview);
       return promoted;
     }
   }
@@ -460,7 +457,7 @@ function loadManifestEntry(
   diagnostics.skippedLines += flagsRead.skipped;
   const flags: BenchmarkFlag[] = [];
   for (const f of flagsRead.items) {
-    if (f?.schema_version !== "understudy.benchmark_flag.v1") continue;
+    if (f?.schema_version !== BENCHMARK_FLAG_SCHEMA) continue;
     if (typeof f.benchmark_id === "string" && f.benchmark_id !== manifest.benchmark_id) {
       diagnostics.foreignFlags += 1;
       continue;
@@ -488,6 +485,7 @@ function loadManifestEntry(
     warnings: computeWarnings(manifest),
     versions,
     diagnostics,
+    calibration: loadCalibration(dir, manifest.benchmark_id),
   };
 }
 
@@ -609,7 +607,6 @@ export function loadTraceRecords(entry: HubEntry): Record<string, unknown[]> {
   }
   return out;
 }
-
 /* ------------------------------------------------------------------ */
 /* Shared write validation (hub /api routes + `understudy benchmarks   */
 /* mcp` submit_review / queue_run — one implementation, never forked)  */
@@ -652,16 +649,16 @@ export function submitReview(entry: AnyHubEntry | null, input: SubmitReviewInput
     return { ok: false, error: "unknown task_id", status: 404 };
   }
 
-  const review: BenchmarkReview = {
-    schema_version: "understudy.benchmark_review.v1",
+  // The review constructor + line serializer are the shared codec's — the
+  // writer side of reviews.jsonl can never drift from what promote consumes.
+  const review = makeBenchmarkReview({
     // The foundry output dir slug (directory basename), not a benchmark.v1 id.
     benchmark_id: path.basename(entry.dir),
     task_id: input.task_id,
     decision: input.decision as ReviewDecision,
-    note: typeof input.note === "string" ? input.note : "",
-    created_at: new Date().toISOString(),
-  };
-  fs.appendFileSync(path.join(entry.dir, "reviews.jsonl"), JSON.stringify(review) + "\n", "utf8");
+    note: input.note,
+  }) as BenchmarkReview;
+  fs.appendFileSync(path.join(entry.dir, "reviews.jsonl"), serializeReviewLine(review), "utf8");
   return { ok: true, review };
 }
 
@@ -703,6 +700,10 @@ export type QueueRunBody = {
   split?: unknown;
   tasks?: unknown;
   rollouts_per_task?: unknown;
+  /** Optional (additive): subset of `models` labeled as the incumbent arm. */
+  incumbent_models?: unknown;
+  /** Optional (additive): incumbent calibration pass threshold in (0, 1]. */
+  calibration_threshold?: unknown;
 };
 
 export type QueueRunResult = { ok: true; run: RunRequest; execute_hint?: string } | WriteFailure;
@@ -794,6 +795,9 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     split: body.split,
     tasks: body.tasks ?? "all",
     rollouts_per_task: body.rollouts_per_task ?? 1,
+    // Additive: the incumbent-baseline arm label + calibration threshold.
+    incumbent_models: body.incumbent_models,
+    calibration_threshold: body.calibration_threshold,
   };
   const errors = validateRunRequestInput(input, knownTaskIds);
   if (errors.length > 0) return { ok: false, error: errors.join("; "), status: 400 };
@@ -813,6 +817,8 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     split: input.split as RunSplit,
     tasks: input.tasks as "all" | string[],
     rollouts_per_task: input.rollouts_per_task as number,
+    incumbent_models: input.incumbent_models as string[] | undefined,
+    calibration_threshold: input.calibration_threshold as number | undefined,
   });
   return { ok: true, run, execute_hint: `understudy runs execute --benchmark ${entry.dir} --watch` };
 }

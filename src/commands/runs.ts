@@ -50,7 +50,14 @@ export function registerRunsCommand(program: Command): void {
       // Stream events to stderr so stdout stays parseable JSON.
       const onEvent = (event: RunEvent) => {
         const progress = event.progress ? ` ${event.progress.completed}/${event.progress.total}` : "";
-        const detail = [event.model, event.task_id, event.score != null ? `score=${event.score}` : null, event.error].filter(Boolean).join(" ");
+        const detail = [
+          event.model,
+          event.task_id,
+          event.score != null ? `score=${event.score}` : null,
+          event.anomaly ? `ANOMALY:${event.anomaly.kind}` : null,
+          event.warning,
+          event.error,
+        ].filter(Boolean).join(" ");
         console.error(`[${event.ts}] ${event.run_id} ${event.type}${progress} ${detail}`.trimEnd());
       };
       do {

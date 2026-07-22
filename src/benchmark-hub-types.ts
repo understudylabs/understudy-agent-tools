@@ -7,6 +7,18 @@
 
 export type TaskSplit = "train" | "dev" | "holdout" | "none";
 
+/**
+ * The production model that produced the source captures (additive; recorded
+ * by the trace foundry from capture request metadata). `models` lists every
+ * observed model when the capture set was multi-model, dominant first.
+ */
+export type IncumbentInfo = {
+  model: string;
+  provider?: string | null;
+  observed_calls?: number;
+  models?: { model: string; provider?: string | null; observed_calls?: number }[];
+};
+
 export type ManifestTask = {
   task_id: string;
   category_id: string;
@@ -15,6 +27,8 @@ export type ManifestTask = {
   generator_ref?: string | null;
   split: TaskSplit;
   gold?: { kind: "final-state" | "rubric" | "reference"; ref: string } | null;
+  /** Per-task incumbent (additive; null/absent on pre-incumbent builds). */
+  incumbent?: IncumbentInfo | null;
 };
 
 export type TaxonomyCategory = {
@@ -35,6 +49,8 @@ export type BenchmarkManifest = {
   name?: string | null;
   description?: string | null;
   created_at?: string | null;
+  /** Benchmark-wide incumbent roll-up (additive; absent on pre-incumbent builds). */
+  incumbent?: IncumbentInfo | null;
   provenance: {
     origin: "derived-from-traces" | "imported" | "authored";
     source_refs?: string[];
@@ -84,12 +100,16 @@ export type EvalRow = {
   subscores?: Record<string, number | null> | null;
   status: "ok" | "error" | "skipped" | "unscored";
   model?: string | null;
+  /** Additive arm label from the executor: "incumbent" rerun vs "candidate". */
+  arm_kind?: "incumbent" | "candidate" | null;
   route?: string | null;
   latency_ms?: number | null;
   created_at?: string | null;
   benchmark_id?: string;
   category_id?: string | null;
   trace_ref?: { branch_leaf?: string; branch_depth?: number } | null;
+  /** Structural rollout sentinel that fired (executor-side). Anomalous rows are excluded from aggregates by default — marked, never dropped. */
+  anomaly?: { kind: string; detail: string } | null;
   [key: string]: unknown;
 };
 
@@ -303,6 +323,8 @@ export type FoundryTask = {
   review: { decision: string };
   /** LLM-authored legible definition (understudy.task_authoring.v1), when `traces author-tasks` has run. */
   authored?: AuthoredBlock | null;
+  /** Generation-time structural self-check stamped by the foundry (absent on older builds). */
+  self_check?: { ok: boolean; failures: { check: string; detail: string }[] } | null;
   [key: string]: unknown;
 };
 
@@ -414,4 +436,25 @@ export type HubEntry = {
   reviews?: BenchmarkReview[];
   /** benchmark-overview.json carried over from the proposal stage, when present. */
   overview?: BenchmarkOverview | null;
+  /** understudy.calibration.v1 sidecar from the latest incumbent rerun, when present. */
+  calibration?: CalibrationSummary | null;
+};
+
+/**
+ * understudy.calibration.v1 — calibration.json sidecar written by
+ * `understudy runs execute` after a run with an incumbent arm finishes.
+ * Tasks in failed_task_ids are rendered as suspect (incumbent_failed).
+ */
+export type CalibrationSummary = {
+  schema_version: "understudy.calibration.v1";
+  benchmark_id: string;
+  run_id: string;
+  incumbent_models: string[];
+  threshold: number;
+  started_at: string | null;
+  finished_at: string | null;
+  tasks: { task_id: string; score: number | null; passed: boolean; rollouts: number }[];
+  passed_count: number;
+  failed_count: number;
+  failed_task_ids: string[];
 };

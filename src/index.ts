@@ -54,6 +54,7 @@ import { registerTrainingCommand } from "./commands/training.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
+import { registerInstrumentCommand } from "./commands/instrument.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
@@ -849,6 +850,7 @@ export function buildProgram(): Command {
   registerLoginCommand(program);
   registerLogoutCommand(program);
   registerStatusCommand(program);
+  registerInstrumentCommand(program);
   registerKeysCommand(program);
   registerModelsCommand(program);
   registerProjectsCommand(program);

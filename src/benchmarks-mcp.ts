@@ -28,7 +28,7 @@ import {
 } from "./benchmark-hub-core.js";
 import type { AnyHubEntry, EvalRow, FoundryTask, ProposedHubEntry, ReviewDecision } from "./benchmark-hub-types.js";
 import { REVIEW_DECISIONS, taskDisplayName } from "./benchmark-hub-types.js";
-import { liveJournalPath, readRunRequest, runRequestPath, RUN_SPLITS } from "./run-executor.js";
+import { isAnomalousEvalRow, liveJournalPath, readRunRequest, runRequestPath, RUN_SPLITS } from "./run-executor.js";
 import { accumulateReplay, type OracleReplay, type ReplayCall } from "./benchmark-replay.js";
 
 type Obj = Record<string, unknown>;
@@ -56,21 +56,32 @@ export function configureBenchmarksMcpRoots(extraRoots: string[]): void {
 /* ---------------- shared summaries ---------------- */
 
 function rowsSummary(rows: EvalRow[]): Obj {
-  const scores = rows.map((r) => r.score).filter((s): s is number => typeof s === "number");
-  const byModel: Record<string, { rows: number; mean_score: number | null; ok: number; error: number }> = {};
+  // Same trust discipline as the hub: anomaly-flagged rows never enter means —
+  // they are counted (`anomalous`), never silently dropped.
+  const clean = rows.filter((r) => !isAnomalousEvalRow(r));
+  const scores = clean.map((r) => r.score).filter((s): s is number => typeof s === "number");
+  const byModel: Record<
+    string,
+    { rows: number; mean_score: number | null; ok: number; error: number; anomalous: number; arm_kind: string | null }
+  > = {};
   for (const r of rows) {
     const model = r.model ?? "(unknown)";
-    const bucket = (byModel[model] ??= { rows: 0, mean_score: null, ok: 0, error: 0 });
+    const bucket = (byModel[model] ??= { rows: 0, mean_score: null, ok: 0, error: 0, anomalous: 0, arm_kind: null });
     bucket.rows += 1;
     if (r.status === "ok") bucket.ok += 1;
     if (r.status === "error") bucket.error += 1;
+    if (isAnomalousEvalRow(r)) bucket.anomalous += 1;
+    if (typeof r.arm_kind === "string" && bucket.arm_kind === null) bucket.arm_kind = r.arm_kind;
   }
   for (const [model, bucket] of Object.entries(byModel)) {
-    const ms = rows.filter((r) => (r.model ?? "(unknown)") === model && typeof r.score === "number").map((r) => r.score as number);
+    const ms = clean
+      .filter((r) => (r.model ?? "(unknown)") === model && typeof r.score === "number")
+      .map((r) => r.score as number);
     bucket.mean_score = ms.length > 0 ? ms.reduce((a, b) => a + b, 0) / ms.length : null;
   }
   return {
     rows: rows.length,
+    anomalous: rows.length - clean.length,
     mean_score: scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
     by_model: byModel,
   };
@@ -281,6 +292,8 @@ function toolReadBenchmark(args: Obj): unknown {
     dir: entry.dir,
     manifest: entry.manifest,
     warnings: entry.warnings,
+    // Additive: incumbent-rerun calibration sidecar presence.
+    calibration_present: entry.calibration != null,
     tasks: entry.manifest.tasks.map((t) => ({
       task_id: t.task_id,
       split: t.split,
@@ -360,7 +373,16 @@ function toolReadRollout(args: Obj): unknown {
     journal_file: trajectory.journal_file,
     events: trajectory.events,
     final_response: trajectory.final_response,
-    rows: rows.map((r) => ({ model: r.model ?? null, score: r.score ?? null, subscores: r.subscores ?? null, status: r.status, latency_ms: r.latency_ms ?? null })),
+    rows: rows.map((r) => ({
+      model: r.model ?? null,
+      score: r.score ?? null,
+      subscores: r.subscores ?? null,
+      status: r.status,
+      latency_ms: r.latency_ms ?? null,
+      // Additive: incumbent-vs-candidate arm label + structural sentinel flag.
+      arm_kind: r.arm_kind ?? null,
+      anomaly: r.anomaly ?? null,
+    })),
     // Per-obligation contract scoring through the SAME shared scorer as the
     // hub's Replay tab (dist/benchmark-replay.js).
     obligations: obligations(trajectory.accumulation),
@@ -378,6 +400,11 @@ function toolDiffRollouts(args: Obj): unknown {
   const modelB = typeof args.model_b === "string" && args.model_b.length > 0 ? args.model_b : null;
   const a = loadTrajectory(entry, runA, taskId, modelA);
   const b = loadTrajectory(entry, runB, taskId, modelB);
+  // Additive: the matching eval rows' arm label + sentinel flag per arm.
+  const armRows = (runId: string, model: string | null) =>
+    entryRows(entry)
+      .filter((r) => r.run_id === runId && r.task_id === taskId && (model === null || r.model === model))
+      .map((r) => ({ model: r.model ?? null, score: r.score ?? null, status: r.status, arm_kind: r.arm_kind ?? null, anomaly: r.anomaly ?? null }));
 
   const oblA = obligations(a.accumulation);
   const oblB = obligations(b.accumulation);
@@ -405,8 +432,8 @@ function toolDiffRollouts(args: Obj): unknown {
   }
   return {
     task_id: taskId,
-    a: { run_id: runA, model: a.model, journal_file: a.journal_file, calls: seqA, verdict: a.accumulation?.verdict ?? null },
-    b: { run_id: runB, model: b.model, journal_file: b.journal_file, calls: seqB, verdict: b.accumulation?.verdict ?? null },
+    a: { run_id: runA, model: a.model, journal_file: a.journal_file, calls: seqA, verdict: a.accumulation?.verdict ?? null, rows: armRows(runA, a.model) },
+    b: { run_id: runB, model: b.model, journal_file: b.journal_file, calls: seqB, verdict: b.accumulation?.verdict ?? null, rows: armRows(runB, b.model) },
     obligations: obligationDiff,
     tool_sequence: {
       diverges_at: divergesAt,
@@ -441,6 +468,9 @@ function toolQueueRun(args: Obj): unknown {
     tasks: args.tasks ?? "all",
     split: args.split,
     rollouts_per_task: args.rollouts_per_task ?? 1,
+    // Additive: incumbent-baseline arm + calibration threshold pass-through.
+    incumbent_models: args.incumbent_models,
+    calibration_threshold: args.calibration_threshold,
   });
   if (!result.ok) throw new ToolError(result.error);
   return { ok: true, run_id: result.run.run_id, run: result.run, execute_hint: result.execute_hint };
@@ -455,6 +485,9 @@ function toolRunStatus(args: Obj): unknown {
   const run = existsSync(file) ? readRunRequest(file) : null;
   if (!run) throw new ToolError(`unknown run_id: ${runId}`);
   const rows = entryRows(entry).filter((r) => r.run_id === runId);
+  // Additive: incumbent arm + calibration sidecar presence (promoted entries
+  // carry calibration.json after an incumbent rerun finishes).
+  const calibration = entry.kind === "ok" ? (entry.calibration ?? null) : null;
   return {
     run_id: runId,
     status: run.status,
@@ -463,6 +496,16 @@ function toolRunStatus(args: Obj): unknown {
     error: run.error ?? null,
     models: run.models,
     tasks: run.tasks,
+    incumbent_models: run.incumbent_models ?? [],
+    calibration: calibration
+      ? {
+          run_id: calibration.run_id,
+          threshold: calibration.threshold,
+          passed_count: calibration.passed_count,
+          failed_count: calibration.failed_count,
+          failed_task_ids: calibration.failed_task_ids,
+        }
+      : null,
     rows: rowsSummary(rows),
     per_task: [...new Set(rows.map((r) => r.task_id))].sort().map((taskId) => ({ task_id: taskId, ...taskScores(rows, taskId) })),
   };
@@ -571,6 +614,17 @@ export const BENCHMARKS_TOOLS = [
         },
         split: { type: "string", enum: [...RUN_SPLITS], description: "Default all." },
         rollouts_per_task: { type: "integer", minimum: 1, maximum: 20, default: 1 },
+        incumbent_models: {
+          type: "array",
+          items: { type: "string" },
+          description: "Subset of models to label as the incumbent arm (rows get arm_kind incumbent and feed the calibration gate).",
+        },
+        calibration_threshold: {
+          type: "number",
+          exclusiveMinimum: 0,
+          maximum: 1,
+          description: "Incumbent calibration pass threshold on the strict score (default 1).",
+        },
       },
       required: ["slug", "models"],
     },

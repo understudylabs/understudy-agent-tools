@@ -24,6 +24,9 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
   const rejected = decisions.filter((d) => d === "reject").length;
   const needsMore = decisions.filter((d) => d === "needs_more").length;
   const f = entry.foundry;
+  // Generation-time self-check (foundry structural sentinels), stamped on
+  // each task; older builds without the block simply show nothing.
+  const selfCheckFailed = entry.tasks.filter((t) => t.self_check != null && t.self_check.ok === false);
 
   return (
     <div className="u-page">
@@ -117,6 +120,20 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
             <span className="sub">newest {f.freshness.newest_capture_utc.slice(0, 10)}</span>
           </div>
         </div>
+        {selfCheckFailed.length > 0 && (
+          <span className="u-foot-note" style={{ color: "var(--bad)" }}>
+            {"// generation self-check failed on " +
+              selfCheckFailed.length +
+              " task" +
+              (selfCheckFailed.length === 1 ? "" : "s") +
+              ": " +
+              selfCheckFailed
+                .slice(0, 5)
+                .map((t) => `${t.task_id} (${(t.self_check?.failures ?? []).map((x) => x.check).join(", ")})`)
+                .join("; ") +
+              (selfCheckFailed.length > 5 ? ` … and ${selfCheckFailed.length - 5} more` : "")}
+          </span>
+        )}
         {entry.crossCheckErrors.length > 0 && (
           <span className="u-foot-note" style={{ color: "var(--warn-ink)" }}>
             {"// tasks.jsonl and benchmark.json disagree on task ids: " + entry.crossCheckErrors.join("; ")}
@@ -179,6 +196,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                       reviewDecision: entry.latestReviewByTask[t.task_id]?.decision ?? null,
                       closeCall: t.close_call,
                       authored: !!t.authored,
+                      selfCheckFailures: t.self_check != null && t.self_check.ok === false ? t.self_check.failures.length : 0,
                       promptLength: (t.authored?.statement ?? t.title ?? "").length,
                       contextTokens: cx?.approx_context_tokens ?? null,
                       frontier: cx?.frontier ?? false,

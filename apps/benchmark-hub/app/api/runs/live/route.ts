@@ -6,6 +6,9 @@ import { NextResponse } from "next/server";
 import { getEntry, loadTaskSidecars } from "../../../../lib/data-core";
 import { readRunRequest, runRequestPath } from "../../../../lib/runs-core";
 import { accumulateReplay, type ReplayCall } from "../../../../lib/replay-core";
+// Journal parsing (torn-tail rule, legacy string-arguments tolerance) is the
+// CLI writer's own codec (dist/benchmark-artifacts.js) — never forked.
+import { journalCalls, parseJournalText } from "../../../../lib/artifacts-core";
 
 export const dynamic = "force-dynamic";
 
@@ -58,21 +61,16 @@ export async function GET(request: Request) {
     }
   }
 
-  const lines: Obj[] = [];
+  // Shared parse: torn tail line mid-append is dropped uncounted — the next
+  // poll gets it whole. `since` windows the returned lines for cheap polling.
+  let allLines: Obj[] = [];
   let total = 0;
   if (journal && fs.existsSync(journal)) {
-    const raw = fs.readFileSync(journal, "utf8").split("\n").filter(Boolean).slice(0, MAX_JOURNAL_LINES);
-    total = raw.length;
-    for (const line of raw.slice(since)) {
-      try {
-        lines.push(JSON.parse(line) as Obj);
-      } catch {
-        // torn tail line mid-append — the next poll gets it whole
-        total -= 1;
-        break;
-      }
-    }
+    const parsed = parseJournalText(fs.readFileSync(journal, "utf8"), MAX_JOURNAL_LINES);
+    allLines = parsed.lines;
+    total = parsed.total;
   }
+  const lines: Obj[] = allLines.slice(since);
 
   // Deterministic live accumulation: journal call events against the task's
   // contract, through the SAME shared scorer as the Replay tab.
@@ -84,29 +82,7 @@ export async function GET(request: Request) {
     else task = loadTaskSidecars(entry)[taskId] ?? null;
     if (task) {
       // Full journal (not just the `since` window) so met-flips are stable.
-      const allLines: Obj[] = [];
-      if (journal && fs.existsSync(journal)) {
-        for (const line of fs.readFileSync(journal, "utf8").split("\n").filter(Boolean).slice(0, MAX_JOURNAL_LINES)) {
-          try {
-            allLines.push(JSON.parse(line) as Obj);
-          } catch {
-            break;
-          }
-        }
-      }
-      const calls: ReplayCall[] = allLines
-        .filter((l) => l.kind === "call")
-        .map((l) => {
-          let args: unknown = l.arguments ?? {};
-          if (typeof args === "string") {
-            try {
-              args = JSON.parse(args);
-            } catch {
-              /* keep the summary string */
-            }
-          }
-          return { name: String(l.tool ?? ""), arguments: args, ...(l.status === "error" ? { status: "error" } : {}) } as ReplayCall & { status?: string };
-        });
+      const calls: ReplayCall[] = journalCalls(allLines);
       accumulation = accumulateReplay(task, calls) as unknown as Obj;
     }
   }
