@@ -25,6 +25,15 @@ export function AuthoredPanel({
   readOnly: boolean;
 }) {
   const authored = task.authored ?? null;
+  // The authoring CLI writes grounding as a flat string ("verified"|"failed");
+  // an earlier draft nested it as {status, violations}. Accept both shapes.
+  const groundingRaw = authored?.grounding as unknown;
+  const groundingStatus =
+    typeof groundingRaw === "string" ? groundingRaw : ((groundingRaw as { status?: string } | null)?.status ?? "unknown");
+  const groundingViolations: string[] =
+    typeof groundingRaw === "object" && groundingRaw !== null && Array.isArray((groundingRaw as { violations?: string[] }).violations)
+      ? ((groundingRaw as { violations: string[] }).violations)
+      : ((authored?.grounding_violations as string[] | undefined) ?? []);
   const detRequired = (task.outcome_contract?.required ?? []) as FoundryContractItem[];
 
   return (
@@ -38,17 +47,17 @@ export function AuthoredPanel({
         <div className="mt-4 flex flex-col gap-4">
           <div className="u-card">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge className={authored.grounding?.status === "verified" ? "text-ok border-ok/50" : "text-bad border-bad/40"}>
-                grounding {authored.grounding?.status ?? "unknown"}
+              <Badge className={groundingStatus === "verified" ? "text-ok border-ok/50" : "text-bad border-bad/40"}>
+                grounding {groundingStatus}
               </Badge>
               <ConfidenceChip level={authored.confidence} />
               {authored.model && <Badge>authored by {authored.model}</Badge>}
               {authored.authored_at && <span className="mono text-[10px] text-faint">{authored.authored_at.slice(0, 10)}</span>}
             </div>
             <p className="mt-3 text-base font-semibold" style={{ lineHeight: 1.4 }}>{authored.statement}</p>
-            {(authored.grounding?.violations ?? []).length > 0 && (
+            {groundingViolations.length > 0 && (
               <ul className="mt-2 flex list-none flex-col gap-1 p-0">
-                {(authored.grounding?.violations ?? []).map((v, i) => (
+                {groundingViolations.map((v, i) => (
                   <li key={i} className="mono text-xs" style={{ color: "var(--bad)" }}>
                     ⚠ {v}
                   </li>
