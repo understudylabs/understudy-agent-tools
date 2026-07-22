@@ -49,6 +49,8 @@ export const RUN_EVENT_SCHEMA = "understudy.run_event.v1";
 /** calibration.json sidecar written after a run with an incumbent arm finishes. */
 export const CALIBRATION_SCHEMA = "understudy.calibration.v1";
 export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
+/** Foundry generation-time structural self-check (manifest.self_check + task.self_check). */
+export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
 
 /* ------------------------------------------------------------------ */
 /* JSONL codec                                                         */

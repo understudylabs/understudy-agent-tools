@@ -125,6 +125,36 @@ describe("computeLeaderboard", () => {
     assert.equal(s.totalCost, null);
   });
 
+  it("anomaly-flagged rows are excluded from score/cost/latency aggregates but counted (marked, not dropped)", () => {
+    const rows = [
+      row({ score: 1, cost: 1, latency_ms: 100 }),
+      // A silent zero: ok status, score 0, flagged by the executor's sentinel.
+      row({ task_id: "t2", score: 0, cost: 9, latency_ms: 9000, anomaly: { kind: "zero_score_zero_calls", detail: "score 0, zero tool calls" } }),
+    ];
+    const [s] = computeLeaderboard(manifest, rows);
+    assert.equal(s.overall, 1, "the anomalous zero never drags the mean");
+    assert.equal(s.totalCost, 1);
+    assert.equal(s.p50LatencyMs, 100);
+    assert.equal(s.scoredCount, 1);
+    assert.equal(s.anomalousCount, 1, "count stays visible");
+    assert.equal(s.taskCount, 2, "the anomalous row's task is still counted");
+  });
+
+  it("includeAnomalous opts flagged rows back into the aggregates", () => {
+    const rows = [
+      row({ score: 1 }),
+      row({ task_id: "t2", score: 0, anomaly: { kind: "no_tool_calls", detail: "x" } }),
+    ];
+    const [s] = computeLeaderboard(manifest, rows, { includeAnomalous: true });
+    assert.equal(s.overall, 0.5);
+    assert.equal(s.anomalousCount, 1);
+  });
+
+  it("clean rows report anomalousCount 0 (additive field, older rows unaffected)", () => {
+    const [s] = computeLeaderboard(manifest, [row({ score: 1 })]);
+    assert.equal(s.anomalousCount, 0);
+  });
+
   it("flags incumbent arms from row arm_kind; unlabeled rows stay candidate", () => {
     const rows = [
       row({ model: "gpt-4o", arm_kind: "incumbent" }),
