@@ -231,6 +231,41 @@ export type SourceDag = {
   groups: { id: string; capture_count: number; edge_count: number; roots: string[] }[];
 };
 
+/**
+ * understudy.task_authoring.v1 — the LLM-authored, grounding-verified block
+ * `understudy traces author-tasks` writes onto a foundry task. The authored
+ * intent_summary wins as the task's display name everywhere; the
+ * deterministic contract stays authoritative (grounding cross-validates).
+ */
+export type AuthoredContractEntry = {
+  tool?: string;
+  arguments_semantic?: Record<string, unknown>;
+  maps_to_observed?: string[];
+  reason?: string;
+  [key: string]: unknown;
+};
+
+export type AuthoredBlock = {
+  schema_version: string;
+  model?: string;
+  authored_at?: string;
+  grounding?: { status?: "verified" | "failed"; violations?: string[] } | null;
+  statement?: string;
+  success_criteria?: string[];
+  category_proposal?: { id?: string; name?: string } | null;
+  difficulty?: string;
+  difficulty_reason?: string;
+  intent_summary?: string;
+  contract?: {
+    required?: AuthoredContractEntry[];
+    preserved?: AuthoredContractEntry[];
+    forbidden?: AuthoredContractEntry[];
+  } | null;
+  confidence?: string;
+  ambiguities?: string[];
+  [key: string]: unknown;
+};
+
 /** understudy.benchmark_task.v1 — one line of tasks.jsonl. */
 export type FoundryTask = {
   schema_version: "understudy.benchmark_task.v1";
@@ -259,8 +294,17 @@ export type FoundryTask = {
   claims: FoundryClaim[];
   sentinels: unknown[];
   review: { decision: string };
+  /** LLM-authored legible definition (understudy.task_authoring.v1), when `traces author-tasks` has run. */
+  authored?: AuthoredBlock | null;
   [key: string]: unknown;
 };
+
+/** Display name: authored intent_summary wins over the raw distinctive-line title. */
+export function taskDisplayName(task: Pick<FoundryTask, "task_id" | "title" | "authored">): string {
+  const summary = task.authored?.intent_summary;
+  if (typeof summary === "string" && summary.trim()) return summary.trim();
+  return task.title || task.task_id;
+}
 
 /** A trace-foundry output dir awaiting human review (stage: proposed). */
 export type ProposedHubEntry = {
