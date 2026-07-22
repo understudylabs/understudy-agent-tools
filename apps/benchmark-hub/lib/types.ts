@@ -306,4 +306,8 @@ export type HubEntry = {
   versions: BenchmarkVersion[];
   /** Loader diagnostics: skipped/dropped/foreign line counts. */
   diagnostics: EntryDiagnostics;
+  /** understudy.promotion_record.v1 — present when this benchmark was promoted from a trace-foundry proposal in the same dir. */
+  promotionRecord?: Record<string, unknown> | null;
+  /** Review history carried over from the proposal stage (reviews.jsonl, oldest first). */
+  reviews?: BenchmarkReview[];
 };
