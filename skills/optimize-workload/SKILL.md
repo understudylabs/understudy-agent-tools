@@ -201,7 +201,12 @@ Do not claim savings without:
 baseline contract, plus `baseline_sha256` and the frozen candidate hash. It
 must also include sample size, split used, score delta, latency basis, cost
 basis, price assumptions, request-volume assumption, confidence level, caveats,
-fallback route, and demotion trigger. For an agentic workload, latency and cost
+fallback route, and demotion trigger. Two rigor fields are also required
+(see [`../../docs/benchmark-rigor.md`](../../docs/benchmark-rigor.md)): the
+trivial-agent floor from `baseline.json` (`null_floor` — the claim is invalid
+if a do-nothing agent also clears the bar), and a bootstrap confidence
+interval over per-row holdout scores for both baseline and candidate — if the
+intervals overlap, report an optimization lead, not a win. For an agentic workload, latency and cost
 basis are per-rollout and mandatory, not optional: report the delta in tool-call
 count and end-to-end rollout cost alongside the rubric delta, so a quality gain
 bought with more calls or higher latency is visible rather than hidden.
