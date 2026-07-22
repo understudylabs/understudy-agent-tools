@@ -1,28 +1,22 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { cookies } from "next/headers";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
-
-const plexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-plex-sans",
-});
-
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-mono",
-});
 
 export const metadata: Metadata = {
   title: "Understudy Benchmark Hub",
   description: "Local benchmark hub: manifests, evidence, leaderboards, flags.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Theme contract: default is system (`color-scheme: light dark`); an
+  // explicit choice persists as a `theme` cookie and renders as
+  // <html data-theme="light|dark"> per the trace-viewer contract.
+  const cookieTheme = (await cookies()).get("theme")?.value;
+  const theme = cookieTheme === "light" || cookieTheme === "dark" ? cookieTheme : "system";
   return (
-    <html lang="en" data-theme="dark" className={`${plexSans.variable} ${plexMono.variable}`}>
+    <html lang="en" {...(theme === "system" ? {} : { "data-theme": theme })}>
       <body className="min-h-screen antialiased">
         <nav className="u-nav">
           <div className="u-nav-in">
@@ -34,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="u-links mono">
               <Link href="/">Hub</Link>
               <a href="#docs">Docs</a>
+              <ThemeToggle initial={theme} />
             </div>
           </div>
         </nav>

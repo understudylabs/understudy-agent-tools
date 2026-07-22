@@ -7,12 +7,19 @@ import type { BenchmarkManifest } from "@/lib/types";
 
 /**
  * Per-model categorical slots (LiveBench colors dots per org; we color per
- * model/arm). Values live in globals.css as --series-* — dark-band steps
- * validated all-pairs against #141519 and #000000 (dataviz validator).
- * Fixed order, assigned by alphabetical model name — color follows the
- * entity, never rank.
+ * model/arm). Values are the trace-viewer theme contract's --viz-series-1..6
+ * (light-dark pairs), validated all-pairs against both --background values
+ * (dataviz validator). Fixed order, assigned by alphabetical model name —
+ * color follows the entity, never rank.
  */
-export const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+export const SERIES = [
+  "var(--viz-series-1)",
+  "var(--viz-series-2)",
+  "var(--viz-series-3)",
+  "var(--viz-series-4)",
+  "var(--viz-series-5)",
+  "var(--viz-series-6)",
+];
 const OVERFLOW = "var(--series-overflow)";
 
 export function seriesColor(model: string, allModels: string[]): string {
@@ -30,8 +37,8 @@ const EPS = 1e-6; // "near-zero spend" threshold for the ≈$0 gutter
 const LAT_FLOOR = 1; // ms — log10(0) guard: latencies clamp to this floor
 
 const GRID = "var(--border)";
-const MUTED = "var(--muted)";
-const ACCENT = "var(--accent)"; // stamp — dashed value-frontier line
+const MUTED = "var(--muted-foreground)";
+const ACCENT = "var(--primary)"; // contract primary — dashed value-frontier line
 
 /** Score getter for the active cost-view scope (Overall or one category). */
 function scopedScore(s: ModelSummary, scope: string | null): number | null {
@@ -209,7 +216,7 @@ export function QualityCostScatter({
           {/* Area under the value frontier — accent wash, gone by the baseline */}
           <linearGradient id="qc-frontier-fill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="var(--grad-frontier-top)" />
-            <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+            <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
           </linearGradient>
           {/* Tiny radial highlight overlaid on every scatter dot */}
           <radialGradient id="qc-dot-sheen" cx="0.35" cy="0.3" r="0.65">
@@ -265,10 +272,10 @@ export function QualityCostScatter({
               <circle cx={p.px} cy={yPos(p.y)} r={14} fill="transparent" />
               {p.noSuccess ? (
                 // Hollow dot: real spend, zero successes — off the frontier.
-                <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="var(--surface)" stroke={color} strokeWidth="2" />
+                <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="var(--surface-opaque)" stroke={color} strokeWidth="2" />
               ) : (
                 <>
-                  <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface)" strokeWidth="2" />
+                  <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface-opaque)" strokeWidth="2" />
                   {/* radial sheen on top of the series color (identity unchanged) */}
                   <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="url(#qc-dot-sheen)" pointerEvents="none" />
                 </>

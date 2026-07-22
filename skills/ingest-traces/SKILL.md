@@ -1,6 +1,6 @@
 ---
 name: ingest-traces
-description: Use when a developer already has production LLM traces — a bucket of captures, provider log exports, or gateway capture files — and wants them turned into local, redacted eval sets, or profiled for cost first. "Ingest my traces", "turn these logs into an eval set", "where is my LLM spend going", "which calls could a local model take over".
+description: Use when a developer already has production LLM traces — a bucket of captures, provider log exports, or gateway capture files — and wants them visualized, turned into local redacted eval sets, or profiled for cost. "Visualize this trace", "ingest my traces", "turn these logs into an eval set", "where is my LLM spend going".
 metadata:
   understudy:
     mode: interactive
@@ -97,6 +97,22 @@ bulk semantic-triage playbook in
 [`references/lotus-semantic-triage.md`](references/lotus-semantic-triage.md).
 
 ## Flow
+
+For a local, call-by-call inspection of one trace, build the bundled trace
+viewer first:
+
+```sh
+understudy traces build-viewer \
+  --source .understudy/captures \
+  --trace-id <trace-id> \
+  --output .understudy/trace-viewer/<trace-id>
+```
+
+It renders the execution timeline, system prompts, conversations, tool
+definitions, tool invocations/results, and raw envelopes without a server or
+upload. The generated `trace-data.js` contains private payloads and must stay
+local. See [`references/trace-viewer.md`](references/trace-viewer.md) for the
+input aliases, output contract, and privacy boundary.
 
 For multi-turn tool workloads, start the deterministic foundry with:
 

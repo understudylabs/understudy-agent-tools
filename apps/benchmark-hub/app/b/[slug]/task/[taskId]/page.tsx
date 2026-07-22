@@ -7,6 +7,7 @@ import { FlagBadge, SplitChip, StatusBadge, Badge } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { FlagForm } from "@/components/flag-form";
 import { ProposedTaskPage } from "@/components/proposed/task-page";
+import { TraceTimelineLinks } from "@/components/trace-timeline";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,7 @@ export default async function TaskInspector({
             </div>
           ))}
           <FlagForm slug={entry.slug} taskId={task.task_id} readOnly={entry.readOnly} />
+          <TraceTimelineLinks slug={entry.slug} taskId={task.task_id} />
         </div>
       </section>
 

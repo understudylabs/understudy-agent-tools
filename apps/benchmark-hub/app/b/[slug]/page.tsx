@@ -49,7 +49,7 @@ function Section({
       <h2>
         {title}
         {scope && (
-          <span className="mono" style={{ marginLeft: 10, fontSize: 10, fontWeight: 400, color: "var(--muted)" }}>
+          <span className="mono" style={{ marginLeft: 10, fontSize: 10, fontWeight: 400, color: "var(--muted-foreground)" }}>
             {scope}
           </span>
         )}
@@ -173,7 +173,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <p className="u-desc">{m.description}</p>
 
         {/* Stat strip — absorbs the old warning banners */}
-        <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
           {(stripSplit === "holdout" ? "holdout split" : "all splits") + " · flagged excluded · best arm per stat"}
         </span>
         <div className="u-stats">
