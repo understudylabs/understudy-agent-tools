@@ -196,6 +196,96 @@ test("promote consumes mixed review decisions: rejected tasks are excluded, not 
   assert.ok(existsSync(join(output, "benchmark-proposal.json")), "pre-promotion manifest preserved for audit");
 });
 
+const traced = (id, ts, workload, traceId, messages, response) => {
+  const row = capture(id, ts, messages, response);
+  row.workload_name = workload;
+  row.trace_id = traceId; row.caller_span_id = id.padEnd(16, "0").slice(0, 16); row.trace_flags = "01"; row.trace_source = "w3c_traceparent"; row.trace_context_status = "valid";
+  return row;
+};
+const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", TRACE_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", TRACE_C = "cccccccccccccccccccccccccccccccc";
+
+test("trace grouping: multi-workload trace becomes one task with workflow_sibling edges and merged tool surface", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-trace-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    traced("orch-1", "2026-07-20T00:00:00Z", "orchestrator", TRACE_A, [{ role: "user", content: "Handle incoming event 42" }], { content: [{ type: "tool_use", id: "o1", name: "update-record", input: { id: 42 } }] }),
+    traced("orch-2", "2026-07-20T00:00:05Z", "orchestrator", TRACE_A, [{ role: "user", content: "Handle incoming event 42" }, { role: "assistant", content: [{ type: "tool_use", id: "o1", name: "update-record", input: { id: 42 } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "o1", content: "ok" }] }], { content: [{ type: "text", text: "done" }] }),
+    traced("helper-1", "2026-07-20T00:00:02Z", "field-updater", TRACE_A, [{ role: "user", content: "Extract fields from event 42" }], { content: [{ type: "tool_use", id: "h1", name: "save-fields", input: { id: 42, status: "open" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  assert.equal(result.counts.tasks, 1, "one trace = one task despite two workloads");
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  assert.equal(dag.groups.length, 1);
+  assert.equal(dag.groups[0].grouping_label, "trace_grouped/valid");
+  assert.deepEqual(dag.groups[0].workloads, ["field-updater", "orchestrator"]);
+  const sibling = dag.edges.find((edge) => edge.type === "workflow_sibling");
+  assert.ok(sibling, "disjoint-prefix chain in the same trace links as workflow_sibling");
+  assert.equal(sibling.confidence, "low");
+  assert.ok(!dag.edges.some((edge) => edge.type === "destructive_mutation"), "sibling chains are not destructive mutations");
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.equal(task.grouping_label, "trace_grouped/valid");
+  assert.deepEqual(task.tool_surface, ["save-fields", "update-record"], "tool surface merges across workloads");
+});
+
+test("trace grouping: >120s silence splits, probes segregate as singleton, traceless captures fall back to heuristic", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-split-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    // TRACE_B: two multi-workload bursts separated by 300s -> trace_grouped/split x2
+    traced("b1", "2026-07-20T00:00:00Z", "orchestrator", TRACE_B, [{ role: "user", content: "Burst one step one" }], { content: [{ type: "tool_use", id: "b1", name: "update-record", input: { id: 1 } }] }),
+    traced("b2", "2026-07-20T00:00:10Z", "field-updater", TRACE_B, [{ role: "user", content: "Burst one step two" }], {}),
+    traced("b3", "2026-07-20T00:05:10Z", "orchestrator", TRACE_B, [{ role: "user", content: "Burst two step one" }], {}),
+    traced("b4", "2026-07-20T00:05:20Z", "field-updater", TRACE_B, [{ role: "user", content: "Burst two step two" }], {}),
+    // TRACE_C: a 1-request probe -> singleton
+    traced("probe", "2026-07-20T01:00:00Z", "domain-id", TRACE_C, [{ role: "user", content: "Which domain is this?" }], {}),
+    // traceless -> heuristic_grouped
+    capture("legacy", "2026-07-20T02:00:00Z", [{ role: "user", content: "Old style capture" }], {}),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  const labels = dag.groups.map((group) => group.grouping_label).sort();
+  assert.deepEqual(labels, ["heuristic_grouped", "singleton", "trace_grouped/split", "trace_grouped/split"]);
+  const splitGroups = dag.groups.filter((group) => group.grouping_label === "trace_grouped/split");
+  assert.notEqual(splitGroups[0].id, splitGroups[1].id);
+  assert.equal(new Set(dag.groups.map((group) => group.id)).size, 4, "episode group ids never collide");
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(new Set(tasks.map((task) => task.task_id)).size, 4, "task ids unique across split episodes");
+});
+
+test("trace grouping: raw traceparent header parses, and a workload filter flags cross-workload traces instead of silently truncating", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-honesty-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const viaHeader = capture("tp-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Traceparent style capture one" }], { content: [{ type: "tool_use", id: "t1", name: "update-record", input: { id: 9 } }] });
+  viaHeader.workload_name = "orchestrator"; viaHeader.traceparent = `00-${TRACE_A}-1111111111111111-01`;
+  const viaHeader2 = capture("tp-2", "2026-07-20T00:00:05Z", [{ role: "user", content: "Traceparent style capture one" }, { role: "assistant", content: "ok" }], {});
+  viaHeader2.workload_name = "orchestrator"; viaHeader2.traceparent = `00-${TRACE_A}-2222222222222222-01`;
+  const hidden = traced("hidden", "2026-07-20T00:00:02Z", "helper", TRACE_A, [{ role: "user", content: "Helper call outside the filter" }], {});
+  writeFileSync(join(source, "rows.jsonl"), [viaHeader, viaHeader2, hidden].map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "orchestrator" });
+  assert.equal(result.counts.captures, 2);
+  const normalized = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(normalized[0].trace.trace_id, TRACE_A, "traceparent header parsed into the trace block");
+  assert.equal(normalized[0].trace.valid, true);
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.equal(task.status, "needs_review", "cross-workload trace under a filter is flagged, not truncated");
+  assert.equal(task.close_call, true);
+  const claim = task.claims.find((row) => String(row.claim).includes("workflow may be incomplete"));
+  assert.ok(claim, "incompleteness claim present");
+  assert.match(claim.claim, /helper/);
+  assert.deepEqual(task.trace.workloads_spanned, ["helper", "orchestrator"]);
+});
+
+test("trace grouping: invalid trace context falls back to heuristic grouping", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-invalid-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const bad = capture("bad", "2026-07-20T00:00:00Z", [{ role: "user", content: "Invalid trace context" }], {});
+  bad.trace_id = TRACE_A; bad.trace_context_status = "invalid";
+  const zero = capture("zero", "2026-07-20T00:00:01Z", [{ role: "user", content: "All zero trace id" }], {});
+  zero.trace_id = "0".repeat(32);
+  writeFileSync(join(source, "rows.jsonl"), [bad, zero].map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  assert.ok(dag.groups.every((group) => group.grouping_label === "heuristic_grouped"));
+});
+
 test("import-reviews no longer demands unanimity", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-unanimity-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const rows = [

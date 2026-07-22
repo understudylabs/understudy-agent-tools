@@ -277,6 +277,8 @@ export type FoundryTask = {
   candidate_boundary: string;
   machine_confidence: "high" | "medium" | "low";
   close_call: boolean;
+  /** How the execution group formed: trace_grouped/valid | trace_grouped/split | heuristic_grouped | singleton. Absent on pre-trace-grouping builds. */
+  grouping_label?: string;
   tool_surface: string[];
   outcome_contract: {
     status?: string;

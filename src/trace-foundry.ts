@@ -104,6 +104,32 @@ function responseProjection(raw: unknown): Obj {
   return { encoding: "json", body: parsed as J, tool_calls: calls, stop_reason: object.stop_reason ?? object.stopReason ?? null };
 }
 
+/**
+ * W3C trace lineage from the capture envelope. Platform schema v4 captures
+ * carry top-level `trace_id`/`caller_span_id`/`trace_flags`/`trace_source`/
+ * `trace_context_status`; older captures lack them. A raw `traceparent`
+ * header string (envelope or metadata) is also accepted for offline exports
+ * and fixtures. `valid` means: well-formed non-zero 128-bit trace id AND the
+ * platform did not mark the context invalid — only then may grouping trust it.
+ */
+function parseTraceContext(envelope: Obj): Obj | null {
+  const meta = asObject(envelope.metadata);
+  let traceId = envelope.trace_id ?? meta.trace_id ?? null;
+  let spanId = envelope.caller_span_id ?? meta.caller_span_id ?? null;
+  let flags = envelope.trace_flags ?? meta.trace_flags ?? null;
+  let source = envelope.trace_source ?? meta.trace_source ?? null;
+  const status = envelope.trace_context_status ?? meta.trace_context_status ?? null;
+  const traceparent = envelope.traceparent ?? meta.traceparent ?? null;
+  if (traceId == null && typeof traceparent === "string") {
+    const parsed = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i.exec(traceparent.trim());
+    if (parsed) { traceId = parsed[2]; spanId = spanId ?? parsed[3]; flags = flags ?? parsed[4]; source = source ?? "w3c_traceparent"; }
+  }
+  if (traceId == null) return null;
+  const id = String(traceId).toLowerCase();
+  const valid = /^[0-9a-f]{32}$/.test(id) && !/^0+$/.test(id) && (status == null || status === "valid");
+  return { trace_id: id, caller_span_id: spanId == null ? null : String(spanId).toLowerCase(), trace_flags: flags ?? null, trace_source: source ?? null, trace_context_status: status ?? (valid ? "valid" : "invalid"), valid };
+}
+
 function normalize(envelope: Obj, pointer: string): Obj | null {
   const version = Number(envelope.schema_version ?? 4);
   if (![2, 3, 4].includes(version)) throw new Error(`Unsupported capture schema_version ${version}`);
@@ -129,6 +155,7 @@ function normalize(envelope: Obj, pointer: string): Obj | null {
     routing: { provider: envelope.provider ?? null, requested_model: envelope.requested_model ?? request.model ?? null, upstream_model: envelope.upstream_model ?? null },
     transport: { endpoint: envelope.endpoint ?? null, status_code: envelope.status_code ?? null, latency_ms: envelope.latency_ms ?? null },
     request: { system: request.system ?? null, messages, tools, settings: Object.fromEntries(Object.entries(request).filter(([k]) => !["system", "messages", "tools"].includes(k))) },
+    trace: parseTraceContext(envelope),
     upstream_request: upstreamRequestRaw === null ? null : jsonish(upstreamRequestRaw),
     response: responseProjection(responseRaw), raw: { customer_request: requestRaw ?? null, upstream_request: upstreamRequestRaw, response: responseRaw ?? null },
     warnings,
@@ -137,20 +164,76 @@ function normalize(envelope: Obj, pointer: string): Obj | null {
 }
 
 function commonPrefix(a: string[], b: string[]): number { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n += 1; return n; }
-function buildDag(rows: Obj[]): Obj {
-  const groups = new Map<string, Obj[]>();
-  for (const row of rows) groups.set(row.fingerprints.group, [...(groups.get(row.fingerprints.group) ?? []), row]);
+
+/** Trace census rule: >120s of silence inside one trace splits it into sub-episodes (async continuations are separate invocations). */
+const TRACE_GAP_MS = 120_000;
+const workloadOf = (row: Obj): string => String(row.scope.workload_name ?? row.scope.workload_id ?? "unknown");
+
+/**
+ * Execution-group assignment. Production census verdict: one w3c trace ≈ one
+ * top-level (orchestrator-led) agent invocation, so captures with a VALID
+ * trace context group by trace_id — strictly better than the prompt-prefix
+ * heuristic because it recovers cross-workload structure (orchestrator +
+ * helper workloads in one task). Rules from the census:
+ *   - split a trace on >120s silence gaps (label trace_grouped/split);
+ *   - segregate probe traces (1 capture, or single-workload <3 captures) as
+ *     singleton;
+ *   - traceless captures keep the prefix-fingerprint fallback
+ *     (heuristic_grouped).
+ * Order is by ts only for chain inference — concurrency is the norm, so
+ * sequential causality is never assumed (sibling chains get low-confidence
+ * workflow_sibling edges, not parent/child ones).
+ */
+function assignGroups(rows: Obj[]): { id: string; grouping_label: string; trace_id: string | null; captures: Obj[] }[] {
+  const byTrace = new Map<string, Obj[]>(), heuristic = new Map<string, Obj[]>();
+  for (const row of rows) {
+    if (row.trace?.valid) byTrace.set(row.trace.trace_id, [...(byTrace.get(row.trace.trace_id) ?? []), row]);
+    else heuristic.set(row.fingerprints.group, [...(heuristic.get(row.fingerprints.group) ?? []), row]);
+  }
+  const groups: { id: string; grouping_label: string; trace_id: string | null; captures: Obj[] }[] = [];
+  for (const [traceId, captures] of byTrace) {
+    captures.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
+    const episodes: Obj[][] = [[]];
+    for (const capture of captures) {
+      const previous = episodes.at(-1)?.at(-1);
+      if (previous && new Date(capture.captured_at).valueOf() - new Date(previous.captured_at).valueOf() > TRACE_GAP_MS) episodes.push([]);
+      episodes.at(-1)?.push(capture);
+    }
+    episodes.forEach((episode, index) => {
+      const workloads = new Set(episode.map(workloadOf));
+      const singleton = episode.length === 1 || (workloads.size === 1 && episode.length < 3);
+      // Hashed id (task_id derives from a 16-char prefix, so `trace-<id>` and
+      // `trace-<id>-e2` style ids would collide there); trace_id + episode
+      // stay recorded on the group row.
+      groups.push({ id: hash({ trace: traceId, episode: episodes.length > 1 ? index + 1 : null }), grouping_label: singleton ? "singleton" : episodes.length > 1 ? "trace_grouped/split" : "trace_grouped/valid", trace_id: traceId, captures: episode });
+    });
+  }
+  for (const [groupId, captures] of heuristic) groups.push({ id: groupId, grouping_label: "heuristic_grouped", trace_id: null, captures });
+  return groups;
+}
+
+function buildDag(rows: Obj[], traceWorkloads: Map<string, Set<string>> = new Map()): Obj {
   const nodes: Obj[] = [], edges: Obj[] = [], groupRows: Obj[] = [];
-  for (const [groupId, captures] of groups) {
+  for (const group of assignGroups(rows)) {
+    const groupId = group.id, captures = group.captures;
     captures.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
     const roots: string[] = [];
     captures.forEach((capture, index) => {
-      nodes.push({ id: capture.capture_key, capture_id: capture.capture_id, execution_group: groupId, captured_at: capture.captured_at, message_count: capture.request.messages.length, has_error: Number(capture.transport.status_code ?? 200) >= 400, warnings: capture.warnings, source: capture.source });
+      nodes.push({ id: capture.capture_key, capture_id: capture.capture_id, execution_group: groupId, captured_at: capture.captured_at, message_count: capture.request.messages.length, has_error: Number(capture.transport.status_code ?? 200) >= 400, warnings: capture.warnings, source: capture.source, trace_id: capture.trace?.trace_id ?? null });
       if (index === 0) { roots.push(capture.capture_key); return; }
       const prior = captures.slice(0, index);
       const candidates = prior.map((parent) => ({ parent, prefix: commonPrefix(parent.fingerprints.messages, capture.fingerprints.messages) })).sort((a, b) => b.prefix - a.prefix || b.parent.captured_at.localeCompare(a.parent.captured_at));
-      const best = candidates[0];
-      if (!best) { roots.push(capture.capture_key); return; }
+      let best: { parent: Obj; prefix: number } | undefined = candidates[0];
+      // Trace groups: a disjoint prefix inside the same trace is a concurrent
+      // sibling chain (fan-out), NOT a destructive mutation of another chain.
+      // Start a new root and record the sibling relation at low confidence.
+      if (group.trace_id !== null && best && best.prefix === 0) best = undefined;
+      if (!best) {
+        const priorRoot = roots.at(-1);
+        roots.push(capture.capture_key);
+        if (group.trace_id !== null && priorRoot) edges.push({ from: priorRoot, to: capture.capture_key, type: "workflow_sibling", execution_group: groupId, confidence: "low", evidence: { common_prefix_messages: 0, same_trace: true, trace_id: group.trace_id } });
+        return;
+      }
       const p = best.parent.fingerprints.messages as string[], c = capture.fingerprints.messages as string[];
       const sameBoundary = p.length === c.length && best.prefix === p.length;
       const priorError = Number(best.parent.transport.status_code ?? 200) >= 400 || (best.parent.response.tool_calls ?? []).length === 0;
@@ -159,7 +242,11 @@ function buildDag(rows: Obj[]): Obj {
       const tied = candidates.filter((candidate) => candidate.prefix === best.prefix).length > 1;
       edges.push({ from: best.parent.capture_key, to: capture.capture_key, type, execution_group: groupId, confidence: tied || type === "destructive_mutation" ? "low" : "deterministic", evidence: { common_prefix_messages: best.prefix, prior_error: priorError, ambiguous_parent: tied } });
     });
-    groupRows.push({ id: groupId, capture_count: captures.length, edge_count: Math.max(0, captures.length - 1), roots });
+    const workloads = [...new Set(captures.map(workloadOf))].sort();
+    // Cross-workload honesty: when a workload filter hid part of this trace,
+    // the group still declares every workload the full trace spans.
+    const workloadsSpanned = group.trace_id !== null ? [...new Set([...workloads, ...(traceWorkloads.get(group.trace_id) ?? [])])].sort() : workloads;
+    groupRows.push({ id: groupId, capture_count: captures.length, edge_count: edges.filter((edge) => edge.execution_group === groupId).length, roots, grouping_label: group.grouping_label, trace_id: group.trace_id, workloads, workloads_spanned: workloadsSpanned });
   }
   const issues = edges.filter((edge) => edge.evidence.ambiguous_parent).map((edge) => ({ code: "ambiguous_parent", edge: { from: edge.from, to: edge.to } }));
   return { schema_version: "understudy.source_dag.v1", valid: issues.length === 0, issues, nodes, edges, groups: groupRows };
@@ -267,6 +354,18 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     const definitions = captures.flatMap((capture) => capture.request.tools ?? []).map(asObject);
     const observedResults = events.filter((event) => event.kind === "result" && event.tool);
     const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: distinctiveTitles.get(group.id) ?? contentText(first.content).trim().slice(0, 160) ?? `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
+    // Grouping provenance (what grouping requires, nothing more): the label
+    // travels with the task, and a trace that spans workloads hidden by the
+    // build's --workload filter is flagged for review — never silently
+    // truncated into a fragment-task.
+    task.grouping_label = group.grouping_label ?? "heuristic_grouped";
+    task.trace = { trace_id: group.trace_id ?? null, grouping_label: task.grouping_label, workloads: group.workloads ?? [], workloads_spanned: group.workloads_spanned ?? group.workloads ?? [] };
+    const hiddenWorkloads = (task.trace.workloads_spanned as string[]).filter((workload) => !(task.trace.workloads as string[]).includes(workload));
+    if (hiddenWorkloads.length > 0) {
+      if (task.status !== "blocked") task.status = "needs_review";
+      task.close_call = true;
+      task.claims.push({ kind: "inferred", claim: `workflow may be incomplete; spans workloads ${(task.trace.workloads_spanned as string[]).join(", ")}`, confidence: "medium" });
+    }
     task.capability_fit = capabilityFit(task, catalog);
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
     return task;
@@ -586,11 +685,18 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   // rewrite bulk artifacts per pass (a 2k-capture set previously re-read
   // ~425MB and rewrote ~370MB on EVERY 10-capture batch).
   const all: Obj[] = [];
+  // Full-source trace→workload census, computed BEFORE the --workload filter:
+  // a filtered build can then flag tasks whose trace spans hidden workloads.
+  const traceWorkloads = new Map<string, Set<string>>();
   let invalidTimestampFiltered = 0;
   for (const file of files) for (const [index, envelope] of envelopes(file).entries()) {
     const row = normalize(envelope, `${relative(source, file) || file}#L${index + 1}`);
-    if (row === null) invalidTimestampFiltered += 1;
-    else if (!options.workload || [row.scope.workload_id, row.scope.workload_name].some((value) => String(value ?? "").toLowerCase() === options.workload?.toLowerCase())) all.push(row);
+    if (row === null) { invalidTimestampFiltered += 1; continue; }
+    // Only a --workload-filtered build can silently hide part of a trace; an
+    // unfiltered build keeps every sibling episode as its own task, so the
+    // census is threaded through (and tasks flagged) only when filtering.
+    if (options.workload && row.trace?.valid) traceWorkloads.set(row.trace.trace_id, new Set([...(traceWorkloads.get(row.trace.trace_id) ?? [])]).add(String(row.scope.workload_name ?? row.scope.workload_id ?? "unknown")));
+    if (!options.workload || [row.scope.workload_id, row.scope.workload_name].some((value) => String(value ?? "").toLowerCase() === options.workload?.toLowerCase())) all.push(row);
   }
   const fresh = all.filter((row) => new Date(row.captured_at) >= cutoff);
   let rows = fresh.filter((row) => knownHashes.has(row.source.sha256));
@@ -601,7 +707,7 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   // DAG/tasks in memory so the capability-fit catalog grows incrementally
   // (the goal-state audit trail per batch is preserved). Ledger and goal
   // files are small appends per pass; bulk artifacts are written once below.
-  let dag = buildDag(rows.length > 0 ? rows : [...queuedRows.slice(0, batchSize)]);
+  let dag = buildDag(rows.length > 0 ? rows : [...queuedRows.slice(0, batchSize)], traceWorkloads);
   let priorCatalog = readJsonl(join(output, "tasks.jsonl"));
   let tasks: Obj[] = [];
   let passes = 0;
@@ -609,7 +715,7 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
     const take = queuedRows.slice(0, batchSize);
     queuedRows = queuedRows.slice(batchSize);
     rows = [...rows, ...take];
-    dag = buildDag(rows);
+    dag = buildDag(rows, traceWorkloads);
     tasks = tasksFrom(dag, rows, priorCatalog);
     priorCatalog = tasks;
     const newLedger = take.map((row) => ({ source_sha256: row.source.sha256, source_pointer: row.source.pointer, capture_key: row.capture_key, ingested_at: now.toISOString() }));
