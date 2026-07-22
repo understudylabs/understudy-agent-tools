@@ -21,6 +21,16 @@ SDK, ~2 minutes to sign in if you haven't, ~1 minute to redirect and verify a
 test call. No code changes, and nothing leaves your machine without your
 approval."
 
+## Resolve CLI
+
+Prefer the installed `understudy` binary. If it is unavailable inside a repo
+checkout, run through the package script:
+
+```sh
+npm run build
+node dist/bin.js instrument --check --json
+```
+
 ## Safety Gates
 
 - **No app-code edits on this path.** The whole point is env-var redirection.
