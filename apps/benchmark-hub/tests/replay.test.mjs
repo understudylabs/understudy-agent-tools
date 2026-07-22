@@ -86,6 +86,51 @@ describe("accumulateReplay", () => {
     assert.equal(replay.required[0].met_at, 0);
     assert.deepEqual(replay.steps[1].satisfies, []);
   });
+
+  it("value propagations and response obligations flip met at the final-response event", () => {
+    const t = {
+      task_id: "t",
+      outcome_contract: {
+        required: [
+          { type: "read_obligation", tool: "lookup-record", arguments_semantic: { id: 7 } },
+          { type: "value_propagation", source: { kind: "tool_result", call_id: "c1" }, value: "Rec Seven", must_reach: { kind: "tool_args", tool: "update-record" } },
+          { type: "value_propagation", source: { kind: "prompt" }, value: "record 7", must_reach: { kind: "final_response" } },
+          { type: "response_obligation", kind: "contains_category", expected: "updated" },
+        ],
+        forbidden: [],
+        grading: "final_state_and_obligations",
+      },
+    };
+    const replay = accumulateReplay(t, [
+      { name: "lookup-record", arguments: { id: 7 } },
+      { name: "update-record", arguments: { id: 7, name: "Rec Seven" } },
+    ], "Record 7 was updated successfully.");
+    assert.deepEqual(replay.required.map((r) => r.kind), ["read_obligation", "value_propagation", "value_propagation", "response_obligation"]);
+    assert.deepEqual(replay.required.map((r) => r.met_at), [0, 1, 2, 2], "final-response entries met at the closing event");
+    const finalStep = replay.steps.at(-1);
+    assert.equal(finalStep.event, "final_response");
+    assert.deepEqual(finalStep.satisfies, [2, 3]);
+    assert.equal(finalStep.partial_credit, 1);
+    assert.equal(replay.verdict.task_completed_correctly, true);
+    assert.ok(replay.required.every((r) => typeof r.label === "string" && r.label.length > 0));
+  });
+
+  it("a forbidden value reaching the final response zeroes the verdict", () => {
+    const t = {
+      task_id: "t",
+      outcome_contract: {
+        required: [{ type: "response_obligation", kind: "contains_category", expected: "billing" }],
+        forbidden: [{ type: "forbidden_value", value: "123-45-6789" }],
+      },
+    };
+    const replay = accumulateReplay(t, [], "billing — ssn 123-45-6789");
+    assert.equal(replay.forbidden_values, 1);
+    assert.equal(replay.steps.at(-1).forbidden_violation, true);
+    assert.equal(replay.steps.at(-1).partial_credit, 0);
+    assert.equal(replay.verdict.strict, 0);
+    assert.equal(replay.verdict.policy, 0);
+  });
+
 });
 
 /* ---- /api/replay over a real foundry output ---- */

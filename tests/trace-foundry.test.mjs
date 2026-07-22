@@ -196,6 +196,96 @@ test("promote consumes mixed review decisions: rejected tasks are excluded, not 
   assert.ok(existsSync(join(output, "benchmark-proposal.json")), "pre-promotion manifest preserved for audit");
 });
 
+const traced = (id, ts, workload, traceId, messages, response) => {
+  const row = capture(id, ts, messages, response);
+  row.workload_name = workload;
+  row.trace_id = traceId; row.caller_span_id = id.padEnd(16, "0").slice(0, 16); row.trace_flags = "01"; row.trace_source = "w3c_traceparent"; row.trace_context_status = "valid";
+  return row;
+};
+const TRACE_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", TRACE_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", TRACE_C = "cccccccccccccccccccccccccccccccc";
+
+test("trace grouping: multi-workload trace becomes one task with workflow_sibling edges and merged tool surface", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-trace-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    traced("orch-1", "2026-07-20T00:00:00Z", "orchestrator", TRACE_A, [{ role: "user", content: "Handle incoming event 42" }], { content: [{ type: "tool_use", id: "o1", name: "update-record", input: { id: 42 } }] }),
+    traced("orch-2", "2026-07-20T00:00:05Z", "orchestrator", TRACE_A, [{ role: "user", content: "Handle incoming event 42" }, { role: "assistant", content: [{ type: "tool_use", id: "o1", name: "update-record", input: { id: 42 } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "o1", content: "ok" }] }], { content: [{ type: "text", text: "done" }] }),
+    traced("helper-1", "2026-07-20T00:00:02Z", "field-updater", TRACE_A, [{ role: "user", content: "Extract fields from event 42" }], { content: [{ type: "tool_use", id: "h1", name: "save-fields", input: { id: 42, status: "open" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  assert.equal(result.counts.tasks, 1, "one trace = one task despite two workloads");
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  assert.equal(dag.groups.length, 1);
+  assert.equal(dag.groups[0].grouping_label, "trace_grouped/valid");
+  assert.deepEqual(dag.groups[0].workloads, ["field-updater", "orchestrator"]);
+  const sibling = dag.edges.find((edge) => edge.type === "workflow_sibling");
+  assert.ok(sibling, "disjoint-prefix chain in the same trace links as workflow_sibling");
+  assert.equal(sibling.confidence, "low");
+  assert.ok(!dag.edges.some((edge) => edge.type === "destructive_mutation"), "sibling chains are not destructive mutations");
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.equal(task.grouping_label, "trace_grouped/valid");
+  assert.deepEqual(task.tool_surface, ["save-fields", "update-record"], "tool surface merges across workloads");
+});
+
+test("trace grouping: >120s silence splits, probes segregate as singleton, traceless captures fall back to heuristic", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-split-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    // TRACE_B: two multi-workload bursts separated by 300s -> trace_grouped/split x2
+    traced("b1", "2026-07-20T00:00:00Z", "orchestrator", TRACE_B, [{ role: "user", content: "Burst one step one" }], { content: [{ type: "tool_use", id: "b1", name: "update-record", input: { id: 1 } }] }),
+    traced("b2", "2026-07-20T00:00:10Z", "field-updater", TRACE_B, [{ role: "user", content: "Burst one step two" }], {}),
+    traced("b3", "2026-07-20T00:05:10Z", "orchestrator", TRACE_B, [{ role: "user", content: "Burst two step one" }], {}),
+    traced("b4", "2026-07-20T00:05:20Z", "field-updater", TRACE_B, [{ role: "user", content: "Burst two step two" }], {}),
+    // TRACE_C: a 1-request probe -> singleton
+    traced("probe", "2026-07-20T01:00:00Z", "domain-id", TRACE_C, [{ role: "user", content: "Which domain is this?" }], {}),
+    // traceless -> heuristic_grouped
+    capture("legacy", "2026-07-20T02:00:00Z", [{ role: "user", content: "Old style capture" }], {}),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  const labels = dag.groups.map((group) => group.grouping_label).sort();
+  assert.deepEqual(labels, ["heuristic_grouped", "singleton", "trace_grouped/split", "trace_grouped/split"]);
+  const splitGroups = dag.groups.filter((group) => group.grouping_label === "trace_grouped/split");
+  assert.notEqual(splitGroups[0].id, splitGroups[1].id);
+  assert.equal(new Set(dag.groups.map((group) => group.id)).size, 4, "episode group ids never collide");
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(new Set(tasks.map((task) => task.task_id)).size, 4, "task ids unique across split episodes");
+});
+
+test("trace grouping: raw traceparent header parses, and a workload filter flags cross-workload traces instead of silently truncating", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-honesty-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const viaHeader = capture("tp-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Traceparent style capture one" }], { content: [{ type: "tool_use", id: "t1", name: "update-record", input: { id: 9 } }] });
+  viaHeader.workload_name = "orchestrator"; viaHeader.traceparent = `00-${TRACE_A}-1111111111111111-01`;
+  const viaHeader2 = capture("tp-2", "2026-07-20T00:00:05Z", [{ role: "user", content: "Traceparent style capture one" }, { role: "assistant", content: "ok" }], {});
+  viaHeader2.workload_name = "orchestrator"; viaHeader2.traceparent = `00-${TRACE_A}-2222222222222222-01`;
+  const hidden = traced("hidden", "2026-07-20T00:00:02Z", "helper", TRACE_A, [{ role: "user", content: "Helper call outside the filter" }], {});
+  writeFileSync(join(source, "rows.jsonl"), [viaHeader, viaHeader2, hidden].map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "orchestrator" });
+  assert.equal(result.counts.captures, 2);
+  const normalized = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(normalized[0].trace.trace_id, TRACE_A, "traceparent header parsed into the trace block");
+  assert.equal(normalized[0].trace.valid, true);
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.equal(task.status, "needs_review", "cross-workload trace under a filter is flagged, not truncated");
+  assert.equal(task.close_call, true);
+  const claim = task.claims.find((row) => String(row.claim).includes("workflow may be incomplete"));
+  assert.ok(claim, "incompleteness claim present");
+  assert.match(claim.claim, /helper/);
+  assert.deepEqual(task.trace.workloads_spanned, ["helper", "orchestrator"]);
+});
+
+test("trace grouping: invalid trace context falls back to heuristic grouping", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-invalid-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const bad = capture("bad", "2026-07-20T00:00:00Z", [{ role: "user", content: "Invalid trace context" }], {});
+  bad.trace_id = TRACE_A; bad.trace_context_status = "invalid";
+  const zero = capture("zero", "2026-07-20T00:00:01Z", [{ role: "user", content: "All zero trace id" }], {});
+  zero.trace_id = "0".repeat(32);
+  writeFileSync(join(source, "rows.jsonl"), [bad, zero].map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  assert.ok(dag.groups.every((group) => group.grouping_label === "heuristic_grouped"));
+});
+
 test("import-reviews no longer demands unanimity", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-unanimity-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const rows = [
@@ -213,4 +303,113 @@ test("import-reviews no longer demands unanimity", () => {
   const imported = importTraceReviews(output, reviews);
   assert.equal(imported.accepted, 1);
   assert.equal(imported.status, "human_approved", "one honest reject no longer vetoes the benchmark");
+});
+
+// ---------------------------------------------------------------------------
+// Widened deterministic contract: four entry kinds beyond state_effect
+// ---------------------------------------------------------------------------
+
+test("scoreContract: each new entry kind flips met/unmet deterministically over the event stream", async () => {
+  const { scoreContract, contractEntryMet } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: { required: [
+    { type: "state_effect", tool: "update-record", observed_arguments: { id: 7, status: "active" } },
+    { type: "read_obligation", tool: "lookup-record", arguments_semantic: { id: 7 } },
+    { type: "value_propagation", source: { kind: "tool_result", call_id: "c1" }, value: "rec-7-name", must_reach: { kind: "tool_args", tool: "update-record" } },
+    { type: "value_propagation", source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } },
+    { type: "response_obligation", kind: "json_parses" },
+    { type: "response_obligation", kind: "schema_valid", expected_keys: ["party"] },
+    { type: "response_obligation", kind: "contains_category", expected: "external_customer" },
+  ], forbidden: [] } };
+  const calls = [
+    { name: "lookup-record", arguments: { id: 7 } },
+    { name: "update-record", arguments: { id: 7, status: "active", name: "rec-7-name" } },
+  ];
+  const finalResponse = '{"party": "external_customer", "reasoning": "Jordan Doe is the buyer"}';
+  const full = scoreContract(task, { calls, finalResponse });
+  assert.equal(full.recall, 1);
+  assert.equal(full.strict, 1);
+  // Missing final response leaves final-response-dependent entries unmet.
+  const noFinal = scoreContract(task, { calls, finalResponse: "" });
+  assert.ok(noFinal.recall < 1);
+  assert.equal(noFinal.strict, 0);
+  // A noop meets nothing.
+  const noop = scoreContract(task, { calls: [], finalResponse: "" });
+  assert.equal(noop.recall, 0);
+  // Individual transitions.
+  assert.equal(contractEntryMet({ type: "response_obligation", kind: "json_parses" }, { calls: [], finalResponse: "not json" }), false);
+  assert.equal(contractEntryMet({ type: "response_obligation", kind: "schema_valid", expected_keys: ["missing"] }, { calls: [], finalResponse: '{"party":1}' }), false);
+  assert.equal(contractEntryMet({ type: "value_propagation", value: "abc-123", must_reach: { kind: "tool_args", tool: "send-email" } }, { calls: [{ name: "send-email", arguments: { body: "code abc-123" } }] }), true);
+  assert.equal(contractEntryMet({ type: "value_propagation", value: "abc-123", must_reach: { kind: "tool_args", tool: "send-email" } }, { calls: [{ name: "other-tool", arguments: { body: "code abc-123" } }] }), false);
+});
+
+test("scoreContract: a forbidden value that propagates zeroes the score outright", async () => {
+  const { scoreContract } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: {
+    required: [{ type: "response_obligation", kind: "contains_category", expected: "billing" }],
+    forbidden: [{ type: "forbidden_value", value: "ssn 123-45-6789" }],
+  } };
+  const clean = scoreContract(task, { calls: [], finalResponse: "category: billing" });
+  assert.equal(clean.strict, 1);
+  const leakedInResponse = scoreContract(task, { calls: [], finalResponse: "billing — ssn 123-45-6789" });
+  assert.equal(leakedInResponse.strict, 0);
+  assert.equal(leakedInResponse.score, 0);
+  const leakedInArgs = scoreContract(task, { calls: [{ name: "send-email", arguments: { body: "ssn 123-45-6789" } }], finalResponse: "billing" });
+  assert.equal(leakedInArgs.policy, 0);
+});
+
+test("offlineValidationRow: obligation contracts pass their own oracle and fail every sentinel", async () => {
+  const { offlineValidationRow } = await import("../dist/trace-foundry.js");
+  const row = offlineValidationRow({ task_id: "t-obligations", outcome_contract: { required: [
+    { type: "value_propagation", source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } },
+    { type: "response_obligation", kind: "schema_valid", expected_keys: ["party"] },
+    { type: "response_obligation", kind: "json_parses" },
+  ], forbidden: [] } });
+  assert.equal(row.oracle.strict, 1, "the contract's own oracle events satisfy it by construction");
+  assert.ok(row.sentinels.noop.score < 1);
+  assert.ok(row.sentinels.wrong_value.score < 1);
+  assert.ok(row.sentinels.write_everything.score < 1);
+  // Mixed with a state effect, unchanged.
+  const mixed = offlineValidationRow({ task_id: "t-mixed", outcome_contract: { required: [
+    { tool: "update-record", observed_arguments: { id: 1 } },
+    { type: "read_obligation", tool: "lookup-record", arguments_semantic: { id: 1 } },
+  ], forbidden: [] } });
+  assert.equal(mixed.oracle.strict, 1);
+  assert.ok(Object.values(mixed.sentinels).every((s) => s.score < 1));
+});
+
+test("refreshOfflineValidation rewrites only the changed tasks' rows", async () => {
+  const { refreshOfflineValidation } = await import("../dist/trace-foundry.js");
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-refresh-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  task.outcome_contract.required.push({ type: "response_obligation", kind: "contains_category", expected: "done" });
+  assert.equal(refreshOfflineValidation(output, [task]), true);
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  const row = validation.tasks.find((r) => r.task_id === task.task_id);
+  assert.equal(row.oracle.strict, 1);
+  assert.equal(row.oracle.met.length, 2, "refreshed row scores the widened contract");
+});
+
+test("responseProjection extracts OpenAI chat.completion tool calls so their mutations reach the contract", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-openai-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const row = capture("openai-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Save the summary" }], {});
+  row.response_body = JSON.stringify({ object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "save-summary", arguments: "{\"status\":\"skipped\"}" } }] }, finish_reason: "tool_calls" }] });
+  writeFileSync(join(source, "one.json"), JSON.stringify(row));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.deepEqual(task.tool_surface, ["save-summary"]);
+  assert.equal(task.outcome_contract.required.length, 1);
+  assert.equal(task.outcome_contract.required[0].tool, "save-summary");
+});
+
+test("generated taskset scores the widened contract kinds against events and the final response", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-widened-env-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1 } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const taskset = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  for (const marker of ["_entry_met", "value_propagation", "response_obligation", "read_obligation", "forbidden_value", "_final_text", "json_parses", "contains_category", "schema_valid"]) {
+    assert.match(taskset, new RegExp(marker), `taskset.py handles ${marker}`);
+  }
+  assert.doesNotMatch(taskset, /str\(v\) in text/);
 });

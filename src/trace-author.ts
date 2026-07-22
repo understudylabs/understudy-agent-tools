@@ -2,7 +2,7 @@ import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, 
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { canonMask, semanticArgumentsMatch } from "./trace-foundry.js";
+import { canonMask, finalResponseText, refreshOfflineValidation, semanticArgumentsMatch, valueTokensPresent } from "./trace-foundry.js";
 import { createHash } from "node:crypto";
 
 type Obj = Record<string, any>;
@@ -57,7 +57,7 @@ const DIFFICULTIES = ["easy", "medium", "hard"];
 const CONFIDENCES = ["high", "medium", "low"];
 // Rough gateway cost heuristic (USD per million tokens) — recorded as an
 // ESTIMATE in the audit log, never presented as billing truth.
-const COST_PER_MTOKEN: Record<string, { input: number; output: number }> = {
+export const COST_PER_MTOKEN: Record<string, { input: number; output: number }> = {
   "gemma-4-31b-it": { input: 0.1, output: 0.3 },
   "glm-5.2": { input: 0.6, output: 2.2 },
   "gpt-5.5": { input: 1.25, output: 10 },
@@ -115,6 +115,47 @@ export function observedCalls(captures: Obj[]): Obj[] {
   return calls.filter((call) => call.name).filter((call) => { const key = JSON.stringify(call); if (seen.has(key)) return false; seen.add(key); return true; });
 }
 
+export type GroundingEvidence = {
+  /** System + user text of the captured rounds (the values a value_propagation may source from the prompt). */
+  prompt: string;
+  /** Observed tool results: call id → text content (the other legal value source). */
+  results: { call_id: string | null; tool: string | null; content: string }[];
+  /** The captured incumbent's final assistant response — the oracle for response/value obligations. */
+  finalResponse: string;
+};
+
+/** Deterministic evidence the new contract kinds are grounded against, extracted from a task's captured rounds. */
+export function groundingEvidence(task: Obj, capturesByKey: Map<string, Obj>): GroundingEvidence {
+  const rounds = ((task.source?.node_ids ?? []) as string[]).map((id) => capturesByKey.get(String(id))).filter(Boolean) as Obj[];
+  const promptParts: string[] = [];
+  const results: GroundingEvidence["results"] = [];
+  const callNames = new Map(observedCalls(rounds).map((call) => [String(call.id ?? ""), String(call.name ?? "")]));
+  const seen = new Set<string>();
+  for (const capture of rounds) {
+    const system = contentText(capture.request?.system ?? "");
+    if (system) promptParts.push(system);
+    for (const messageValue of capture.request?.messages ?? []) {
+      const message = asObject(messageValue);
+      if (message.role === "user" || message.role === "system") {
+        const text = contentText(message.content);
+        if (text) promptParts.push(text);
+      }
+      for (const blockValue of Array.isArray(message.content) ? message.content : []) {
+        const block = asObject(blockValue);
+        if (!["tool_result", "tool_response"].includes(String(block.type ?? ""))) continue;
+        const id = block.tool_use_id ?? block.id ?? null;
+        const content = contentText(block.content);
+        const key = `${id}|${content}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push({ call_id: id === null ? null : String(id), tool: callNames.get(String(id ?? "")) ?? null, content });
+      }
+    }
+  }
+  const last = rounds.at(-1);
+  return { prompt: [...new Set(promptParts)].join("\n"), results, finalResponse: last ? finalResponseText(asObject(last.response)) : "" };
+}
+
 /**
  * Bounded authoring context for one task: system prompt, first + last
  * user/assistant messages of each captured round, tool definitions, the
@@ -122,33 +163,54 @@ export function observedCalls(captures: Obj[]): Obj[] {
  * group. Budgeted at ~maxTokens with head/tail truncation, then round
  * dropping (first + last rounds always kept).
  */
-export function buildAuthoringContext(task: Obj, capturesByKey: Map<string, Obj>, maxTokens = 20_000): Obj {
+export function buildAuthoringContext(task: Obj, capturesByKey: Map<string, Obj>, maxTokens = 60_000): Obj {
   const nodeIds: string[] = task.source?.node_ids ?? [];
   const rounds = nodeIds.map((id) => capturesByKey.get(id)).filter(Boolean) as Obj[];
-  const render = (messageClip: number, keepRounds: Obj[]): Obj => ({
-    task_id: task.task_id,
-    machine_title: clipText(String(task.title ?? ""), messageClip),
-    system_prompt: clipText(contentText(rounds[0]?.request?.system ?? ""), messageClip) || null,
-    tool_definitions: (task.tool_definitions ?? []).map((definition: Obj) => { const fn = asObject(definition.function); return { name: definition.name ?? fn.name, description: clipText(contentText(definition.description ?? fn.description ?? ""), 400) || null, parameters: Object.keys(asObject(definition.input_schema ?? fn.parameters).properties ?? {}) }; }),
-    rounds: keepRounds.map((capture, index) => {
-      const messages = (capture.request?.messages ?? []).map(asObject);
-      const firstUser = messages.find((m: Obj) => m.role === "user"), lastUser = [...messages].reverse().find((m: Obj) => m.role === "user");
-      const firstAssistant = messages.find((m: Obj) => m.role === "assistant"), lastAssistant = [...messages].reverse().find((m: Obj) => m.role === "assistant");
-      const unique = [...new Set([firstUser, lastUser, firstAssistant, lastAssistant].filter(Boolean))] as Obj[];
-      return { round: index + 1, capture_key: capture.capture_key, message_count: messages.length, messages: unique.map((m) => ({ role: m.role, content: clipText(contentText(m.content), messageClip) })) };
-    }),
-    observed_tool_calls: observedCalls(rounds).map((call) => { const serialized = JSON.stringify(call.arguments ?? {}); return { id: call.id, tool: call.name, arguments: serialized.length <= messageClip ? call.arguments ?? {} : { __clipped__: clipText(serialized, messageClip) } }; }),
-    tool_surface: task.tool_surface ?? [],
-    dag_edges: (task.source?.edges ?? []).map((edge: Obj) => ({ from: edge.from, to: edge.to, type: edge.type })),
-    deterministic_contract: task.outcome_contract ?? null,
+  // PROTECTED evidence — never truncated, at any budget: the system prompt,
+  // the first user message (the task payload; the captures HAVE the full
+  // prompt), and the final assistant response (the oracle for obligations).
+  // The truncation budget falls on intermediate messages/tool results only.
+  const systemPrompt = contentText(rounds[0]?.request?.system ?? "");
+  const rootFirstUser = asObject((rounds[0]?.request?.messages ?? []).map(asObject).find((m: Obj) => m.role === "user"));
+  const fullFinalResponse = rounds.length ? finalResponseText(asObject(rounds[rounds.length - 1].response)) : "";
+  const render = (messageClip: number, keepRounds: Obj[]): { context: Obj; intermediatesTruncated: boolean } => {
+    let intermediatesTruncated = false;
+    const clip = (text: string): string => { const out = clipText(text, messageClip); if (out !== text) intermediatesTruncated = true; return out; };
+    const context: Obj = {
+      task_id: task.task_id,
+      machine_title: clipText(String(task.title ?? ""), 4_000),
+      system_prompt: systemPrompt || null,
+      tool_definitions: (task.tool_definitions ?? []).map((definition: Obj) => { const fn = asObject(definition.function); return { name: definition.name ?? fn.name, description: clipText(contentText(definition.description ?? fn.description ?? ""), 400) || null, parameters: Object.keys(asObject(definition.input_schema ?? fn.parameters).properties ?? {}) }; }),
+      rounds: keepRounds.map((capture, index) => {
+        const messages = (capture.request?.messages ?? []).map(asObject);
+        const firstUser = messages.find((m: Obj) => m.role === "user"), lastUser = [...messages].reverse().find((m: Obj) => m.role === "user");
+        const firstAssistant = messages.find((m: Obj) => m.role === "assistant"), lastAssistant = [...messages].reverse().find((m: Obj) => m.role === "assistant");
+        const unique = [...new Set([firstUser, lastUser, firstAssistant, lastAssistant].filter(Boolean))] as Obj[];
+        return { round: index + 1, capture_key: capture.capture_key, message_count: messages.length, messages: unique.map((m) => ({ role: m.role, content: m === rootFirstUser ? contentText(m.content) : clip(contentText(m.content)) })) };
+      }),
+      observed_tool_calls: observedCalls(rounds).map((call) => { const serialized = JSON.stringify(call.arguments ?? {}); return { id: call.id, tool: call.name, arguments: serialized.length <= messageClip ? call.arguments ?? {} : { __clipped__: clip(serialized) } }; }),
+      tool_surface: task.tool_surface ?? [],
+      dag_edges: (task.source?.edges ?? []).map((edge: Obj) => ({ from: edge.from, to: edge.to, type: edge.type })),
+      deterministic_contract: task.outcome_contract ?? null,
+      // The captured incumbent's final assistant response — the ORACLE for
+      // response/value obligations on tool-less tasks. Never invent values not in it.
+      final_response: fullFinalResponse || null,
+    };
+    return { context, intermediatesTruncated };
+  };
+  const stamp = (rendered: { context: Obj; intermediatesTruncated: boolean }, roundsDropped = 0): Obj => ({
+    ...rendered.context,
+    ...(roundsDropped > 0 ? { rounds_dropped: roundsDropped } : {}),
+    evidence_truncated: { task_prompt: false, intermediates: rendered.intermediatesTruncated || roundsDropped > 0 },
   });
-  for (const clip of [4_000, 1_200, 400]) {
-    const context = render(clip, rounds);
-    if (estimateTokens(JSON.stringify(context)) <= maxTokens) return context;
+  for (const clip of [Number.POSITIVE_INFINITY, 16_000, 4_000, 1_200, 400]) {
+    const rendered = render(clip, rounds);
+    if (estimateTokens(JSON.stringify(rendered.context)) <= maxTokens) return stamp(rendered);
   }
-  // Still over budget: keep first and last rounds only.
+  // Still over budget: keep first and last rounds only — the protected fields
+  // (task prompt, final response) are still never truncated.
   const kept = rounds.length > 2 ? [rounds[0], rounds[rounds.length - 1]] : rounds;
-  return { ...render(400, kept), rounds_dropped: rounds.length - kept.length };
+  return stamp(render(400, kept), rounds.length - kept.length);
 }
 
 /**
@@ -187,8 +249,38 @@ const EXEMPLARS: { context: Obj; output: Obj }[] = [
       category_proposal: { id: "event-triage", name: "Operational event triage" },
       difficulty: "easy", difficulty_reason: "Single mutating call whose arguments are read directly off the event and one lookup.",
       intent_summary: "Triage a billing event into a prioritized follow-up.",
-      contract: { required: [{ tool: "create-followup", arguments_semantic: { account_id: "acct-777", category: "billing", priority: "p1" }, maps_to_observed: ["e2"] }], preserved: [], forbidden: [] },
+      contract: {
+        required: [{ tool: "create-followup", arguments_semantic: { account_id: "acct-777", category: "billing", priority: "p1" }, maps_to_observed: ["e2"] }],
+        read_obligations: [{ tool: "lookup-account", arguments_semantic: { account_id: "acct-777" }, maps_to_observed: ["e1"] }],
+        value_propagations: [{ source: { kind: "prompt" }, value: "acct-777", must_reach: { kind: "tool_args", tool: "create-followup" } }],
+        response_obligations: [], forbidden_values: [], preserved: [], forbidden: [],
+      },
       confidence: "high", ambiguities: ["Priority mapping from plan tier is implied by the trace, not stated; a human should confirm the p1 rule."],
+    },
+  },
+  {
+    context: {
+      task_id: "task-exemplar-triage", machine_title: "email: Re: Renewal timing for Example Corp (Jordan Doe)",
+      system_prompt: "You classify synthetic inbound emails: decide the sender's relationship to the deal and reply with a JSON verdict {party, reasoning}. Do not call tools unless a CRM update is required.",
+      tool_definitions: [{ name: "update-crm-field", parameters: ["conversation_id", "field", "value"] }],
+      observed_tool_calls: [],
+      dag_edges: [], deterministic_contract: { required: [] },
+      final_response: "{\"party\": \"external_customer\", \"reasoning\": \"Jordan Doe writes from the customer domain about their own renewal, so this is the external buying contact.\"}",
+    },
+    output: {
+      statement: "An inbound email arrived on a tracked deal thread. Decide what relationship the sender has to the deal and answer with the JSON verdict the playbook requires. No CRM writes are needed for this event.",
+      success_criteria: ["The final response is the required JSON verdict object.", "The verdict classifies the sender as an external customer contact."],
+      category_proposal: { id: "email-party-identification", name: "Inbound email party identification" },
+      difficulty: "easy", difficulty_reason: "Single-step classification with the answer stated in the thread; no tool calls.",
+      intent_summary: "Classify an inbound email sender's relationship to the deal.",
+      contract: {
+        required: [], preserved: [], forbidden: [],
+        read_obligations: [],
+        value_propagations: [{ source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } }],
+        response_obligations: [{ kind: "json_parses" }, { kind: "schema_valid", expected_keys: ["party", "reasoning"] }, { kind: "contains_category", expected: "external_customer" }],
+        forbidden_values: [],
+      },
+      confidence: "high", ambiguities: [],
     },
   },
 ];
@@ -205,6 +297,10 @@ Write a legible, human-confirmable task definition. Respond with ONLY a JSON obj
   "intent_summary": "one line",
   "contract": {
     "required": [{"tool": "exact-observed-tool-name", "arguments_semantic": {"key": "canonicalized/generalized value"}, "maps_to_observed": ["observed call ids"]}],
+    "read_obligations": [{"tool": "exact-observed-tool-name", "arguments_semantic": {"key": "value copied from the observed read call"}, "maps_to_observed": ["observed call ids"]}],
+    "value_propagations": [{"source": {"kind": "prompt" | "tool_result", "call_id": "observed call id when kind is tool_result"}, "value": "the exact load-bearing value", "must_reach": {"kind": "final_response" | "tool_args", "tool": "destination tool when kind is tool_args"}}],
+    "response_obligations": [{"kind": "json_parses"} | {"kind": "schema_valid", "expected_keys": ["key", "names"]} | {"kind": "contains_category", "expected": "category value copied from the final response"}],
+    "forbidden_values": [{"value": "a value (e.g. PII) that must NOT reach tool args or the final response", "reason": "why"}],
     "preserved": [{"tool": "tool-name", "reason": "why it must be left intact"}],
     "forbidden": [{"tool": "tool-name", "reason": "why calling it is a violation"}]
   },
@@ -215,6 +311,11 @@ Write a legible, human-confirmable task definition. Respond with ONLY a JSON obj
 Rules:
 - Ground every contract.required entry in the OBSERVED tool calls: use the exact observed tool name, keep the semantically load-bearing argument values (ids, names, statuses) so the entry still matches the observed call, and cite the observed call ids in maps_to_observed. Never invent tools or argument values.
 - arguments_semantic values must be COPIED from the observed call's arguments: you may drop boilerplate keys, but every value you keep must appear verbatim (case-insensitive) in that observed call. Never paraphrase, rename, or summarize a value. Include an entry for EVERY effect listed in deterministic_contract.required.
+- read_obligations name NON-mutating observed calls (lookups) that any correct solution must make; same grounding rules as required.
+- value_propagations trace one concrete value through the task: it must literally appear in its claimed source (the prompt text, or the named tool result) AND be observed reaching its destination (the final response, or the destination tool's arguments) in the evidence. Copy values verbatim; never paraphrase.
+- response_obligations judge the FINAL assistant response. Only propose them when the evidence includes final_response, and copy expected values / key names from that final_response verbatim.
+- If the task has NO mutating tool calls (deterministic_contract.required is empty), you MUST propose response_obligations and/or value_propagations grounded in final_response — otherwise the task is unjudgeable.
+- forbidden_values name concrete sensitive values present in the evidence that a correct agent must NOT propagate (the captured final response does not contain them either).
 - preserved/forbidden may ONLY name tools that appear in the provided tool_surface list. Do not invent hypothetical tools; if nothing must be preserved or forbidden, use [].
 - statement and success_criteria are for a human reviewer: no raw JSON blobs, no message dumps.
 - If the evidence is thin or contradictory, say so in ambiguities and lower confidence.
@@ -238,7 +339,72 @@ function parseAuthoredJson(content: string): Obj | null {
  * task's tool surface. Any violation fails grounding: the deterministic
  * contract stays authoritative and the task keeps needs_review.
  */
-export function groundAuthoredTask(task: Obj, authored: Obj, calls: Obj[]): { status: "verified" | "failed"; violations: string[] } {
+const VALUE_SOURCE_KINDS = ["prompt", "tool_result"];
+const VALUE_DESTINATION_KINDS = ["final_response", "tool_args"];
+const RESPONSE_OBLIGATION_KINDS = ["json_parses", "schema_valid", "contains_category"];
+
+const parsedFinalJson = (text: string): unknown => {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  try { return JSON.parse(trimmed); } catch { return undefined; }
+};
+
+/**
+ * Deterministic grounding for the widened contract kinds: every proposed
+ * value must PROVABLY exist in its claimed source (prompt text / named tool
+ * result) under the same canonicalization semanticArgumentsMatch uses, and
+ * the captured oracle must already satisfy the obligation (values observed
+ * reaching their destination; response obligations true of the captured
+ * final response; forbidden values absent from it). Anything ungroundable
+ * is a recorded violation — grounding fails closed.
+ */
+function groundObligations(violations: string[], task: Obj, contract: Obj, calls: Obj[], evidence?: GroundingEvidence): void {
+  const proposed = [contract.read_obligations, contract.value_propagations, contract.response_obligations, contract.forbidden_values].some((entries) => Array.isArray(entries) && entries.length > 0);
+  if (!proposed) return;
+  if (!evidence) { violations.push("obligations: proposed but no grounding evidence (prompt/tool results/final response) was provided"); return; }
+  const promptHay = evidence.prompt.toLowerCase();
+  const finalHay = evidence.finalResponse.toLowerCase();
+  const callsHay = calls.map((call) => JSON.stringify(call.arguments ?? {}).toLowerCase());
+  const anyResultHay = evidence.results.map((result) => result.content.toLowerCase());
+  for (const [index, entryValue] of (Array.isArray(contract.read_obligations) ? contract.read_obligations : []).entries()) {
+    const entry = asObject(entryValue), tool = String(entry.tool ?? "");
+    const matching = calls.filter((call) => call.name === tool);
+    if (matching.length === 0) violations.push(`read_obligations[${index}]: tool "${tool}" was never observed in the evidence`);
+    else if (!matching.some((call) => semanticArgumentsMatch(asObject(entry.arguments_semantic), asObject(call.arguments)))) violations.push(`read_obligations[${index}]: arguments_semantic for "${tool}" do not token-match any observed call arguments`);
+  }
+  for (const [index, entryValue] of (Array.isArray(contract.value_propagations) ? contract.value_propagations : []).entries()) {
+    const entry = asObject(entryValue), source = asObject(entry.source), destination = asObject(entry.must_reach);
+    if (!VALUE_SOURCE_KINDS.includes(String(source.kind))) { violations.push(`value_propagations[${index}]: source.kind "${source.kind}" is not prompt|tool_result`); continue; }
+    if (!VALUE_DESTINATION_KINDS.includes(String(destination.kind))) { violations.push(`value_propagations[${index}]: must_reach.kind "${destination.kind}" is not final_response|tool_args`); continue; }
+    const sourceHays = source.kind === "prompt" ? [promptHay] : source.call_id ? evidence.results.filter((result) => result.call_id === String(source.call_id)).map((result) => result.content.toLowerCase()) : anyResultHay;
+    if (source.kind === "tool_result" && source.call_id && sourceHays.length === 0) { violations.push(`value_propagations[${index}]: source tool_result call id "${source.call_id}" not present in observed evidence`); continue; }
+    if (!sourceHays.some((hay) => valueTokensPresent(entry.value, hay))) violations.push(`value_propagations[${index}]: value does not provably exist in its claimed ${source.kind} source`);
+    const reached = destination.kind === "final_response"
+      ? valueTokensPresent(entry.value, finalHay)
+      : calls.some((call, i) => (!destination.tool || call.name === destination.tool) && valueTokensPresent(entry.value, callsHay[i]));
+    if (!reached) violations.push(`value_propagations[${index}]: value was not observed reaching ${destination.kind === "final_response" ? "the captured final response" : `arguments of "${destination.tool ?? "any observed call"}"`}`);
+  }
+  for (const [index, entryValue] of (Array.isArray(contract.response_obligations) ? contract.response_obligations : []).entries()) {
+    const entry = asObject(entryValue), kind = String(entry.kind ?? "");
+    if (!RESPONSE_OBLIGATION_KINDS.includes(kind)) { violations.push(`response_obligations[${index}]: kind "${kind}" is not ${RESPONSE_OBLIGATION_KINDS.join("|")}`); continue; }
+    const parsed = parsedFinalJson(evidence.finalResponse);
+    if (kind === "json_parses" && parsed === undefined) violations.push(`response_obligations[${index}]: captured final response does not parse as JSON`);
+    if (kind === "schema_valid") {
+      const keys = Array.isArray(entry.expected_keys) ? entry.expected_keys.map(String) : [];
+      if (keys.length === 0) violations.push(`response_obligations[${index}]: schema_valid requires expected_keys`);
+      else if (parsed === undefined || parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) violations.push(`response_obligations[${index}]: captured final response is not a JSON object`);
+      else for (const key of keys) if (!(key in (parsed as Obj))) violations.push(`response_obligations[${index}]: expected key "${key}" not present in the captured final response`);
+    }
+    if (kind === "contains_category" && !valueTokensPresent(entry.expected, finalHay)) violations.push(`response_obligations[${index}]: expected value does not appear in the captured final response`);
+  }
+  for (const [index, entryValue] of (Array.isArray(contract.forbidden_values) ? contract.forbidden_values : []).entries()) {
+    const entry = asObject(entryValue);
+    if (!valueTokensPresent(entry.value, promptHay) && !anyResultHay.some((hay) => valueTokensPresent(entry.value, hay))) violations.push(`forbidden_values[${index}]: value does not provably exist in the prompt or tool results`);
+    if (valueTokensPresent(entry.value, finalHay) || callsHay.some((hay) => valueTokensPresent(entry.value, hay))) violations.push(`forbidden_values[${index}]: the captured oracle itself propagates this value — contradiction`);
+  }
+}
+
+export function groundAuthoredTask(task: Obj, authored: Obj, calls: Obj[], evidence?: GroundingEvidence): { status: "verified" | "failed"; violations: string[] } {
   const violations: string[] = [];
   const contract = asObject(authored.contract);
   const surface = new Set<string>((task.tool_surface ?? []).map(String));
@@ -253,6 +419,7 @@ export function groundAuthoredTask(task: Obj, authored: Obj, calls: Obj[]): { st
     for (const id of Array.isArray(entry.maps_to_observed) ? entry.maps_to_observed : []) if (!callIds.has(String(id))) violations.push(`required[${index}]: maps_to_observed id "${id}" not present in observed evidence`);
   }
   for (const rule of deterministicRequired) if (!required.some((entry) => entry.tool === rule.tool)) violations.push(`required: authored contract omits deterministically observed effect "${rule.tool}"`);
+  groundObligations(violations, task, contract, calls, evidence);
   for (const [kind, entries] of [["preserved", contract.preserved], ["forbidden", contract.forbidden]] as const) {
     for (const [index, entryValue] of (Array.isArray(entries) ? entries : []).entries()) {
       const tool = String(asObject(entryValue).tool ?? entryValue ?? "");
@@ -263,6 +430,42 @@ export function groundAuthoredTask(task: Obj, authored: Obj, calls: Obj[]): { st
   if (!CONFIDENCES.includes(authored.confidence)) violations.push(`confidence "${authored.confidence}" is not one of ${CONFIDENCES.join("/")}`);
   if (typeof authored.statement !== "string" || authored.statement.trim().length === 0) violations.push("statement is missing or empty");
   return { status: violations.length === 0 ? "verified" : "failed", violations };
+}
+
+const sha256 = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const arrayOf = (value: unknown): Obj[] => (Array.isArray(value) ? value.map(asObject) : []);
+
+/**
+ * Merge a VERIFIED authored contract's obligation entries into the task's
+ * deterministic outcome contract, typed and provenance-stamped. State effects
+ * are never touched (the deterministic foundry owns them); obligations are
+ * additive and deduplicated by canonical entry key. Returns entries added.
+ */
+export function mergeAuthoredObligations(task: Obj, authored: Obj, model: string, authoredAt: string): number {
+  const contract = asObject(authored.contract);
+  const outcome = (task.outcome_contract = asObject(task.outcome_contract));
+  outcome.required = Array.isArray(outcome.required) ? outcome.required : [];
+  outcome.forbidden = Array.isArray(outcome.forbidden) ? outcome.forbidden : [];
+  const existing = new Set([...outcome.required, ...outcome.forbidden].map((entry: unknown) => contractEntryKey(asObject(entry))));
+  const provenance = { proposed_by: model, grounded: true, authored_at: authoredAt };
+  let added = 0;
+  const push = (list: Obj[], entry: Obj): void => {
+    const key = contractEntryKey(entry);
+    if (existing.has(key)) return;
+    existing.add(key);
+    list.push(entry);
+    added += 1;
+  };
+  for (const entry of arrayOf(contract.read_obligations)) push(outcome.required, { type: "read_obligation", tool: entry.tool, arguments_semantic: asObject(entry.arguments_semantic), matching: "semantic_outcome_not_exact_trajectory", provenance });
+  for (const entry of arrayOf(contract.value_propagations)) push(outcome.required, { type: "value_propagation", source: asObject(entry.source), value: entry.value, must_reach: asObject(entry.must_reach), provenance });
+  for (const entry of arrayOf(contract.response_obligations)) push(outcome.required, { type: "response_obligation", kind: entry.kind, ...(entry.expected !== undefined ? { expected: entry.expected } : {}), ...(Array.isArray(entry.expected_keys) ? { expected_keys: entry.expected_keys.map(String) } : {}), provenance });
+  for (const entry of arrayOf(contract.forbidden_values)) push(outcome.forbidden, { type: "forbidden_value", value: entry.value, reason: entry.reason ?? null, provenance });
+  if (added > 0) {
+    outcome.grading = "final_state_and_obligations";
+    // Same recipe the foundry uses; reviews check task_hash staleness.
+    task.task_hash = sha256({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
+  }
+  return added;
 }
 
 /** Gateway auth: env first, then ~/.understudy/credentials.json. NEVER any other provider. */
@@ -331,10 +534,13 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
   const eventsPath = join(benchmarkDir, "authoring-events.jsonl");
   const results: AuthoredResult[] = new Array(selected.length);
   let completed = 0;
+  let mergedEntries = 0;
+  const extendedTasks: Obj[] = [];
   await promisePool(selected, options.concurrency ?? 1, async (task, index) => {
     const startedAt = Date.now();
-    const context = buildAuthoringContext(task, capturesByKey, options.maxContextTokens ?? 20_000);
+    const context = buildAuthoringContext(task, capturesByKey, options.maxContextTokens ?? 60_000);
     const calls = observedCalls((task.source?.node_ids ?? []).map((id: string) => capturesByKey.get(id)).filter(Boolean));
+    const evidence = groundingEvidence(task, capturesByKey);
     let content = "", usage: AuthorUsage = {};
     let violations: string[] = [];
     let authored: Obj | null = null;
@@ -349,7 +555,7 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       callError = (error as Error).message;
       violations = [`llm_call_failed: ${callError}`];
     }
-    const grounding = authored ? groundAuthoredTask(task, authored, calls) : { status: "failed" as const, violations };
+    const grounding = authored ? groundAuthoredTask(task, authored, calls, evidence) : { status: "failed" as const, violations };
     const cost = costEstimate(options.model, usage);
     const ms = Date.now() - startedAt;
     const authoredBlock = {
@@ -358,6 +564,9 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       authored_at: now.toISOString(),
       grounding: grounding.status,
       grounding_violations: grounding.violations,
+      // Truncation provenance: the task prompt and final response are NEVER
+      // truncated; any "truncated evidence" can only refer to intermediates.
+      evidence_truncated: context.evidence_truncated ?? { task_prompt: false, intermediates: false },
       ...(authored ?? {}),
     };
     results[index] = { task_id: task.task_id, authored: authored ? authoredBlock : null, grounding: grounding.status, violations: grounding.violations, usage, cost_estimate_usd: cost };
@@ -370,10 +579,18 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       task.authored = authoredBlock;
       // Grounding failure: deterministic contract stays authoritative, task needs human review.
       if (grounding.status === "failed" && task.status === "machine_proposed") task.status = "needs_review";
-      // Verified pass changes nothing about status: high-confidence tasks stay machine_proposed; authored output remains a proposal.
+      // Verified pass: grounded obligation entries (read/value/response/forbidden_value)
+      // merge ADDITIVELY into the deterministic contract — that is what makes
+      // tool-less tasks judgeable. State effects are never touched; status is unchanged.
+      if (grounding.status === "verified" && authored) {
+        const added = mergeAuthoredObligations(task, authored, options.model, now.toISOString());
+        if (added > 0) { mergedEntries += added; extendedTasks.push(task); }
+      }
     }
   });
   if (writeback && results.length > 0) writeJsonl(tasksPath, tasks);
+  // Contracts changed → the environment's offline oracle/sentinel rows must be recomputed.
+  if (writeback && extendedTasks.length > 0) refreshOfflineValidation(benchmarkDir, extendedTasks);
   const verified = results.filter((row) => row.grounding === "verified").length;
   return {
     schema_version: "understudy.task_authoring_run.v1",
@@ -382,6 +599,7 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
     authored: results.length,
     skipped: tasks.length - selected.length,
     grounding: { verified, failed: results.length - verified },
+    contracts: { merged_obligation_entries: mergedEntries, tasks_extended: extendedTasks.length },
     tokens: { prompt: results.reduce((sum, row) => sum + (row.usage.prompt_tokens ?? 0), 0), completion: results.reduce((sum, row) => sum + (row.usage.completion_tokens ?? 0), 0) },
     cost_estimate_usd: Number(results.reduce((sum, row) => sum + row.cost_estimate_usd, 0).toFixed(4)),
     events: eventsPath,
@@ -401,7 +619,7 @@ const OVERVIEW_SYSTEM_PROMPT = `You describe a customer's LLM workload for the w
 The summary must answer three things, in order:
 (a) WHAT this workload does — the system prompt is the workload's self-description; summarize it.
 (b) WHY these tasks are representative — tie the categories to the tool-usage coverage (which tools the observed tasks actually exercise).
-(c) HOW success is judged — the contracts grade state effects (required tool calls that mutate state, matched semantically); note that value-propagation obligations are the coming extension.
+(c) HOW success is judged — the contracts grade state effects (required tool calls that mutate state, matched semantically) plus deterministic obligations: values that must propagate to tool arguments or the final response, required reads, and response-shape checks (JSON/schema/category).
 
 If the evidence lists more than one system-prompt cluster, say explicitly "this workload runs N prompt variants" and characterize the variance — prompt-variant drift is signal for the customer, never average it away. Never invent tools, systems, or volumes not present in the evidence.
 
@@ -409,7 +627,7 @@ Example:
 EVIDENCE:
 {"task_count":6,"system_prompt_clusters":[{"coverage":1,"excerpt":"You operate a synthetic CRM for Example Corp. Close won deals and notify owners."}],"tool_usage":[{"tool":"crm_find_records","defined":true,"calls":6},{"tool":"update-opportunity","defined":true,"calls":4},{"tool":"send-email","defined":true,"calls":4},{"tool":"delete-record","defined":true,"calls":0}],"categories":[{"id":"crm-deal-closeout","tasks":4,"samples":["Close a won deal and notify the owning team."]},{"id":"event-triage","tasks":2,"samples":["Triage a billing event into a prioritized follow-up."]}]}
 OUTPUT:
-{"workload_summary": "This workload operates a synthetic CRM: its system prompt instructs the agent to close won deals and notify their owners. The extracted tasks are representative because they exercise the tools the workload actually uses — record lookup on every task, opportunity updates and outbound email on the close-out majority — while defined-but-never-called tools like delete-record stay out of scope. Success is judged on state effects: each task's contract lists the mutating tool calls that must occur, matched semantically rather than byte-exactly; obligations about propagating values between calls are the coming extension."}`;
+{"workload_summary": "This workload operates a synthetic CRM: its system prompt instructs the agent to close won deals and notify their owners. The extracted tasks are representative because they exercise the tools the workload actually uses — record lookup on every task, opportunity updates and outbound email on the close-out majority — while defined-but-never-called tools like delete-record stay out of scope. Success is judged on state effects plus deterministic obligations: each task's contract lists the mutating tool calls that must occur, matched semantically rather than byte-exactly, and any grounded value-propagation or response-shape obligations."}`;
 
 const ARCHETYPE_SYSTEM_PROMPT = `You name and describe ONE task archetype in a customer's LLM workload, grounded ONLY in the evidence provided (the authored definitions of the tasks in this category plus the tool surface). Respond with ONLY a JSON object (no markdown fences): {"archetype_title": "short human title (3-7 words)", "archetype_description": "2-3 plain-language sentences describing what the agent is asked to do in tasks of this kind and what success requires"}. Never invent tools or behaviors not present in the evidence.
 
@@ -688,6 +906,26 @@ const tokensOf = (value: unknown): string[] => {
 };
 /** Canonical effect key: tool + sorted unique content tokens of the semantic arguments (the grounding normalization). */
 export const effectKey = (entry: Obj): string => `${entry.tool}::${[...new Set(tokensOf(entry.arguments_semantic ?? entry.observed_arguments ?? {}))].sort().join(",")}`;
+const sortedTokens = (value: unknown): string => [...new Set(tokensOf(value ?? {}))].sort().join(",");
+
+/** Canonical key for ANY contract entry kind — merge dedup and agreement analysis share it. */
+export const contractEntryKey = (entry: Obj): string => {
+  const type = String(entry.type ?? (entry.kind && !entry.tool ? "response_obligation" : entry.must_reach ? "value_propagation" : "state_effect"));
+  if (type === "read_obligation") return `read::${entry.tool}::${sortedTokens(entry.arguments_semantic)}`;
+  if (type === "value_propagation") { const destination = asObject(entry.must_reach); return `value::${destination.kind}::${destination.tool ?? ""}::${sortedTokens(entry.value)}`; }
+  if (type === "response_obligation") return `resp::${entry.kind}::${sortedTokens(entry.expected ?? entry.expected_keys ?? {})}`;
+  if (type === "forbidden_value") return `noval::${sortedTokens(entry.value)}`;
+  return effectKey(entry);
+};
+
+/** All canonical entry keys of one AUTHORED contract (state effects + the widened obligation kinds). */
+export const authoredContractKeys = (contract: Obj): string[] => [
+  ...arrayOf(contract.required).map((entry) => contractEntryKey({ ...entry, type: "state_effect" })),
+  ...arrayOf(contract.read_obligations).map((entry) => contractEntryKey({ ...entry, type: "read_obligation" })),
+  ...arrayOf(contract.value_propagations).map((entry) => contractEntryKey({ ...entry, type: "value_propagation" })),
+  ...arrayOf(contract.response_obligations).map((entry) => contractEntryKey({ ...entry, type: "response_obligation" })),
+  ...arrayOf(contract.forbidden_values).map((entry) => contractEntryKey({ ...entry, type: "forbidden_value" })),
+];
 const jaccard = (a: Set<string>, b: Set<string>): number => { const union = new Set([...a, ...b]).size; if (union === 0) return 1; return [...a].filter((item) => b.has(item)).length / union; };
 
 export function agreementReport(models: string[], perModel: Map<string, AuthoredResult[]>): Obj {
@@ -695,7 +933,7 @@ export function agreementReport(models: string[], perModel: Map<string, Authored
   const pairs: [string, string][] = models.flatMap((a, i) => models.slice(i + 1).map((b) => [a, b] as [string, string]));
   const perTask = taskIds.map((taskId) => {
     const byModel = new Map(models.map((model) => [model, (perModel.get(model) ?? []).find((row) => row.task_id === taskId)]));
-    const sets = new Map(models.map((model) => { const row = byModel.get(model); const required = row?.grounding === "verified" ? (asObject(row.authored?.contract).required ?? []) : []; return [model, new Set<string>((Array.isArray(required) ? required : []).map((entry: Obj) => effectKey(asObject(entry))))]; }));
+    const sets = new Map(models.map((model) => { const row = byModel.get(model); const keys = row?.grounding === "verified" ? authoredContractKeys(asObject(row.authored?.contract)) : []; return [model, new Set<string>(keys)]; }));
     const pairJaccard = Object.fromEntries(pairs.map(([a, b]) => [`${a}|${b}`, jaccard(sets.get(a)!, sets.get(b)!)]));
     const values = Object.values(pairJaccard) as number[];
     const mean = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 1;
@@ -731,7 +969,8 @@ export function agreementReport(models: string[], perModel: Map<string, Authored
  */
 export async function compareAuthoringModels(benchmarkDir: string, models: string[], options: Omit<AuthorTasksOptions, "model"> & { clients?: Map<string, AuthorClient> }): Promise<Obj> {
   const tasks = readJsonl(join(resolve(benchmarkDir), "tasks.jsonl"));
-  const selectedIds = tasks.slice(0, options.limit ?? Number.POSITIVE_INFINITY).map((task) => String(task.task_id));
+  const wanted = options.taskIds ? new Set(options.taskIds) : null;
+  const selectedIds = tasks.filter((task) => !wanted || wanted.has(String(task.task_id))).slice(0, options.limit ?? Number.POSITIVE_INFINITY).map((task) => String(task.task_id));
   const partialPath = options.partialResultsPath ?? join(resolve(benchmarkDir), "authoring-results.jsonl");
   const persisted = readJsonl(partialPath).filter((row) => row.schema_version === "understudy.authoring_partial.v1");
   const doneKeys = new Set(persisted.map((row) => `${row.model}::${row.task_id}`));

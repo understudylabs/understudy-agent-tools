@@ -149,6 +149,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           <StageBadge stage="proposed" />
           <SplitChip split={task.split} />
           <ConfidenceChip level={task.machine_confidence} />
+          {typeof task.grouping_label === "string" && <Badge>{task.grouping_label}</Badge>}
           {task.close_call && <Badge className="border-warn/40 text-warn">close call</Badge>}
           <Badge>{task.status}</Badge>
           <DecisionBadge decision={review?.decision ?? null} />
