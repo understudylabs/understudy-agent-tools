@@ -144,6 +144,32 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+/**
+ * Turn header toggle: a div with button semantics (role/tabIndex/keyboard)
+ * instead of a real <button>, because the header CONTAINS the CopyButton —
+ * nesting a button in a button is invalid HTML and breaks React hydration.
+ */
+function TurnHead({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      className="u-turn-head"
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onClick={onToggle}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return; // let the inner CopyButton keep its own keys
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function TurnRow({
   turn,
   open,
@@ -159,7 +185,7 @@ function TurnRow({
   const suffix = calls.length > 0 ? ` → ${calls.map((c) => `${c.name}()`).join(", ")}` : "";
   return (
     <div className={"u-turn" + (turn.role === "assistant" ? " assistant" : "") + (highlight ? " hit" : "")}>
-      <button className="u-turn-head" onClick={onToggle} aria-expanded={open}>
+      <TurnHead open={open} onToggle={onToggle}>
         <span className="u-role-chip" data-role={turn.role}>{turn.role}</span>
         <span className="u-turn-snippet">
           {firstLine(turn.text || (turn.chips[0] ? `${turn.chips[0].name} ${payloadPreview(turn.chips[0].payload, 80)}` : ""), 160)}
@@ -167,7 +193,7 @@ function TurnRow({
         </span>
         <CopyButton text={turn.text || JSON.stringify(turn.chips.map((c) => ({ [c.kind]: c.name, payload: c.payload })))} />
         <span className="u-turn-chev" aria-hidden="true">{open ? "▾" : "▸"}</span>
-      </button>
+      </TurnHead>
       {open && (
         <div className="u-turn-body">
           {turn.text && <MdBlocks text={turn.text} />}
@@ -245,7 +271,7 @@ export function ConversationView({
 
       {system && (
         <div className="u-turn system">
-          <button className="u-turn-head" onClick={() => setSystemOpen(!systemOpen)} aria-expanded={systemOpen}>
+          <TurnHead open={systemOpen} onToggle={() => setSystemOpen(!systemOpen)}>
             <span className="u-role-chip" data-role="system">system</span>
             <span className="u-turn-snippet">
               {firstLine(system, 160)}
@@ -253,7 +279,7 @@ export function ConversationView({
             </span>
             <CopyButton text={system} />
             <span className="u-turn-chev" aria-hidden="true">{systemOpen ? "▾" : "▸"}</span>
-          </button>
+          </TurnHead>
           {systemOpen && (
             <div className="u-turn-body">
               <pre className="u-pre" style={{ maxHeight: 320 }}>{system}</pre>

@@ -10,6 +10,7 @@ import {
   createRunRequest,
   deriveCalibrationSummary,
   executeRunRequest,
+  mergeCalibrationFloors,
   nullAgentRunner,
   readRunRequest,
   runRequestPath,
@@ -213,6 +214,54 @@ describe("executor with trivial arms", () => {
     // Trivial-only floors make no incumbent claim.
     assert.deepEqual(calibration.tasks, []);
     assert.deepEqual(calibration.failed_task_ids, []);
+  });
+
+  it("carries trivial floors forward across an incumbent-only rerun, and a new trivial run recomputes them", async () => {
+    const dir = makeBenchmarkDir();
+    const okRunner = async () => ({ score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-record", arguments: { id: "record-12345" } }], tool_call_count: 1 });
+    const calibration = () => JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
+
+    // 1. calibproof run: trivial arms compute the floors.
+    const first = queueRun(dir, { trivial_arms: ["null_agent", "spam_agent"] });
+    await executeRunRequest(dir, first.run_id, { runner: okRunner });
+    const before = calibration();
+    assert.equal(before.spam_floor.floor, 0.5);
+    assert.ok(!("source_run_id" in before.spam_floor), "a floor this run computed carries no carry-forward provenance");
+
+    // 2. incumbent-only rerun (no trivial arms): floors must SURVIVE, with
+    //    honest provenance pointing at the run that computed them.
+    const second = queueRun(dir, { incumbent_models: ["candidate-model"] });
+    await executeRunRequest(dir, second.run_id, { runner: okRunner });
+    const after = calibration();
+    assert.equal(after.run_id, second.run_id);
+    assert.ok(after.tasks.length > 0, "the incumbent rerun's own claim is intact");
+    assert.equal(after.null_floor.floor, before.null_floor.floor);
+    assert.equal(after.spam_floor.floor, before.spam_floor.floor);
+    assert.deepEqual(after.spam_floor.passed_task_ids, ["t1"]);
+    assert.equal(after.null_floor.source_run_id, first.run_id);
+    assert.equal(after.spam_floor.source_run_id, first.run_id);
+    assert.equal(after.spam_floor.source_ts, before.finished_at);
+
+    // 3. a NEW trivial run recomputes its own arm (no stale provenance) and
+    //    still carries the arm it did not rerun — preserving the ORIGINAL
+    //    computing run across a double carry.
+    const third = queueRun(dir, { trivial_arms: ["null_agent"] });
+    await executeRunRequest(dir, third.run_id, { runner: okRunner });
+    const final = calibration();
+    assert.equal(final.run_id, third.run_id);
+    assert.ok(!("source_run_id" in final.null_floor), "recomputed floors win and drop carry provenance");
+    assert.equal(final.spam_floor.source_run_id, first.run_id, "double-carried floors keep the original computing run");
+  });
+
+  it("mergeCalibrationFloors: recomputed floors win; missing floors carry with provenance; no prior file is a no-op", () => {
+    const floor = (extra = {}) => ({ arm_kind: "null_agent", floor: 0, passed_task_ids: [], floor_exceeded: false, ...extra });
+    const next = { schema_version: "understudy.benchmark_calibration.v1", run_id: "run-new", finished_at: "2026-07-22T01:00:00Z", started_at: null, null_floor: floor({ floor: 0.25 }) };
+    assert.deepEqual(mergeCalibrationFloors(null, next), next);
+    const prior = { run_id: "run-old", finished_at: "2026-07-20T00:00:00Z", started_at: null, null_floor: floor(), spam_floor: floor({ arm_kind: "spam_agent", floor: 0.5 }) };
+    const merged = mergeCalibrationFloors(prior, next);
+    assert.equal(merged.null_floor.floor, 0.25, "this run recomputed null_floor — it wins");
+    assert.ok(!("source_run_id" in merged.null_floor));
+    assert.deepEqual(merged.spam_floor, { ...prior.spam_floor, source_run_id: "run-old", source_ts: "2026-07-20T00:00:00Z" });
   });
 
   it("still flags anomalies on candidate rows in the same run (candidate-arm-only sentinels, not sentinels-off)", async () => {

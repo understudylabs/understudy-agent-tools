@@ -19,6 +19,7 @@ import {
   meetsConfidenceBar,
   readReviewPolicy,
   TASK_FEEDBACK_SCHEMA,
+  feedbackBelongsTo,
   isTaskFeedback,
   latestReviewByTask,
   makeTaskFeedback,
@@ -337,6 +338,34 @@ describe("task feedback contract (understudy.task_feedback.v1)", () => {
     assert.ok(result.handoff.includes("wrong required tool"));
     assert.ok(result.handoff.includes("t1"));
     assert.equal(result.handoff, buildTaskFeedbackHandoff(dir, "t1", "wrong required tool"));
+  });
+
+  it("records the manifest benchmark_id (not the dir basename), falling back to the basename without benchmark.json", () => {
+    const dir = path.join(tmpDir(), "cedar-automation");
+    writeFoundryDir(dir, [task("t1")]);
+    const entry = loadProposedEntryFromDir(dir, "data-dir", "data--cedar-automation", false);
+    const result = submitTaskFeedback(entry, { task_id: "t1", feedback: "wrong tool" });
+    assert.equal(result.ok, true);
+    assert.equal(result.feedback.benchmark_id, "prop-bench", "the proposal-stamped benchmark_id wins over the dir basename");
+
+    // Fallback: no benchmark.json → dir basename (the legacy convention).
+    const bare = path.join(tmpDir(), "cedar-automation");
+    writeFoundryDir(bare, [task("t1")]);
+    fs.rmSync(path.join(bare, "benchmark.json"));
+    const bareEntry = loadProposedEntryFromDir(bare, "data-dir", "data--cedar-automation", false);
+    const bareResult = submitTaskFeedback(bareEntry, { task_id: "t1", feedback: "wrong tool" });
+    assert.equal(bareResult.ok, true);
+    assert.equal(bareResult.feedback.benchmark_id, "cedar-automation");
+  });
+
+  it("feedbackBelongsTo accepts BOTH the manifest id and the legacy dir-basename id", () => {
+    const legacy = makeTaskFeedback({ benchmark_id: "cedar-automation", task_id: "t1", feedback: "old line" });
+    const modern = makeTaskFeedback({ benchmark_id: "trace-23a3902b7a7b6126", task_id: "t1", feedback: "new line" });
+    const ids = { benchmarkId: "trace-23a3902b7a7b6126", dirBasename: "cedar-automation" };
+    assert.ok(feedbackBelongsTo(legacy, ids));
+    assert.ok(feedbackBelongsTo(modern, ids));
+    assert.ok(!feedbackBelongsTo(makeTaskFeedback({ benchmark_id: "other", task_id: "t1", feedback: "x" }), ids));
+    assert.ok(!feedbackBelongsTo(legacy, { benchmarkId: null, dirBasename: null }));
   });
 
   it("rejects read-only entries and non-proposed stages", () => {

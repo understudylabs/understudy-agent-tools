@@ -140,6 +140,7 @@ describe("POST /api/feedback", () => {
     const lines = fs.readFileSync(path.join(outDir, "feedback.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(lines.length, 1);
     assert.equal(lines[0].task_id, "t-low");
-    assert.equal(lines[0].benchmark_id, "prop");
+    // The proposal-stamped benchmark.json's benchmark_id, NOT the dir basename ("prop").
+    assert.equal(lines[0].benchmark_id, "prop-bench");
   });
 });

@@ -387,9 +387,12 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
             aria-pressed={arm?.key === a.key}
             className={"u-tab mono" + (arm?.key === a.key ? " on" : "")}
             style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "3px 8px", fontSize: 11 }}
+            title={`run ${a.run_id}`}
             onClick={() => setArmKey(a.key)}
           >
-            {a.model} <span style={{ color: scoreColor(a.mean_score ?? 0) }}>{formatScore(a.mean_score)}</span>
+            {a.model} <span style={{ color: scoreColor(a.mean_score ?? 0) }}>{formatScore(a.mean_score)}</span>{" "}
+            {/* short run-id suffix: identical model+score pills from different runs stay distinguishable */}
+            <span className="text-faint" style={{ fontSize: 9 }}>{a.run_id.slice(-6)}</span>
           </button>
         ))}
         {liveRun && (

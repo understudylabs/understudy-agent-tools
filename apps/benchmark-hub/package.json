@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "predev": "node scripts/check-dist.mjs",
     "dev": "BENCHMARK_HUB_DEMO=1 next dev -p 1421",
+    "prebuild": "node scripts/check-dist.mjs",
     "build": "next build",
     "start": "next start -p 1421",
     "start:demo": "BENCHMARK_HUB_DEMO=1 next start -p 1421",

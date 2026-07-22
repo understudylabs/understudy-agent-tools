@@ -278,12 +278,14 @@ export function latestReviewByTask(reviews: BenchmarkReview[]): Record<string, B
  * feedback and hands the user a copyable agent prompt (the hub never
  * executes); a coding agent — or a future daemon verb — consumes open lines
  * and runs `understudy traces regenerate-env` after editing the task. No
- * absolute paths are recorded (portability rule): benchmark_id is the foundry
- * output dir basename, same convention as reviews.jsonl.
+ * absolute paths are recorded (portability rule): benchmark_id is the
+ * proposal-stamped benchmark.json's benchmark_id (read at write time), with
+ * the foundry output dir basename as fallback. Legacy lines recorded the dir
+ * basename — readers must accept both (see feedbackBelongsTo).
  */
 export type TaskFeedback = {
   schema_version: typeof TASK_FEEDBACK_SCHEMA;
-  /** Foundry output dir slug (directory basename), NOT a benchmark.v1 benchmark_id. */
+  /** The proposal manifest's benchmark_id when available, else the foundry output dir basename (legacy lines always used the basename). */
   benchmark_id: string;
   task_id: string;
   /** The reviewer's own words describing what is wrong / should change. */
@@ -329,6 +331,21 @@ export function makeTaskFeedback(input: {
 
 export function serializeTaskFeedbackLine(feedback: TaskFeedback): string {
   return serializeJsonlLine(feedback);
+}
+
+/**
+ * Accept-both benchmark matcher for feedback rows. Newer lines record the
+ * proposal manifest's benchmark_id; legacy lines recorded the foundry output
+ * dir basename. A row belongs to the benchmark when it matches EITHER id.
+ */
+export function feedbackBelongsTo(
+  row: TaskFeedback,
+  ids: { benchmarkId?: string | null; dirBasename?: string | null },
+): boolean {
+  return (
+    (ids.benchmarkId != null && row.benchmark_id === ids.benchmarkId) ||
+    (ids.dirBasename != null && row.benchmark_id === ids.dirBasename)
+  );
 }
 
 /** Valid feedback rows from a feedback.jsonl file (invalid rows dropped, lines tolerant). */
