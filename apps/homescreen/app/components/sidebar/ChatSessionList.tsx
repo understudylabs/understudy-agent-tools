@@ -47,26 +47,31 @@ export function ChatSessionList({
   const [showArchived, setShowArchived] = useState(false);
   const [archiveAllOpen, setArchiveAllOpen] = useState(false);
   const visibleSessions = showArchived ? archivedSessions : sessions;
+  // Nothing to list or toggle: skip the heading entirely instead of leaving
+  // a stray archive button floating under the group label.
+  const showHeading = showArchived || sessions.length > 0 || archivedSessions.length > 0;
 
   return (
     <>
-      <div className="chat-nav-heading">
-        <div className="nav-section">{showArchived ? "Archived" : ""}</div>
-        <button
-          type="button"
-          className="chat-nav-view-toggle"
-          onClick={() => setShowArchived((value) => !value)}
-          aria-label={showArchived ? "Back to chats" : "View archived chats"}
-          title={showArchived ? "Back to chats" : "View archived chats"}
-        >
-          {showArchived ? (
-            <ArrowLeftIcon aria-hidden="true" size={14} strokeWidth={1.8} />
-          ) : (
-            <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
-          )}
-          <span>{showArchived ? "Chats" : archivedSessions.length || ""}</span>
-        </button>
-      </div>
+      {showHeading && (
+        <div className="chat-nav-heading">
+          <div className="nav-section">{showArchived ? "Archived" : "Recent"}</div>
+          <button
+            type="button"
+            className="chat-nav-view-toggle"
+            onClick={() => setShowArchived((value) => !value)}
+            aria-label={showArchived ? "Back to chats" : "View archived chats"}
+            title={showArchived ? "Back to chats" : "View archived chats"}
+          >
+            {showArchived ? (
+              <ArrowLeftIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+            ) : (
+              <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+            )}
+            <span>{showArchived ? "Chats" : archivedSessions.length || ""}</span>
+          </button>
+        </div>
+      )}
 
       {historyError && (
         <div className="chat-nav-error" role="alert">

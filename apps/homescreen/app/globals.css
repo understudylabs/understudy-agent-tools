@@ -347,8 +347,8 @@ select,
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
-  display: flex;
   flex-direction: column;
+  min-height: 0;
   padding: calc(var(--titlebar-h) + 10px) 10px 14px;
   gap: 4px;
   display: none;
@@ -357,9 +357,50 @@ select,
   display: flex;
 }
 
-.chat-nav-heading {
+/* Primary action: always visible at the top of the rail, never nested. */
+.sidebar-new-chat {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 32px;
+  margin: 2px 8px 4px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--model-mint) 26%, var(--border));
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--model-mint) 8%, transparent);
+  color: var(--model-mint);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.sidebar-new-chat:hover,
+.sidebar-new-chat:focus-visible {
+  background: color-mix(in srgb, var(--model-mint) 15%, transparent);
+  outline: none;
+}
+
+/* The nav groups scroll as one region so the account footer stays pinned
+   and nothing overlaps or clips when the window is short. */
+.sidebar-nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
+}
+.sidebar-nav .nav-group {
+  flex: none;
+}
+
+.chat-nav-heading {
+  display: flex;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 8px;
   padding-right: 4px;
@@ -379,7 +420,6 @@ select,
   gap: 4px;
   min-width: 28px;
   height: 26px;
-  margin-top: 8px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -642,11 +682,8 @@ select,
   opacity: 0.9;
 }
 
-.nav-spacer {
-  flex: 1;
-}
-
 .nav-account {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -674,6 +711,11 @@ select,
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+.nav-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nav-account-status {
   display: flex;

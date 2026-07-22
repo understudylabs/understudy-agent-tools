@@ -200,12 +200,12 @@ export default function Page() {
     storeScope(next);
   }, []);
 
-  const newChat = () => {
-    if (pane !== "chat") return;
+  const newChat = useCallback(() => {
+    setPane("chat");
     setRequestedChatSession(null);
     setActiveChatSessionId(null);
     setChatResetToken((token) => token + 1);
-  };
+  }, []);
 
   const openFirstRunSignIn = useCallback((downloadAfterSignIn: boolean) => {
     setSignInIntent({ returnToChat: true, downloadAfterSignIn });
@@ -278,13 +278,12 @@ export default function Page() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return;
       if (event.key.toLowerCase() !== "n") return;
-      if (pane !== "chat") return;
       event.preventDefault();
       newChat();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [pane]);
+  }, [newChat]);
 
   return (
     <div className={"shell" + (railOpen ? " rail-open" : "")}>
@@ -299,17 +298,15 @@ export default function Page() {
         <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
       </button>
       {pane === "chat" && (
-        <>
-          <button
-            type="button"
-            className="titlebar-new-chat"
-            aria-label="New chat"
-            title="New chat (Cmd+N)"
-            onClick={newChat}
-          >
-            <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
-          </button>
-        </>
+        <button
+          type="button"
+          className="titlebar-new-chat"
+          aria-label="New chat"
+          title="New chat (Cmd+N)"
+          onClick={newChat}
+        >
+          <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
+        </button>
       )}
       <DownloadQrButton />
       <div className="operation-notice-stack">
@@ -328,12 +325,7 @@ export default function Page() {
         connected={connected}
         scope={scope}
         onScopeChange={handleScopeChange}
-        onNewChat={() => {
-          setPane("chat");
-          setRequestedChatSession(null);
-          setActiveChatSessionId(null);
-          setChatResetToken((token) => token + 1);
-        }}
+        onNewChat={newChat}
         sessions={chatHistory}
         archivedSessions={archivedChatHistory}
         activeSessionId={activeChatSessionId}

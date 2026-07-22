@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { PlusIcon } from "lucide-react";
+import { SquarePenIcon, UserRoundIcon } from "lucide-react";
 import { TooltipProvider } from "@/app/components/base-ui/tooltip";
 import { NAV_ITEMS, paneToNavId, type NavGroupId, type Scope } from "../lib/nav";
 import { NavGroup } from "./sidebar/NavGroup";
@@ -41,16 +41,8 @@ export type PaneId =
   | "training-rl"
   | "training-jobs";
 
-const AccountIcon = () => (
-  <svg viewBox="0 0 16 16" fill="none" className="nav-icon" aria-hidden="true">
-    <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
-    <path d="M3 14c.7-2.5 2.7-4 5-4s4.3 1.5 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-  </svg>
-);
-
 const GROUP_LABELS: Record<NavGroupId, string> = {
   organization: "Capture",
-  workload: "Workload",
   training: "Training",
   sessions: "Chats",
   manage: "Manage",
@@ -101,7 +93,7 @@ export function Sidebar({
   onSelectThread: (threadId: string) => void;
   onArchiveThread: (threadId: string) => Promise<boolean>;
 }) {
-  const activeNavId = paneToNavId(active, activeSessionId, activeThreadId);
+  const activeNavId = paneToNavId(active);
 
   // Bottom-left identity: prefer a real org name when the gateway exposes
   // one; fall back to a shortened org id ("org_ABCD…WXYZ"), then "Account".
@@ -146,53 +138,60 @@ export function Sidebar({
           onWorkloadSelected={() => onSelect("workload-config")}
         />
 
-        <NavGroup group="organization" label={GROUP_LABELS.organization}>
-          {itemsFor("organization")}
-        </NavGroup>
+        <button type="button" className="sidebar-new-chat" onClick={onNewChat}>
+          <SquarePenIcon className="nav-icon" aria-hidden="true" size={15} strokeWidth={1.8} />
+          New chat
+        </button>
 
-        <NavGroup group="training" label={GROUP_LABELS.training}>
-          {itemsFor("training")}
-          <TrainingThreadList
-            active={active}
-            trainingThreads={trainingThreads}
-            activeThreadId={activeThreadId}
-            archiveBusy={archiveBusy}
-            onSelectThread={onSelectThread}
-            onArchiveThread={onArchiveThread}
-          />
-        </NavGroup>
+        <div className="sidebar-nav">
+          <NavGroup group="organization" label={GROUP_LABELS.organization}>
+            {itemsFor("organization")}
+          </NavGroup>
 
-        <NavGroup group="sessions" label={GROUP_LABELS.sessions}>
-          <NavItem label="New chat" icon={PlusIcon} active={false} onSelect={onNewChat} />
-          <ChatSessionList
-            active={active}
-            sessions={sessions}
-            archivedSessions={archivedSessions}
-            activeSessionId={activeSessionId}
-            historyLoading={historyLoading}
-            historyError={historyError}
-            archiveBusy={archiveBusy}
-            archiveActiveDisabled={archiveActiveDisabled}
-            onSelectSession={onSelectSession}
-            onArchiveSession={onArchiveSession}
-            onRestoreSession={onRestoreSession}
-            onArchiveAll={onArchiveAll}
-          />
-          {itemsFor("sessions")}
-        </NavGroup>
+          <NavGroup group="training" label={GROUP_LABELS.training}>
+            {itemsFor("training")}
+            <TrainingThreadList
+              active={active}
+              trainingThreads={trainingThreads}
+              activeThreadId={activeThreadId}
+              archiveBusy={archiveBusy}
+              onSelectThread={onSelectThread}
+              onArchiveThread={onArchiveThread}
+            />
+          </NavGroup>
 
-        <NavGroup group="manage" label={GROUP_LABELS.manage}>
-          {itemsFor("manage")}
-        </NavGroup>
+          <NavGroup group="sessions" label={GROUP_LABELS.sessions}>
+            <ChatSessionList
+              active={active}
+              sessions={sessions}
+              archivedSessions={archivedSessions}
+              activeSessionId={activeSessionId}
+              historyLoading={historyLoading}
+              historyError={historyError}
+              archiveBusy={archiveBusy}
+              archiveActiveDisabled={archiveActiveDisabled}
+              onSelectSession={onSelectSession}
+              onArchiveSession={onArchiveSession}
+              onRestoreSession={onRestoreSession}
+              onArchiveAll={onArchiveAll}
+            />
+            {itemsFor("sessions")}
+          </NavGroup>
 
-        <div className="nav-spacer" />
+          <NavGroup group="manage" label={GROUP_LABELS.manage}>
+            {itemsFor("manage")}
+          </NavGroup>
+        </div>
+
         <button
           className={"nav-account" + (active === "account" ? " active" : "")}
           onClick={() => onSelect("account")}
         >
-          <AccountIcon />
+          <UserRoundIcon className="nav-icon" aria-hidden="true" size={16} strokeWidth={1.6} />
           <span className="nav-account-copy">
-            <span>{orgLabel ?? "Account"}</span>
+            <span className="nav-account-name" title={orgLabel ?? undefined}>
+              {orgLabel ?? "Account"}
+            </span>
             <span className="nav-account-status">
               <span className={"dot" + (connected ? " running" : "")} />
               {connected ? "Connected" : "Disconnected"}

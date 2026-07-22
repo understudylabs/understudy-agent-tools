@@ -19,7 +19,6 @@ export type Scope = { projectId: string | null; workloadId: string | null };
 
 export type NavGroupId =
   | "organization"
-  | "workload"
   | "training"
   | "sessions"
   | "manage";
@@ -60,8 +59,9 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "workload-captures", group: "organization", label: "Captures", icon: Inbox, pane: "captures", requiresWorkload: true },
   // Training
   { id: "training-overview", group: "training", label: "Overview", icon: FlaskConical, pane: "training-jobs" },
-  // Chats (Explore is an ordinary row; New chat is rendered separately)
-  { id: "chats-explore", group: "sessions", label: "Explore Data", icon: Compass, pane: "explore" },
+  // Chats (Explore is an ordinary row; New chat is the sidebar's primary
+  // action, rendered at the top of the rail rather than inside this group)
+  { id: "chats-explore", group: "sessions", label: "Explore data", icon: Compass, pane: "explore" },
   // Manage
   // "Models" is Aamir's catalog surface (web /models). The desktop-native
   // local model library pane still exists but is reachable only via deep-link.
@@ -79,15 +79,9 @@ export const NAV_ITEMS: NavItemDef[] = [
  * Chat sessions and training threads keep their own compound active checks
  * inside ChatSessionList / TrainingThreadList (deliberately not generalized).
  */
-export function paneToNavId(
-  pane: PaneId,
-  activeSessionId: string | null,
-  activeThreadId: string | null,
-): string | null {
+export function paneToNavId(pane: PaneId): string | null {
   if (pane === "chat") {
     // Session/thread rows own the active state when one is selected.
-    void activeSessionId;
-    void activeThreadId;
     return null;
   }
   const item = NAV_ITEMS.find((entry) => entry.pane === pane);
