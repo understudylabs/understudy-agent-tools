@@ -26,8 +26,10 @@ Claude Code registration (`~/.claude.json` → `mcpServers`):
 | `read_rollout` | trajectory from `runs/live/<run>-<model>.jsonl` + per-obligation contract scoring | `dist/benchmark-replay.js` `accumulateReplay` (the Replay tab's scorer) |
 | `diff_rollouts` | side-by-side obligations + first tool-call divergence between two runs | same |
 | `submit_review` | appends `understudy.benchmark_review.v1` to `reviews.jsonl` | `submitReview` — the exact validation behind `POST /api/reviews` |
+| `apply_auto_accepts` | appends `source:"auto"` accept lines per the review policy (`review-policy.json`, defaults when absent) — the tool call **is** the explicit user action | `applyAutoAccepts` — the exact code behind `POST /api/reviews/auto` |
+| `submit_feedback` | appends `understudy.task_feedback.v1` to `feedback.jsonl` and returns the regenerate-env agent handoff | `submitTaskFeedback` — the exact code behind `POST /api/feedback` |
 | `queue_run` | writes `understudy.run_request.v1` into `runs/queue/` — **never executes** | `queueOrCancelRun` — the exact validation behind `POST /api/runs` |
-| `run_status` | request status + row summary as `rows-*.jsonl` land | `run-executor` readers |
+| `run_status` | request status + row summary as `rows-*.jsonl` land, plus the calibration block (incumbent gate + null/spam trivial-arm floors) | `run-executor` readers |
 
 Execution stays where it always was: `understudy runs execute --benchmark
 <dir> --watch` (or the daemon) picks queued requests up. The MCP server is a

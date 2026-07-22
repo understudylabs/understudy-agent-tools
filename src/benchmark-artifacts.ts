@@ -53,6 +53,8 @@ export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
 export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
 /** feedback.jsonl sidecar: free-text "what's wrong with this task" lines (append-only). */
 export const TASK_FEEDBACK_SCHEMA = "understudy.task_feedback.v1";
+/** review-policy.json sidecar: configurable exception-review auto-accept bar. */
+export const REVIEW_POLICY_SCHEMA = "understudy.review_policy.v1";
 
 /* ------------------------------------------------------------------ */
 /* JSONL codec                                                         */
@@ -327,6 +329,71 @@ export function serializeTaskFeedbackLine(feedback: TaskFeedback): string {
 export function readTaskFeedback(file: string): { feedback: TaskFeedback[]; skipped: number } {
   const { items, skipped } = readJsonlFile(file);
   return { feedback: items.filter(isTaskFeedback), skipped };
+}
+
+/* ------------------------------------------------------------------ */
+/* Review policy (<benchmark>/review-policy.json — optional sidecar)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * understudy.review_policy.v1 — configures the exception-review auto-accept
+ * bar. A SIDECAR (not a manifest field) on purpose: manifest.json is
+ * machine-written by the foundry and regenerated on rebuilds, while the
+ * policy is human/operator-owned post-generation state — the same ownership
+ * split as reviews.jsonl and feedback.jsonl. Absent/invalid file = defaults,
+ * which reproduce the pre-policy behavior exactly.
+ */
+export type MachineConfidence = "high" | "medium" | "low";
+
+export type ReviewPolicy = {
+  schema_version: typeof REVIEW_POLICY_SCHEMA;
+  /** Lowest machine_confidence that can auto-accept (close_call still always excepts). */
+  min_confidence: MachineConfidence;
+  /** When false, an incumbent calibration failure no longer blocks auto-accept. */
+  require_incumbent_pass: boolean;
+};
+
+export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
+  schema_version: REVIEW_POLICY_SCHEMA,
+  min_confidence: "high",
+  require_incumbent_pass: true,
+};
+
+const CONFIDENCE_RANK: Record<MachineConfidence, number> = { high: 2, medium: 1, low: 0 };
+
+/** True when `level` clears the policy's min_confidence bar (high > medium > low). */
+export function meetsConfidenceBar(level: string | null | undefined, minConfidence: MachineConfidence): boolean {
+  const rank = CONFIDENCE_RANK[level as MachineConfidence];
+  return rank !== undefined && rank >= CONFIDENCE_RANK[minConfidence];
+}
+
+export function reviewPolicyPath(benchmarkDir: string): string {
+  return join(benchmarkDir, "review-policy.json");
+}
+
+/**
+ * Read the policy in force for a benchmark dir. TOLERANT + field-wise
+ * additive: a missing/unreadable/wrong-schema file yields the defaults, and
+ * recognized fields override the defaults individually (unknown values are
+ * ignored, never fatal — a typo'd policy must not silently loosen the bar).
+ */
+export function readReviewPolicy(benchmarkDir: string): ReviewPolicy {
+  let parsed: Obj;
+  try {
+    parsed = asObject(JSON.parse(readFileSync(reviewPolicyPath(benchmarkDir), "utf8")));
+  } catch {
+    return { ...DEFAULT_REVIEW_POLICY };
+  }
+  if (parsed.schema_version !== REVIEW_POLICY_SCHEMA) return { ...DEFAULT_REVIEW_POLICY };
+  return {
+    ...DEFAULT_REVIEW_POLICY,
+    ...(parsed.min_confidence === "high" || parsed.min_confidence === "medium" || parsed.min_confidence === "low"
+      ? { min_confidence: parsed.min_confidence }
+      : {}),
+    ...(typeof parsed.require_incumbent_pass === "boolean"
+      ? { require_incumbent_pass: parsed.require_incumbent_pass }
+      : {}),
+  };
 }
 
 /* ------------------------------------------------------------------ */

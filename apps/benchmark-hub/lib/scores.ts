@@ -1,5 +1,5 @@
 import { bootstrapCI, perTaskMeans, type BootstrapCI } from "./bootstrap";
-import type { BenchmarkManifest, EvalRow, TaskSplit } from "./types";
+import type { BenchmarkManifest, CalibrationSummary, EvalRow, TaskSplit, TrivialFloor } from "./types";
 
 export type CategoryDetail = {
   /** Mean strict score over scored rows in this category. */
@@ -35,6 +35,12 @@ export type ModelSummary = {
   /** True when any row is labeled arm_kind "incumbent" (the capture-producing model rerun). */
   incumbent: boolean;
   /**
+   * True when any row is labeled a trivial calibration arm (null_agent /
+   * spam_agent). Trivial arms are calibration furniture, not candidates:
+   * rendered muted, excluded from top-3 shading and statistical-tie groups.
+   */
+  trivial: boolean;
+  /**
    * Seeded percentile-bootstrap 95% CI over PER-TASK mean scores (tasks are
    * the resampling unit; anomalous rows excluded exactly like `overall`).
    * Null when no scored tasks exist. At taskN=1 it is degenerate [m, m].
@@ -54,6 +60,14 @@ export type LeaderboardOptions = {
 /** True when the executor's structural sentinels flagged this row (row.anomaly is an object with a kind). */
 export function isAnomalousRow(row: EvalRow): boolean {
   return row.anomaly != null && typeof row.anomaly === "object" && typeof row.anomaly.kind === "string";
+}
+
+/** Trivial calibration arms (mirrors run-executor's TRIVIAL_ARM_KINDS). */
+export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent"] as const;
+
+/** True when the row belongs to a trivial calibration arm (null/spam agent). */
+export function isTrivialArmRow(row: EvalRow): boolean {
+  return row.arm_kind === "null_agent" || row.arm_kind === "spam_agent";
 }
 
 function mean(values: number[]): number | null {
@@ -172,6 +186,7 @@ export function computeLeaderboard(
       p50LatencyMs: median(latencies),
       route: routes.size === 1 ? [...routes][0] : null,
       incumbent: modelRows.some((r) => r.arm_kind === "incumbent"),
+      trivial: modelRows.some(isTrivialArmRow),
       ci,
       scoredTaskCount: taskMeans.length,
     });
@@ -206,10 +221,12 @@ export function categoryScoreSummary(
  * arms without a CI (no scored tasks) never tie. Overlapping CIs mean the
  * rank separation is not statistically supported at this N — the leaderboard
  * greys those separations out instead of implying a real ordering.
+ * Trivial calibration arms never enter tie groups — they are floors, not
+ * candidates, so "tied with the null agent" is not a rank statement we make.
  */
 export function statisticalTieGroups(summaries: ModelSummary[]): Map<string, number> {
   const ranked = summaries
-    .filter((s) => s.ci != null && s.overall != null)
+    .filter((s) => s.ci != null && s.overall != null && !s.trivial)
     .sort((a, b) => (b.overall as number) - (a.overall as number));
   const groups = new Map<string, number>();
   let group: ModelSummary[] = [];
@@ -247,6 +264,52 @@ export function formatCost(cost: number | null | undefined): string {
   if (cost === 0) return "$0";
   if (cost < 0.01) return "$" + cost.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
   return "$" + cost.toFixed(cost < 1 ? 3 : 2);
+}
+
+/* ---- Trivial-arm floors (calibration.json null_floor / spam_floor) ---- */
+
+export type FloorView = {
+  armKind: TrivialFloor["arm_kind"];
+  /** Human label: "null agent" / "spam agent". */
+  label: string;
+  floor: number | null;
+  passedTaskIds: string[];
+  exceeded: boolean;
+};
+
+export const TRIVIAL_ARM_LABELS: Record<TrivialFloor["arm_kind"], string> = {
+  null_agent: "null agent",
+  spam_agent: "spam agent",
+};
+
+/**
+ * Normalize a calibration summary's trivial-arm floors for rendering
+ * (in file-schema order: null then spam). Floors absent from the sidecar
+ * (arms that never ran — pre-floors runs) yield nothing.
+ */
+export function calibrationFloors(calibration: CalibrationSummary | null | undefined): FloorView[] {
+  const floors: FloorView[] = [];
+  for (const floor of [calibration?.null_floor, calibration?.spam_floor]) {
+    if (!floor) continue;
+    floors.push({
+      armKind: floor.arm_kind,
+      label: TRIVIAL_ARM_LABELS[floor.arm_kind] ?? floor.arm_kind,
+      floor: floor.floor,
+      passedTaskIds: floor.passed_task_ids,
+      exceeded: floor.floor_exceeded,
+    });
+  }
+  return floors;
+}
+
+/** "0%" / "50%" / "no rows" — the floor cell in the calibration line. */
+export function formatFloor(floor: number | null): string {
+  return floor == null ? "no rows" : formatScore(floor);
+}
+
+/** The trivial arms whose floor pass-list includes this task — a suspect signal ("null agent passes this task"). */
+export function trivialPassesForTask(calibration: CalibrationSummary | null | undefined, taskId: string): FloorView[] {
+  return calibrationFloors(calibration).filter((f) => f.passedTaskIds.includes(taskId));
 }
 
 export function formatLatency(ms: number | null | undefined): string {

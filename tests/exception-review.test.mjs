@@ -14,6 +14,10 @@ import {
   MAX_FEEDBACK_LENGTH,
 } from "../dist/benchmark-hub-core.js";
 import {
+  DEFAULT_REVIEW_POLICY,
+  REVIEW_POLICY_SCHEMA,
+  meetsConfidenceBar,
+  readReviewPolicy,
   TASK_FEEDBACK_SCHEMA,
   isTaskFeedback,
   latestReviewByTask,
@@ -341,5 +345,136 @@ describe("task feedback contract (understudy.task_feedback.v1)", () => {
     const readOnly = loadProposedEntryFromDir(dir, "fixture", "fixture--prop", true);
     assert.equal(submitTaskFeedback(readOnly, { task_id: "t1", feedback: "x" }).status, 403);
     assert.equal(submitTaskFeedback(null, { task_id: "t1", feedback: "x" }).status, 404);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Configurable review policy (understudy.review_policy.v1 sidecar)    */
+/* ------------------------------------------------------------------ */
+
+const policySchema = JSON.parse(
+  fs.readFileSync(path.resolve("schemas", "understudy.review_policy.v1.schema.json"), "utf8"),
+);
+
+describe("readReviewPolicy — sidecar codec", () => {
+  it("absent / unreadable / wrong-schema files yield the defaults (pre-policy behavior)", () => {
+    const dir = tmpDir();
+    assert.deepEqual(readReviewPolicy(dir), DEFAULT_REVIEW_POLICY);
+    fs.writeFileSync(path.join(dir, "review-policy.json"), "{not json");
+    assert.deepEqual(readReviewPolicy(dir), DEFAULT_REVIEW_POLICY);
+    fs.writeFileSync(path.join(dir, "review-policy.json"), JSON.stringify({ min_confidence: "low" }));
+    assert.deepEqual(readReviewPolicy(dir), DEFAULT_REVIEW_POLICY, "no schema stamp ⇒ defaults");
+  });
+
+  it("recognized fields override individually; unrecognized values never loosen the bar", () => {
+    const dir = tmpDir();
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: REVIEW_POLICY_SCHEMA, min_confidence: "medium" }),
+    );
+    assert.deepEqual(readReviewPolicy(dir), { ...DEFAULT_REVIEW_POLICY, min_confidence: "medium" });
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: REVIEW_POLICY_SCHEMA, min_confidence: "yolo", require_incumbent_pass: "no" }),
+    );
+    assert.deepEqual(readReviewPolicy(dir), DEFAULT_REVIEW_POLICY, "typo'd values fall back per field");
+    assert.deepEqual(
+      schemaErrors(policySchema, { schema_version: REVIEW_POLICY_SCHEMA, min_confidence: "medium", require_incumbent_pass: false }),
+      [],
+    );
+  });
+
+  it("defaults match the historical hardcoded bar and confidence ordering is high > medium > low", () => {
+    assert.equal(DEFAULT_REVIEW_POLICY.min_confidence, "high");
+    assert.equal(DEFAULT_REVIEW_POLICY.require_incumbent_pass, true);
+    assert.equal(meetsConfidenceBar("high", "high"), true);
+    assert.equal(meetsConfidenceBar("medium", "high"), false);
+    assert.equal(meetsConfidenceBar("medium", "medium"), true);
+    assert.equal(meetsConfidenceBar("low", "medium"), false);
+    assert.equal(meetsConfidenceBar("low", "low"), true);
+    assert.equal(meetsConfidenceBar("bogus", "low"), false, "unknown levels never clear any bar");
+  });
+});
+
+describe("deriveAutoReviewProposals — policy matrix (non-default review_policy)", () => {
+  const failCalibration = {
+    schema_version: "understudy.calibration.v1",
+    benchmark_id: "b",
+    run_id: "r",
+    incumbent_models: ["m"],
+    threshold: 0.5,
+    started_at: null,
+    finished_at: null,
+    tasks: [{ task_id: "t1", score: 0, passed: false, rollouts: 1 }],
+    passed_count: 0,
+    failed_count: 1,
+    failed_task_ids: ["t1"],
+  };
+
+  it("min_confidence medium auto-accepts medium, still excepts low and close calls", () => {
+    const reviewPolicy = { ...DEFAULT_REVIEW_POLICY, min_confidence: "medium" };
+    const proposals = deriveAutoReviewProposals(
+      entryWith({
+        reviewPolicy,
+        tasks: [
+          task("t-high"),
+          task("t-med", { machine_confidence: "medium" }),
+          task("t-low", { machine_confidence: "low" }),
+          task("t-close", { machine_confidence: "high", close_call: true }),
+        ],
+      }),
+    );
+    assert.deepEqual(proposals.map((p) => p.verdict), ["auto_accept", "auto_accept", "exception", "exception"]);
+    assert.deepEqual(proposals[3].reasons, ["low_confidence"], "close_call always excepts regardless of the bar");
+  });
+
+  it("require_incumbent_pass=false drops the incumbent gate; other gates still hold", () => {
+    const reviewPolicy = { ...DEFAULT_REVIEW_POLICY, require_incumbent_pass: false };
+    const [p] = deriveAutoReviewProposals(entryWith({ reviewPolicy, tasks: [task("t1")], calibration: failCalibration }));
+    assert.equal(p.verdict, "auto_accept", "incumbent failure no longer blocks");
+    const [q] = deriveAutoReviewProposals(
+      entryWith({
+        reviewPolicy,
+        tasks: [task("t1", { self_check: { ok: false, failures: [] } })],
+        calibration: failCalibration,
+      }),
+    );
+    assert.deepEqual(q.reasons, ["self_check_failed"], "incumbent_failed absent even when compounding");
+  });
+
+  it("an entry without reviewPolicy behaves exactly like the defaults", () => {
+    const [withDefault] = deriveAutoReviewProposals(
+      entryWith({ tasks: [task("t1", { machine_confidence: "medium" })] }),
+    );
+    const [withExplicit] = deriveAutoReviewProposals(
+      entryWith({ reviewPolicy: { ...DEFAULT_REVIEW_POLICY }, tasks: [task("t1", { machine_confidence: "medium" })] }),
+    );
+    assert.deepEqual(withDefault, withExplicit);
+    assert.deepEqual(withDefault.reasons, ["low_confidence"]);
+  });
+});
+
+describe("review policy — end to end over a real foundry dir", () => {
+  it("loadProposedEntryFromDir picks up review-policy.json and applyAutoAccepts honors it", () => {
+    const dir = path.join(tmpDir(), "prop");
+    writeFoundryDir(dir, [task("t-med", { machine_confidence: "medium" }), task("t-low", { machine_confidence: "low" })]);
+
+    // Default policy: nothing auto-accepts.
+    const before = applyAutoAccepts(loadProposedEntryFromDir(dir, "data-dir", "data--prop", false));
+    assert.deepEqual(before.applied, []);
+    assert.equal(before.exceptions, 2);
+
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: REVIEW_POLICY_SCHEMA, min_confidence: "medium" }),
+    );
+    const entry = loadProposedEntryFromDir(dir, "data-dir", "data--prop", false);
+    assert.deepEqual(entry.reviewPolicy, { ...DEFAULT_REVIEW_POLICY, min_confidence: "medium" });
+    const result = applyAutoAccepts(entry);
+    assert.deepEqual(result.applied, ["t-med"]);
+    assert.equal(result.exceptions, 1);
+    const { reviews } = readReviews(path.join(dir, "reviews.jsonl"));
+    assert.equal(reviews[0].source, "auto");
+    assert.ok(reviews[0].note.includes("≥ medium"), "auto note names the policy bar in force");
   });
 });

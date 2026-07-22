@@ -22,6 +22,7 @@ import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
 import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
 import { RunPanel } from "@/components/run-panel";
+import { CalibrationFloors } from "@/components/calibration-floors";
 
 export const dynamic = "force-dynamic";
 
@@ -274,13 +275,17 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             explainer="Queue a benchmark run against gateway models. The hub only writes a run request file; a local `understudy runs execute --watch` daemon executes it and rows stream back into the leaderboard below."
           >
             {calibration ? (
-              <p className="mono mt-3 text-xs" style={{ color: calibration.failed_count > 0 ? "var(--warn-ink)" : "var(--ok)" }}>
-                calibration: incumbent ({calibration.incumbent_models.join(", ")}) passed {calibration.passed_count}/
-                {calibration.passed_count + calibration.failed_count} tasks at threshold {calibration.threshold} · run{" "}
-                {calibration.run_id}
-                {calibration.finished_at ? ` · ${calibration.finished_at.slice(0, 19)}Z` : ""}
-                {calibration.failed_count > 0 && " — failed tasks are marked suspect below"}
-              </p>
+              <>
+                <p className="mono mt-3 text-xs" style={{ color: calibration.failed_count > 0 ? "var(--warn-ink)" : "var(--ok)" }}>
+                  calibration: incumbent ({calibration.incumbent_models.join(", ")}) passed {calibration.passed_count}/
+                  {calibration.passed_count + calibration.failed_count} tasks at threshold {calibration.threshold} · run{" "}
+                  {calibration.run_id}
+                  {calibration.finished_at ? ` · ${calibration.finished_at.slice(0, 19)}Z` : ""}
+                  {calibration.failed_count > 0 && " — failed tasks are marked suspect below"}
+                </p>
+                {/* Trivial-arm floors: red flag + offending-task links when exceeded. */}
+                <CalibrationFloors calibration={calibration} slug={entry.slug} />
+              </>
             ) : (
               incumbentModel && (
                 <p className="mono mt-3 text-xs text-faint">

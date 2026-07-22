@@ -307,6 +307,163 @@ describe("queue_run / run_status", () => {
   });
 });
 
+/* ---------------- apply_auto_accepts + submit_feedback ---------------- */
+
+// A hand-written foundry dir with deterministic confidences for the policy tools.
+function writeFoundryFixture(dir, tasks) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    JSON.stringify({
+      schema_version: "understudy.trace_foundry.v1",
+      freshness: { max_age_days: 30, cutoff_utc: "2026-07-01T00:00:00Z", newest_capture_utc: "2026-07-20T00:00:00Z" },
+      counts: { source_files: 1, captures: 1, tasks: tasks.length, edges: 0, stale_filtered: 0, invalid_timestamp_filtered: 0 },
+    }),
+  );
+  fs.writeFileSync(path.join(dir, "tasks.jsonl"), tasks.map((t) => JSON.stringify(t)).join("\n") + "\n");
+  fs.writeFileSync(
+    path.join(dir, "benchmark.json"),
+    JSON.stringify({ schema_version: "understudy.benchmark_proposal.v1", benchmark_id: "mcp-policy-bench", tasks: tasks.map((t) => ({ task_id: t.task_id })) }),
+  );
+}
+
+function foundryTask(id, overrides = {}) {
+  return {
+    schema_version: "understudy.benchmark_task.v1",
+    task_id: id,
+    execution_group: "g1",
+    title: `task ${id}`,
+    status: "machine_proposed",
+    split: "construction",
+    candidate_boundary: "b",
+    machine_confidence: "high",
+    close_call: false,
+    tool_surface: [],
+    outcome_contract: { required: [], preserved: [], forbidden: [], grading: "final_state" },
+    world_model: {},
+    source: { node_ids: [], edges: [], captures: [] },
+    claims: [],
+    sentinels: [],
+    review: { decision: "pending" },
+    ...overrides,
+  };
+}
+
+const policyDir = path.join(tmp, "prop-policy");
+const policySlug = "data--prop-policy";
+writeFoundryFixture(policyDir, [foundryTask("t-clean"), foundryTask("t-shaky", { machine_confidence: "medium" })]);
+
+describe("apply_auto_accepts", () => {
+  it("applies the shared policy on explicit invocation only, stamping source:'auto'", () => {
+    // Reading the benchmark never writes anything.
+    callBenchmarksTool("read_benchmark", { slug: policySlug });
+    assert.equal(fs.existsSync(path.join(policyDir, "reviews.jsonl")), false);
+
+    const out = callBenchmarksTool("apply_auto_accepts", { slug: policySlug });
+    assert.equal(out.ok, true);
+    assert.deepEqual(out.applied, ["t-clean"]);
+    assert.equal(out.applied_count, 1);
+    assert.equal(out.exceptions, 1);
+    const lines = fs.readFileSync(path.join(policyDir, "reviews.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0].task_id, "t-clean");
+    assert.equal(lines[0].decision, "accept");
+    assert.equal(lines[0].source, "auto");
+
+    // Idempotent: already-decided tasks are never re-decided.
+    const again = callBenchmarksTool("apply_auto_accepts", { slug: policySlug });
+    assert.deepEqual(again.applied, []);
+  });
+
+  it("honors a review-policy.json sidecar (min_confidence medium) and surfaces it in read_benchmark", () => {
+    fs.writeFileSync(
+      path.join(policyDir, "review-policy.json"),
+      JSON.stringify({ schema_version: "understudy.review_policy.v1", min_confidence: "medium" }),
+    );
+    const bench = callBenchmarksTool("read_benchmark", { slug: policySlug });
+    assert.equal(bench.review_policy.min_confidence, "medium");
+    assert.equal(bench.review_policy.require_incumbent_pass, true);
+
+    const out = callBenchmarksTool("apply_auto_accepts", { slug: policySlug });
+    assert.deepEqual(out.applied, ["t-shaky"], "the medium-confidence task now clears the configured bar");
+  });
+
+  it("rejects promoted entries and unknown slugs", () => {
+    assert.throws(() => callBenchmarksTool("apply_auto_accepts", { slug: promotedSlug }), /auto-accept only applies to proposed/);
+    assert.throws(() => callBenchmarksTool("apply_auto_accepts", { slug: "data--nope" }), /unknown benchmark/);
+  });
+});
+
+describe("submit_feedback", () => {
+  it("appends an understudy.task_feedback.v1 line and returns the agent handoff", () => {
+    const out = callBenchmarksTool("submit_feedback", { slug: policySlug, task_id: "t-clean", feedback: "gold contract over-specified" });
+    assert.equal(out.ok, true);
+    assert.equal(out.feedback.schema_version, "understudy.task_feedback.v1");
+    assert.equal(out.feedback.task_id, "t-clean");
+    assert.equal(out.feedback.status, "open");
+    assert.ok(out.handoff.includes(`understudy traces regenerate-env --benchmark ${policyDir}`));
+    assert.ok(out.handoff.includes("gold contract over-specified"));
+    const lines = fs.readFileSync(path.join(policyDir, "feedback.jsonl"), "utf8").trim().split("\n");
+    assert.equal(lines.length, 1);
+  });
+
+  it("validates through the shared write path (unknown task, empty feedback, promoted stage)", () => {
+    assert.throws(() => callBenchmarksTool("submit_feedback", { slug: policySlug, task_id: "nope", feedback: "x" }), /unknown task_id/);
+    assert.throws(() => callBenchmarksTool("submit_feedback", { slug: policySlug, task_id: "t-clean", feedback: "  " }), /non-empty string/);
+    assert.throws(() => callBenchmarksTool("submit_feedback", { slug: promotedSlug, task_id: "t1", feedback: "x" }), /only applies to proposed/);
+  });
+});
+
+/* ---------------- trivial-arm floors in read outputs ---------------- */
+
+describe("floors in read_benchmark / run_status (additive)", () => {
+  const calibration = {
+    schema_version: "understudy.calibration.v1",
+    benchmark_id: "promoted-bench",
+    run_id: "run-cal",
+    incumbent_models: ["modelA"],
+    threshold: 1,
+    started_at: null,
+    finished_at: null,
+    tasks: [
+      { task_id: "t1", score: 1, passed: true, rollouts: 1 },
+      { task_id: "t2", score: 0, passed: false, rollouts: 1 },
+    ],
+    passed_count: 1,
+    failed_count: 1,
+    failed_task_ids: ["t2"],
+    null_floor: { arm_kind: "null_agent", floor: 0, passed_task_ids: [], floor_exceeded: false },
+    spam_floor: { arm_kind: "spam_agent", floor: 0.5, passed_task_ids: ["t1"], floor_exceeded: true },
+  };
+
+  it("read_benchmark surfaces the calibration block with null/spam floors", () => {
+    fs.writeFileSync(path.join(promotedDir, "calibration.json"), JSON.stringify(calibration));
+    const out = callBenchmarksTool("read_benchmark", { slug: promotedSlug });
+    assert.equal(out.calibration_present, true);
+    assert.deepEqual(out.calibration.failed_task_ids, ["t2"]);
+    assert.equal(out.calibration.null_floor.floor, 0);
+    assert.equal(out.calibration.null_floor.floor_exceeded, false);
+    assert.equal(out.calibration.spam_floor.floor_exceeded, true);
+    assert.deepEqual(out.calibration.spam_floor.passed_task_ids, ["t1"]);
+  });
+
+  it("run_status carries the same floors block", () => {
+    const queued = callBenchmarksTool("queue_run", { slug: promotedSlug, models: ["modelE"], tasks: "all", split: "all" });
+    const status = callBenchmarksTool("run_status", { slug: promotedSlug, run_id: queued.run_id });
+    assert.equal(status.calibration.run_id, "run-cal");
+    assert.equal(status.calibration.spam_floor.floor, 0.5);
+    assert.equal(status.calibration.spam_floor.floor_exceeded, true);
+    assert.equal(status.calibration.null_floor.floor_exceeded, false);
+    fs.rmSync(path.join(promotedDir, "calibration.json"));
+  });
+
+  it("stays additive: without a sidecar the calibration block is null", () => {
+    const out = callBenchmarksTool("read_benchmark", { slug: promotedSlug });
+    assert.equal(out.calibration_present, false);
+    assert.equal(out.calibration, null);
+  });
+});
+
 /* ---------------- roots + stdio protocol ---------------- */
 
 describe("server wiring", () => {
@@ -332,7 +489,18 @@ describe("server wiring", () => {
     const names = responses.get(2).result.tools.map((t) => t.name).sort();
     assert.deepEqual(
       names,
-      ["diff_rollouts", "list_benchmarks", "queue_run", "read_benchmark", "read_rollout", "read_task", "run_status", "submit_review"],
+      [
+        "apply_auto_accepts",
+        "diff_rollouts",
+        "list_benchmarks",
+        "queue_run",
+        "read_benchmark",
+        "read_rollout",
+        "read_task",
+        "run_status",
+        "submit_feedback",
+        "submit_review",
+      ],
     );
     assert.equal(responses.get(2).result.tools.length, BENCHMARKS_TOOLS.length);
     const body = JSON.parse(responses.get(3).result.content[0].text);

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.review_policy.v1.schema.json",
+  "title": "understudy.review_policy.v1",
+  "description": "Optional review-policy.json sidecar next to a foundry manifest.json (understudy.trace_foundry.v1), configuring the exception-review auto-accept bar for that benchmark. A sidecar rather than a manifest field: the manifest is machine-written and regenerated on rebuilds, while this policy is operator-owned post-generation state (same ownership split as reviews.jsonl / feedback.jsonl). An absent, unreadable, or wrong-schema file means the defaults (min_confidence 'high', require_incumbent_pass true) — exactly the pre-policy behavior. Readers apply recognized fields individually and ignore unrecognized values (a typo must not silently loosen the bar). Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.review_policy.v1",
+      "description": "Version stamp for this policy shape."
+    },
+    "min_confidence": {
+      "enum": ["high", "medium", "low"],
+      "description": "Lowest machine_confidence that can auto-accept (ordered high > medium > low; default high). A close_call task is always an exception regardless of this bar."
+    },
+    "require_incumbent_pass": {
+      "type": "boolean",
+      "description": "When true (default), a task the incumbent failed in the calibration rerun cannot auto-accept (reason incumbent_failed). Set false to drop the incumbent gate from the auto-accept policy."
+    }
+  }
+}

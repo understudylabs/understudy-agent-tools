@@ -34,6 +34,7 @@ export type {
   ManifestTask,
   ProposedHubEntry,
   ReviewDecision,
+  ReviewPolicy,
   SourceDag,
   SourceDagEdge,
   SourceDagNode,
@@ -42,4 +43,5 @@ export type {
   TaskSplit,
   TaxonomyCategory,
   ToolUsageRow,
+  TrivialFloor,
 } from "../../../dist/benchmark-hub-types.js";

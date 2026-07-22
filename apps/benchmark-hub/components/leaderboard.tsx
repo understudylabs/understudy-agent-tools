@@ -65,10 +65,13 @@ export function Leaderboard({
   const tieGroups = useMemo(() => statisticalTieGroups(summaries), [summaries]);
 
   // Top-3 shading per numeric column. Lower is better for cost + latency.
+  // Trivial arms (null/spam agent) never rank — they are calibration
+  // furniture, not candidates.
   const topRanks = useMemo(() => {
     const ranks = new Map<ShadeCol, Map<string, number>>();
     const rank = (col: ShadeCol, get: (s: (typeof summaries)[number]) => number | null, asc: boolean) => {
       const vals = summaries
+        .filter((s) => !s.trivial)
         .map((s) => ({ model: s.model, v: get(s) }))
         .filter((x): x is { model: string; v: number } => x.v != null)
         .sort((a, b) => (asc ? a.v - b.v : b.v - a.v));
@@ -190,14 +193,27 @@ export function Leaderboard({
                 const isOpen = expanded.has(s.model);
                 return (
                   <Fragment key={s.model}>
-                    <tr className={cn("row", isOpen && "open")} onClick={() => toggleExpanded(s.model)} aria-expanded={isOpen}>
+                    <tr
+                      className={cn("row", isOpen && "open")}
+                      onClick={() => toggleExpanded(s.model)}
+                      aria-expanded={isOpen}
+                      // Trivial arms render muted: floors, not candidates.
+                      style={s.trivial ? { opacity: 0.55 } : undefined}
+                    >
                       <td className="u-rank">
                         <span className="u-exp">▸</span>
                       </td>
                       <td className="l">
                         <span className="u-mdl">
-                          <span className="nm">{s.model}</span>
+                          <span className="nm" style={s.trivial ? { color: "var(--muted-foreground)" } : undefined}>
+                            {s.model}
+                          </span>
                           {s.incumbent && <Badge className="border-warn/40 text-warn">incumbent</Badge>}
+                          {s.trivial && (
+                            <span title="trivial calibration arm — its score is the benchmark's floor, not a candidate result">
+                              <Badge className="text-faint">floor</Badge>
+                            </span>
+                          )}
                           {showRoute && <RouteBadge route={s.route} />}
                         </span>
                       </td>
@@ -327,6 +343,9 @@ export function Leaderboard({
         )}
         {summaries.some((s) => s.incumbent) && (
           <span className="u-foot-note !mt-0">{"// incumbent = the model that produced the source captures, rerun through the environment (the calibration arm)"}</span>
+        )}
+        {summaries.some((s) => s.trivial) && (
+          <span className="u-foot-note !mt-0">{"// floor = trivial calibration arm (null/spam agent) — muted, excluded from top-3 shading and tie groups; its score is what doing nothing (or ritual tool calling) earns"}</span>
         )}
         <span className="u-foot-note !mt-0">
           {excludeFlagged

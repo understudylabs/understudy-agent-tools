@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getEntry, loadTaskSidecars } from "@/lib/data";
+import { trivialPassesForTask } from "@/lib/scores";
 import { FlagBadge, SplitChip, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
 import { ProposedTaskPage } from "@/components/proposed/task-page";
@@ -117,6 +118,13 @@ export default async function TaskInspector({
           {entry.calibration?.failed_task_ids.includes(task.task_id) && (
             <Badge className="border-bad/40 text-bad">incumbent failed on rerun · suspect</Badge>
           )}
+          {/* A trivial calibration arm passing this task means its contract
+              is satisfiable with no real work — same suspect idiom. */}
+          {trivialPassesForTask(entry.calibration, task.task_id).map((f) => (
+            <Badge key={f.armKind} className="border-bad/40 text-bad">
+              {f.label} passes this task · suspect
+            </Badge>
+          ))}
           <FlagBadge count={openFlags.length} />
         </div>
         <div className="mt-4 flex flex-col gap-2">
