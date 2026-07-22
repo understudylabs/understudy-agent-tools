@@ -58,6 +58,9 @@ import type {
 import { REVIEW_DECISIONS, type ReviewDecision } from "./benchmark-hub-types.js";
 
 export type { CalibrationSummary } from "./benchmark-hub-types.js";
+
+/**
+ * Data-dir contract:
  * - BENCHMARK_HUB_DATA_DIR: colon-separated list of directories whose
  *   subdirectories are benchmarks. Each benchmark dir holds benchmark.json
  *   (understudy.benchmark.v1), optional rows-*.jsonl and/or rows/*.jsonl
@@ -656,7 +659,7 @@ export function submitReview(entry: AnyHubEntry | null, input: SubmitReviewInput
     benchmark_id: path.basename(entry.dir),
     task_id: input.task_id,
     decision: input.decision as ReviewDecision,
-    note: input.note,
+    note: typeof input.note === "string" ? input.note : undefined,
   }) as BenchmarkReview;
   fs.appendFileSync(path.join(entry.dir, "reviews.jsonl"), serializeReviewLine(review), "utf8");
   return { ok: true, review };
