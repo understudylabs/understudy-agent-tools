@@ -19,7 +19,19 @@ import {
   runRequestPath,
   validateRunRequestInput,
 } from "../dist/run-executor.js";
-import { artifactBaseModel, artifactHasAdapter, bundleSha256, renderServeCommand, resolveLocalArm, servingModelPath } from "../dist/local-serving.js";
+import {
+  LOCAL_MODEL_LADDER,
+  artifactBaseModel,
+  artifactHasAdapter,
+  bundleSha256,
+  defaultLocalModelForMemory,
+  estimateArtifactMemoryGb,
+  predictLocalFit,
+  readMachineMemoryGb,
+  renderServeCommand,
+  resolveLocalArm,
+  servingModelPath,
+} from "../dist/local-serving.js";
 
 const roots = [];
 after(() => {
@@ -446,5 +458,111 @@ describe("majority-class arm", () => {
     assert.equal(summary.majority_floor.floor_exceeded, true);
     const without = deriveCalibrationSummary({ benchmarkId: "b", runId: "r", incumbentModels: [], selectedTaskIds: ["a"], rows: [], events: [] });
     assert.ok(!("majority_floor" in without));
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* 4. Machine-aware sizing + recorded gateway fallback                 */
+/* ------------------------------------------------------------------ */
+
+const fakeProfile = (memoryGb) => {
+  const file = path.join(tmpdir("profile-"), "profile.json");
+  fs.writeFileSync(file, JSON.stringify({ schema_version: "understudy.profile.v1", machine: { memory_gb: memoryGb } }));
+  return { UNDERSTUDY_PROFILE_FILE: file };
+};
+
+/** A plain (adapterless) model dir named after a ladder rung, so sizing uses the published footprint. */
+function makeLadderModelDir(rungId) {
+  const dir = path.join(tmpdir("ladder-model-"), rungId);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "weights.safetensors"), "tiny");
+  return dir;
+}
+
+describe("machine-aware local sizing", () => {
+  it("reads memory from a fake onboarding profile, falling back to an OS probe", () => {
+    assert.deepEqual(readMachineMemoryGb(fakeProfile(32)), { memory_gb: 32, source: "profile" });
+    const probed = readMachineMemoryGb({ UNDERSTUDY_PROFILE_FILE: path.join(tmpdir("no-profile-"), "missing.json") });
+    assert.equal(probed.source, "os_probe");
+    assert.ok(probed.memory_gb > 0);
+  });
+
+  it("defaultLocalModelForMemory picks the largest OOM-safe rung, smallest when memory is unknown", () => {
+    assert.equal(defaultLocalModelForMemory(null).id, LOCAL_MODEL_LADDER[0].id);
+    assert.equal(defaultLocalModelForMemory(8).id, "gemma-4-e2b-it-qat-mlx-vlm-understudy");
+    assert.equal(defaultLocalModelForMemory(16).id, "gemma-4-12b-it-qat-mlx-vlm-understudy");
+    assert.equal(defaultLocalModelForMemory(64).id, "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+    assert.equal(defaultLocalModelForMemory(4).id, LOCAL_MODEL_LADDER[0].id, "tiny machines still get a default, never a failure");
+  });
+
+  it("estimates ladder rungs by published footprint and unknown artifacts by measured weights", () => {
+    const rung = makeLadderModelDir("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+    assert.equal(estimateArtifactMemoryGb(rung), 16);
+    const tiny = makeBundle({ adapter: false });
+    const est = estimateArtifactMemoryGb(tiny);
+    assert.ok(est !== null && est < 2, "tiny measured dir estimates small (weights*1.2 + 1GB overhead)");
+  });
+
+  it("predictLocalFit: OOM only when BOTH sides are known and exceeded; unknowns always fit", () => {
+    const rung = makeLadderModelDir("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+    const oom = predictLocalFit(rung, fakeProfile(8));
+    assert.equal(oom.fits, false);
+    assert.match(oom.reason, /16\.0 GB.*8 GB/s);
+    assert.equal(predictLocalFit(rung, fakeProfile(64)).fits, true);
+    // Adapter bundle over an unknown, uncached base: unknown estimate -> fits.
+    const adapterBundle = makeBundle({ base: "some-uncached-base" });
+    assert.equal(predictLocalFit(adapterBundle, fakeProfile(1)).fits, true, "never refuse to try on ignorance");
+  });
+});
+
+describe("executor gateway fallback (recorded, never silent)", () => {
+  const runnerSeeing = (seen) => async ({ model, local, journalPath }) => {
+    seen.push({ model, local: local ?? null });
+    if (journalPath) fs.appendFileSync(journalPath, JSON.stringify({ kind: "call", tool: "update-record", status: "ok" }) + "\n");
+    return { score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0.001, writes: [{ tool: "update-record", arguments: { id: "r-1" } }] };
+  };
+
+  it("predicted OOM: the arm runs on the gateway base model with fallback_reason on rows and an arm_fallback event", async () => {
+    const dir = makeAgenticBenchmark();
+    const ref = makeLadderModelDir("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+    const run = createRunRequest(dir, { benchmark_id: "local-arms-bench", models: [{ ref, label: "big-local" }], split: "all", tasks: "all", rollouts_per_task: 1 });
+    const saved = process.env.UNDERSTUDY_PROFILE_FILE;
+    process.env.UNDERSTUDY_PROFILE_FILE = fakeProfile(8).UNDERSTUDY_PROFILE_FILE;
+    let rigStarted = false;
+    const seen = [];
+    try {
+      const result = await executeRunRequest(dir, run.run_id, { runner: runnerSeeing(seen), localServing: { start: async () => { rigStarted = true; throw new Error("must not start"); } } });
+      assert.equal(result.status, "done");
+    } finally {
+      if (saved === undefined) delete process.env.UNDERSTUDY_PROFILE_FILE;
+      else process.env.UNDERSTUDY_PROFILE_FILE = saved;
+    }
+    assert.equal(rigStarted, false, "predicted OOM never spawns the server");
+    assert.equal(seen[0].local, null, "runner gets no local endpoint");
+    assert.equal(seen[0].model, "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy", "gateway arm runs the artifact's base model");
+    const row = readRows(dir)[0];
+    assert.equal(row.route, "gateway");
+    assert.match(row.fallback_reason, /^predicted_oom:/);
+    assert.equal(row.model, "big-local", "the arm label is preserved");
+    const fallbackEvent = readEvents(dir).find((e) => e.type === "arm_fallback");
+    assert.ok(fallbackEvent, "fallback recorded as a run event");
+    assert.match(fallbackEvent.warning, /fell back to the gateway/);
+  });
+
+  it("serve failure: falls back to the gateway with fallback_reason serve_failed", async () => {
+    const dir = makeAgenticBenchmark();
+    const bundle = makeBundle({ adapter: false });
+    const run = createRunRequest(dir, { benchmark_id: "local-arms-bench", models: [{ ref: bundle, label: "flaky-local" }], split: "all", tasks: "all", rollouts_per_task: 1 });
+    const seen = [];
+    const result = await executeRunRequest(dir, run.run_id, {
+      runner: runnerSeeing(seen),
+      localServing: { start: async () => { throw new Error("mlx server exited with 137 before becoming ready"); } },
+    });
+    assert.equal(result.status, "done", "a serve failure degrades to the gateway, never kills the run");
+    const row = readRows(dir)[0];
+    assert.equal(row.route, "gateway");
+    assert.match(row.fallback_reason, /^serve_failed: mlx server exited with 137/);
+    assert.equal(seen[0].model, "gemma-4-e2b-it", "bundle base model becomes the gateway arm");
+    assert.ok(readEvents(dir).some((e) => e.type === "arm_fallback"));
   });
 });

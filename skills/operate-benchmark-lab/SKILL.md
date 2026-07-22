@@ -37,6 +37,23 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
 - **Queueing is not executing.** `queue_run` / `understudy runs queue` only
   writes a request file. Model rollouts spend gateway money only when an
   executor picks the request up; say which executor will, before queueing.
+- **Trust posture, not per-call dialogs.** Spend-adjacent shapes (multi-arm
+  or multi-rollout runs, implicit all-task runs, experiment
+  approval/verdict patches) consult the one-time posture in
+  `~/.understudy/trust.json` (`understudy trust set`, levels `local_sandbox`
+  < `bounded_experiments` < `hosted_ops`). At `bounded_experiments`+ they
+  proceed with a visible one-line notice (arm count, rough cost) — surface
+  that notice to the user, then keep moving. Below that, the guard returns
+  the one action to offer (`understudy trust set bounded_experiments`);
+  `confirm: true` after explicit in-chat consent stays a per-call escape
+  hatch. There is NO default spend cap: the posture's
+  `allow_spend_usd_per_run` is an opt-in generous stop-loss (warn at 1x with
+  a recorded `spend_warning`; hard stop only at 2x with `spend_stop`).
+- **Local arms are machine-aware.** On predicted OOM (onboarding profile /
+  memory probe) or a serve failure, the executor runs the arm on the gateway
+  base model and records it — `arm_fallback` event plus `fallback_reason` on
+  every row. Report the fallback; never present a fallen-back arm as a local
+  measurement.
 - **One executor per benchmark dir.** Before starting `runs execute --watch`,
   check for a live claim (`claimed_by` on the request, `executor_version` on
   events) — a stale watcher built before a feature landed is the classic

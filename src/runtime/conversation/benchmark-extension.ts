@@ -9,14 +9,18 @@
 // BENCHMARKS_TOOLS so the two surfaces cannot drift silently.
 //
 // Safety posture mirrors src/runtime/conversation/command-guard.ts: a
-// classifier decides allow/block, the extension enforces it at the Pi
+// classifier decides allow/notice/block, the extension enforces it at the Pi
 // `tool_call` boundary, and the execute path enforces it again so the guard
 // holds even if the tool is invoked outside an extension-loaded session.
 // Queueing a run only writes a runs/queue/<run_id>.json file (the executor
-// daemon spends); spend-adjacent shapes (multi-arm or multi-rollout runs,
-// implicit all-task runs, experiment approval/verdict updates) additionally
-// require an explicit `confirm: true` argument, which the model may only set
-// after the user consented in chat.
+// daemon spends). Spend-adjacent shapes (multi-arm or multi-rollout runs,
+// implicit all-task runs, experiment approval/verdict updates) consult the
+// ONE-TIME trust posture (~/.understudy/trust.json, src/config/trust.ts)
+// instead of demanding a per-call dialog: at `bounded_experiments`+ they
+// proceed with a visible one-line notice (arm count, rough cost estimate);
+// below that they return the single-action guidance to raise the posture.
+// `confirm: true` (set only after explicit user consent in chat) remains a
+// per-call escape hatch that works at any posture.
 //
 // These tools are Pi-only by design: the Vercel runtime twin builds its tool
 // set purely from the request's tool definitions and has no extension
@@ -39,6 +43,8 @@ import { Type } from "@earendil-works/pi-ai";
 import { BENCHMARKS_TOOLS, callBenchmarksTool } from "../../benchmarks-mcp.js";
 import { getEntry } from "../../benchmark-hub-core.js";
 import { deriveRigorReport } from "../../rigor-report.js";
+import { COST_PER_MTOKEN } from "../../trace-author.js";
+import { raiseTrustHint, readTrustPosture, trustAtLeast, type TrustPosture } from "../../config/trust.js";
 
 /**
  * Explicit allowlist of MCP-shared operator tools exposed in the embedded
@@ -75,7 +81,8 @@ export function benchmarkHubRoots(): string {
 /* ---------------- spend-adjacent gating (command-guard pattern) ---------------- */
 
 export type BenchmarkGuardDecision =
-  | { decision: "allow" }
+  /** `notice`, when present, is the visible one-line posture notice that MUST surface with the result. */
+  | { decision: "allow"; notice?: string }
   | { decision: "block"; rule_id: string; reason: string; severity: "high" };
 
 type Obj = Record<string, unknown>;
@@ -115,26 +122,80 @@ function experimentPatchTouchesApprovals(patch: Obj): boolean {
   return "approvals" in training;
 }
 
+/** Rough per-rollout token assumption for the visible spend notice (an estimate label, never billing). */
+const NOTICE_TOKENS = { input: 8_000, output: 2_000 } as const;
+
+/**
+ * Visible one-line notice for a spend-adjacent queue_run allowed by posture:
+ * arm count, rollout volume, and a rough cost estimate from the shared
+ * gateway rate table. Task count comes from the hub loader when the shape is
+ * an implicit all-task run; "?" when the benchmark cannot be resolved.
+ */
+export function queueRunSpendNotice(args: Obj, posture: TrustPosture): string {
+  const models = Array.isArray(args.models) ? args.models : [];
+  const incumbents = Array.isArray(args.incumbent_models) ? args.incumbent_models : [];
+  const armCount = models.length + (Array.isArray(args.prompt_overrides) ? args.prompt_overrides.length : 0);
+  const rollouts = args.rollouts_per_task === undefined ? 1 : Number(args.rollouts_per_task);
+  let taskCount: number | null = Array.isArray(args.tasks) ? args.tasks.length : null;
+  if (taskCount === null && typeof args.slug === "string") {
+    try {
+      const entry = getEntry(args.slug);
+      if (entry && entry.kind === "ok") taskCount = entry.manifest.tasks.length;
+      else if (entry && entry.kind === "proposed") taskCount = entry.tasks.length;
+    } catch {
+      /* unresolvable benchmark — task count stays unknown */
+    }
+  }
+  const totalRollouts = taskCount === null ? null : armCount * taskCount * (Number.isFinite(rollouts) ? rollouts : 1);
+  // Rough estimate: gateway (string) arms at the shared rate table; local {ref} arms are $0.
+  let estimate: number | null = null;
+  if (taskCount !== null) {
+    estimate = 0;
+    const gatewayArms = models.filter((m) => typeof m === "string") as string[];
+    for (const model of gatewayArms) {
+      const rate = COST_PER_MTOKEN[model] ?? COST_PER_MTOKEN.default;
+      estimate += (taskCount * rollouts * (NOTICE_TOKENS.input * rate.input + NOTICE_TOKENS.output * rate.output)) / 1_000_000;
+    }
+  }
+  const est = estimate === null ? "est. cost unknown (task count unresolved)" : `~$${estimate.toFixed(2)} est. gateway cost (rough)`;
+  return (
+    `Trust posture ${posture.level}: queueing spend-adjacent run — ${armCount} arm(s)` +
+    `${incumbents.length > 0 ? ` (incl. ${incumbents.length} incumbent)` : ""} x ` +
+    `${taskCount ?? "?"} task(s) x ${rollouts} rollout(s)` +
+    `${totalRollouts === null ? "" : ` = ${totalRollouts} rollout(s)`}; ${est}. ` +
+    `Recorded, reversible: cancel via run_status/cancel; lower autonomy any time with \`understudy trust set local_sandbox\`.`
+  );
+}
+
 export function classifyBenchmarkToolCall(
   toolName: string,
   input: unknown,
+  posture: TrustPosture = readTrustPosture(),
 ): BenchmarkGuardDecision {
   if (!PI_BENCHMARK_TOOL_NAMES.includes(toolName)) return { decision: "allow" };
   const args = asObject(input);
   if (args.confirm === true) return { decision: "allow" };
+  const postureAllows = trustAtLeast(posture, "bounded_experiments");
   if (toolName === "queue_run" && !queueRunIsTrivial(args)) {
+    if (postureAllows) return { decision: "allow", notice: queueRunSpendNotice(args, posture) };
     return {
       decision: "block",
-      rule_id: "benchmark.queue-run-unconfirmed",
+      rule_id: "benchmark.queue-run-below-posture",
       reason:
         "This run request is spend-adjacent (multiple model arms, an incumbent arm, repeated rollouts, or an implicit all-task run) and an executor will spend money or compute the moment it picks the queued file up.",
       severity: "high",
     };
   }
   if (toolName === "update_experiment" && experimentPatchTouchesApprovals(asObject(args.patch))) {
+    if (postureAllows) {
+      return {
+        decision: "allow",
+        notice: `Trust posture ${posture.level}: updating experiment approval/status/verdict state (spend-gate-adjacent). Recorded in experiments.jsonl (append-only, reversible with a later line).`,
+      };
+    }
     return {
       decision: "block",
-      rule_id: "benchmark.experiment-approval-unconfirmed",
+      rule_id: "benchmark.experiment-approval-below-posture",
       reason:
         "This experiment patch changes approval, status, or verdict state that downstream tooling treats as cleared spend gates.",
       severity: "high",
@@ -146,14 +207,24 @@ export function classifyBenchmarkToolCall(
 export function benchmarkGuardBlockMessage(
   decision: Exclude<BenchmarkGuardDecision, { decision: "allow" }>,
 ): string {
-  return `Blocked by Understudy benchmark guard [${decision.rule_id}]: ${decision.reason} Ask the user for explicit consent in chat, then retry the same call with confirm: true.`;
+  return (
+    `Blocked by Understudy benchmark guard [${decision.rule_id}]: ${decision.reason} ` +
+    `The current trust posture is below "bounded_experiments". ONE action fixes this for every future call ` +
+    `(no per-call dialogs): have the user run \`${raiseTrustHint("bounded_experiments")}\` once — visible and ` +
+    `reversible. Alternatively, for this single call only, retry with confirm: true after the user explicitly consented in chat.`
+  );
 }
 
-export function enforceBenchmarkToolCall(toolName: string, input: unknown): void {
-  const decision = classifyBenchmarkToolCall(toolName, input);
+export function enforceBenchmarkToolCall(
+  toolName: string,
+  input: unknown,
+  posture?: TrustPosture,
+): { notice?: string } {
+  const decision = classifyBenchmarkToolCall(toolName, input, posture);
   if (decision.decision === "block") {
     throw new Error(benchmarkGuardBlockMessage(decision));
   }
+  return decision.notice ? { notice: decision.notice } : {};
 }
 
 /* ---------------- tool definitions ---------------- */
@@ -162,7 +233,7 @@ const CONFIRM_PROPERTY = {
   confirm: {
     type: "boolean",
     description:
-      "Required true for spend-adjacent shapes. Set only after the user explicitly consented in this conversation.",
+      "Per-call escape hatch for spend-adjacent shapes when the trust posture is below bounded_experiments. Set only after the user explicitly consented in this conversation.",
   },
 } as const;
 
@@ -187,7 +258,7 @@ function sharedToolDescription(name: string): string {
   const source = BENCHMARKS_TOOLS.find((tool) => tool.name === name);
   if (!source) throw new Error(`benchmarks MCP no longer exposes tool ${name}`);
   return CONFIRMABLE_TOOLS.has(name)
-    ? `${source.description} Spend-adjacent shapes are blocked unless confirm: true is passed after explicit user consent.`
+    ? `${source.description} Spend-adjacent shapes consult the one-time trust posture (~/.understudy/trust.json): at bounded_experiments+ they proceed with a visible spend notice; below that they are blocked with guidance to raise the posture once (or pass confirm: true after explicit user consent).`
     : source.description;
 }
 
@@ -220,11 +291,14 @@ export function benchmarkToolDefinitions() {
       description: sharedToolDescription(name),
       parameters: Type.Unsafe(sharedToolSchema(name)),
       async execute(_toolCallId, parameters) {
-        enforceBenchmarkToolCall(name, parameters);
+        const { notice } = enforceBenchmarkToolCall(name, parameters);
         // Strip the pi-layer confirm flag before delegating: the shared MCP
         // dispatcher's argument surface stays byte-identical to the hub API.
         const { confirm: _confirm, ...args } = asObject(parameters);
-        return toolResult(callBenchmarksTool(name, args));
+        const result = toolResult(callBenchmarksTool(name, args));
+        // Posture notices are VISIBLE by contract: the one-line notice rides
+        // ahead of the payload so the model must surface it to the user.
+        return notice ? { ...result, content: [{ type: "text" as const, text: notice }, ...result.content] } : result;
       },
     }),
   );

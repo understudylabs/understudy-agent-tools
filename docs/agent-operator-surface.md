@@ -104,6 +104,42 @@ the same frozen tasks (see [`app-harness.md`](app-harness.md)):
 6. Regression verdict = compare the app-replay rows on the frozen task set
    before vs after the code edit.
 
+## Trust posture (one-time, not per-call)
+
+Autonomy is governed by the **one-time trust posture** in
+`~/.understudy/trust.json` (`understudy.trust_posture.v1`,
+`src/config/trust.ts`) instead of per-action approval dialogs:
+
+```bash
+understudy trust show                          # posture + resolved boundaries
+understudy trust set bounded_experiments       # one action, visible, reversible
+understudy trust set hosted_ops --spend-stop-loss 25
+```
+
+Levels: `local_sandbox` (default) < `bounded_experiments` < `hosted_ops`,
+with per-boundary overrides (`allow_provider_upload`,
+`allow_spend_usd_per_run`, `allow_traffic_changes`). The embedded Pi chat's
+benchmark-lab tools consult it: spend-adjacent `queue_run` shapes and
+experiment approval/verdict patches **proceed with a visible one-line notice**
+(arm count, rough cost estimate) at `bounded_experiments`+, and below that
+return the single-action guidance to raise the posture (`confirm: true` after
+explicit in-chat consent remains a per-call escape hatch). The run executor
+reads the same posture for the spend stop-loss: **no default cap at any
+level**; when `allow_spend_usd_per_run` is set it warns-and-records at 1x
+(`spend_warning` event, run continues) and stops only at 2x (`spend_stop`
+event; completed rows kept) — never a mid-run hard-kill below 2x.
+
+Local trained-artifact arms are machine-aware by default: the executor
+predicts fit from the onboarding profile (`~/.understudy/profile.json`) or an
+OS memory probe, and on predicted OOM or a real serve failure falls back to
+the gateway on the artifact's base model — recorded as an `arm_fallback`
+event and a `fallback_reason` field on every affected row, never a silent
+swap.
+
+Follow-up: the desktop app's upload-approval dialog is the natural ONE-TIME
+posture UI — it should read/write `trust.json` (`allow_provider_upload`)
+instead of asking per upload.
+
 ## Guardrails
 
 - Reviews are append-only; the newest line per `task_id` wins. Decisions:

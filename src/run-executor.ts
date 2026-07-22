@@ -23,7 +23,8 @@ import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, goldFinalResponseFor, isMutatingTool, oracleEventsFor, readCapturesByKey, responseJudgedRequired, scoreContract } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
 import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
-import { resolveLocalArm, type LocalServerHandle, type LocalServingRig, type ResolvedLocalArm } from "./local-serving.js";
+import { predictLocalFit, resolveLocalArm, type LocalServerHandle, type LocalServingRig, type ResolvedLocalArm } from "./local-serving.js";
+import { readTrustPosture, resolveTrustBoundaries, type TrustPosture } from "./config/trust.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -207,6 +208,13 @@ export type RunRequest = {
   claimed_by?: RunClaim | null;
   /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
   unsupported?: { executor_version: string; missing: string[]; at: string } | null;
+  /**
+   * Additive (present only when the trust posture opted into a per-run spend
+   * stop-loss): recorded spend vs the stop-loss. warned = crossed 1x
+   * (recorded, run continued); stopped = reached 2x (remaining rollouts
+   * stopped; completed rows kept as evidence).
+   */
+  spend?: { recorded_usd: number; stop_loss_usd: number; warned: boolean; stopped: boolean } | null;
 };
 
 /* ------------------------------------------------------------------ */
@@ -720,7 +728,7 @@ export type RunEvent = {
   schema_version: typeof RUN_EVENT_SCHEMA;
   ts: string;
   run_id: string;
-  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning" | "run_unsupported";
+  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning" | "run_unsupported" | "arm_fallback" | "spend_warning" | "spend_stop";
   model?: string;
   task_id?: string;
   rollout?: number;
@@ -781,6 +789,13 @@ export type ExecuteOptions = {
    * with the ref silently dropped.
    */
   localServing?: LocalServingRig;
+  /**
+   * Test seam: the trust posture consulted for the spend stop-loss (default:
+   * readTrustPosture() — ~/.understudy/trust.json). There is NO default cap:
+   * the stop-loss engages only when the posture opts into
+   * allow_spend_usd_per_run.
+   */
+  trustPosture?: TrustPosture;
   /** Rollouts in flight per arm (the concurrency flag). */
   concurrency?: number;
   /** Per-rollout wall-clock budget in seconds; the request's rollout_timeout_seconds wins when present. */
@@ -912,6 +927,28 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   } catch { /* no generated environment — prompt sentinels skipped */ }
 
   const cancelled = (): boolean => readRunRequest(file)?.status === "cancelled";
+  // Spend stop-loss (stop-loss doctrine, src/config/trust.ts): NO default cap
+  // anywhere — the posture's opt-in allow_spend_usd_per_run acts as a
+  // generous stop-loss. Warn-and-record at 1x (the run continues), hard-stop
+  // only at 2x (so a run is never mid-run hard-killed below 2x the user's
+  // own estimate-scale bound). Recorded costs only; unknown costs never trip it.
+  const spendStopLossUsd = resolveTrustBoundaries(options.trustPosture ?? readTrustPosture()).spend_stop_loss_usd;
+  let spentUsd = 0;
+  let spendWarned = false;
+  let spendStopped = false;
+  const recordSpend = (cost: number | null | undefined): void => {
+    if (typeof cost !== "number" || !Number.isFinite(cost) || cost <= 0) return;
+    spentUsd += cost;
+    if (spendStopLossUsd === null) return;
+    if (!spendWarned && spentUsd >= spendStopLossUsd) {
+      spendWarned = true;
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "spend_warning", warning: `recorded spend $${spentUsd.toFixed(2)} crossed the posture stop-loss threshold of $${spendStopLossUsd.toFixed(2)} (allow_spend_usd_per_run); the run continues — hard stop only at 2x ($${(2 * spendStopLossUsd).toFixed(2)})` }, options.onEvent);
+    }
+    if (!spendStopped && spentUsd >= 2 * spendStopLossUsd) {
+      spendStopped = true;
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "spend_stop", error: `recorded spend $${spentUsd.toFixed(2)} reached 2x the posture stop-loss ($${spendStopLossUsd.toFixed(2)}/run); remaining rollouts stopped — completed rows are kept as evidence` }, options.onEvent);
+    }
+  };
   let completed = 0;
   const persistProgress = () => {
     // Re-read before writing so an external cancel flip is never clobbered.
@@ -928,8 +965,32 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       // Local arm: stand the artifact's server up for the WHOLE arm (or reuse
       // a running one the spec points at) and tear it down after — the runner
       // gets the endpoint instead of the gateway.
+      // Machine-aware smart default: predict fit against the onboarding
+      // profile (or an OS memory probe) BEFORE spawning; on predicted OOM or
+      // a real serve failure, fall back to the gateway arm on the artifact's
+      // base model — WITH a recorded event and a fallback_reason on every
+      // row. Never a silent swap, never a dead run because the laptop is
+      // smaller than the artifact.
       let localServer: LocalServerHandle | null = null;
-      if (arm.local) localServer = await options.localServing!.start(arm.local);
+      let fallbackReason: string | null = null;
+      if (arm.local) {
+        // A reuse arm (serving.base_url) points at an ALREADY-RUNNING server —
+        // nothing to size; prediction applies only when we would spawn.
+        const reusesServer = typeof arm.local.serving.base_url === "string" && arm.local.serving.base_url.trim().length > 0;
+        const fit = reusesServer ? { fits: true, reason: null } : predictLocalFit(arm.local.ref);
+        if (!fit.fits) {
+          fallbackReason = `predicted_oom: ${fit.reason}`;
+        } else {
+          try {
+            localServer = await options.localServing!.start(arm.local);
+          } catch (err) {
+            fallbackReason = `serve_failed: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
+        if (fallbackReason) {
+          appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_fallback", model, warning: `local arm "${model}" fell back to the gateway on ${arm.local.artifact.base_model} (${fallbackReason}); rows carry fallback_reason` }, options.onEvent);
+        }
+      }
       try {
       const rowsFile = rowsFilePath(dir, runId, model);
       // Live journal for this arm: the world/runner appends tool events the
@@ -945,7 +1006,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       let armCancelled = false;
       const worker = async (): Promise<void> => {
         for (;;) {
-          if (armCancelled || cancelled()) {
+          if (armCancelled || spendStopped || cancelled()) {
             armCancelled = true;
             return;
           }
@@ -970,7 +1031,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           try {
             // Override arms invoke the BASE model; the arm label only labels
             // rows/files. The suffix + label ride the additive runner args.
-            const attempt = arm.runner({ benchmarkDir: dir, model: arm.override?.model ?? model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds, ...(arm.override ? { armLabel: arm.override.arm_label, systemPromptSuffix: arm.override.system_prompt_suffix } : {}), ...(localServer ? { local: { baseUrl: localServer.baseUrl, modelId: localServer.modelId } } : {}) });
+            const attempt = arm.runner({ benchmarkDir: dir, model: arm.override?.model ?? (arm.local && fallbackReason ? arm.local.artifact.base_model : model), task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds, ...(arm.override ? { armLabel: arm.override.arm_label, systemPromptSuffix: arm.override.system_prompt_suffix } : {}), ...(localServer ? { local: { baseUrl: localServer.baseUrl, modelId: localServer.modelId } } : {}) });
             const raced = await Promise.race([attempt, new Promise<typeof TIMED_OUT>((res) => { timer = setTimeout(() => res(TIMED_OUT), Math.max(1, Math.round(timeoutSeconds * 1000))); })]);
             if (raced === TIMED_OUT) {
               attempt.catch(() => { /* late settle of the abandoned rollout is irrelevant */ });
@@ -1029,7 +1090,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             arm_kind: arm.kind,
             // Additive attribution stamp: which executor build produced this row.
             executor_version: EXECUTOR_VERSION,
-            route: arm.local ? "local" : "gateway",
+            route: arm.local && !fallbackReason ? "local" : "gateway",
+            // Additive: the gateway-fallback provenance (predicted OOM or a
+            // real serve failure) — a swapped arm is always visible on the row.
+            ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
             latency_ms: result.latency_ms,
             cost: result.cost,
             created_at: now().toISOString(),
@@ -1060,6 +1124,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             ...(result.error ? { error: result.error } : {}),
           };
           appendFileSync(rowsFile, serializeJsonlLine(row), { mode: 0o600 });
+          recordSpend(result.cost);
           completed += 1;
           appendEvent(
             dir,
@@ -1084,7 +1149,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       };
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, () => worker()));
       appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
-      if (armCancelled) break;
+      if (armCancelled || spendStopped) break;
       } finally {
         // Teardown after the arm — a server the rig REUSED is never ours to stop.
         if (localServer && !localServer.reused) await localServer.stop();
@@ -1108,7 +1173,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
     return request;
   }
 
-  request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
+  request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null, ...(spendStopLossUsd !== null ? { spend: { recorded_usd: Number(spentUsd.toFixed(4)), stop_loss_usd: spendStopLossUsd, warned: spendWarned, stopped: spendStopped } } : {}) };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
   // Calibration gate: a finished run with an incumbent arm and/or trivial

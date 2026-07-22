@@ -50,6 +50,7 @@ import { registerRunCommand } from "./commands/run.js";
 import { registerRunsCommand } from "./commands/runs.js";
 import { registerBenchmarksCommand } from "./commands/benchmarks.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
+import { registerTrustCommand } from "./commands/trust.js";
 import { registerTrainingCommand } from "./commands/training.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
@@ -868,6 +869,7 @@ export function buildProgram(): Command {
   registerRunsCommand(program);
   registerBenchmarksCommand(program);
   registerRuntimeCommand(program);
+  registerTrustCommand(program);
   registerTrainingCommand(program);
 
   const understand = program

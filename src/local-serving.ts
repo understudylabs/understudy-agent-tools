@@ -28,7 +28,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createServer } from "node:net";
-import { homedir } from "node:os";
+import { homedir, totalmem } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 import { mlxVlmRuntimeStatus } from "./runtime/mlx-vlm/lifecycle.js";
@@ -151,6 +151,135 @@ export function resolveLocalArm(spec: { ref: string; label?: string; serving?: O
     },
     serving: asObject(spec.serving),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Machine-aware sizing (batteries included, no OOM surprises)         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The local-model sizing ladder, encoding the heuristics that already live
+ * in skills/manage-local-models/reference.md ("what fits in RAM") and
+ * skills/run-local-model-lab/reference.md: approx resident footprint of the
+ * certified rungs, and the machine memory tier each is comfortable on
+ * (weights + KV cache + OS headroom). Used to pick an OOM-safe DEFAULT and
+ * to predict fit for known ids — never to block an artifact we cannot size.
+ */
+export const LOCAL_MODEL_LADDER: readonly { id: string; approx_gb: number; min_memory_gb: number }[] = [
+  { id: "gemma-4-e2b-it-qat-mlx-vlm-understudy", approx_gb: 3.6, min_memory_gb: 8 },
+  { id: "gemma-4-e4b-it-qat-mlx-vlm-understudy", approx_gb: 5.6, min_memory_gb: 12 },
+  { id: "gemma-4-12b-it-qat-mlx-vlm-understudy", approx_gb: 7.5, min_memory_gb: 16 },
+  { id: "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy", approx_gb: 16, min_memory_gb: 32 },
+];
+
+export type MachineMemory = { memory_gb: number | null; source: "profile" | "os_probe" | "unknown" };
+
+/**
+ * Machine memory for sizing decisions: the onboarding profile
+ * (~/.understudy/profile.json, machine.memory_gb — override the path with
+ * UNDERSTUDY_PROFILE_FILE for tests) when present, else an os.totalmem()
+ * probe. Unknown only when both fail.
+ */
+export function readMachineMemoryGb(env: NodeJS.ProcessEnv = process.env): MachineMemory {
+  const file = env.UNDERSTUDY_PROFILE_FILE?.trim() || join(homedir(), ".understudy", "profile.json");
+  const profile = readJsonIfPresent(file);
+  const fromProfile = Number(asObject(profile?.machine).memory_gb);
+  if (Number.isFinite(fromProfile) && fromProfile > 0) return { memory_gb: fromProfile, source: "profile" };
+  const probed = totalmem() / 1024 ** 3;
+  if (Number.isFinite(probed) && probed > 0) return { memory_gb: Number(probed.toFixed(1)), source: "os_probe" };
+  return { memory_gb: null, source: "unknown" };
+}
+
+/** The largest ladder rung that comfortably fits `memoryGb`; the smallest rung when memory is unknown (safe default, never a failure). */
+export function defaultLocalModelForMemory(memoryGb: number | null): { id: string; approx_gb: number; min_memory_gb: number } {
+  if (memoryGb === null) return LOCAL_MODEL_LADDER[0];
+  const fitting = LOCAL_MODEL_LADDER.filter((rung) => memoryGb >= rung.min_memory_gb);
+  return fitting.length > 0 ? fitting[fitting.length - 1] : LOCAL_MODEL_LADDER[0];
+}
+
+const WEIGHT_FILE = /\.(safetensors|gguf|npz|bin)$/;
+
+function weightBytes(root: string): number {
+  let weights = 0;
+  let total = 0;
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      const st = statSync(path);
+      if (st.isDirectory()) walk(path);
+      else if (st.isFile()) {
+        total += st.size;
+        if (WEIGHT_FILE.test(name)) weights += st.size;
+      }
+    }
+  };
+  walk(root);
+  return weights > 0 ? weights : total;
+}
+
+/**
+ * Estimated resident footprint (GB) of serving an artifact: a ladder rung's
+ * published footprint when the id matches, else measured weight bytes with
+ * the skill's rule-of-thumb overhead (KV cache + runtime, roughly +20% and
+ * +1 GB). Adapter bundles size the cached base weights when present; null =
+ * honestly unknown (never a guess that blocks serving).
+ */
+export function estimateArtifactMemoryGb(ref: string): number | null {
+  const root = resolve(ref);
+  const names = [basename(root.replace(/\/+$/, "")), artifactBaseModel(root)];
+  for (const rung of LOCAL_MODEL_LADDER) {
+    if (names.some((n) => n === rung.id)) return rung.approx_gb;
+  }
+  try {
+    if (!statSync(root).isDirectory()) return null;
+    let bytes = weightBytes(root);
+    if (artifactHasAdapter(root)) {
+      const base = artifactBaseModel(root);
+      const rung = LOCAL_MODEL_LADDER.find((r) => r.id === base);
+      if (rung) return rung.approx_gb + bytes / 1024 ** 3;
+      const cached = join(homedir(), ".understudy", "models", base);
+      if (existsSync(cached)) bytes += weightBytes(cached);
+      else return null; // base weights not measurable locally — unknown, not unfit
+    }
+    const gb = bytes / 1024 ** 3;
+    return gb > 0 ? Number((gb * 1.2 + 1).toFixed(2)) : null;
+  } catch {
+    return null;
+  }
+}
+
+export type LocalFitPrediction = {
+  fits: boolean;
+  /** Human-readable reason when fits=false; null otherwise. */
+  reason: string | null;
+  estimated_gb: number | null;
+  memory_gb: number | null;
+};
+
+/** Fraction of machine memory a local model server may plan to occupy (OS + app headroom). */
+export const LOCAL_FIT_MEMORY_FRACTION = 0.85;
+
+/**
+ * Predict whether serving `ref` fits this machine. Predicts OOM only when
+ * BOTH the artifact estimate and machine memory are known and the estimate
+ * exceeds the usable fraction — unknowns always "fit" (we never refuse to
+ * try on ignorance; a real serve failure still triggers the recorded
+ * gateway fallback in the executor).
+ */
+export function predictLocalFit(ref: string, env: NodeJS.ProcessEnv = process.env): LocalFitPrediction {
+  const estimated = estimateArtifactMemoryGb(ref);
+  const { memory_gb } = readMachineMemoryGb(env);
+  if (estimated === null || memory_gb === null) return { fits: true, reason: null, estimated_gb: estimated, memory_gb };
+  const usable = memory_gb * LOCAL_FIT_MEMORY_FRACTION;
+  if (estimated > usable) {
+    return {
+      fits: false,
+      reason: `estimated ~${estimated.toFixed(1)} GB resident exceeds ~${usable.toFixed(1)} GB usable of ${memory_gb} GB machine memory`,
+      estimated_gb: estimated,
+      memory_gb,
+    };
+  }
+  return { fits: true, reason: null, estimated_gb: estimated, memory_gb };
 }
 
 /* ------------------------------------------------------------------ */
