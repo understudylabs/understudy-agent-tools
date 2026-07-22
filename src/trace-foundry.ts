@@ -101,6 +101,10 @@ function responseProjection(raw: unknown): Obj {
     if (b.type === "tool_use") calls.push({ id: b.id, name: b.name, arguments: b.input ?? {} });
   }
   for (const call of Array.isArray(object.tool_calls) ? object.tool_calls : []) calls.push(asObject(call));
+  // OpenAI chat.completion transport: tool calls live under choices[].message.tool_calls.
+  for (const choiceValue of Array.isArray(object.choices) ? object.choices : []) {
+    for (const callValue of asObject(asObject(choiceValue).message).tool_calls ?? []) calls.push(asObject(callValue));
+  }
   return { encoding: "json", body: parsed as J, tool_calls: calls, stop_reason: object.stop_reason ?? object.stopReason ?? null };
 }
 
@@ -314,12 +318,187 @@ export function scoreState(task: Obj, writes: Obj[]): Obj {
   return { recall, precision, policy: forbidden, strict, score: forbidden === 0 ? 0 : (recall + precision + forbidden) / 3 };
 }
 
+// ---------------------------------------------------------------------------
+// Widened deterministic contract: four entry kinds beyond state_effect.
+// Every kind flips met/unmet from the SAME canonicalization the state-effect
+// scorer uses (contentTokens); no LLM anywhere at eval time.
+// ---------------------------------------------------------------------------
+
+export const CONTRACT_ENTRY_TYPES = ["state_effect", "read_obligation", "value_propagation", "response_obligation"] as const;
+
+/** Events a contract is evaluated against: the ordered tool calls plus the final assistant response text. */
+export type ContractEvents = { calls: Obj[]; finalResponse?: string | null };
+
+/** True when every content token of `value` appears in the canonicalized haystack. Empty values never match. */
+export function valueTokensPresent(value: unknown, haystack: string): boolean {
+  const tokens = contentTokens(value);
+  if (tokens.length === 0) return false;
+  const hay = haystack.toLowerCase();
+  return tokens.every((token) => hay.includes(token));
+}
+
+/** Final assistant text of a normalized capture's response projection (Anthropic content blocks, OpenAI choices, or reassembled SSE). */
+export function finalResponseText(response: Obj): string {
+  const parts: string[] = [];
+  const body = asObject(response?.body);
+  for (const blockValue of Array.isArray(body.content) ? body.content : []) {
+    const block = asObject(blockValue);
+    if (block.type === "text" && typeof block.text === "string") parts.push(block.text);
+  }
+  for (const choiceValue of Array.isArray(body.choices) ? body.choices : []) {
+    const message = asObject(asObject(choiceValue).message);
+    if (typeof message.content === "string") parts.push(message.content);
+  }
+  for (const eventValue of Array.isArray(response?.events) ? response.events : []) {
+    const event = asObject(eventValue);
+    const delta = asObject(event.delta);
+    if (typeof delta.text === "string") parts.push(delta.text);
+    for (const choiceValue of Array.isArray(event.choices) ? event.choices : []) {
+      const content = asObject(asObject(choiceValue).delta).content;
+      if (typeof content === "string") parts.push(content);
+    }
+  }
+  return parts.join("");
+}
+
+const parsedJson = (text: string | null | undefined): unknown => {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return undefined;
+  try { return JSON.parse(trimmed); } catch { return undefined; }
+};
+
+const callArgumentsHay = (call: Obj): string => JSON.stringify(call.arguments ?? {}).toLowerCase();
+const toolOf = (call: Obj): string => String(call.tool ?? call.name ?? "");
+
+/** Deterministic met/unmet for one required contract entry over the event stream. */
+export function contractEntryMet(rule: Obj, events: ContractEvents): boolean {
+  const type = String(rule.type ?? "state_effect");
+  const calls = events.calls ?? [];
+  const finalText = String(events.finalResponse ?? "");
+  if (type === "state_effect") return calls.some((call) => toolOf(call) === rule.tool && semanticArgumentsMatch(asObject(rule.observed_arguments), asObject(call.arguments)));
+  if (type === "read_obligation") return calls.some((call) => toolOf(call) === rule.tool && semanticArgumentsMatch(asObject(rule.arguments_semantic), asObject(call.arguments)));
+  if (type === "value_propagation") {
+    const destination = asObject(rule.must_reach);
+    if (destination.kind === "final_response") return valueTokensPresent(rule.value, finalText);
+    return calls.some((call) => (!destination.tool || toolOf(call) === destination.tool) && valueTokensPresent(rule.value, callArgumentsHay(call)));
+  }
+  if (type === "response_obligation") {
+    const parsed = parsedJson(finalText);
+    if (rule.kind === "json_parses") return parsed !== undefined;
+    if (rule.kind === "schema_valid") {
+      if (parsed === undefined || parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+      const keys = Array.isArray(rule.expected_keys) ? rule.expected_keys : [];
+      return keys.every((key: unknown) => String(key) in (parsed as Obj));
+    }
+    if (rule.kind === "contains_category") return valueTokensPresent(rule.expected, finalText);
+    return false;
+  }
+  return false;
+}
+
+/** A forbidden entry: {tool} zeroes on any write to that tool; {type:"forbidden_value", value} zeroes when the value reaches tool args or the final response. */
+export function forbiddenEntryViolated(rule: Obj, events: ContractEvents): boolean {
+  if (String(rule.type ?? "") === "forbidden_value") {
+    const finalText = String(events.finalResponse ?? "");
+    return valueTokensPresent(rule.value, finalText) || (events.calls ?? []).some((call) => valueTokensPresent(rule.value, callArgumentsHay(call)));
+  }
+  return (events.calls ?? []).some((call) => toolOf(call) === rule.tool && isMutatingTool(toolOf(call)));
+}
+
+/**
+ * Full-contract scorer over the multi-turn event stream. Same partial-credit
+ * and strict semantics as scoreState: recall over ALL required entries,
+ * precision over state effects vs mutating calls, any forbidden violation
+ * zeroes the score outright, strict requires a non-empty contract fully met.
+ */
+export function scoreContract(task: Obj, events: ContractEvents): Obj {
+  const contract = asObject(task.outcome_contract);
+  const required = (Array.isArray(contract.required) ? contract.required : []).map(asObject);
+  const met = required.map((rule) => contractEntryMet(rule, events));
+  const matched = met.filter(Boolean).length;
+  const stateRules = required.filter((rule) => String(rule.type ?? "state_effect") === "state_effect");
+  const stateMatched = stateRules.filter((rule) => contractEntryMet(rule, events)).length;
+  const writes = (events.calls ?? []).filter((call) => isMutatingTool(toolOf(call)));
+  const recall = required.length === 0 ? 1 : matched / required.length;
+  const precision = writes.length === 0 ? (stateRules.length === 0 ? 1 : 0) : stateMatched / writes.length;
+  const violated = (Array.isArray(contract.forbidden) ? contract.forbidden : []).map(asObject).some((rule) => forbiddenEntryViolated(rule, events));
+  const policy = violated ? 0 : 1;
+  const strict = policy === 0 ? 0 : required.length > 0 && matched === required.length ? 1 : 0;
+  return { recall, precision, policy, strict, score: policy === 0 ? 0 : (recall + precision + policy) / 3, met };
+}
+
+/**
+ * Synthesize the ORACLE event stream a contract's own entries imply — used by
+ * offline validation so a contract must be satisfiable by construction.
+ */
+export function oracleEventsFor(task: Obj): ContractEvents {
+  const contract = asObject(task.outcome_contract);
+  const required = (Array.isArray(contract.required) ? contract.required : []).map(asObject);
+  const calls: Obj[] = [];
+  const values: unknown[] = [];
+  const jsonKeys: string[] = [];
+  let wantsJson = false;
+  for (const rule of required) {
+    const type = String(rule.type ?? "state_effect");
+    if (type === "state_effect") calls.push({ tool: rule.tool, arguments: rule.observed_arguments ?? {} });
+    else if (type === "read_obligation") calls.push({ tool: rule.tool, arguments: rule.arguments_semantic ?? {} });
+    else if (type === "value_propagation") {
+      const destination = asObject(rule.must_reach);
+      if (destination.kind === "final_response") values.push(rule.value);
+      else calls.push({ tool: destination.tool ?? "write-oracle-value", arguments: { value: rule.value } });
+    } else if (type === "response_obligation") {
+      if (rule.kind === "contains_category") values.push(rule.expected);
+      else { wantsJson = true; for (const key of Array.isArray(rule.expected_keys) ? rule.expected_keys : []) jsonKeys.push(String(key)); }
+    }
+  }
+  const finalResponse = wantsJson
+    ? JSON.stringify({ ...Object.fromEntries(jsonKeys.map((key) => [key, "oracle"])), _oracle_values: values })
+    : values.map((value) => (typeof value === "string" ? value : JSON.stringify(value))).join(" ");
+  return { calls, finalResponse };
+}
+
+/**
+ * Oracle + sentinel row for one task, recomputed with the full-contract
+ * scorer: the contract's own oracle events must score 1 strict; doing nothing,
+ * writing wrong values, and writing everything must all fail.
+ */
+export function offlineValidationRow(task: Obj): Obj {
+  const oracle = oracleEventsFor(task);
+  const wrongCalls = oracle.calls.map((call) => ({ ...call, arguments: { __wrong__: true } }));
+  return {
+    task_id: task.task_id,
+    oracle: scoreContract(task, oracle),
+    sentinels: {
+      noop: scoreContract(task, { calls: [], finalResponse: "" }),
+      wrong_value: scoreContract(task, { calls: wrongCalls, finalResponse: "sentinel wrong output" }),
+      write_everything: scoreContract(task, { calls: [...oracle.calls, { tool: "delete-sentinel-extra", arguments: {} }], finalResponse: oracle.finalResponse }),
+    },
+  };
+}
+
+/**
+ * Re-run offline validation for tasks whose contracts changed after compile
+ * (e.g. grounded authored obligations merged in). Rewrites only the affected
+ * rows of environment/offline-validation.json, if the file exists.
+ */
+export function refreshOfflineValidation(benchmarkDir: string, tasks: Obj[]): boolean {
+  const path = join(resolve(benchmarkDir), "environment", "offline-validation.json");
+  if (!existsSync(path)) return false;
+  const validation = asObject(JSON.parse(readFileSync(path, "utf8")));
+  const rows = (Array.isArray(validation.tasks) ? validation.tasks : []).map(asObject);
+  const byId = new Map(rows.map((row) => [row.task_id, row]));
+  for (const task of tasks) byId.set(task.task_id, offlineValidationRow(task));
+  validation.tasks = [...byId.values()];
+  writeJson(path, validation);
+  return true;
+}
+
 function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
   mkdirSync(servers, { recursive: true });
   const toolNames = [...new Set<string>(tasks.flatMap((task) => (task.tool_surface ?? []).map(String)))].sort();
   const observedByTool = new Map<string, Obj>();
-  for (const task of tasks) for (const rule of task.outcome_contract?.required ?? []) if (!observedByTool.has(rule.tool)) observedByTool.set(rule.tool, asObject(rule.observed_arguments));
+  for (const task of tasks) for (const rule of task.outcome_contract?.required ?? []) if (typeof rule.tool === "string" && !observedByTool.has(rule.tool)) observedByTool.set(rule.tool, asObject(rule.observed_arguments));
   const schemaByTool = new Map<string, Obj>();
   for (const task of tasks) for (const definitionValue of task.tool_definitions ?? []) { const definition = asObject(definitionValue), fn = asObject(definition.function), name = String(definition.name ?? fn.name ?? ""); if (name && !schemaByTool.has(name)) schemaByTool.set(name, asObject(definition.input_schema ?? fn.parameters)); }
   const pyType = (value: unknown): string => typeof value === "boolean" ? "bool" : typeof value === "number" ? "float" : Array.isArray(value) ? "list" : value && typeof value === "object" ? "dict" : "str";
@@ -341,15 +520,12 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: task.title, system_prompt: sourceContext.get(task.task_id)?.system ?? null, source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
   writeJson(join(pkg, "tasks.json"), taskRows);
   writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport re\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
-  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _arguments_match\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Final-state comparison over the per-rollout world state: each required\n        state-effect is satisfied when its tool was called with semantically\n        matching (token-normalized) arguments — never a raw substring of the\n        trajectory. Forbidden effects are violations.\"\"\"\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if any(write.get(\"tool\") == rule.get(\"tool\") and _arguments_match(rule.get(\"observed_arguments\") or {}, write.get(\"arguments\") or {}) for write in writes))\n        violated = any(write.get(\"tool\") == rule.get(\"tool\") for rule in contract.get(\"forbidden\", []) for write in writes)\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        return bool(required) and all(isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _arguments_match, _tokens\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\n\ndef _value_present(value, hay: str) -> bool:\n    \"\"\"Token-normalized value containment — the same canonicalization _arguments_match uses.\"\"\"\n    toks = _tokens(value)\n    return bool(toks) and all(t in hay for t in toks)\n\n\ndef _final_text(trace) -> str:\n    \"\"\"Last assistant text of the rollout (the final response the contract's response/value obligations judge).\"\"\"\n    for attr in (\"messages\", \"completion\", \"history\"):\n        msgs = getattr(trace, attr, None)\n        if isinstance(msgs, list) and msgs:\n            texts = []\n            for m in msgs:\n                if isinstance(m, dict) and m.get(\"role\") == \"assistant\":\n                    c = m.get(\"content\")\n                    if isinstance(c, str):\n                        texts.append(c)\n                    elif isinstance(c, list):\n                        texts.extend(str(b.get(\"text\") or \"\") for b in c if isinstance(b, dict) and b.get(\"type\") == \"text\")\n            if texts:\n                return texts[-1]\n    return str(getattr(trace, \"final_response\", \"\") or \"\")\n\n\ndef _parsed_json(text: str):\n    t = (text or \"\").strip()\n    if not t.startswith((\"{\", \"[\")):\n        return None\n    try:\n        return json.loads(t)\n    except Exception:\n        return None\n\n\ndef _entry_met(rule: dict, calls: list, final_text: str) -> bool:\n    \"\"\"Deterministic met/unmet per contract entry kind: state_effect,\n    read_obligation, value_propagation, response_obligation. Mirrors the\n    foundry's contractEntryMet exactly — never an LLM at eval time.\"\"\"\n    kind = rule.get(\"type\") or \"state_effect\"\n    if kind == \"state_effect\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(rule.get(\"observed_arguments\") or {}, c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"read_obligation\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(rule.get(\"arguments_semantic\") or {}, c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"value_propagation\":\n        dest = rule.get(\"must_reach\") or {}\n        if dest.get(\"kind\") == \"final_response\":\n            return _value_present(rule.get(\"value\"), (final_text or \"\").lower())\n        return any((not dest.get(\"tool\") or c.get(\"tool\") == dest.get(\"tool\")) and _value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    if kind == \"response_obligation\":\n        parsed = _parsed_json(final_text)\n        if rule.get(\"kind\") == \"json_parses\":\n            return parsed is not None\n        if rule.get(\"kind\") == \"schema_valid\":\n            return isinstance(parsed, dict) and all(str(k) in parsed for k in (rule.get(\"expected_keys\") or []))\n        if rule.get(\"kind\") == \"contains_category\":\n            return _value_present(rule.get(\"expected\"), (final_text or \"\").lower())\n    return False\n\n\ndef _forbidden_violated(rule: dict, calls: list, final_text: str) -> bool:\n    if (rule.get(\"type\") or \"\") == \"forbidden_value\":\n        hay = (final_text or \"\").lower()\n        return _value_present(rule.get(\"value\"), hay) or any(_value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    return any(c.get(\"tool\") == rule.get(\"tool\") for c in calls)\n\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Full-contract comparison over the per-rollout world state AND the\n        final assistant response: state effects and read obligations match\n        tool events semantically (token-normalized), value propagations and\n        response obligations judge the final response deterministically.\n        Forbidden tools/values are violations.\"\"\"\n        events = list(getattr(trace.state, \"events\", None) or [])\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        final_text = _final_text(trace)\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if _entry_met(rule, events, final_text))\n        violated = any(_forbidden_violated(rule, writes, final_text) for rule in contract.get(\"forbidden\", []))\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        def well_formed(r):\n            kind = r.get(\"type\") or \"state_effect\"\n            if kind == \"state_effect\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict)\n            if kind == \"read_obligation\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"arguments_semantic\"), dict)\n            if kind == \"value_propagation\":\n                return bool(r.get(\"value\")) and (r.get(\"must_reach\") or {}).get(\"kind\") in (\"final_response\", \"tool_args\")\n            if kind == \"response_obligation\":\n                return r.get(\"kind\") in (\"json_parses\", \"schema_valid\", \"contains_category\")\n            return False\n        return bool(required) and all(well_formed(r) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "environment.py"), `import verifiers.v1 as vf\nfrom understudy_trace_env.taskset import TraceConfig, TraceTaskset\n\nclass TraceHarnessConfig(vf.HarnessConfig):\n    max_turns: int = 24\n\nclass TraceHarness(vf.Harness[TraceHarnessConfig]):\n    pass\n\ndef load_taskset(config: TraceConfig) -> TraceTaskset:\n    return TraceTaskset(config=config)\n\ndef load_harness(config: TraceHarnessConfig) -> TraceHarness:\n    return TraceHarness(config=config)\n\ndef load_environment(config: vf.EnvConfig) -> vf.Env:\n    return vf.Env(taskset=vf.load_taskset(config.taskset), harness=vf.load_harness(config.harness))\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.environment import load_environment, load_harness, load_taskset\nfrom understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\", \"load_environment\", \"load_harness\", \"load_taskset\"]\n", { mode: 0o600 });
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
   writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.metadata]\nallow-direct-references = true\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
-  const validation = tasks.map((task) => {
-    const oracleWrites = (task.outcome_contract?.required ?? []).map((rule: Obj) => ({ tool: rule.tool, arguments: rule.observed_arguments }));
-    return { task_id: task.task_id, oracle: scoreState(task, oracleWrites), sentinels: { noop: scoreState(task, []), wrong_value: scoreState(task, oracleWrites.map((write: Obj) => ({ ...write, arguments: { __wrong__: true } }))), write_everything: scoreState(task, [...oracleWrites, { tool: "forbidden-extra-write", arguments: {} }]) } };
-  });
+  const validation = tasks.map(offlineValidationRow);
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "tasks.json")];
   return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => row.sentinels.noop.score < 1 && row.sentinels.wrong_value.score < 1 && row.sentinels.write_everything.score < 1) };

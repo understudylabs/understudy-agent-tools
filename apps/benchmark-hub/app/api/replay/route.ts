@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { captureFilePath, getEntry } from "../../../lib/data-core";
 // Same event extraction the authoring pass grounds against (compiled foundry,
 // re-exported through replay-core).
-import { accumulateReplay, observedCalls } from "../../../lib/replay-core";
+import { accumulateReplay, finalResponseText, observedCalls } from "../../../lib/replay-core";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,10 @@ export async function GET(request: Request) {
   const calls = spine
     ? (observedCalls([spine]) as { id?: string | null; name: string; arguments: unknown }[])
     : [];
-  const replay = accumulateReplay(task as unknown as Obj, calls);
+  // The captured final assistant response closes the event stream: value
+  // propagations and response obligations flip met/unmet on it.
+  const finalResponse = spine ? (finalResponseText((spine.response ?? {}) as Obj) as string) : "";
+  const replay = accumulateReplay(task as unknown as Obj, calls, finalResponse);
 
   // "Try with a new model" bridge: the generated environment's readiness.
   const envDir = path.join(entry.dir, "environment");

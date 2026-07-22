@@ -233,3 +233,194 @@ test("concurrency pool authors every task exactly once with bounded parallelism"
 test("refuses to run without gateway credentials (never another provider)", () => {
   assert.throws(() => resolveGatewayAuth({}, "/nonexistent/credentials.json"), /Understudy gateway/);
 });
+
+// ---------------------------------------------------------------------------
+// Widened contract kinds: grounding, merge, agreement
+// ---------------------------------------------------------------------------
+
+function buildToolLessBenchmark() {
+  const root = mkdtempSync(join(tmpdir(), "understudy-author-toolless-"));
+  const source = join(root, "captures"), output = join(root, "bench");
+  mkdirSync(source, { recursive: true });
+  const row = {
+    schema_version: 4, request_id: "r1", ts: "2026-07-20T12:00:00Z", workload_name: "synthetic-triage",
+    customer_request_body: JSON.stringify({
+      system: "Classify synthetic inbound email senders; reply with JSON {party, reasoning}.",
+      messages: [{ role: "user", content: "New email from Jordan Doe <jordan@example.com> about their renewal." }],
+      tools: [{ name: "update-crm-field", input_schema: { type: "object" } }],
+    }),
+    response_body: JSON.stringify({ content: [{ type: "text", text: '{"party": "external_customer", "reasoning": "Jordan Doe writes about their own renewal."}' }], stop_reason: "end_turn" }),
+    status_code: 200,
+  };
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(row) + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  return output;
+}
+
+const toolLessAuthored = {
+  statement: "Classify an inbound email sender's relationship to the deal and answer with the JSON verdict.",
+  success_criteria: ["The final response is the required JSON verdict.", "The sender is classified as an external customer."],
+  category_proposal: { id: "email-party-identification", name: "Email party identification" },
+  difficulty: "easy", difficulty_reason: "One-step classification.",
+  intent_summary: "Classify the sender.",
+  contract: {
+    required: [], preserved: [], forbidden: [],
+    read_obligations: [],
+    value_propagations: [{ source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } }],
+    response_obligations: [{ kind: "json_parses" }, { kind: "schema_valid", expected_keys: ["party", "reasoning"] }, { kind: "contains_category", expected: "external_customer" }],
+    forbidden_values: [],
+  },
+  confidence: "high", ambiguities: [],
+};
+
+test("authoring context exposes the captured final response as the oracle for obligations", () => {
+  const output = buildToolLessBenchmark();
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  const captures = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  const byKey = new Map(captures.map((row) => [row.capture_key, row]));
+  const context = buildAuthoringContext(tasks[0], byKey, 20000);
+  assert.match(context.final_response, /external_customer/);
+  assert.equal(tasks[0].outcome_contract.required.length, 0, "tool-less task starts with an EMPTY (unjudgeable) contract");
+});
+
+test("tool-less task: grounded obligations merge into the deterministic contract and become judgeable", async () => {
+  const output = buildToolLessBenchmark();
+  const run = await authorTasks(output, { model: "fake-model", client: fakeClient(toolLessAuthored), now: new Date("2026-07-21T13:00:00Z") });
+  assert.deepEqual(run.grounding, { verified: 1, failed: 0 });
+  assert.equal(run.contracts.tasks_extended, 1);
+  assert.equal(run.contracts.merged_obligation_entries, 4);
+  const task = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse)[0];
+  const types = task.outcome_contract.required.map((entry) => entry.type).sort();
+  assert.deepEqual(types, ["response_obligation", "response_obligation", "response_obligation", "value_propagation"]);
+  assert.ok(task.outcome_contract.required.every((entry) => entry.provenance?.grounded === true));
+  assert.equal(task.outcome_contract.grading, "final_state_and_obligations");
+  // task_hash recomputed to reflect the widened contract
+  assert.equal(typeof task.task_hash, "string");
+  // offline validation refreshed: oracle passes and sentinels discriminate for the previously-unjudgeable task
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  const row = validation.tasks.find((r) => r.task_id === task.task_id);
+  assert.equal(row.oracle.strict, 1);
+  assert.ok(row.sentinels.noop.score < 1);
+  assert.ok(row.sentinels.wrong_value.score < 1);
+  // Re-author idempotence: merging twice adds nothing (dedup by canonical key).
+  const again = await authorTasks(output, { model: "fake-model", client: fakeClient(toolLessAuthored), onlyUnauthored: false });
+  assert.equal(again.contracts.merged_obligation_entries, 0);
+});
+
+test("ungroundable obligations fail grounding with recorded violations and merge nothing", async () => {
+  const output = buildToolLessBenchmark();
+  const bad = {
+    ...toolLessAuthored,
+    contract: {
+      ...toolLessAuthored.contract,
+      value_propagations: [
+        { source: { kind: "prompt" }, value: "Invented Person", must_reach: { kind: "final_response" } },
+        { source: { kind: "tool_result", call_id: "no-such-call" }, value: "x", must_reach: { kind: "final_response" } },
+      ],
+      response_obligations: [{ kind: "contains_category", expected: "made_up_category" }, { kind: "not_a_kind" }],
+      forbidden_values: [{ value: "external_customer", reason: "oracle contains it — contradiction" }],
+    },
+  };
+  const run = await authorTasks(output, { model: "fake-model", client: fakeClient(bad) });
+  assert.deepEqual(run.grounding, { verified: 0, failed: 1 });
+  const violations = run.results[0].violations;
+  assert.ok(violations.some((v) => v.includes("value_propagations[0]") && v.includes("claimed prompt source")));
+  assert.ok(violations.some((v) => v.includes('source tool_result call id "no-such-call"')));
+  assert.ok(violations.some((v) => v.includes("response_obligations[0]") && v.includes("does not appear")));
+  assert.ok(violations.some((v) => v.includes('kind "not_a_kind"')));
+  assert.ok(violations.some((v) => v.includes("forbidden_values[0]") && v.includes("contradiction")));
+  const task = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse)[0];
+  assert.equal(task.outcome_contract.required.length, 0, "failed grounding merges nothing — deterministic contract stays authoritative");
+});
+
+test("grounding unit: read obligations and tool_args value propagation verify against observed evidence", async () => {
+  const { groundAuthoredTask } = await import("../dist/trace-author.js");
+  const task = { tool_surface: ["lookup-record", "update-record"], outcome_contract: { required: [{ tool: "update-record" }] } };
+  const calls = [
+    { id: "c1", name: "lookup-record", arguments: { id: 7 } },
+    { id: "c2", name: "update-record", arguments: { id: 7, name: "Rec Seven" } },
+  ];
+  const evidence = { prompt: "Update record 7", results: [{ call_id: "c1", tool: "lookup-record", content: '{"id":7,"name":"Rec Seven"}' }], finalResponse: "Done: Rec Seven updated." };
+  const authored = {
+    statement: "s", difficulty: "easy", confidence: "high",
+    contract: {
+      required: [{ tool: "update-record", arguments_semantic: { id: 7 }, maps_to_observed: ["c2"] }],
+      read_obligations: [{ tool: "lookup-record", arguments_semantic: { id: 7 }, maps_to_observed: ["c1"] }],
+      value_propagations: [{ source: { kind: "tool_result", call_id: "c1" }, value: "Rec Seven", must_reach: { kind: "tool_args", tool: "update-record" } }],
+      response_obligations: [], forbidden_values: [], preserved: [], forbidden: [],
+    },
+  };
+  assert.equal(groundAuthoredTask(task, authored, calls, evidence).status, "verified");
+  // value never reached the destination tool → violation
+  const unreached = JSON.parse(JSON.stringify(authored));
+  unreached.contract.value_propagations[0].must_reach = { kind: "tool_args", tool: "lookup-record" };
+  const failed = groundAuthoredTask(task, unreached, calls, evidence);
+  assert.equal(failed.status, "failed");
+  assert.ok(failed.violations.some((v) => v.includes("not observed reaching")));
+  // proposing obligations without evidence fails closed
+  const noEvidence = groundAuthoredTask(task, authored, calls);
+  assert.ok(noEvidence.violations.some((v) => v.includes("no grounding evidence")));
+});
+
+test("agreement canonicalization covers the widened kinds", async () => {
+  const { authoredContractKeys, agreementReport } = await import("../dist/trace-author.js");
+  const contract = {
+    required: [{ tool: "update-record", arguments_semantic: { id: 7 } }],
+    read_obligations: [{ tool: "lookup-record", arguments_semantic: { id: 7 } }],
+    value_propagations: [{ source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } }],
+    response_obligations: [{ kind: "schema_valid", expected_keys: ["party"] }],
+    forbidden_values: [{ value: "123-45-6789" }],
+  };
+  const keys = authoredContractKeys(contract);
+  assert.equal(keys.length, 5);
+  assert.ok(keys.some((k) => k.startsWith("read::lookup-record")));
+  assert.ok(keys.some((k) => k.startsWith("value::final_response")));
+  assert.ok(keys.some((k) => k.startsWith("resp::schema_valid")));
+  assert.ok(keys.some((k) => k.startsWith("noval::")));
+  const row = (contractVariant) => [{ task_id: "t1", grounding: "verified", authored: { contract: contractVariant, category_proposal: { id: "c" }, difficulty: "easy", ambiguities: [] } }];
+  const divergent = { ...contract, response_obligations: [{ kind: "contains_category", expected: "other" }] };
+  const report = agreementReport(["a", "b", "c"], new Map([["a", row(contract)], ["b", row(contract)], ["c", row(divergent)]]));
+  assert.equal(report.per_task[0].consensus, "2/3");
+  assert.ok(report.per_task[0].pair_jaccard["a|b"] === 1);
+  assert.ok(report.per_task[0].pair_jaccard["a|c"] < 1);
+});
+
+test("context policy: task prompt and final response are never truncated; budget falls on intermediates", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-author-ctx-"));
+  const source = join(root, "captures"), output = join(root, "bench");
+  mkdirSync(source, { recursive: true });
+  const bigPrompt = "TASK PAYLOAD START " + "payload ".repeat(3000) + " TASK PAYLOAD END";
+  const bigIntermediate = "intermediate tool result ".repeat(5000);
+  const finalText = "FINAL VERDICT: external_customer " + "detail ".repeat(50);
+  const row = {
+    schema_version: 4, request_id: "r1", ts: "2026-07-20T12:00:00Z", workload_name: "synthetic-ctx",
+    customer_request_body: JSON.stringify({
+      system: "Synthetic system prompt.",
+      messages: [
+        { role: "user", content: bigPrompt },
+        { role: "assistant", content: bigIntermediate },
+        { role: "user", content: bigIntermediate },
+      ],
+      tools: [],
+    }),
+    response_body: JSON.stringify({ content: [{ type: "text", text: finalText }], stop_reason: "end_turn" }),
+    status_code: 200,
+  };
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(row) + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  const captures = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse);
+  const byKey = new Map(captures.map((r) => [r.capture_key, r]));
+  // Budget small enough to force intermediate truncation.
+  const context = buildAuthoringContext(tasks[0], byKey, 12000);
+  const firstUser = context.rounds[0].messages.find((m) => m.role === "user");
+  assert.ok(firstUser.content.includes("TASK PAYLOAD START") && firstUser.content.includes("TASK PAYLOAD END"), "task prompt kept in full");
+  assert.doesNotMatch(firstUser.content, /truncated/);
+  assert.equal(context.final_response, finalText, "final response (the oracle) kept in full");
+  assert.deepEqual(context.evidence_truncated, { task_prompt: false, intermediates: true });
+  const assistant = context.rounds[0].messages.find((m) => m.role === "assistant");
+  assert.match(assistant.content, /truncated/, "intermediate messages carry the truncation");
+  // Roomy budget: nothing truncated, provenance says so.
+  const roomy = buildAuthoringContext(tasks[0], byKey, 200000);
+  assert.deepEqual(roomy.evidence_truncated, { task_prompt: false, intermediates: false });
+});

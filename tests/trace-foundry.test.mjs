@@ -214,3 +214,112 @@ test("import-reviews no longer demands unanimity", () => {
   assert.equal(imported.accepted, 1);
   assert.equal(imported.status, "human_approved", "one honest reject no longer vetoes the benchmark");
 });
+
+// ---------------------------------------------------------------------------
+// Widened deterministic contract: four entry kinds beyond state_effect
+// ---------------------------------------------------------------------------
+
+test("scoreContract: each new entry kind flips met/unmet deterministically over the event stream", async () => {
+  const { scoreContract, contractEntryMet } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: { required: [
+    { type: "state_effect", tool: "update-record", observed_arguments: { id: 7, status: "active" } },
+    { type: "read_obligation", tool: "lookup-record", arguments_semantic: { id: 7 } },
+    { type: "value_propagation", source: { kind: "tool_result", call_id: "c1" }, value: "rec-7-name", must_reach: { kind: "tool_args", tool: "update-record" } },
+    { type: "value_propagation", source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } },
+    { type: "response_obligation", kind: "json_parses" },
+    { type: "response_obligation", kind: "schema_valid", expected_keys: ["party"] },
+    { type: "response_obligation", kind: "contains_category", expected: "external_customer" },
+  ], forbidden: [] } };
+  const calls = [
+    { name: "lookup-record", arguments: { id: 7 } },
+    { name: "update-record", arguments: { id: 7, status: "active", name: "rec-7-name" } },
+  ];
+  const finalResponse = '{"party": "external_customer", "reasoning": "Jordan Doe is the buyer"}';
+  const full = scoreContract(task, { calls, finalResponse });
+  assert.equal(full.recall, 1);
+  assert.equal(full.strict, 1);
+  // Missing final response leaves final-response-dependent entries unmet.
+  const noFinal = scoreContract(task, { calls, finalResponse: "" });
+  assert.ok(noFinal.recall < 1);
+  assert.equal(noFinal.strict, 0);
+  // A noop meets nothing.
+  const noop = scoreContract(task, { calls: [], finalResponse: "" });
+  assert.equal(noop.recall, 0);
+  // Individual transitions.
+  assert.equal(contractEntryMet({ type: "response_obligation", kind: "json_parses" }, { calls: [], finalResponse: "not json" }), false);
+  assert.equal(contractEntryMet({ type: "response_obligation", kind: "schema_valid", expected_keys: ["missing"] }, { calls: [], finalResponse: '{"party":1}' }), false);
+  assert.equal(contractEntryMet({ type: "value_propagation", value: "abc-123", must_reach: { kind: "tool_args", tool: "send-email" } }, { calls: [{ name: "send-email", arguments: { body: "code abc-123" } }] }), true);
+  assert.equal(contractEntryMet({ type: "value_propagation", value: "abc-123", must_reach: { kind: "tool_args", tool: "send-email" } }, { calls: [{ name: "other-tool", arguments: { body: "code abc-123" } }] }), false);
+});
+
+test("scoreContract: a forbidden value that propagates zeroes the score outright", async () => {
+  const { scoreContract } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: {
+    required: [{ type: "response_obligation", kind: "contains_category", expected: "billing" }],
+    forbidden: [{ type: "forbidden_value", value: "ssn 123-45-6789" }],
+  } };
+  const clean = scoreContract(task, { calls: [], finalResponse: "category: billing" });
+  assert.equal(clean.strict, 1);
+  const leakedInResponse = scoreContract(task, { calls: [], finalResponse: "billing — ssn 123-45-6789" });
+  assert.equal(leakedInResponse.strict, 0);
+  assert.equal(leakedInResponse.score, 0);
+  const leakedInArgs = scoreContract(task, { calls: [{ name: "send-email", arguments: { body: "ssn 123-45-6789" } }], finalResponse: "billing" });
+  assert.equal(leakedInArgs.policy, 0);
+});
+
+test("offlineValidationRow: obligation contracts pass their own oracle and fail every sentinel", async () => {
+  const { offlineValidationRow } = await import("../dist/trace-foundry.js");
+  const row = offlineValidationRow({ task_id: "t-obligations", outcome_contract: { required: [
+    { type: "value_propagation", source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } },
+    { type: "response_obligation", kind: "schema_valid", expected_keys: ["party"] },
+    { type: "response_obligation", kind: "json_parses" },
+  ], forbidden: [] } });
+  assert.equal(row.oracle.strict, 1, "the contract's own oracle events satisfy it by construction");
+  assert.ok(row.sentinels.noop.score < 1);
+  assert.ok(row.sentinels.wrong_value.score < 1);
+  assert.ok(row.sentinels.write_everything.score < 1);
+  // Mixed with a state effect, unchanged.
+  const mixed = offlineValidationRow({ task_id: "t-mixed", outcome_contract: { required: [
+    { tool: "update-record", observed_arguments: { id: 1 } },
+    { type: "read_obligation", tool: "lookup-record", arguments_semantic: { id: 1 } },
+  ], forbidden: [] } });
+  assert.equal(mixed.oracle.strict, 1);
+  assert.ok(Object.values(mixed.sentinels).every((s) => s.score < 1));
+});
+
+test("refreshOfflineValidation rewrites only the changed tasks' rows", async () => {
+  const { refreshOfflineValidation } = await import("../dist/trace-foundry.js");
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-refresh-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  task.outcome_contract.required.push({ type: "response_obligation", kind: "contains_category", expected: "done" });
+  assert.equal(refreshOfflineValidation(output, [task]), true);
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  const row = validation.tasks.find((r) => r.task_id === task.task_id);
+  assert.equal(row.oracle.strict, 1);
+  assert.equal(row.oracle.met.length, 2, "refreshed row scores the widened contract");
+});
+
+test("responseProjection extracts OpenAI chat.completion tool calls so their mutations reach the contract", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-openai-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const row = capture("openai-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Save the summary" }], {});
+  row.response_body = JSON.stringify({ object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "save-summary", arguments: "{\"status\":\"skipped\"}" } }] }, finish_reason: "tool_calls" }] });
+  writeFileSync(join(source, "one.json"), JSON.stringify(row));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
+  assert.deepEqual(task.tool_surface, ["save-summary"]);
+  assert.equal(task.outcome_contract.required.length, 1);
+  assert.equal(task.outcome_contract.required[0].tool, "save-summary");
+});
+
+test("generated taskset scores the widened contract kinds against events and the final response", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-widened-env-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1 } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const taskset = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  for (const marker of ["_entry_met", "value_propagation", "response_obligation", "read_obligation", "forbidden_value", "_final_text", "json_parses", "contains_category", "schema_valid"]) {
+    assert.match(taskset, new RegExp(marker), `taskset.py handles ${marker}`);
+  }
+  assert.doesNotMatch(taskset, /str\(v\) in text/);
+});
