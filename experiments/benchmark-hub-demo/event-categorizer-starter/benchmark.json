@@ -1,0 +1,85 @@
+{
+  "schema_version": "understudy.benchmark.v1",
+  "benchmark_id": "event-categorizer-starter",
+  "name": "Event categorizer — starting benchmark",
+  "description": "Small starting benchmark for the event-triage workload: classify an incoming event JSON into a category/priority after an optional lookup_account tool call, answering in strict bare JSON. 8 tasks drawn from the design-simulated-environment scaffold's tasks.jsonl across 3 categories.",
+  "created_at": "2026-07-19T00:00:00Z",
+  "provenance": {
+    "origin": "derived-from-traces",
+    "source_refs": [
+      "skills/design-simulated-environment/examples/event-categorizer/tasks.jsonl",
+      "skills/design-simulated-environment/examples/event-categorizer/playbook.md"
+    ],
+    "imported_from": null
+  },
+  "taxonomy": [
+    {
+      "category_id": "security",
+      "name": "Security events",
+      "description": "Auth anomalies and leaked-credential events; priority depends on account plan.",
+      "difficulty": "medium",
+      "derived_from": {
+        "tool_signature": ["lookup_account"],
+        "intent_summary": "triage security signals to p0/p1 by account tier",
+        "source_trace_ids": ["evt-001", "evt-002", "evt-009"]
+      }
+    },
+    {
+      "category_id": "billing",
+      "name": "Billing events",
+      "description": "Payment failures and billing lifecycle events.",
+      "difficulty": "easy",
+      "derived_from": {
+        "tool_signature": ["lookup_account"],
+        "intent_summary": "route payment failures by account tier",
+        "source_trace_ids": ["evt-003", "evt-004"]
+      }
+    },
+    {
+      "category_id": "noise",
+      "name": "Noise / no-action events",
+      "description": "Heartbeats, informational events, and malformed input that must be classified as noise rather than escalated.",
+      "difficulty": "medium",
+      "derived_from": {
+        "tool_signature": [],
+        "intent_summary": "suppress non-actionable and malformed events",
+        "source_trace_ids": ["evt-005", "evt-010", "evt-012"]
+      }
+    }
+  ],
+  "tasks": [
+    { "task_id": "evt-001", "category_id": "security", "seed": null, "genesis": "replayed", "generator_ref": null, "split": "train",   "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-001" } },
+    { "task_id": "evt-002", "category_id": "security", "seed": null, "genesis": "replayed", "generator_ref": null, "split": "dev",     "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-002" } },
+    { "task_id": "evt-009", "category_id": "security", "seed": null, "genesis": "replayed", "generator_ref": null, "split": "holdout", "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-009" } },
+    { "task_id": "evt-003", "category_id": "billing",  "seed": null, "genesis": "replayed", "generator_ref": null, "split": "train",   "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-003" } },
+    { "task_id": "evt-004", "category_id": "billing",  "seed": null, "genesis": "replayed", "generator_ref": null, "split": "dev",     "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-004" } },
+    { "task_id": "evt-005", "category_id": "noise",    "seed": null, "genesis": "replayed", "generator_ref": null, "split": "train",   "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-005" } },
+    { "task_id": "evt-010", "category_id": "noise",    "seed": null, "genesis": "replayed", "generator_ref": null, "split": "dev",     "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-010" } },
+    { "task_id": "evt-012", "category_id": "noise",    "seed": null, "genesis": "replayed", "generator_ref": null, "split": "holdout", "gold": { "kind": "reference", "ref": "tasks.jsonl#evt-012" } }
+  ],
+  "environment": {
+    "format": "verifiers.v1",
+    "package_ref": "skills/design-simulated-environment/examples/event-categorizer",
+    "package_sha256": null,
+    "tool_surface": ["lookup_account"],
+    "runtime": "subprocess",
+    "verifiers_version_pin": "==0.2.0"
+  },
+  "verifier": {
+    "kind": "reward-fns",
+    "strict_metric": "category_correct",
+    "dense_metric": null,
+    "replayable": true
+  },
+  "splits": {
+    "boundary": "manual: train 3 / dev 3 / holdout 2",
+    "splits_sha256": null,
+    "contamination": "clean"
+  },
+  "linked_eval": null,
+  "results_contract": {
+    "row_schema": "understudy.eval_result.v1",
+    "trace_artifact": "traces.jsonl",
+    "branch_projection": "one row per root-to-leaf branch"
+  }
+}

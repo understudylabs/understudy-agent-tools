@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.benchmark_flag.v1.schema.json",
+  "title": "understudy.benchmark_flag.v1",
+  "description": "One human quality flag against a benchmark or one of its tasks. Stored as one JSON object per line in a flags.jsonl file next to the benchmark's manifest (benchmark.json). Viewers surface open flags everywhere the flagged unit appears and let leaderboards exclude flagged tasks. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "task_id", "reason", "created_at", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.benchmark_flag.v1",
+      "description": "Version stamp for this flag shape."
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "benchmark_id of the manifest this flag belongs to."
+    },
+    "task_id": {
+      "type": ["string", "null"],
+      "description": "Task the flag targets. Null flags the whole benchmark."
+    },
+    "reason": {
+      "enum": ["bad-gold", "ambiguous", "leakage", "too-easy", "broken-env", "other"],
+      "description": "Why the unit is suspect."
+    },
+    "note": {
+      "type": ["string", "null"],
+      "description": "Free-text explanation from the flagger."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp the flag was recorded."
+    },
+    "status": {
+      "enum": ["open", "resolved"],
+      "description": "Lifecycle state. Only open flags affect leaderboard exclusion."
+    }
+  }
+}

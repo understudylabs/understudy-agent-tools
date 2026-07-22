@@ -1,0 +1,6 @@
+2026-07-19 09:04:04 - verifiers.serve.server.env_server.ZMQEnvServer - INFO - Initializing ZMQEnvServer to serve event-categorizer (env_args={'tasks_path': '<workspace>/experiments/benchmark-hub-demo/tasks-subset.jsonl'}, extra_env_kwargs={'concurrency': 32}, num_workers=1)
+2026-07-19 09:04:04 - verifiers.serve.server.env_server.ZMQEnvServer - INFO - ZMQEnvServer started on tcp://127.0.0.1:62667
+2026-07-19 09:04:04 - verifiers.serve.server.env_router.EnvRouter - INFO - Started worker (id=0, name=event-categorizer-0, address=ipc:///tmp/vf-fcd1b0f429a5-event-categorizer-0, pid=9430)
+2026-07-19 09:04:09 - verifiers.utils.process_utils - INFO - Death pipe closed — parent is gone, sending SIGTERM to self
+2026-07-19 09:04:09 - verifiers.serve.server.env_router.EnvRouter - INFO - Router shut down
+2026-07-19 09:04:09 - verifiers.serve.server.env_server.ZMQEnvServer - INFO - ZMQEnvServer shut down

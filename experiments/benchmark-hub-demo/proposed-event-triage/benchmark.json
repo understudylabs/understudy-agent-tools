@@ -1,0 +1,26 @@
+{
+  "schema_version": "understudy.benchmark.v1",
+  "status": "machine_compiled_review_pending",
+  "executable": false,
+  "promotion_blockers": [
+    "human_final_judgment",
+    "sentinel_tests"
+  ],
+  "tasks": [
+    {
+      "task_id": "task-755946630f9a0770",
+      "split": "construction",
+      "status": "machine_proposed"
+    },
+    {
+      "task_id": "task-e689ddcde7c9ac6e",
+      "split": "fit",
+      "status": "needs_review"
+    },
+    {
+      "task_id": "task-da34c9be253d7467",
+      "split": "heldout",
+      "status": "machine_proposed"
+    }
+  ]
+}

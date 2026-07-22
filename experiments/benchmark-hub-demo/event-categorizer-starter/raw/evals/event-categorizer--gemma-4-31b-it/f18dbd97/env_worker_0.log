@@ -1,0 +1,10 @@
+2026-07-19 09:04:21 - verifiers.utils.env_utils - INFO - Loading environment: event-categorizer
+2026-07-19 09:04:22 - verifiers.utils.env_utils - INFO - Using provided args: tasks_path=<workspace>/experiments/benchmark-hub-demo/tasks-subset.jsonl
+2026-07-19 09:04:22 - verifiers.utils.env_utils - INFO - Using default args: max_turns=4, playbook_path=None
+2026-07-19 09:04:22 - verifiers.utils.env_utils - INFO - Successfully loaded environment 'event-categorizer'
+2026-07-19 09:04:22 - verifiers.utils.thread_utils - INFO - Scaled default executor and 0 registered executor(s) ()
+2026-07-19 09:04:22 - verifiers.serve.server.env_worker.EnvWorker - INFO - Initialized worker event-categorizer-0 on ipc:///tmp/vf-63644890492f-event-categorizer-0
+2026-07-19 09:04:22 - verifiers.utils.thread_utils - INFO - Scaled default executor and 0 registered executor(s) ()
+2026-07-19 09:04:22 - verifiers.serve.server.env_worker.EnvWorker - INFO - Starting worker event-categorizer-0
+2026-07-19 09:04:40 - verifiers.utils.process_utils - INFO - Death pipe closed — parent is gone, sending SIGTERM to self
+2026-07-19 09:04:40 - verifiers.serve.server.env_worker.EnvWorker - INFO - Shut down worker event-categorizer-0

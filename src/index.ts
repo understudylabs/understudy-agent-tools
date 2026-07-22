@@ -59,6 +59,9 @@ import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
 
+export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
+export { serveTraceFoundry } from "./trace-foundry-server.js";
+
 export const repoRoot = installedPackageRoot();
 
 type SkillSummary = {

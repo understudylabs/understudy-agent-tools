@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2022",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "outDir": ".build",
+    "rootDir": "..",
+    "types": ["node"],
+    "noEmitOnError": true
+  },
+  "include": [
+    "../lib/types.ts",
+    "../lib/benchmark-core.ts",
+    "../lib/scores.ts",
+    "../lib/data-core.ts",
+    "../app/api/flags/route.ts",
+    "../app/api/reviews/route.ts",
+    "../app/api/captures/route.ts"
+  ]
+}

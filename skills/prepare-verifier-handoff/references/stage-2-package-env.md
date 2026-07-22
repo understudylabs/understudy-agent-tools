@@ -59,11 +59,13 @@ substitute.
    `reset()/step()/score()` onto a real verifiers environment class — a
    conforming subclass, not a duck-typed lookalike (trainer env-workers call
    base-class methods like `set_kwargs`; a hand-rolled class that works when
-   driven directly dies the moment a trainer serves it). On the v0 API
+   driven directly dies the moment a trainer serves it). For new trace-derived
+   environments, consume the package emitted by `understudy traces
+   build-benchmark`. On the legacy v0 API
    (`verifiers==0.2.0`, frozen upstream) that is `vf.StatefulToolEnv` (seeded
    per-rollout state via `update_tool_args`) or `vf.MultiTurnEnv`
    (`env_response` + `@vf.stop`), with the scorer as a `vf.Rubric`; on the
-   `verifiers.v1` API it is a `Taskset` whose `Task` carries setup and
+   current `verifiers.v1` API it is a `Taskset` whose `Task` carries setup and
    `@vf.reward` methods. Mark only the workload-specific sim handles as
    `TODO`; keep everything structural concrete. Ship the seeded synthetic fixtures
    alongside.
