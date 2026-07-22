@@ -231,6 +231,41 @@ export type SourceDag = {
   groups: { id: string; capture_count: number; edge_count: number; roots: string[] }[];
 };
 
+/**
+ * understudy.task_authoring.v1 — the LLM-authored, grounding-verified block
+ * `understudy traces author-tasks` writes onto a foundry task. The authored
+ * intent_summary wins as the task's display name everywhere; the
+ * deterministic contract stays authoritative (grounding cross-validates).
+ */
+export type AuthoredContractEntry = {
+  tool?: string;
+  arguments_semantic?: Record<string, unknown>;
+  maps_to_observed?: string[];
+  reason?: string;
+  [key: string]: unknown;
+};
+
+export type AuthoredBlock = {
+  schema_version: string;
+  model?: string;
+  authored_at?: string;
+  grounding?: { status?: "verified" | "failed"; violations?: string[] } | null;
+  statement?: string;
+  success_criteria?: string[];
+  category_proposal?: { id?: string; name?: string } | null;
+  difficulty?: string;
+  difficulty_reason?: string;
+  intent_summary?: string;
+  contract?: {
+    required?: AuthoredContractEntry[];
+    preserved?: AuthoredContractEntry[];
+    forbidden?: AuthoredContractEntry[];
+  } | null;
+  confidence?: string;
+  ambiguities?: string[];
+  [key: string]: unknown;
+};
+
 /** understudy.benchmark_task.v1 — one line of tasks.jsonl. */
 export type FoundryTask = {
   schema_version: "understudy.benchmark_task.v1";
@@ -259,7 +294,63 @@ export type FoundryTask = {
   claims: FoundryClaim[];
   sentinels: unknown[];
   review: { decision: string };
+  /** LLM-authored legible definition (understudy.task_authoring.v1), when `traces author-tasks` has run. */
+  authored?: AuthoredBlock | null;
   [key: string]: unknown;
+};
+
+/** Display name: authored intent_summary wins over the raw distinctive-line title. */
+export function taskDisplayName(task: Pick<FoundryTask, "task_id" | "title" | "authored">): string {
+  const summary = task.authored?.intent_summary;
+  if (typeof summary === "string" && summary.trim()) return summary.trim();
+  return task.title || task.task_id;
+}
+
+/**
+ * understudy.benchmark_overview.v1 — the `--overview` authoring pass output
+ * (benchmark-overview.json next to the manifest): the three-level "how this
+ * became a benchmark" narrative. Narrative fields are null when the model
+ * reply was unparseable; representative ids are always deterministic.
+ */
+export type BenchmarkOverviewCategory = {
+  category_id: string;
+  archetype_title: string | null;
+  archetype_description: string | null;
+  representative_task_ids: string[];
+  task_count?: number | null;
+};
+
+/** Canonical-hash system-prompt cluster (uuids/ids/emails/numbers masked). */
+export type SystemPromptCluster = {
+  hash: string;
+  count: number;
+  coverage: number;
+  representative_excerpt: string;
+};
+
+export type ToolUsageRow = { tool: string; defined: boolean; calls: number };
+
+/** Per-task complexity metrics — computed deterministically, never authored. */
+export type TaskComplexity = {
+  approx_context_tokens: number;
+  turn_count: number;
+  tool_call_count: number;
+  distinct_tools: number;
+  error_retry_events: number;
+  frontier: boolean;
+  frontier_axes: string[];
+};
+
+export type BenchmarkOverview = {
+  schema_version: string;
+  model?: string | null;
+  authored_at?: string | null;
+  workload_summary: string | null;
+  categories: BenchmarkOverviewCategory[];
+  /** Deterministic layer — computed from captures/tasks, no LLM. */
+  system_prompt_clusters?: SystemPromptCluster[];
+  tool_usage?: ToolUsageRow[];
+  task_complexity?: Record<string, TaskComplexity>;
 };
 
 /** A trace-foundry output dir awaiting human review (stage: proposed). */
@@ -283,6 +374,8 @@ export type ProposedHubEntry = {
   diagnostics: EntryDiagnostics;
   /** task_ids where tasks.jsonl and the colliding benchmark.json disagree. */
   crossCheckErrors: string[];
+  /** benchmark-overview.json (understudy.benchmark_overview.v1) when the --overview pass has run. */
+  overview: BenchmarkOverview | null;
 };
 
 export type AnyHubEntry = HubEntry | InvalidHubEntry | ProposedHubEntry;
@@ -306,4 +399,10 @@ export type HubEntry = {
   versions: BenchmarkVersion[];
   /** Loader diagnostics: skipped/dropped/foreign line counts. */
   diagnostics: EntryDiagnostics;
+  /** understudy.promotion_record.v1 — present when this benchmark was promoted from a trace-foundry proposal in the same dir. */
+  promotionRecord?: Record<string, unknown> | null;
+  /** Review history carried over from the proposal stage (reviews.jsonl, oldest first). */
+  reviews?: BenchmarkReview[];
+  /** benchmark-overview.json carried over from the proposal stage, when present. */
+  overview?: BenchmarkOverview | null;
 };

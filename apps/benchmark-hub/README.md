@@ -30,17 +30,67 @@ system, with decisions persisted to disk instead of localStorage.
 
 ## Theme
 
-The app wears the **Understudy design language v2.0 DARK FIELD**:
-black-field/card/stamp-dark tokens and IBM Plex Sans/Mono type from
-`understudy-design/tokens/{primitives,semantic}.json`. The benchmark detail
-page is an OpenRouter-style entity page (header + stat strip + sticky anchor
-rail). All design tokens are centralized in the CSS custom properties
-(`:root` + Tailwind `@theme`) at the top of `app/globals.css`; the component
-classes consume only those variables and share a single `u-` prefix (the
-former `lb-`/`ent-` split is retired). Stamp is the canonical accent, defined
-directly in `:root` — the `?accent` preview switch and the `html[data-accent]`
-indirection are gone. Every screen has a designed empty state: one sentence of
-what it is plus one concrete next action in mono (`u-empty`).
+The app adopts the **trace-viewer theme contract**
+(`skills/ingest-traces/templates/trace-viewer/index.html`, docs in
+`skills/ingest-traces/references/trace-viewer.md`): the public token tier
+(`--background/--foreground/--card/--popover/--primary/--secondary/--muted/
+--accent/--destructive/--border/--input/--ring`, `--viz-series-1..6`, the
+system `--font-sans`/`--font-mono` stacks, the `--font-size-base` type scale,
+and the `--radius`/`--shadow-sm` scale) is copied verbatim into
+`app/globals.css`, so the hub and the embedded trace viewer are literally
+interchangeable surfaces. Both themes come from `light-dark()`; the default
+is **system** (`color-scheme: light dark`) with a header toggle
+(system → light → dark) that persists a `theme` cookie and renders as
+`<html data-theme="light|dark">` — curl-testable with
+`-H 'Cookie: theme=light'`. Interactive/selected states use contract
+**primary blue** (the former stamp-clay accent is retired); the old internal
+names (`--ground/--surface/--ink/--faint/--series-*`) survive only as a thin
+alias layer onto contract tokens during transition.
+
+**Proposed contract extension — state colors.** The contract has no ok/warn
+tokens, so the hub defines `--ok: light-dark(rgb(22 128 61), rgb(63 185 80))`
+and `--warn: light-dark(rgb(154 103 0), rgb(210 153 34))` (AA ≥ 4.5:1 text
+contrast against both `--background` values; validated with the dataviz
+palette validator) and maps `--bad` to the contract's `--destructive`. If the
+contract grows state colors these should be replaced.
+
+**Known divergence (deliberate):** this drops the Understudy design language
+v2.0 black-field/IBM Plex look in favor of the trace-viewer contract, pending
+reconciliation in the design repo. IBM Plex `next/font` wiring is removed;
+system font stacks are the contract's.
+
+The benchmark detail page remains an OpenRouter-style entity page (header +
+stat strip + sticky anchor rail). All design tokens are centralized in the
+CSS custom properties (`:root` + Tailwind `@theme`) at the top of
+`app/globals.css`; the component classes consume only those variables and
+share a single `u-` prefix. Every screen has a designed empty state: one
+sentence of what it is plus one concrete next action in mono (`u-empty`).
+
+## Trace timelines (embedded trace viewer)
+
+Task inspectors (both stages) offer **Open trace timeline** links wherever the
+task has capture bodies on disk (tasks.jsonl `source.captures` →
+`viewer/data/captures/`). The links hit `GET /api/trace-viewer?slug&task`
+(list mode: one timeline per trace id; captures without trace context share
+one) and `…&file=index.html|trace-data.js`, which lazily builds the viewer
+server-side via the CLI's `renderTraceViewer` (`src/trace-viewer.ts`,
+`understudy traces build-viewer`) into
+`<benchmark-dir>/.trace-viewer-cache/<task-key>/<trace-key>/` — cache-hit
+skips the rebuild; artifacts are owner-only (0600/0700) and stay next to the
+benchmark like every other artifact. `file` is a strict allowlist, `trace`
+must match an enumerated id, and cache paths are keyed by hashes, so no
+client value ever becomes a filesystem path; payloads are served only through
+this route, never embedded in an RSC.
+
+The renderer is imported from the repo's `dist/trace-viewer.js` (the hub
+lives in the same repo); if the dist is missing the route answers 503 with a
+"build the CLI first (`npm run build` at the repo root)" state
+(`UNDERSTUDY_CLI_DIST` overrides the path). Template resolution inside the
+module uses `packagePath()`, which resolves relative to `dist/` itself, so no
+patch was needed. The viewer template implements the same theme contract as
+the hub; it has no query/postMessage theme input (it follows the system
+scheme by default), so the route forwards the hub's `theme` cookie by
+injecting `data-theme` on `<html>` at serve time.
 
 ## Run
 

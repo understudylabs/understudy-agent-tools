@@ -1,57 +1,130 @@
 @import "tailwindcss";
 
 /*
- * Understudy design language v2.0 — DARK FIELD foundation.
+ * Trace-viewer theme contract adoption.
  *
- * Values come from understudy-design/tokens/{primitives,semantic}.json,
- * DARK column: field #000000 page ground, card #141519 surfaces, stamp dark
- * #D7623E accent, okDark/warnDark/badDark states. All tints (top-N shading,
- * warn/bad banners, chip fills) are rederived for dark and validated ≥ AA
- * against #141519 and #000000 with the dataviz palette validator.
+ * The public token tier below is copied VERBATIM (names + values) from
+ * skills/ingest-traces/templates/trace-viewer/index.html so the hub and the
+ * embedded trace viewer are interchangeable surfaces. Both themes come from
+ * light-dark(); default is system (`color-scheme: light dark`), overridable
+ * via :root[data-theme="light|dark"] (set by the header toggle / `theme`
+ * cookie).
  *
- * The Tailwind @theme keeps the app's token *names* (paper, card, ink,
- * ink-muted, rule, stamp, ok, warn, bad) so existing utility classes restyle
- * without markup churn.
+ * Hub-only extensions (PROPOSED contract additions — the contract has no
+ * ok/warn state colors): --ok and --warn, AA-checked (≥4.5:1) against both
+ * --background values with the dataviz palette validator; --bad is the
+ * contract's --destructive.
+ *
+ * The old internal names (--ground/--surface/--ink/--faint/--series-N/…)
+ * survive only as a thin alias layer onto contract tokens during transition;
+ * the contract block is the source of truth. The former stamp-clay accent is
+ * replaced by contract primary blue for interactive/selected states.
  */
 
 :root {
-  --ground: #000000; /* dark.field — page ground */
-  --surface: #141519; /* dark.card */
-  --hover: #1c1e25; /* dark.hover */
-  --ink: #e7e8ea; /* dark.ink */
-  --ink-bright: #f2f2f0; /* dark.inkBright — key data */
-  --muted: #9b9da3; /* dark.inkMuted */
-  --faint: rgba(231, 232, 234, 0.45); /* derived tertiary ink */
-  --live: #3fb950; /* state okDark */
-  --border: rgba(255, 255, 255, 0.08); /* dark.rule */
-  --border-strong: rgba(255, 255, 255, 0.14); /* dark.ruleStrong */
-  --radius: 12px; /* card */
-  --radius-sm: 8px; /* control */
-  --radius-panel: 16px;
-  --radius-pill: 999px;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.6);
-  --sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-  --mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
-  /* State tints derived from semantic warnDark/badDark (AA on card + field:
-     warn 7.23:1, bad 5.44:1 vs #141519) */
-  --warn-ink: #d29922; /* warnDark */
-  --warn-border: rgba(210, 153, 34, 0.4);
-  --warn-bg: rgba(210, 153, 34, 0.08);
-  --bad: #f85149; /* badDark */
-  --bad-border: rgba(248, 81, 73, 0.4);
-  --bad-bg: rgba(248, 81, 73, 0.08);
-  /* Row-detail inset surface — dark.content (a step below card) */
-  --detail-bg: #0e0f12;
-  /* Chart series — brand-agnostic categorical steps chosen for the dark band
-     (OKLCH L 0.48–0.67), validated all-pairs vs #141519 AND #000000 with the
-     dataviz validator (worst adjacent CVD ΔE 6.9 → floor band; secondary
-     encoding present: legend + hover labels + surface ring on marks). */
-  --series-1: #3987e5;
-  --series-2: #008300;
-  --series-3: #d55181;
-  --series-4: #c98500;
-  --series-overflow: #9b9da3;
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* ---- Public trace-viewer theme contract (verbatim) ---- */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Contract implementation tier (fonts, type scale, radii, shadow) */
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+
+  /* ---- Hub extensions (proposed contract additions) ---- */
+  /* State colors: bad = contract --destructive; ok/warn picked to pass AA
+     text contrast on both --background values (validated: ok 5.01/6.99,
+     warn 4.87/7.03 light/dark). */
+  --ok: light-dark(rgb(22 128 61), rgb(63 185 80));
+  --warn: light-dark(rgb(154 103 0), rgb(210 153 34));
+  --bad: var(--destructive);
+  --warn-ink: var(--warn);
+  --warn-border: color-mix(in srgb, var(--warn) 40%, transparent);
+  --warn-bg: color-mix(in srgb, var(--warn) 8%, transparent);
+  --bad-border: color-mix(in srgb, var(--bad) 40%, transparent);
+  --bad-bg: color-mix(in srgb, var(--bad) 8%, transparent);
+
+  /* ---- Transition alias layer (old internal names → contract) ---- */
+  --ground: var(--background);
+  --surface: var(--card);
+  /* Opaque card equivalent — for sticky table headers and other surfaces
+     that must not show content scrolling behind them. */
+  --surface-opaque: color-mix(in srgb, var(--foreground) 5%, var(--background));
+  --hover: color-mix(in srgb, var(--foreground) 9%, transparent);
+  --ink: var(--foreground);
+  --ink-bright: var(--foreground);
+  --faint: color-mix(in srgb, var(--foreground) 48%, transparent);
+  --live: var(--ok);
+  --border-strong: color-mix(in srgb, var(--foreground) 16%, transparent);
+  --radius-panel: var(--radius-2xl);
+  --radius-pill: var(--radius-full);
+  --shadow-md: var(--shadow-sm);
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
+  /* Row-detail inset surface — a step below card, per scheme */
+  --detail-bg: light-dark(
+    rgb(26 28 31 / 3%),
+    rgb(0 0 0 / 30%)
+  );
+  /* Chart series — contract viz series, six slots */
+  --series-1: var(--viz-series-1);
+  --series-2: var(--viz-series-2);
+  --series-3: var(--viz-series-3);
+  --series-4: var(--viz-series-4);
+  --series-5: var(--viz-series-5);
+  --series-6: var(--viz-series-6);
+  --series-overflow: var(--muted-foreground);
 
   /*
    * ---- Gradient system (restrained; every gradient has one job) ----
@@ -81,48 +154,59 @@
    *                      (polygon fill fades to transparent toward center;
    *                      steps preserve legibility of overlapping arms)
    */
-  --grad-field: linear-gradient(to bottom, #000000, #0b0c0e);
-  --glow-page: radial-gradient(ellipse 720px 600px at 50% 0, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%);
-  --grad-card-edge: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.07) 25% 75%, transparent);
-  --grad-card: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 55%);
-  --grad-card-edge-hover: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1) 25% 75%, transparent);
-  --grad-card-hover: linear-gradient(to bottom, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 55%);
-  --glow-rail: linear-gradient(to right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 75%);
-  --grad-chip-accent: linear-gradient(to bottom, var(--accent), color-mix(in srgb, var(--accent) 88%, #000));
-  --grad-frontier-top: color-mix(in srgb, var(--accent) 18%, transparent);
-  --chart-dot-sheen: rgba(255, 255, 255, 0.3);
+  --grad-field: linear-gradient(
+    to bottom,
+    var(--background),
+    color-mix(in srgb, var(--foreground) 3%, var(--background))
+  );
+  --glow-page: radial-gradient(ellipse 720px 600px at 50% 0, color-mix(in srgb, var(--primary) 5%, transparent), transparent 70%);
+  --grad-card-edge: linear-gradient(to right, transparent, color-mix(in srgb, var(--foreground) 7%, transparent) 25% 75%, transparent);
+  --grad-card: linear-gradient(to bottom, color-mix(in srgb, var(--foreground) 2%, transparent), transparent 55%);
+  --grad-card-edge-hover: linear-gradient(to right, transparent, color-mix(in srgb, var(--foreground) 10%, transparent) 25% 75%, transparent);
+  --grad-card-hover: linear-gradient(to bottom, color-mix(in srgb, var(--foreground) 3.5%, transparent), transparent 55%);
+  --glow-rail: linear-gradient(to right, color-mix(in srgb, var(--primary) 14%, transparent), transparent 75%);
+  --grad-chip-accent: linear-gradient(to bottom, var(--primary), color-mix(in srgb, var(--primary) 88%, light-dark(#fff, #000)));
+  --grad-frontier-top: color-mix(in srgb, var(--primary) 18%, transparent);
+  --chart-dot-sheen: light-dark(rgb(255 255 255 / 55%), rgb(255 255 255 / 30%));
   --radar-edge-alpha-1: 0.16;
   --radar-edge-alpha-2: 0.1;
   --radar-edge-alpha-3: 0.07;
 
-  /* Canonical accent: stamp dark (4.96:1 vs card, 5.71:1 vs field). Filled
-     accent surfaces take dark ink (--on-accent 5.38:1) for AA. */
-  --accent: #d7623e;
-  --on-accent: #0a0a0a;
-  --accent-soft: rgba(215, 98, 62, 0.14);
-  --shade-1: rgba(215, 98, 62, 0.3);
-  --shade-2: rgba(215, 98, 62, 0.18);
-  --shade-3: rgba(215, 98, 62, 0.09);
+  /* Interactive/selected accent = contract primary blue. Filled primary
+     surfaces take --primary-foreground ink. --accent-soft keeps its old
+     "soft hover tint" job via the contract's own accent tint. */
+  --on-accent: var(--primary-foreground);
+  --accent-soft: var(--accent);
+  --shade-1: color-mix(in srgb, var(--primary) 30%, transparent);
+  --shade-2: color-mix(in srgb, var(--primary) 18%, transparent);
+  --shade-3: color-mix(in srgb, var(--primary) 9%, transparent);
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
 
 @theme {
-  --color-paper: #000000;
-  --color-card: #141519;
-  --color-hover: #1c1e25;
-  --color-ink: #e7e8ea;
-  --color-ink-bright: #f2f2f0;
-  --color-ink-muted: #9b9da3;
-  --color-faint: rgba(231, 232, 234, 0.45);
-  --color-rule: rgba(255, 255, 255, 0.08);
-  --color-rule-strong: rgba(255, 255, 255, 0.14);
-  --color-stamp: var(--accent);
-  --color-accent-soft: var(--accent-soft);
-  --color-ok: #3fb950;
-  --color-warn: #d29922;
-  --color-bad: #f85149;
-  --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
-  --font-sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --color-paper: var(--background);
+  --color-card: var(--surface-opaque);
+  --color-hover: var(--hover);
+  --color-ink: var(--foreground);
+  --color-ink-bright: var(--foreground);
+  --color-ink-muted: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-rule: var(--border);
+  --color-rule-strong: var(--border-strong);
+  --color-stamp: var(--primary);
+  --color-accent-soft: var(--accent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
 }
 
 * {
@@ -135,13 +219,14 @@ body {
   background-image: var(--grad-field); /* field never reads flat dead black */
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
   line-height: 1.55;
   margin: 0;
 }
 
 a {
-  color: var(--accent);
+  color: var(--primary);
   text-decoration: none;
 }
 
@@ -199,7 +284,7 @@ a {
 .u-nav {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  background: rgba(0, 0, 0, 0.78); /* field @ .78 */
+  background: color-mix(in srgb, var(--background) 78%, transparent);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -232,13 +317,13 @@ a {
 }
 @keyframes u-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.5);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 50%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(63, 185, 80, 0);
+    box-shadow: 0 0 0 7px transparent;
   }
   to {
-    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 .u-brand .tag {
@@ -263,7 +348,7 @@ a {
   background: none;
   border: none;
   border-radius: 7px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
@@ -273,7 +358,7 @@ a {
 }
 .u-links a:hover,
 .u-links button:hover {
-  background: var(--accent-soft);
+  background: var(--accent);
   color: var(--ink);
 }
 
@@ -282,7 +367,7 @@ a {
   padding: 46px 0 28px;
 }
 .u-eyebrow {
-  color: var(--accent);
+  color: var(--primary);
   font-family: var(--mono);
   font-size: 12px;
   letter-spacing: 0.16em;
@@ -298,7 +383,7 @@ a {
   max-width: 20ch;
 }
 .u-hero .sub {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 17px;
   margin: 16px 0 0;
   max-width: 62ch;
@@ -326,7 +411,7 @@ a {
   margin-bottom: 18px;
 }
 .u-tl-head .lab {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -336,7 +421,7 @@ a {
   font-family: var(--mono);
 }
 .u-tl-head .date {
-  color: var(--accent);
+  color: var(--primary);
   font-size: 15px;
   font-weight: 700;
 }
@@ -358,11 +443,11 @@ a {
   top: 11px;
 }
 .u-tl-rail-prog {
-  background: var(--accent);
+  background: var(--primary);
   transition: width 0.3s;
 }
 .u-dot {
-  background: var(--surface);
+  background: var(--surface-opaque);
   border: 2px solid var(--border-strong);
   border-radius: 50%;
   cursor: pointer;
@@ -379,15 +464,15 @@ a {
 }
 .u-dot.done,
 .u-dot:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 .u-dot.done {
-  background: var(--accent);
+  background: var(--primary);
 }
 .u-dot.active {
-  background: var(--surface);
+  background: var(--surface-opaque);
   border-color: var(--live);
-  box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.25);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 25%, transparent);
 }
 .u-tl-ends {
   color: var(--faint);
@@ -398,7 +483,7 @@ a {
   margin-top: 4px;
 }
 .u-tl-note {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12.5px;
   margin-top: 12px;
   min-height: 18px;
@@ -438,7 +523,7 @@ a {
   margin: 0;
 }
 .u-sec-sub {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 15px;
   margin: 6px 0 0;
   max-width: 74ch;
@@ -467,15 +552,15 @@ a {
   width: 100%;
 }
 .u-search input:focus {
-  border-color: var(--accent);
-  outline: 2px solid var(--accent);
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
   outline-offset: -1px;
 }
 .u-chip {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: var(--mono);
   font-size: 12px;
@@ -487,12 +572,12 @@ a {
 }
 .u-chip:hover,
 .u-chip[aria-pressed="true"] {
-  border-color: var(--accent);
+  border-color: var(--primary);
 }
 .u-chip[aria-pressed="true"] {
-  background: var(--accent); /* fallback if color-mix unsupported */
+  background: var(--primary); /* fallback if color-mix unsupported */
   background-image: var(--grad-chip-accent);
-  color: var(--on-accent);
+  color: var(--primary-foreground);
   font-weight: 600;
 }
 .u-cats {
@@ -503,7 +588,7 @@ a {
   margin: 0 0 14px;
 }
 .u-cats-label {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.08em;
@@ -514,14 +599,14 @@ a {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: var(--mono);
   font-size: 12px;
   padding: 7px 12px;
 }
 .u-org-select:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--ink);
 }
 
@@ -541,9 +626,9 @@ a {
   width: max-content;
 }
 .u-tbl thead th {
-  background: var(--surface);
+  background: var(--surface-opaque);
   border-bottom: 1px solid var(--border-strong);
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: var(--mono);
   font-size: 10.5px;
@@ -563,10 +648,10 @@ a {
   text-align: left;
 }
 .u-tbl thead th:hover {
-  color: var(--accent);
+  color: var(--primary);
 }
 .u-tbl thead th .arr {
-  color: var(--accent);
+  color: var(--primary);
   font-size: 9px;
 }
 .u-tbl tbody td {
@@ -613,7 +698,7 @@ a {
   padding: 0 4px;
 }
 .u-mdl .rz {
-  color: var(--accent);
+  color: var(--primary);
   flex: none;
   font-family: var(--mono);
   font-size: 10px;
@@ -627,14 +712,14 @@ a {
   color: var(--faint);
 }
 .u-exp {
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: inline-block;
   font-size: 14px;
   transition: 0.15s;
   width: 14px;
 }
 .u-tbl tr.open .u-exp {
-  color: var(--accent);
+  color: var(--primary);
   transform: rotate(90deg);
 }
 .u-detail td {
@@ -652,7 +737,7 @@ a {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }
 .u-det-cat .h {
-  color: var(--accent);
+  color: var(--primary);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -668,7 +753,7 @@ a {
   padding: 3px 0;
 }
 .u-subt .n {
-  color: var(--muted);
+  color: var(--muted-foreground);
 }
 .u-subt .v {
   font-weight: 600;
@@ -704,7 +789,7 @@ a {
   margin: 0 0 3px;
 }
 .u-card .ch-sub {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 12.5px;
   margin: 0 0 12px;
 }
@@ -714,7 +799,7 @@ a {
   width: 100%;
 }
 .u-legend {
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: flex;
   flex-wrap: wrap;
   font-family: var(--mono);
@@ -803,7 +888,7 @@ a {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   display: flex;
   font-size: 11.5px;
@@ -824,7 +909,7 @@ a {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: var(--sans);
   font-size: 11.5px;
@@ -832,7 +917,7 @@ a {
   padding: 5px 10px;
 }
 .u-state {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-family: var(--mono);
   font-size: 14px;
   padding: 40px 0;
@@ -893,7 +978,7 @@ a {
 }
 .u-id {
   align-items: center;
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: flex;
   font-family: var(--mono);
   font-size: 12.5px;
@@ -904,7 +989,7 @@ a {
   background: none;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  color: var(--muted);
+  color: var(--muted-foreground);
   cursor: pointer;
   font-family: var(--mono);
   font-size: 10.5px;
@@ -912,11 +997,11 @@ a {
   transition: 0.15s;
 }
 .u-copy:hover {
-  border-color: var(--accent);
+  border-color: var(--primary);
   color: var(--ink);
 }
 .u-desc {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 15px;
   margin: 10px 0 0;
   max-width: 88ch;
@@ -939,7 +1024,7 @@ a {
   padding: 12px 14px;
 }
 .u-stat .lab {
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: block;
   font-family: var(--mono);
   font-size: 10px;
@@ -957,7 +1042,7 @@ a {
   margin-top: 6px;
 }
 .u-stat .sub {
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: block;
   font-family: var(--mono);
   font-size: 11px;
@@ -993,7 +1078,7 @@ a {
 .u-anchor-rail a {
   border-left: 2px solid transparent;
   border-radius: 0 7px 7px 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 13.5px;
   padding: 6px 12px;
   transition: 0.15s;
@@ -1002,10 +1087,10 @@ a {
   color: var(--ink);
 }
 .u-anchor-rail a[aria-current="true"] {
-  background: var(--accent-soft); /* fallback if color-mix unsupported */
+  background: var(--accent); /* fallback if color-mix unsupported */
   background: var(--glow-rail);
-  border-left-color: var(--accent);
-  color: var(--accent);
+  border-left-color: var(--primary);
+  color: var(--primary);
   font-weight: 600;
 }
 .u-sec {
@@ -1023,7 +1108,7 @@ a {
   margin: 0;
 }
 .u-sec .exp {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 13.5px;
   line-height: 1.5;
   margin: 6px 0 0;
@@ -1040,7 +1125,7 @@ a {
   position: relative;
 }
 .u-lineage::before {
-  background: linear-gradient(var(--accent), var(--border-strong), transparent);
+  background: linear-gradient(var(--primary), var(--border-strong), transparent);
   bottom: 16px;
   content: "";
   left: 10px;
@@ -1054,7 +1139,7 @@ a {
 }
 .u-lnode::before {
   background: var(--ground);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--primary);
   border-radius: 50%;
   content: "";
   height: 9px;
@@ -1071,7 +1156,7 @@ a {
   padding: 9px 12px;
 }
 .u-ledge {
-  color: var(--accent);
+  color: var(--primary);
   display: block;
   font-family: var(--mono);
   font-size: 10px;
@@ -1080,7 +1165,7 @@ a {
   text-transform: uppercase;
 }
 .u-lgroup {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-family: var(--mono);
   font-size: 10.5px;
   letter-spacing: 0.08em;
@@ -1095,7 +1180,7 @@ a {
   padding: 9px 12px;
 }
 .u-msg .role {
-  color: var(--muted);
+  color: var(--muted-foreground);
   display: block;
   font-family: var(--mono);
   font-size: 10px;
@@ -1137,7 +1222,7 @@ a {
 }
 .u-pre,
 .u-tbl-scroll {
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  scrollbar-color: var(--border-strong) transparent;
   scrollbar-width: thin;
 }
 
@@ -1145,7 +1230,7 @@ a {
 .u-empty {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
-  color: var(--muted);
+  color: var(--muted-foreground);
   margin-top: 16px;
   padding: 26px 24px;
 }
@@ -1164,7 +1249,7 @@ a {
   word-break: break-word;
 }
 .u-empty.done {
-  border-color: rgba(63, 185, 80, 0.4);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
 }
 .u-empty.done .what b {
   color: var(--live);
@@ -1187,7 +1272,7 @@ a {
   .u-anchor-rail {
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
-    background: rgba(0, 0, 0, 0.82);
+    background: color-mix(in srgb, var(--background) 82%, transparent);
     border-bottom: 1px solid var(--border);
     flex-direction: row;
     gap: 8px;
@@ -1204,8 +1289,8 @@ a {
     padding: 5px 12px;
   }
   .u-anchor-rail a[aria-current="true"] {
-    background: var(--accent-soft);
-    border-color: var(--accent);
+    background: var(--accent);
+    border-color: var(--primary);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -1213,4 +1298,371 @@ a {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---- Trajectory explorer (three-pane, Prime-rollout-UI style) ---- */
+/* All colors/radii come from the adopted contract tokens — no new tokens. */
+
+.u-explorer {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr) minmax(220px, 320px);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .u-explorer {
+    grid-template-columns: 1fr;
+  }
+}
+.u-explorer-left,
+.u-explorer-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: sticky;
+  top: 64px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+}
+@media (max-width: 1100px) {
+  .u-explorer-left,
+  .u-explorer-right {
+    position: static;
+    max-height: none;
+  }
+}
+.u-explorer-center {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  min-width: 0;
+  padding: 12px;
+}
+.u-explorer-pane-head {
+  align-items: baseline;
+  color: var(--muted-foreground);
+  display: flex;
+  font-family: var(--mono);
+  font-size: 11px;
+  gap: 8px;
+  justify-content: space-between;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+/* LEFT pane rollout rows: #, colored score, one-line snippet */
+.u-rollout {
+  align-items: stretch;
+  display: flex;
+  gap: 4px;
+}
+.u-rollout-btn {
+  align-items: baseline;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font-family: inherit;
+  font-size: 12px;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 9px;
+  text-align: left;
+  transition: 0.12s;
+}
+.u-rollout-btn:hover {
+  background: var(--hover);
+}
+.u-rollout.selected .u-rollout-btn {
+  background: var(--accent);
+  border-color: var(--primary);
+}
+.u-rollout-no {
+  color: var(--muted-foreground);
+  flex: none;
+  font-size: 10px;
+}
+.u-rollout-score {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+}
+.u-rollout-snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-rollout-sub {
+  color: var(--faint);
+  flex: none;
+  font-size: 9px;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-rollout-timeline {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--muted-foreground);
+  display: flex;
+  flex: none;
+  font-size: 9px;
+  padding: 0 6px;
+}
+.u-rollout-timeline:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Task-view tabs (Conversation | Replay) */
+.u-tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.u-tab {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 7px 0;
+  text-transform: uppercase;
+}
+.u-tab.on {
+  border-color: var(--primary);
+  color: var(--foreground);
+}
+
+/* Replay accumulation rows + running partial-credit meter */
+.u-replay-step.violation .u-replay-row {
+  border-color: var(--bad-border);
+}
+.u-replay-row {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 7px;
+  padding: 6px 9px;
+  text-align: left;
+  width: 100%;
+}
+.u-replay-row:hover {
+  background: var(--hover);
+}
+.u-replay-tool {
+  font-weight: 700;
+}
+.u-replay-preview {
+  color: var(--faint);
+  flex: 1;
+  min-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-meter {
+  background: var(--border);
+  border-radius: 4px;
+  display: inline-block;
+  height: 6px;
+  overflow: hidden;
+  width: 72px;
+}
+.u-meter-fill {
+  display: block;
+  height: 100%;
+  transition: width 0.2s;
+}
+.u-replay-credit {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  min-width: 34px;
+  text-align: right;
+}
+
+/* Inline divergence marker in the flattened conversation stream */
+.u-divergence {
+  border-left: 2px solid var(--warn, #b58900);
+  color: var(--muted-foreground);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  margin: 2px 0;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+/* CENTER pane: collapsed-turn grammar */
+.u-conv-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.u-conv-search {
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--foreground);
+  flex: 1;
+  font-size: 12px;
+  min-width: 140px;
+  padding: 5px 9px;
+}
+.u-conv-search:focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--ring);
+}
+.u-turn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.u-turn.assistant {
+  border-left: 2px solid var(--primary);
+}
+.u-turn.system {
+  border-left: 2px solid var(--border-strong);
+}
+.u-turn.hit {
+  border-color: var(--primary);
+}
+.u-turn-head {
+  align-items: baseline;
+  background: none;
+  border: none;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 12.5px;
+  gap: 8px;
+  padding: 6px 9px;
+  text-align: left;
+  width: 100%;
+}
+.u-turn-head:hover {
+  background: var(--hover);
+  border-radius: var(--radius-md);
+}
+.u-role-chip {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--muted-foreground);
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  padding: 1px 7px;
+  text-transform: uppercase;
+}
+.u-role-chip[data-role="assistant"] {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  color: var(--primary);
+}
+.u-role-chip[data-role="system"] {
+  color: var(--faint);
+}
+.u-role-chip[data-role="tool"] {
+  border-color: color-mix(in srgb, var(--viz-series-6) 50%, transparent);
+  color: var(--viz-series-6);
+}
+.u-turn-snippet {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-turn-toolsuffix {
+  color: var(--viz-series-6);
+  font-size: 11px;
+}
+.u-turn-chev {
+  color: var(--faint);
+  flex: none;
+}
+.u-turn-body {
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.u-md-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.u-entity {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.86em;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* Tool Call / Tool Output chips (compact mono, expand in place) */
+.u-toolchip {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--detail-bg);
+  padding: 3px 6px;
+}
+.u-toolchip-head {
+  align-items: baseline;
+  background: none;
+  border: none;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--mono);
+  font-size: 11px;
+  gap: 7px;
+  padding: 2px 2px;
+  text-align: left;
+  width: 100%;
+}
+.u-toolchip-badge {
+  border: 1px solid color-mix(in srgb, var(--viz-series-6) 50%, transparent);
+  border-radius: var(--radius-full);
+  color: var(--viz-series-6);
+  flex: none;
+  font-size: 9px;
+  padding: 0 6px;
+}
+.u-toolchip-badge[data-kind="output"] {
+  border-color: var(--border-strong);
+  color: var(--muted-foreground);
+}
+.u-toolchip-name {
+  color: var(--primary);
+  flex: none;
+  font-weight: 600;
+}
+.u-toolchip-preview {
+  color: var(--muted-foreground);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

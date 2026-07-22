@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getEntry } from "@/lib/data";
+import { getEntry, loadTaskSidecars } from "@/lib/data";
+import { aggregatePromotedTasks } from "@/lib/trajectory-core";
+import { TaskTable } from "@/components/task-table";
 import {
   categoryScoreSummary,
   computeLeaderboard,
@@ -15,7 +17,6 @@ import { FlagBadge } from "@/components/badges";
 import { Leaderboard } from "@/components/leaderboard";
 import { InsightsSection } from "@/components/insights";
 import { CategoryRadar } from "@/components/radar";
-import { VersionTimeline } from "@/components/version-timeline";
 import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
 import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
@@ -49,7 +50,7 @@ function Section({
       <h2>
         {title}
         {scope && (
-          <span className="mono" style={{ marginLeft: 10, fontSize: 10, fontWeight: 400, color: "var(--muted)" }}>
+          <span className="mono" style={{ marginLeft: 10, fontSize: 10, fontWeight: 400, color: "var(--muted-foreground)" }}>
             {scope}
           </span>
         )}
@@ -105,6 +106,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
     );
   }
   const m = entry.manifest;
+  const sidecars = loadTaskSidecars(entry);
   const openFlags = entry.flags.filter((f) => f.status === "open");
   const flaggedTaskIds = [...new Set(openFlags.filter((f) => f.task_id).map((f) => f.task_id as string))];
   const benchmarkFlagged = openFlags.some((f) => f.task_id === null);
@@ -173,7 +175,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <p className="u-desc">{m.description}</p>
 
         {/* Stat strip — absorbs the old warning banners */}
-        <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted-foreground)" }}>
           {(stripSplit === "holdout" ? "holdout split" : "all splits") + " · flagged excluded · best arm per stat"}
         </span>
         <div className="u-stats">
@@ -264,9 +266,18 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="evidence"
             title="Evidence"
-            explainer="Split-freeze history from versions.jsonl: each dot is a frozen split contract, the ringed dot is the freeze in force."
+            explainer="The split-freeze contract in force, from versions.jsonl (newest last)."
           >
-            <VersionTimeline versions={entry.versions} label="split freeze" />
+            {entry.versions.length > 0 ? (
+              <p className="mono mt-3 text-xs text-ink-muted">
+                {entry.versions.length} freeze{entry.versions.length === 1 ? "" : "s"} · latest{" "}
+                {entry.versions[entry.versions.length - 1].created_at.slice(0, 10)} · splits{" "}
+                {entry.versions[entry.versions.length - 1].splits_sha256?.slice(0, 12) ?? "no hash"} ·{" "}
+                {entry.versions[entry.versions.length - 1].contamination ?? "contamination unknown"}
+              </p>
+            ) : (
+              <p className="mono mt-3 text-xs text-ink-muted">no split freezes recorded (versions.jsonl absent)</p>
+            )}
           </Section>
 
           <Section
@@ -304,42 +315,38 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="tasks"
             title="Tasks"
-            explainer="Every task in the manifest with its category, genesis, split, and gold. Click a task to inspect its eval rows and trace branches."
+            explainer="Grouped by example: every task with its rollout count and average reward, distributions embedded in the sortable headers. Click a task for the trajectory explorer."
           >
-            <div className="u-tbl-scroll mt-5">
-              <table className="u-tbl w-full">
-                <thead>
-                  <tr>
-                    {["task_id", "category", "genesis", "split", "gold", "flags"].map((h) => (
-                      <th key={h} className="l" style={{ cursor: "default" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {m.tasks.map((t) => {
-                    const nFlags = openFlags.filter((f) => f.task_id === t.task_id).length;
-                    return (
-                      <tr key={t.task_id}>
-                        <td className="l mono text-xs">
-                          <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{t.task_id}</Link>
-                        </td>
-                        <td className="l">{t.category_id}</td>
-                        <td className="l mono text-xs">{t.genesis}</td>
-                        <td className="l"><SplitChip split={t.split} /></td>
-                        <td className="l mono text-xs">
-                          {t.gold ? t.gold.kind : <span className="text-warn">none (unscored)</span>}
-                        </td>
-                        <td className="l">
-                          <FlagBadge count={nFlags} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <TaskTable
+              stage="promoted"
+              rows={aggregatePromotedTasks(
+                m.tasks,
+                entry.rows,
+                Object.fromEntries(
+                  m.tasks.map((t) => {
+                    const q = sidecars[t.task_id]?.question;
+                    return [t.task_id, typeof q === "string" && q.trim() ? (q.length > 90 ? q.slice(0, 89) + "…" : q) : t.task_id];
+                  }),
+                ),
+                Object.fromEntries(
+                  m.tasks.map((t) => {
+                    const q = sidecars[t.task_id]?.question;
+                    return [t.task_id, typeof q === "string" ? q.length : 0];
+                  }),
+                ),
+              ).map((a) => {
+                const task = m.tasks.find((t) => t.task_id === a.taskId);
+                return {
+                  taskId: a.taskId,
+                  href: `/b/${entry.slug}/task/${encodeURIComponent(a.taskId)}`,
+                  displayName: a.displayName,
+                  split: task?.split ?? "none",
+                  rollouts: a.rollouts,
+                  avgScore: a.avgScore,
+                  promptLength: a.promptLength,
+                };
+              })}
+            />
           </Section>
         </div>
       </div>

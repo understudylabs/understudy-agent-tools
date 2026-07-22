@@ -62,7 +62,7 @@ test("scopes workloads, preserves upstream requests, emits a resumable v1 enviro
   const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "automation", batchSize: 10 });
   assert.equal(result.counts.captures, 1); assert.ok(existsSync(join(output, "capture-ledger.jsonl"))); assert.ok(existsSync(join(output, "goal-state.json")));
   const normalized = JSON.parse(readFileSync(join(output, "normalized-captures.jsonl"), "utf8")); assert.equal(normalized.upstream_request.model, "upstream"); assert.notEqual(normalized.capture_key, normalized.capture_id);
-  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")); assert.equal(benchmark.executable, true); assert.equal(benchmark.environment.format, "verifiers.v1"); assert.equal(benchmark.environment.verifiers_version_pin, "cb9c84969186f8a0954b1027320f225e6b6b0afb");
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")); assert.equal(benchmark.schema_version, "understudy.benchmark_proposal.v1"); assert.equal(benchmark.executable, false); assert.equal(benchmark.status, "machine_compiled_review_pending"); assert.equal(benchmark.environment.format, "verifiers.v1"); assert.equal(benchmark.environment.verifiers_version_pin, "cb9c84969186f8a0954b1027320f225e6b6b0afb");
   const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8")); assert.equal(validation.tasks[0].oracle.score, 1); assert.ok(validation.tasks[0].sentinels.noop.score < 1);
   assert.match(readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8"), /verifiers\.v1/);
   assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /capability_fit/); assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /upstream_request/);
@@ -72,13 +72,16 @@ test("scopes workloads, preserves upstream requests, emits a resumable v1 enviro
   assert.throws(() => runTraceReplays(output, ["candidate"], ["authentic_history"], 1, false), /pass --yes/);
 });
 
-test("processes fresh captures in idempotent resumable batches", () => {
+test("exhausts the source in one invocation even when captures exceed the batch size", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-batches-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const rows = Array.from({ length: 12 }, (_, i) => capture(`row-${i}`, `2026-07-20T00:00:${String(i).padStart(2, "0")}Z`, [{ role: "user", content: `Task ${i}` }], { content: [{ type: "tool_use", id: `c-${i}`, name: "update-record", input: { id: i } }] }));
   writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
-  const first = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { batchSize: 10 }); assert.equal(first.counts.captures, 10); assert.equal(JSON.parse(readFileSync(join(output, "goal-state.json"), "utf8")).next_action, "compile_next_batch");
-  const second = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:01Z"), { batchSize: 10 }); assert.equal(second.counts.captures, 12); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
-  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:02Z"), { batchSize: 10 }); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
+  const first = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { batchSize: 10 });
+  assert.equal(first.counts.captures, 12, "no silent batch truncation: all 12 captures compiled in one invocation");
+  assert.notEqual(JSON.parse(readFileSync(join(output, "goal-state.json"), "utf8")).next_action, "compile_next_batch");
+  assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
+  const rerun = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:02Z"), { batchSize: 10 });
+  assert.equal(rerun.counts.captures, 12); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12, "rerun stays idempotent");
 });
 
 test("serves the lazy local viewer and capture JSON", async () => {
@@ -104,4 +107,110 @@ test("reassembles SSE tool deltas and distinguishes an evidenced retry", () => {
   writeFileSync(join(source, "rows.json"), JSON.stringify([base, retry])); compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
   const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8")); assert.equal(dag.edges[0].type, "retry"); assert.equal(dag.edges[0].evidence.prior_error, true);
   const captures = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").trim().split("\n").map(JSON.parse); const streamed = captures.find((row) => row.capture_id === "retry"); assert.equal(streamed.response.encoding, "sse"); assert.equal(streamed.response.tool_calls[0].function.name, "update-record"); assert.equal(streamed.response.tool_calls[0].function.arguments, '{"id":1}');
+});
+
+test("replay subprocess env is allowlisted, strips PRIME_*, and defaults to --no-push", async () => {
+  const { buildReplayInvocation } = await import("../dist/trace-foundry.js");
+  const parentEnv = {
+    PATH: "/usr/bin", HOME: "/home/u", UV_CACHE_DIR: "/tmp/uv", PRIME_API_KEY: "prime-secret",
+    PRIME_TEAM_ID: "team-1", AWS_SECRET_ACCESS_KEY: "aws-secret", GITHUB_TOKEN: "gh-secret",
+    OPENAI_BASE_URL: "https://gateway.example/v1", OPENAI_API_KEY: "gw-key",
+  };
+  const offline = buildReplayInvocation("/bench/environment", "candidate", "authentic_history", 2, false, parentEnv);
+  assert.ok(Object.keys(offline.env).every((key) => !key.startsWith("PRIME_")), "no PRIME_* in spawn env");
+  assert.ok(!("AWS_SECRET_ACCESS_KEY" in offline.env) && !("GITHUB_TOKEN" in offline.env), "non-allowlisted secrets stripped");
+  assert.ok(offline.args.includes("--no-push"), "pinned verifiers offline switch present");
+  assert.equal(offline.env.UV_CACHE_DIR, "/tmp/uv");
+  assert.equal(offline.env.UNDERSTUDY_REPLAY_API_KEY, "gw-key");
+  assert.deepEqual(offline.args.slice(offline.args.indexOf("--client.api-key-var"), offline.args.indexOf("--client.api-key-var") + 4), ["--client.api-key-var", "UNDERSTUDY_REPLAY_API_KEY", "--client.base-url", "https://gateway.example/v1"]);
+  const pushing = buildReplayInvocation("/bench/environment", "candidate", "authentic_history", 2, true, parentEnv);
+  assert.ok(!pushing.args.includes("--no-push"));
+  assert.equal(pushing.env.PRIME_API_KEY, "prime-secret");
+});
+
+test("gold is graded semantically: equivalent phrasing scores 1 strict, noop scores 0, forbidden zeroes", async () => {
+  const { scoreState, semanticArgumentsMatch } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: { required: [{ tool: "create-automation", observed_arguments: { app: "pipesim", schedule: "daily 9am run" } }], forbidden: [{ tool: "delete-record" }] } };
+  const equivalent = scoreState(task, [{ tool: "create-automation", arguments: { app: "PipeSim", schedule: "Daily at 9am, run" } }]);
+  assert.equal(equivalent.strict, 1, "different-but-equivalent phrasing satisfies the contract");
+  assert.equal(scoreState(task, []).strict, 0, "a noop scores 0");
+  assert.ok(scoreState(task, []).score < 1);
+  const violating = scoreState(task, [{ tool: "create-automation", arguments: { app: "pipesim", schedule: "daily 9am run" } }, { tool: "delete-record", arguments: {} }]);
+  assert.equal(violating.strict, 0, "forbidden-effect violations zero the strict score");
+  assert.equal(semanticArgumentsMatch({ id: 7 }, { record_id: 7 }), true);
+  assert.equal(semanticArgumentsMatch({ id: 7 }, { __wrong__: true }), false);
+});
+
+test("generated environment scores final state, not exact trajectory substrings", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-semantic-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const taskset = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  assert.match(taskset, /trace\.state/, "scores the per-rollout world state");
+  assert.match(taskset, /_arguments_match/, "token-normalized semantic compare");
+  assert.doesNotMatch(taskset, /str\(v\) in text/, "no raw-substring grading");
+  const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+  assert.match(world, /used_fixtures/, "fixtures are stateful and consumed in order");
+  assert.match(world, /_arguments_match/);
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  assert.equal(validation.tasks[0].oracle.score, 1);
+  assert.ok(Object.values(validation.tasks[0].sentinels).every((s) => s.score < 1));
+});
+
+test("promote consumes mixed review decisions: rejected tasks are excluded, not blockers", async () => {
+  const { promoteTraceBenchmark } = await import("../dist/trace-foundry.js");
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-promote-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    capture("a1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create automation alpha for pipesim" }], { content: [{ type: "tool_use", id: "x1", name: "update-record", input: { id: 1, status: "active" } }] }),
+    capture("b1", "2026-07-20T01:00:00Z", [{ role: "user", content: "Archive report beta please" }], { content: [{ type: "tool_use", id: "x2", name: "archive-report", input: { report: "beta" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(tasks.length, 2);
+
+  // Unreviewed benchmark refuses to promote.
+  assert.throws(() => promoteTraceBenchmark(output), /unreviewed/);
+
+  // Hub-shaped reviews.jsonl: accept one, reject the other; newest line per task wins.
+  const review = (task_id, decision, created_at) => ({ schema_version: "understudy.benchmark_review.v1", benchmark_id: "out", task_id, decision, note: "", created_at });
+  writeFileSync(join(output, "reviews.jsonl"), [
+    review(tasks[0].task_id, "needs_more", "2026-07-21T01:00:00Z"),
+    review(tasks[1].task_id, "reject", "2026-07-21T01:01:00Z"),
+    review(tasks[0].task_id, "accept", "2026-07-21T02:00:00Z"),
+  ].map(JSON.stringify).join("\n") + "\n");
+
+  const result = promoteTraceBenchmark(output, { now: new Date("2026-07-21T03:00:00Z"), promotedBy: "reviewer-1" });
+  assert.equal(result.promoted, 1); assert.equal(result.excluded, 1);
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8"));
+  assert.equal(benchmark.schema_version, "understudy.benchmark.v1");
+  assert.equal(benchmark.status, "promoted"); assert.equal(benchmark.executable, true);
+  assert.deepEqual(benchmark.promotion_blockers, []);
+  assert.equal(benchmark.tasks.length, 1); assert.equal(benchmark.tasks[0].task_id, tasks[0].task_id);
+  assert.equal(benchmark.taxonomy.length, 1, "taxonomy recomputed over accepted tasks");
+  const record = JSON.parse(readFileSync(join(output, "promotion-record.json"), "utf8"));
+  assert.equal(record.schema_version, "understudy.promotion_record.v1");
+  assert.equal(record.promoted_by, "reviewer-1");
+  assert.deepEqual(record.counts, { proposed: 2, accepted: 1, excluded: 1 });
+  assert.equal(record.excluded_tasks[0].decision, "reject");
+  assert.ok(existsSync(join(output, "benchmark-proposal.json")), "pre-promotion manifest preserved for audit");
+});
+
+test("import-reviews no longer demands unanimity", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-unanimity-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    capture("u1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create thing one" }], { content: [{ type: "tool_use", id: "y1", name: "update-record", input: { id: 1, status: "one" } }] }),
+    capture("u2", "2026-07-20T01:00:00Z", [{ role: "user", content: "Archive thing two" }], { content: [{ type: "tool_use", id: "y2", name: "archive-report", input: { report: "two" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  const reviews = join(root, "reviews.jsonl");
+  writeFileSync(reviews, [
+    JSON.stringify({ task_id: tasks[0].task_id, decision: "accept" }),
+    JSON.stringify({ task_id: tasks[1].task_id, decision: "reject" }),
+  ].join("\n") + "\n");
+  const imported = importTraceReviews(output, reviews);
+  assert.equal(imported.accepted, 1);
+  assert.equal(imported.status, "human_approved", "one honest reject no longer vetoes the benchmark");
 });

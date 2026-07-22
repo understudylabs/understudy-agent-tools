@@ -7,6 +7,7 @@ import type {
   AnyHubEntry,
   BenchmarkFlag,
   BenchmarkManifest,
+  BenchmarkOverview,
   BenchmarkReview,
   BenchmarkVersion,
   CaptureRef,
@@ -138,12 +139,27 @@ export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] 
   return warnings;
 }
 
+/** benchmark-overview.json (--overview pass); null when absent or wrong schema. */
+function loadOverview(dir: string): BenchmarkOverview | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "benchmark-overview.json"), "utf8"));
+    if (parsed?.schema_version !== "understudy.benchmark_overview.v1" || !Array.isArray(parsed.categories)) return null;
+    return parsed as BenchmarkOverview;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * A trace-foundry output dir (stage: proposed): manifest.json stamped
- * understudy.trace_foundry.v1 plus tasks.jsonl. Note the foundry also writes
- * a benchmark.json stamped "understudy.benchmark.v1" in an INCOMPATIBLE shape
- * (a known schema-name collision, being renamed upstream) — we never consume
- * it except to cross-check task ids.
+ * understudy.trace_foundry.v1 plus tasks.jsonl. The foundry also writes a
+ * benchmark.json — since the upstream rename it is stamped
+ * "understudy.benchmark_proposal.v1" (older builds used the colliding name
+ * "understudy.benchmark.v1"); either way it is a machine proposal, so we never
+ * consume it except to cross-check task ids. Once `understudy traces promote`
+ * has run, the dir carries promotion-record.json plus a REAL
+ * understudy.benchmark.v1 and is loaded as promoted instead (see
+ * loadEntryFromDir).
  */
 export function loadProposedEntryFromDir(
   dir: string,
@@ -238,6 +254,7 @@ export function loadProposedEntryFromDir(
     latestReviewByTask,
     diagnostics,
     crossCheckErrors,
+    overview: loadOverview(dir),
   };
 }
 
@@ -257,17 +274,80 @@ export function captureFilePath(entry: ProposedHubEntry, captureId: string): str
   return path.join(entry.dir, "viewer", "data", "captures", `${fileId}.json`);
 }
 
+/**
+ * Compact task-level provenance for the trimmed rail: capture count plus the
+ * distinct workload names and trace ids observed across the task's capture
+ * bodies. Reads the task's own capture files only (typically ≤ a dozen).
+ */
+export function taskProvenance(
+  entry: ProposedHubEntry,
+  task: FoundryTask,
+): { captureCount: number; workloads: string[]; traceIds: string[] } {
+  const workloads = new Set<string>();
+  const traceIds = new Set<string>();
+  const captures = task.source?.captures ?? [];
+  for (const ref of captures) {
+    const file = captureFilePath(entry, ref.capture_id);
+    if (!file) continue;
+    try {
+      const body = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      const scope = body.scope as Record<string, unknown> | undefined;
+      if (typeof scope?.workload_name === "string" && scope.workload_name) workloads.add(scope.workload_name);
+      if (typeof body.trace_id === "string" && body.trace_id) traceIds.add(body.trace_id);
+    } catch {
+      // pointer-only capture — nothing to add
+    }
+  }
+  return { captureCount: captures.length, workloads: [...workloads].sort(), traceIds: [...traceIds].sort() };
+}
+
 export function loadEntryFromDir(
   dir: string,
   source: HubEntry["source"],
   slug: string,
   readOnly: boolean,
 ): AnyHubEntry | null {
-  // Stage dispatch: a foundry output dir is a proposed benchmark even though
-  // it also contains a (colliding) benchmark.json.
+  // Stage dispatch. A dir holding promotion-record.json plus a VALID promoted
+  // understudy.benchmark.v1 surfaces as promoted — with its review history —
+  // even when the trace_foundry manifest.json is still present alongside it.
+  if (fs.existsSync(path.join(dir, "promotion-record.json"))) {
+    const promoted = loadManifestEntry(dir, source, slug, readOnly);
+    if (promoted?.kind === "ok") {
+      let promotionRecord: Record<string, unknown> | null = null;
+      try {
+        const parsed = JSON.parse(fs.readFileSync(path.join(dir, "promotion-record.json"), "utf8"));
+        if (parsed?.schema_version === "understudy.promotion_record.v1") promotionRecord = parsed;
+      } catch {
+        // record unreadable — the promoted manifest still stands on its own
+      }
+      const reviewsRead = readJsonl<BenchmarkReview>(path.join(dir, "reviews.jsonl"));
+      promoted.diagnostics.skippedLines += reviewsRead.skipped;
+      promoted.promotionRecord = promotionRecord;
+      promoted.overview = loadOverview(dir);
+      promoted.reviews = reviewsRead.items.filter(
+        (r) =>
+          r?.schema_version === "understudy.benchmark_review.v1" &&
+          typeof r.task_id === "string" &&
+          REVIEW_DECISIONS.includes(r.decision),
+      );
+      return promoted;
+    }
+  }
+
+  // A foundry output dir awaiting promotion is a proposed benchmark even
+  // though it also contains a (proposal-stamped) benchmark.json.
   const proposed = loadProposedEntryFromDir(dir, source, slug, readOnly);
   if (proposed) return proposed;
 
+  return loadManifestEntry(dir, source, slug, readOnly);
+}
+
+function loadManifestEntry(
+  dir: string,
+  source: HubEntry["source"],
+  slug: string,
+  readOnly: boolean,
+): AnyHubEntry | null {
   const manifestPath = path.join(dir, "benchmark.json");
   const invalid = (errors: string[]): InvalidHubEntry => ({ kind: "invalid", slug, source, dir, manifestPath, errors });
 
