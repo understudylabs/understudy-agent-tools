@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { once } from "node:events";
 import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "../dist/trace-foundry.js";
@@ -724,4 +725,158 @@ test("fallback rubric records binding anchor caps as visible cap_warning claims 
   assert.equal(capClaims.length, 1);
   assert.match(capClaims[0].claim, /kept 3 of 5/);
   assert.equal(task.outcome_contract.required.filter((rule) => rule.kind === "contains_category").length, 3);
+});
+
+// ---------------------------------------------------------------------------
+// Gold-leakage audit: contract targets must not be verbatim-readable in
+// candidate-facing surfaces (fixtures / schemas) unless the task's own inputs
+// already carry them. Report-only — nothing is redacted.
+// ---------------------------------------------------------------------------
+
+test("leakage audit: true positive (gold only in fixtures), benign input overlap, short values skipped", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const goldSecret = "confidential-report-Q3-final-9981";
+  const inputValue = "record-7781-target-identifier";
+  const tasks = [{
+    task_id: "t-leak",
+    outcome_contract: { required: [
+      // Gold argument the prompt never mentions — leaks via a fixture echo.
+      { type: "state_effect", tool: "update-record", observed_arguments: { document: goldSecret } },
+      // Gold argument the user PROMPT already carries — benign input.
+      { type: "state_effect", tool: "update-record", observed_arguments: { id: inputValue } },
+      // Short value — below MIN_GOLD_LEN, never flagged.
+      { type: "state_effect", tool: "update-record", observed_arguments: { status: "active" } },
+      // Response gold string readable in schemas.json's observed error example.
+      { type: "response_obligation", kind: "contains_category", expected: "the rollback completed without data loss" },
+    ], forbidden: [] },
+  }];
+  const taskRows = [{ task_id: "t-leak", prompt: `Please update ${inputValue} for me`, system_prompt: "", source_messages: [] }];
+  const fixtures = [
+    { tool: "get-record", arguments: {}, content: `{"id":"${inputValue}","document":"${goldSecret}","status":"active"}` },
+  ];
+  const schemas = { "update-record": { observed_error_example: "ERROR: the rollback completed without data loss" } };
+  const audit = auditGoldLeakage(tasks, taskRows, fixtures, schemas);
+  assert.equal(audit.status, "findings");
+  const kinds = audit.findings.map((f) => `${f.kind}@${f.location.split("/").pop()}`).sort();
+  assert.deepEqual(kinds, ["response_gold_string@schemas.json", "state_effect_value@fixtures.json"]);
+  const leak = audit.findings.find((f) => f.kind === "state_effect_value");
+  assert.equal(leak.task_id, "t-leak");
+  assert.equal(leak.excerpt, goldSecret);
+  assert.ok(!audit.findings.some((f) => f.excerpt.includes(inputValue)), "input-carried values are benign, not findings");
+  assert.ok(!audit.findings.some((f) => f.excerpt === "active"), "short values are skipped");
+});
+
+test("leakage audit: clean when contract targets never surface outside the inputs", async () => {
+  const { auditGoldLeakage } = await import("../dist/trace-foundry.js");
+  const tasks = [{ task_id: "t-clean", outcome_contract: { required: [
+    { type: "state_effect", tool: "update-record", observed_arguments: { note: "a long enough gold note value" } },
+    { type: "value_propagation", value: "propagated-target-value-123456", must_reach: { kind: "final_response" } },
+  ], forbidden: [] } }];
+  const taskRows = [{ task_id: "t-clean", prompt: "Do the thing", system_prompt: "", source_messages: [] }];
+  const audit = auditGoldLeakage(tasks, taskRows, [{ tool: "get-record", content: "{\"unrelated\": true}" }], { "update-record": { required: ["note"] } });
+  assert.equal(audit.status, "clean");
+  assert.deepEqual(audit.findings, []);
+  assert.equal(audit.checked_tasks, 1);
+});
+
+test("build-benchmark records the leakage audit additively in manifest.json", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-leakage-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const row = capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], stop_reason: "tool_use" });
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(row) + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  assert.equal(result.leakage_audit.schema_version, "understudy.leakage_audit.v1");
+  assert.ok(["clean", "findings"].includes(result.leakage_audit.status));
+  assert.ok(Array.isArray(result.leakage_audit.findings));
+  const manifest = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
+  assert.deepEqual(manifest.leakage_audit, result.leakage_audit);
+});
+
+// ---------------------------------------------------------------------------
+// Rollout state isolation: every rollout must start from the seeded initial
+// world state. The generated world keeps ALL mutable state on the per-rollout
+// WorldState (events / writes / used_fixtures via pydantic default_factory) —
+// this test pins that guarantee by driving the REAL generated world.py twice
+// with a stub verifiers.v1 module (the offline harness this repo supports;
+// the pinned verifiers runtime instantiates a fresh WorldState per rollout).
+// ---------------------------------------------------------------------------
+
+// world.py uses PEP 604 annotations at module scope, so the driver needs
+// python >= 3.10 (pydantic itself is stubbed below — no packages required).
+const pythonBin = ["python3", "python3.13", "python3.12", "python3.11", "python3.14"].find(
+  (bin) => spawnSync(bin, ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"], { encoding: "utf8" }).status === 0,
+);
+
+test("two sequential rollouts: rollout 2 starts from the seeded initial state, no residue from rollout 1", { skip: !pythonBin }, () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-isolation-"));
+  const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], stop_reason: "tool_use" }),
+    capture("round-2", "2026-07-20T12:00:01Z", [{ role: "user", content: "Set synthetic record 7 active" }, { role: "assistant", content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "call-1", content: "{\"ok\":true,\"record\":7}" }] }], { content: [{ type: "text", text: "Done" }], stop_reason: "end_turn" }),
+  ];
+  writeFileSync(join(source, "captures.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
+  // Stub verifiers.v1 + pydantic: just enough surface for world.py to import
+  // and run — the point is to exercise the REAL generated world code, with
+  // per-rollout instantiation exactly as the pinned verifiers runtime does it.
+  const stub = join(root, "stub", "verifiers"); mkdirSync(stub, { recursive: true });
+  writeFileSync(join(stub, "__init__.py"), "");
+  writeFileSync(join(root, "stub", "pydantic.py"), [
+    "import copy",
+    "class _FieldMarker:",
+    "    def __init__(self, default_factory=None): self.default_factory = default_factory",
+    "def Field(default_factory=None, **kw): return _FieldMarker(default_factory)",
+    "class BaseModel:",
+    "    def __init__(self, **kw):",
+    "        for k in dir(type(self)):",
+    "            v = getattr(type(self), k)",
+    "            if isinstance(v, _FieldMarker):",
+    "                setattr(self, k, v.default_factory() if v.default_factory else None)",
+    "        self.__dict__.update(kw)",
+    "    def model_dump(self):",
+    "        return copy.deepcopy(self.__dict__)  # snapshot, like real pydantic",
+    "",
+  ].join("\n"));
+  writeFileSync(join(stub, "v1.py"), [
+    "from typing import Generic, TypeVar",
+    "from pydantic import BaseModel",
+    "A = TypeVar('A'); B = TypeVar('B')",
+    "class State(BaseModel): pass",
+    "class ToolsetConfig(BaseModel): pass",
+    "class Toolset(Generic[A, B]):",
+    "    def __init__(self, state): self.state = state",
+    "def tool(name=None):",
+    "    def deco(fn): return fn",
+    "    return deco",
+    "",
+  ].join("\n"));
+  const driver = [
+    "import asyncio, importlib.util, json, sys",
+    `sys.path.insert(0, ${JSON.stringify(join(root, "stub"))})`,
+    `spec = importlib.util.spec_from_file_location('world', ${JSON.stringify(join(output, "environment", "understudy_trace_env", "servers", "world.py"))})`,
+    "world = importlib.util.module_from_spec(spec); spec.loader.exec_module(world)",
+    "async def rollout():",
+    "    # per-rollout env instantiation: fresh WorldState, exactly what the pinned verifiers runtime does",
+    "    state = world.WorldState()",
+    "    ts = world.WorldToolset(state)",
+    "    initial = state.model_dump()",
+    "    reply = await ts.update_record(id=7, status='active')",
+    "    return initial, state.model_dump(), reply",
+    "i1, f1, r1 = asyncio.run(rollout())",
+    "i2, f2, r2 = asyncio.run(rollout())",
+    "print(json.dumps({'initial1': i1, 'final1': f1, 'initial2': i2, 'final2': f2, 'reply1': r1, 'reply2': r2}))",
+  ].join("\n");
+  const proc = spawnSync(pythonBin, ["-c", driver], { encoding: "utf8" });
+  assert.equal(proc.status, 0, proc.stderr);
+  const out = JSON.parse(proc.stdout.trim().split("\n").at(-1));
+  // Rollout 1 really mutated its world.
+  assert.equal(out.final1.writes.length, 1, "rollout 1 performed a write");
+  assert.ok(out.final1.events.length >= 1);
+  // Rollout 2's INITIAL state is the seeded initial state — zero residue.
+  assert.deepEqual(out.initial2, { events: [], writes: [], used_fixtures: [] }, "rollout 2 starts from the seeded initial world state");
+  assert.deepEqual(out.initial2, out.initial1, "both rollouts start identically");
+  // Fixture consumption restarts too: the first matching call in each rollout
+  // gets the same seeded fixture reply, not a continuation of rollout 1's cursor.
+  assert.equal(out.reply2, out.reply1, "fixture cursor resets per rollout");
+  assert.deepEqual(out.final2.used_fixtures, out.final1.used_fixtures);
 });

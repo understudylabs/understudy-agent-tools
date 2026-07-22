@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
-import { computeLeaderboard, formatCost, formatLatency, formatScore, hasSplits, isAnomalousRow } from "@/lib/scores";
+import { computeLeaderboard, formatCI, formatCost, formatLatency, formatScore, hasSplits, isAnomalousRow, statisticalTieGroups } from "@/lib/scores";
 import type { BenchmarkManifest, EvalRow, TaskSplit } from "@/lib/types";
 import { Badge, RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
@@ -58,6 +58,11 @@ export function Leaderboard({
     });
     return list;
   }, [manifest, rows, flaggedTaskIds, excludeFlagged, localOnly, search, split, sortKey, sortDesc]);
+
+  // Statistical ties: adjacent arms (in overall order) whose 95% CIs overlap.
+  // Rank separations inside a tie group are not statistically supported, so
+  // their overall cells are greyed and top-3 shading is suppressed for them.
+  const tieGroups = useMemo(() => statisticalTieGroups(summaries), [summaries]);
 
   // Top-3 shading per numeric column. Lower is better for cost + latency.
   const topRanks = useMemo(() => {
@@ -196,16 +201,43 @@ export function Leaderboard({
                           {showRoute && <RouteBadge route={s.route} />}
                         </span>
                       </td>
-                      <td className="u-ovr" style={shade("overall", s.model)}>
-                        {formatScore(s.overall)}
-                      </td>
+                      {(() => {
+                        const tied = tieGroups.has(s.model);
+                        return (
+                          <td
+                            className="u-ovr"
+                            // Overlapping CIs => rank separation unsupported: grey the cell, drop the top-3 shading.
+                            style={tied ? { color: "var(--muted-foreground)" } : shade("overall", s.model)}
+                            title={
+                              tied
+                                ? `statistical tie — 95% CI ${formatCI(s.ci)} overlaps an adjacent rank (tie group ${(tieGroups.get(s.model) ?? 0) + 1})`
+                                : s.ci
+                                  ? `95% CI ${formatCI(s.ci)} (bootstrap over ${s.ci.taskN} task${s.ci.taskN === 1 ? "" : "s"})`
+                                  : undefined
+                            }
+                          >
+                            {formatScore(s.overall)}
+                            {s.ci && (
+                              <span className="text-xs" style={{ color: "var(--muted-foreground)", marginLeft: 6 }}>
+                                {formatCI(s.ci)}
+                                {tied && " ≈"}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })()}
                       <td className={s.costPerSuccess == null ? "na" : undefined} style={shade("costPerSuccess", s.model)}>
                         {formatCost(s.costPerSuccess)}
                       </td>
                       <td style={shade("p50", s.model)} className={s.p50LatencyMs == null ? "na" : undefined}>
                         {formatLatency(s.p50LatencyMs)}
                       </td>
-                      <td>{s.taskCount}</td>
+                      <td title={`${s.taskCount} distinct tasks · ${s.scoredCount} scored rollouts`}>
+                        {s.taskCount}
+                        <span className="text-xs" style={{ color: "var(--muted-foreground)", marginLeft: 4 }}>
+                          · {s.scoredCount}r
+                        </span>
+                      </td>
                     </tr>
                     {isOpen && (
                       <tr className="u-detail">
@@ -216,8 +248,16 @@ export function Leaderboard({
                               <div className="u-det-cat">
                                 <div className="h">Run quality</div>
                                 <div className="u-subt">
+                                  <span className="n">scored tasks (CI N)</span>
+                                  <span className="v">{s.scoredTaskCount}</span>
+                                </div>
+                                <div className="u-subt">
                                   <span className="n">scored rows</span>
                                   <span className="v">{s.scoredCount}</span>
+                                </div>
+                                <div className="u-subt">
+                                  <span className="n">95% CI</span>
+                                  <span className="v">{s.ci ? formatCI(s.ci) : "—"}</span>
                                 </div>
                                 <div className="u-subt">
                                   <span className="n">unscored</span>
@@ -272,6 +312,11 @@ export function Leaderboard({
       <div className="flex flex-col gap-0.5">
         <span className="u-foot-note">{"// overall = mean strict score (" + manifest.verifier.strict_metric + ") over scored rows (status ok, score present)"}</span>
         <span className="u-foot-note !mt-0">{"// cost p/ successful task = Σ cost ÷ scored rows ÷ mean strict score; blank when rows carry no cost or score is 0"}</span>
+        <span className="u-foot-note !mt-0">{"// [lo–hi] = 95% CI: seeded percentile bootstrap over per-task mean scores (2000 resamples; tasks are the resampling unit; anomalous rows excluded)"}</span>
+        {tieGroups.size > 0 && (
+          <span className="u-foot-note !mt-0">{"// ≈ statistical tie: greyed overall cells have 95% CIs overlapping an adjacent rank — the ordering between them is not supported at this N"}</span>
+        )}
+        <span className="u-foot-note !mt-0">{"// tasks column = distinct tasks · scored rollouts (Nr)"}</span>
         <span className="u-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
         <span className="u-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
         <span className="u-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>

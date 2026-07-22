@@ -1,3 +1,4 @@
+import { bootstrapCI, perTaskMeans, type BootstrapCI } from "./bootstrap";
 import type { BenchmarkManifest, EvalRow, TaskSplit } from "./types";
 
 export type CategoryDetail = {
@@ -33,6 +34,14 @@ export type ModelSummary = {
   route: RouteKind;
   /** True when any row is labeled arm_kind "incumbent" (the capture-producing model rerun). */
   incumbent: boolean;
+  /**
+   * Seeded percentile-bootstrap 95% CI over PER-TASK mean scores (tasks are
+   * the resampling unit; anomalous rows excluded exactly like `overall`).
+   * Null when no scored tasks exist. At taskN=1 it is degenerate [m, m].
+   */
+  ci: BootstrapCI | null;
+  /** Distinct tasks with at least one scored row (the CI's effective N). */
+  scoredTaskCount: number;
 };
 
 export type LeaderboardOptions = {
@@ -143,6 +152,11 @@ export function computeLeaderboard(
       .map((r) => r.latency_ms)
       .filter((l): l is number => typeof l === "number" && Number.isFinite(l));
     const routes = new Set(modelRows.map((r) => normalizeRoute(r.route)).filter((r): r is Exclude<RouteKind, null> => r != null));
+    // CI over per-task means (rollout repeats of one task are correlated, so
+    // the task is the resampling unit). Seed = benchmark + model: deterministic
+    // across renders and test runs, distinct across arms.
+    const taskMeans = perTaskMeans(scored.map((r) => [r.task_id, r.score as number]));
+    const ci = bootstrapCI(taskMeans, { seed: `${manifest.benchmark_id}::${model}` });
     summaries.push({
       model,
       overall,
@@ -158,6 +172,8 @@ export function computeLeaderboard(
       p50LatencyMs: median(latencies),
       route: routes.size === 1 ? [...routes][0] : null,
       incumbent: modelRows.some((r) => r.arm_kind === "incumbent"),
+      ci,
+      scoredTaskCount: taskMeans.length,
     });
   }
   summaries.sort((a, b) => (b.overall ?? -1) - (a.overall ?? -1));
@@ -181,6 +197,44 @@ export function categoryScoreSummary(
     out[cat.category_id] = { score: mean(scored.map((r) => r.score as number)), n: scored.length };
   }
   return out;
+}
+
+/**
+ * Statistical-tie detection over the overall ranking: sort arms by overall
+ * (desc) and chain ADJACENT arms whose 95% CIs overlap into tie groups.
+ * Returns model → tie-group index only for models in a group of size >= 2;
+ * arms without a CI (no scored tasks) never tie. Overlapping CIs mean the
+ * rank separation is not statistically supported at this N — the leaderboard
+ * greys those separations out instead of implying a real ordering.
+ */
+export function statisticalTieGroups(summaries: ModelSummary[]): Map<string, number> {
+  const ranked = summaries
+    .filter((s) => s.ci != null && s.overall != null)
+    .sort((a, b) => (b.overall as number) - (a.overall as number));
+  const groups = new Map<string, number>();
+  let group: ModelSummary[] = [];
+  let groupIndex = 0;
+  const flush = () => {
+    if (group.length >= 2) {
+      for (const s of group) groups.set(s.model, groupIndex);
+      groupIndex += 1;
+    }
+    group = [];
+  };
+  for (const s of ranked) {
+    const prev = group[group.length - 1];
+    const overlaps = prev != null && prev.ci != null && s.ci != null && s.ci.hi >= prev.ci.lo && prev.ci.hi >= s.ci.lo;
+    if (!overlaps) flush();
+    group.push(s);
+  }
+  flush();
+  return groups;
+}
+
+/** Render a bootstrap CI as "[62–81%]" in the leaderboard's percent idiom. */
+export function formatCI(ci: BootstrapCI | null | undefined): string {
+  if (ci == null) return "";
+  return `[${(ci.lo * 100).toFixed(0)}–${(ci.hi * 100).toFixed(0)}%]`;
 }
 
 export function formatScore(score: number | null | undefined): string {

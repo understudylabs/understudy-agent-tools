@@ -168,3 +168,98 @@ describe("computeLeaderboard", () => {
     assert.equal(byModel["legacy-rows"], false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bootstrap 95% CIs + statistical-tie treatment (seeded, deterministic).
+// ---------------------------------------------------------------------------
+import { bootstrapCI, perTaskMeans } from "./.build/lib/bootstrap.js";
+import { formatCI, statisticalTieGroups } from "./.build/lib/scores.js";
+
+describe("bootstrapCI", () => {
+  const means = [0.2, 0.4, 0.6, 0.8, 1.0, 0.0, 0.5, 0.7];
+
+  it("is deterministic for the same seed (no Math.random)", () => {
+    const orig = Math.random;
+    Math.random = () => { throw new Error("Math.random must not be consulted"); };
+    try {
+      const a = bootstrapCI(means, { seed: "bench::model-a" });
+      const b = bootstrapCI(means, { seed: "bench::model-a" });
+      assert.deepEqual(a, b);
+      assert.equal(a.iterations, 2000);
+      assert.equal(a.taskN, means.length);
+      assert.ok(a.lo <= a.mean && a.mean <= a.hi);
+      assert.ok(a.lo < a.hi, "real between-task variance yields a non-degenerate interval");
+    } finally {
+      Math.random = orig;
+    }
+  });
+
+  it("different seeds resample differently (arms don't share draws)", () => {
+    const a = bootstrapCI(means, { seed: "bench::model-a" });
+    const b = bootstrapCI(means, { seed: "bench::model-b" });
+    assert.notDeepEqual([a.lo, a.hi], [b.lo, b.hi]);
+  });
+
+  it("N=1 task collapses to a degenerate [mean, mean] interval", () => {
+    const ci = bootstrapCI([0.75], { seed: "s" });
+    assert.deepEqual([ci.lo, ci.mean, ci.hi, ci.taskN], [0.75, 0.75, 0.75, 1]);
+  });
+
+  it("zero tasks yields null", () => {
+    assert.equal(bootstrapCI([], { seed: "s" }), null);
+  });
+
+  it("perTaskMeans collapses rollout repeats before resampling", () => {
+    assert.deepEqual(perTaskMeans([["t1", 1], ["t1", 0], ["t2", 1]]).sort(), [0.5, 1]);
+  });
+});
+
+describe("leaderboard CI + statistical ties", () => {
+  it("computeLeaderboard attaches a per-arm CI over per-task means, excluding anomalous rows", () => {
+    const rows = [
+      row({ score: 1 }),
+      row({ task_id: "t2", score: 0 }),
+      row({ task_id: "t3", score: 0.5 }),
+      row({ task_id: "t3", score: 0, anomaly: { kind: "no_tool_calls", detail: "x" } }),
+    ];
+    const [s] = computeLeaderboard(manifest, rows);
+    assert.equal(s.scoredTaskCount, 3);
+    assert.ok(s.ci);
+    assert.equal(s.ci.taskN, 3, "anomalous rollout never enters the resampled task means");
+    assert.ok(s.ci.lo <= s.ci.hi);
+    // Deterministic across recomputation (same benchmark + model seed).
+    const [again] = computeLeaderboard(manifest, rows);
+    assert.deepEqual(s.ci, again.ci);
+  });
+
+  it("all-anomalous arm has null CI and zero scored tasks", () => {
+    const rows = [
+      row({ score: 1, anomaly: { kind: "empty_prompt", detail: "x" } }),
+      row({ task_id: "t2", score: 1, anomaly: { kind: "empty_prompt", detail: "x" } }),
+    ];
+    const [s] = computeLeaderboard(manifest, rows);
+    assert.equal(s.overall, null);
+    assert.equal(s.ci, null);
+    assert.equal(s.scoredTaskCount, 0);
+  });
+
+  it("statisticalTieGroups chains adjacent overlapping CIs; clear separations stay ranked", () => {
+    const arm = (model, overall, lo, hi) => ({ model, overall, ci: { lo, hi, mean: overall, iterations: 2000, taskN: 5 } });
+    const groups = statisticalTieGroups([
+      arm("top", 0.9, 0.85, 0.95),
+      arm("mid-a", 0.6, 0.5, 0.7),
+      arm("mid-b", 0.55, 0.45, 0.65), // overlaps mid-a
+      arm("bottom", 0.1, 0.05, 0.15),
+      { model: "no-ci", overall: 0.5, ci: null },
+    ]);
+    assert.equal(groups.has("top"), false, "clear winner is not greyed");
+    assert.equal(groups.has("bottom"), false);
+    assert.equal(groups.has("no-ci"), false, "arms without a CI never tie");
+    assert.equal(groups.get("mid-a"), groups.get("mid-b"), "overlapping neighbors share a tie group");
+  });
+
+  it("formatCI renders the percent idiom", () => {
+    assert.equal(formatCI({ lo: 0.615, hi: 0.809, mean: 0.7, iterations: 2000, taskN: 4 }), "[62–81%]");
+    assert.equal(formatCI(null), "");
+  });
+});
