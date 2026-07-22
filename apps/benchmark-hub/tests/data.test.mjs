@@ -121,6 +121,37 @@ describe("data-core loader", () => {
     assert.ok(entries.some((e) => e.kind === "invalid"));
   });
 
+  it("loads a calibration.json sidecar and rejects wrong-schema/foreign ones", () => {
+    const calibration = (over = {}) => ({
+      schema_version: "understudy.calibration.v1",
+      benchmark_id: "cal-bench",
+      run_id: "run-1",
+      incumbent_models: ["gpt-4o"],
+      threshold: 1,
+      started_at: "2026-07-22T00:00:00Z",
+      finished_at: "2026-07-22T00:01:00Z",
+      tasks: [{ task_id: "t1", score: 0, passed: false, rollouts: 1 }],
+      passed_count: 0,
+      failed_count: 1,
+      failed_task_ids: ["t1"],
+      ...over,
+    });
+    const dir = writeBenchmark("calibrated", validManifest("cal-bench"));
+    fs.writeFileSync(path.join(dir, "calibration.json"), JSON.stringify(calibration()));
+    const entry = getEntry("data--calibrated");
+    assert.equal(entry.kind, "ok");
+    assert.deepEqual(entry.calibration.failed_task_ids, ["t1"]);
+    assert.equal(entry.calibration.incumbent_models[0], "gpt-4o");
+
+    const foreignDir = writeBenchmark("cal-foreign", validManifest("home-bench2"));
+    fs.writeFileSync(path.join(foreignDir, "calibration.json"), JSON.stringify(calibration({ benchmark_id: "someone-else" })));
+    assert.equal(getEntry("data--cal-foreign").calibration, null);
+
+    const wrongDir = writeBenchmark("cal-wrong", validManifest("cal-wrong-bench"));
+    fs.writeFileSync(path.join(wrongDir, "calibration.json"), JSON.stringify(calibration({ schema_version: "nope.v9", benchmark_id: "cal-wrong-bench" })));
+    assert.equal(getEntry("data--cal-wrong").calibration, null);
+  });
+
   it("getEntry rejects traversal-shaped slugs", () => {
     assert.equal(getEntry("data--../escape"), null);
     assert.equal(getEntry("nonsense"), null);

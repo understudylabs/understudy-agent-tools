@@ -42,12 +42,15 @@ export function RunPanel({
   dir,
   readOnly,
   taskCountBySplit,
+  incumbentModel,
 }: {
   slug: string;
   dir: string;
   readOnly: boolean;
   /** Manifest task counts keyed by split, plus "all". */
   taskCountBySplit: Record<string, number>;
+  /** The recorded incumbent (manifest.incumbent.model); enables the one-click baseline preset. */
+  incumbentModel?: string | null;
 }) {
   const [models, setModels] = useState<string[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -97,6 +100,15 @@ export function RunPanel({
   const toggleModel = (id: string) =>
     setSelected((current) => (current.includes(id) ? current.filter((m) => m !== id) : [...current, id]));
 
+  // The incumbent arm is labeled whenever the recorded incumbent is in the
+  // selection — rows come back arm_kind "incumbent" and feed the calibration gate.
+  const selectedIncumbents = incumbentModel && selected.includes(incumbentModel) ? [incumbentModel] : [];
+
+  /** One-click preset: preselect exactly the recorded incumbent model. */
+  const applyIncumbentPreset = () => {
+    if (incumbentModel) setSelected([incumbentModel]);
+  };
+
   const queue = async () => {
     setBusy(true);
     setNotice(null);
@@ -104,7 +116,14 @@ export function RunPanel({
       const res = await fetch("/api/runs", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ slug, models: selected, split, tasks: "all", rollouts_per_task: rollouts }),
+        body: JSON.stringify({
+          slug,
+          models: selected,
+          split,
+          tasks: "all",
+          rollouts_per_task: rollouts,
+          ...(selectedIncumbents.length > 0 ? { incumbent_models: selectedIncumbents } : {}),
+        }),
       });
       const body = (await res.json()) as { error?: string; execute_hint?: string };
       setNotice(res.ok ? `queued — start the executor: ${body.execute_hint}` : body.error ?? `queue failed (${res.status})`);
@@ -137,6 +156,21 @@ export function RunPanel({
           the UI only writes a run request file — execution is `understudy runs execute --benchmark {dir} --watch`
         </p>
         <div className="mt-3 flex flex-col gap-3">
+          {incumbentModel && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="u-btn mono"
+                style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "4px 10px", fontSize: 11 }}
+                onClick={applyIncumbentPreset}
+              >
+                Incumbent baseline · {incumbentModel}
+              </button>
+              <span className="mono text-[10px] text-faint">
+                rerun the model that produced the captures — rows labeled incumbent, calibration.json updated
+              </span>
+            </div>
+          )}
           <div>
             <span className="mono text-[10px] uppercase tracking-wide text-ink-muted">models (gateway /v1/models)</span>
             {modelsError && <p className="mono mt-1 text-xs text-warn">{modelsError}</p>}

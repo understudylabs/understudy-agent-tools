@@ -123,6 +123,39 @@ Two checks beyond the scripted oracle, before any model score is trusted:
   validator separates "right answer" from "parseable in production"
   (implementation in the example env's `smoke.py`).
 
+## Environment rigor checklist (ABC)
+
+Before any cross-model comparison, the environment must pass this checklist,
+adapted from the Agentic Benchmark Checklist
+([uiuc-kang-lab/agentic-benchmarks](https://github.com/uiuc-kang-lab/agentic-benchmarks)).
+Canonical failures it prevents: a do-nothing agent scoring 38% on tau-bench,
+SWE-Lancer agents reading protected answer files, WebArena string-match
+exploits. Full mapping in
+[`../../docs/benchmark-rigor.md`](../../docs/benchmark-rigor.md).
+
+- **Oracle solver exists and scores 1.0.** Every task must be verified
+  solvable by the scripted oracle (recipe step 5) — a task no oracle can
+  complete measures nothing. Record the oracle run alongside the env.
+- **Null-agent floor run.** Run a do-nothing agent (immediately calls
+  `finish`, writes nothing) through the same driver and validator. If it
+  scores above ~5%, the benchmark is miscalibrated: too many obligations are
+  satisfied by default state, or the metric rewards absence. Fix the gold set
+  or the validator before trusting any model score.
+- **Gold-leakage audit.** Confirm the candidate cannot read the expected
+  final state: gold answers must not appear in seeded fixtures, tool results,
+  file listings, error messages, or record fields the read tools can reach.
+  Grep the reachable synthetic state for gold keys/values; anything findable
+  by a read call is a leak.
+- **State isolation between rollouts.** Each rollout must start from a fresh
+  deep copy of the seeded state — no residual writes from a previous run, no
+  shared mutable module-level state, no order dependence. Prove it: run the
+  same task twice back-to-back and once after an unrelated task; scores must
+  match.
+- **Contract complexity.** Single boolean obligations ("did it set the flag")
+  are guessable — a coin-flip agent clears them half the time. Prefer gold
+  states with multiple required keys/values plus forbidden writes, so recall,
+  precision, and policy must all hold at once.
+
 ## Running it as a real `verifiers` env
 
 One env, many uses: the *same* `verifiers` Environment serves eval, RL training,

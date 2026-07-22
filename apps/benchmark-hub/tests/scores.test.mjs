@@ -154,4 +154,17 @@ describe("computeLeaderboard", () => {
     const [s] = computeLeaderboard(manifest, [row({ score: 1 })]);
     assert.equal(s.anomalousCount, 0);
   });
+
+  it("flags incumbent arms from row arm_kind; unlabeled rows stay candidate", () => {
+    const rows = [
+      row({ model: "gpt-4o", arm_kind: "incumbent" }),
+      row({ model: "challenger", arm_kind: "candidate" }),
+      row({ model: "legacy-rows" }), // pre-arm_kind rows
+    ];
+    const summaries = computeLeaderboard(manifest, rows);
+    const byModel = Object.fromEntries(summaries.map((s) => [s.model, s.incumbent]));
+    assert.equal(byModel["gpt-4o"], true);
+    assert.equal(byModel["challenger"], false);
+    assert.equal(byModel["legacy-rows"], false);
+  });
 });

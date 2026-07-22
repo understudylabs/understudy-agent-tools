@@ -21,6 +21,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, isMutatingTool, scoreState } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
+import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -31,6 +32,12 @@ export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled"]
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export const RUN_SPLITS = ["train", "dev", "holdout", "all"] as const;
 export type RunSplit = (typeof RUN_SPLITS)[number];
+
+/** Row arm labels: "incumbent" = the model that produced the source captures, rerun; everything else is a "candidate". */
+export const ARM_KINDS = ["incumbent", "candidate"] as const;
+export type ArmKind = (typeof ARM_KINDS)[number];
+/** Default incumbent-pass threshold on the strict contract score. */
+export const DEFAULT_CALIBRATION_THRESHOLD = 1;
 
 export type RunRequest = {
   schema_version: typeof RUN_REQUEST_SCHEMA;
@@ -49,6 +56,14 @@ export type RunRequest = {
   error?: { class: string; message: string } | null;
   /** While running: the active arm's live journal (path relative to the benchmark dir) + what's executing. */
   live?: { journal: string; model: string; task_id: string | null } | null;
+  /**
+   * Additive (absent on old requests — existing readers ignore it): models in
+   * this run that are the benchmark's recorded incumbent. Their rows are
+   * labeled arm_kind "incumbent" and feed the calibration gate.
+   */
+  incumbent_models?: string[];
+  /** Additive: strict-score pass threshold for the incumbent calibration gate (default 1). */
+  calibration_threshold?: number;
 };
 
 /** Live journals live under <benchmark>/runs/live/ and stay after the run for replay-scrubbing. */
@@ -113,6 +128,10 @@ export type RunRequestInput = {
   split: unknown;
   tasks: unknown;
   rollouts_per_task: unknown;
+  /** Optional (additive): the subset of `models` to label as the incumbent arm. */
+  incumbent_models?: unknown;
+  /** Optional (additive): calibration pass threshold in (0, 1]. */
+  calibration_threshold?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -148,13 +167,25 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (!Number.isInteger(rollouts) || (rollouts as number) <= 0 || (rollouts as number) > MAX_ROLLOUTS_PER_TASK) {
     errors.push(`rollouts_per_task must be an integer between 1 and ${MAX_ROLLOUTS_PER_TASK}`);
   }
+  const incumbents = input.incumbent_models;
+  if (incumbents !== undefined) {
+    if (!Array.isArray(incumbents) || !incumbents.every((m) => typeof m === "string" && m.trim().length > 0)) {
+      errors.push("incumbent_models must be an array of model id strings");
+    } else if (Array.isArray(models) && !incumbents.every((m) => models.includes(m))) {
+      errors.push("incumbent_models must be a subset of models");
+    }
+  }
+  const threshold = input.calibration_threshold;
+  if (threshold !== undefined && (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold <= 0 || threshold > 1)) {
+    errors.push("calibration_threshold must be a number in (0, 1]");
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number },
   now: Date = new Date(),
 ): RunRequest {
   const request: RunRequest = {
@@ -171,6 +202,9 @@ export function createRunRequest(
     started_at: null,
     finished_at: null,
     error: null,
+    // Additive fields stay absent unless requested, so old readers see the exact prior shape.
+    ...(input.incumbent_models && input.incumbent_models.length > 0 ? { incumbent_models: input.incumbent_models } : {}),
+    ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
   };
   writeRunRequest(benchmarkDir, request);
   return request;
@@ -298,6 +332,12 @@ export function detectRolloutAnomalies(args: {
   return anomalies;
 }
 
+/** True when a persisted eval row carries a structural-sentinel flag (same predicate as the hub's isAnomalousRow). */
+export function isAnomalousEvalRow(row: Obj): boolean {
+  const anomaly = row.anomaly;
+  return anomaly != null && typeof anomaly === "object" && typeof (anomaly as Obj).kind === "string";
+}
+
 export type ArmRunner = (args: {
   benchmarkDir: string;
   model: string;
@@ -310,7 +350,7 @@ export type ArmRunner = (args: {
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
-  schema_version: "understudy.run_event.v1";
+  schema_version: typeof RUN_EVENT_SCHEMA;
   ts: string;
   run_id: string;
   type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning";
@@ -329,7 +369,7 @@ export type RunEvent = {
 
 function appendEvent(benchmarkDir: string, event: RunEvent, onEvent?: (event: RunEvent) => void): void {
   mkdirSync(runsDir(benchmarkDir), { recursive: true });
-  appendFileSync(runEventsPath(benchmarkDir), `${JSON.stringify(event)}\n`, { mode: 0o600 });
+  appendFileSync(runEventsPath(benchmarkDir), serializeRunEvent(event), { mode: 0o600 });
   onEvent?.(event);
 }
 
@@ -382,7 +422,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // Promoted manifests always run; proposal-stamped dirs run too — the hub
   // API gates proposed queueing to single ACCEPTED tasks with a validated
   // environment, and the generated environment/ is identical either way.
-  if (!["understudy.benchmark.v1", "understudy.benchmark_proposal.v1"].includes(String(manifest.schema_version))) {
+  if (![BENCHMARK_SCHEMA, BENCHMARK_PROPOSAL_SCHEMA].includes(String(manifest.schema_version))) {
     throw new Error("benchmark.json is neither understudy.benchmark.v1 nor understudy.benchmark_proposal.v1; rebuild or promote the benchmark first.");
   }
   const manifestTasks = new Map((Array.isArray(manifest.tasks) ? manifest.tasks : []).map((t: Obj) => [String(t.task_id), asObject(t)]));
@@ -392,19 +432,19 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   if (selected.length === 0) {
     request = { ...request, status: "failed", finished_at: now().toISOString(), error: { class: "EmptySelection", message: `no tasks match split=${request.split}` } };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_failed", error: request.error?.message }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_failed", error: request.error?.message }, options.onEvent);
     return request;
   }
 
   const total = request.models.length * selected.length * request.rollouts_per_task;
   request = { ...request, status: "running", started_at: now().toISOString(), progress: { completed: 0, total } };
   writeRunRequest(dir, request);
-  appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
+  appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
   // No silent caps: the verifiers arm evals at most VERIFIERS_MAX_EXAMPLES
   // tasks per split (-n); a selection past that would be silently dropped by
   // the eval harness, so the binding cap is recorded as an explicit event.
   if (selected.length > VERIFIERS_MAX_EXAMPLES) {
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "cap_warning", warning: `selected ${selected.length} tasks exceeds the per-arm eval cap of ${VERIFIERS_MAX_EXAMPLES}; tasks beyond the cap may be dropped by the eval harness` }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "cap_warning", warning: `selected ${selected.length} tasks exceeds the per-arm eval cap of ${VERIFIERS_MAX_EXAMPLES}; tasks beyond the cap may be dropped by the eval harness` }, options.onEvent);
   }
 
   // Generated-environment task rows (prompt actually sent + stored source
@@ -427,7 +467,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   try {
     for (const model of request.models) {
       if (cancelled()) break;
-      appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
       const rowsFile = rowsFilePath(dir, runId, model);
       // Live journal for this arm: the world/runner appends tool events the
       // moment they happen; the hub's live endpoint tails it. The path is
@@ -481,7 +521,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             journalBytes,
           });
           const row: Obj = {
-            schema_version: "understudy.eval_result.v1",
+            schema_version: EVAL_RESULT_SCHEMA,
             run_id: runId,
             task_id: taskId,
             split: item.task.split ?? "none",
@@ -489,6 +529,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             subscores: result.subscores,
             status: result.status,
             model,
+            // Additive arm label: incumbent reruns are distinguishable from
+            // candidate arms everywhere downstream (hub badges, calibration).
+            arm_kind: (request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate",
             route: "gateway",
             latency_ms: result.latency_ms,
             cost: result.cost,
@@ -505,12 +548,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             ...(anomalies.length > 0 ? { anomaly: anomalies[0], anomalies } : {}),
             ...(result.error ? { error: result.error } : {}),
           };
-          appendFileSync(rowsFile, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+          appendFileSync(rowsFile, serializeJsonlLine(row), { mode: 0o600 });
           completed += 1;
           appendEvent(
             dir,
             {
-              schema_version: "understudy.run_event.v1",
+              schema_version: RUN_EVENT_SCHEMA,
               ts: now().toISOString(),
               run_id: runId,
               type: result.status === "error" ? "rollout_error" : "rollout",
@@ -529,7 +572,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
         }
       };
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, () => worker()));
-      appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
       if (armCancelled) break;
     }
   } catch (err) {
@@ -539,21 +582,126 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
     const errorClass = err instanceof Error ? err.constructor.name : "Error";
     request = { ...(readRunRequest(file) ?? request), status: "failed", finished_at: now().toISOString(), progress: { completed, total }, live: null, error: { class: errorClass, message } };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_failed", error: `${errorClass}: ${message}`, progress: { completed, total } }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_failed", error: `${errorClass}: ${message}`, progress: { completed, total } }, options.onEvent);
     return request;
   }
 
   if (cancelled()) {
     request = { ...(readRunRequest(file) ?? request), progress: { completed, total }, live: null };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_cancelled", progress: { completed, total } }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_cancelled", progress: { completed, total } }, options.onEvent);
     return request;
   }
 
   request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
   writeRunRequest(dir, request);
-  appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
+  appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
+  // Calibration gate: a finished run with an incumbent arm updates the
+  // benchmark's calibration.json sidecar from its own rows + run events.
+  if ((request.incumbent_models ?? []).length > 0) writeCalibrationSummary(dir, request, selected.map((t) => String(t.task_id)));
   return request;
+}
+
+/* ------------------------------------------------------------------ */
+/* Incumbent calibration gate                                          */
+/* ------------------------------------------------------------------ */
+
+export function calibrationPath(benchmarkDir: string): string {
+  return join(resolve(benchmarkDir), "calibration.json");
+}
+
+export type CalibrationTask = { task_id: string; score: number | null; passed: boolean; rollouts: number; anomalous_rollouts: number };
+
+export type CalibrationSummary = {
+  schema_version: typeof CALIBRATION_SCHEMA;
+  benchmark_id: string;
+  run_id: string;
+  incumbent_models: string[];
+  threshold: number;
+  /** Timestamps come from the run's own events (never a fresh clock read). */
+  started_at: string | null;
+  finished_at: string | null;
+  tasks: CalibrationTask[];
+  passed_count: number;
+  failed_count: number;
+  /** Tasks the incumbent fails on rerun — the hub flags these incumbent_failed (suspect). */
+  failed_task_ids: string[];
+};
+
+/**
+ * Derive the incumbent-pass signal per task from incumbent-arm rows: a task
+ * passes when its BEST scored incumbent rollout reaches the threshold on the
+ * strict contract score. Tasks with no ok row fail (the incumbent could not
+ * reproduce its own outcome). Timestamps are read from the run's events, not
+ * from a wall clock, so the summary is replay-stable.
+ *
+ * Same trust discipline as the hub leaderboard: rows flagged by the
+ * structural sentinels (`row.anomaly`) NEVER enter the best-score
+ * computation — an anomalous "pass" is indistinguishable from a harness
+ * failure, so a task whose only ok rollouts are anomalous fails calibration.
+ * Anomalous rollouts stay counted per task (marked, not dropped).
+ */
+export function deriveCalibrationSummary(args: {
+  benchmarkId: string;
+  runId: string;
+  incumbentModels: string[];
+  threshold?: number;
+  selectedTaskIds: string[];
+  rows: Obj[];
+  events: Obj[];
+}): CalibrationSummary {
+  const threshold = args.threshold ?? DEFAULT_CALIBRATION_THRESHOLD;
+  const incumbents = new Set(args.incumbentModels);
+  const runEvents = args.events.filter((e) => e.run_id === args.runId);
+  const eventTs = (type: string): string | null => {
+    const event = runEvents.find((e) => e.type === type);
+    return typeof event?.ts === "string" ? event.ts : null;
+  };
+  const rows = args.rows.filter((row) => row.run_id === args.runId && incumbents.has(String(row.model ?? "")));
+  const tasks: CalibrationTask[] = args.selectedTaskIds.map((taskId) => {
+    const taskRows = rows.filter((row) => String(row.task_id) === taskId);
+    const anomalous = taskRows.filter(isAnomalousEvalRow);
+    const scores = taskRows.filter((row) => !isAnomalousEvalRow(row) && row.status === "ok" && typeof row.score === "number").map((row) => Number(row.score));
+    const best = scores.length > 0 ? Math.max(...scores) : null;
+    return { task_id: taskId, score: best, passed: best !== null && best >= threshold, rollouts: taskRows.length, anomalous_rollouts: anomalous.length };
+  });
+  const failed = tasks.filter((task) => !task.passed);
+  return {
+    schema_version: CALIBRATION_SCHEMA,
+    benchmark_id: args.benchmarkId,
+    run_id: args.runId,
+    incumbent_models: [...incumbents].sort(),
+    threshold,
+    started_at: eventTs("run_started"),
+    finished_at: eventTs("run_finished"),
+    tasks,
+    passed_count: tasks.length - failed.length,
+    failed_count: failed.length,
+    failed_task_ids: failed.map((task) => task.task_id),
+  };
+}
+
+/** Rebuild calibration.json from a finished incumbent run's rows + events. Best-effort: never fails the run. */
+function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, selectedTaskIds: string[]): void {
+  try {
+    // Rows/events re-read through the SHARED tolerant codec (never a private parser).
+    const rows = (request.incumbent_models ?? []).flatMap((model) => readJsonlFile<Obj>(rowsFilePath(benchmarkDir, request.run_id, model)).items);
+    const summary = deriveCalibrationSummary({
+      benchmarkId: request.benchmark_id,
+      runId: request.run_id,
+      incumbentModels: request.incumbent_models ?? [],
+      threshold: request.calibration_threshold,
+      selectedTaskIds,
+      rows,
+      events: readJsonlFile<Obj>(runEventsPath(benchmarkDir)).items,
+    });
+    const file = calibrationPath(benchmarkDir);
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tmp, file);
+  } catch {
+    // calibration is a derived sidecar — a write failure must not fail the run
+  }
 }
 
 /** Execute every queued request once, oldest first. */
@@ -578,10 +726,7 @@ export async function executeQueuedRuns(benchmarkDir: string, options: ExecuteOp
  * spend. Rows are labeled honestly via subscores.runner_oracle = 1.
  */
 export function oracleRunner(): ArmRunner {
-  const journal = (path: string | null, entry: Obj): void => {
-    if (!path) return;
-    try { appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 }); } catch { /* live journal is best-effort */ }
-  };
+  const journal = appendJournalEntry;
   return async ({ task, journalPath }) => {
     const started = Date.now();
     const writes = (asObject(task.outcome_contract).required ?? []).filter((rule: Obj) => String(rule.type ?? "state_effect") === "state_effect").map((rule: Obj) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));

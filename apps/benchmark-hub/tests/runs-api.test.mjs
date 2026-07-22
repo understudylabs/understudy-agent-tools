@@ -122,6 +122,38 @@ describe("POST /api/runs", () => {
     assert.ok(list.runs.some((r) => r.run_id === body.run.run_id));
   });
 
+  it("queues an incumbent-baseline run: incumbent_models pass through additively", async () => {
+    const res = await post({
+      slug: "data--runnable",
+      models: ["gpt-4o", "candidate-x"],
+      split: "holdout",
+      incumbent_models: ["gpt-4o"],
+      calibration_threshold: 0.9,
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.run.incumbent_models, ["gpt-4o"]);
+    assert.equal(body.run.calibration_threshold, 0.9);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dir, "runs", "queue", `${body.run.run_id}.json`), "utf8"));
+    assert.deepEqual(onDisk.incumbent_models, ["gpt-4o"]);
+  });
+
+  it("rejects incumbent_models outside the run's models and a bad threshold with 400", async () => {
+    const notSubset = await post({ slug: "data--runnable", models: ["m"], split: "all", incumbent_models: ["other"] });
+    assert.equal(notSubset.status, 400);
+    assert.match((await notSubset.json()).error, /subset of models/);
+    const badThreshold = await post({ slug: "data--runnable", models: ["m"], split: "all", calibration_threshold: 2 });
+    assert.equal(badThreshold.status, 400);
+  });
+
+  it("plain queue requests keep the exact prior shape (no incumbent fields)", async () => {
+    const res = await post({ slug: "data--runnable", models: ["m"], split: "all" });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(!("incumbent_models" in body.run));
+    assert.ok(!("calibration_threshold" in body.run));
+  });
+
   it("cancels a queued run (status flip) and rejects double-cancel with 409", async () => {
     const queued = await (await post({ slug: "data--runnable", models: ["m"], split: "all" })).json();
     const cancel = await post({ slug: "data--runnable", action: "cancel", run_id: queued.run.run_id });

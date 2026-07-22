@@ -4,12 +4,13 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { validateBenchmarkManifest } from "./benchmark.js";
+import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
 
 export type FoundryResult = {
-  schema_version: "understudy.trace_foundry.v1";
+  schema_version: typeof TRACE_FOUNDRY_SCHEMA;
   source: string;
   output_dir: string;
   freshness: { max_age_days: number; cutoff_utc: string; newest_capture_utc: string };
@@ -338,6 +339,48 @@ function taskTitles(rootTexts: Map<string, string>): Map<string, string> {
   return titles;
 }
 
+/**
+ * The task's INCUMBENT: the production model observed in the capture request
+ * metadata (routing.upstream_model wins over requested_model — it names what
+ * actually served the call). Multi-model tasks record every observed model
+ * with call counts; the dominant one (most observed_calls, ties by name) is
+ * the task's incumbent. Null when no capture carried a model id.
+ */
+export function taskIncumbent(captures: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const capture of captures) {
+    const routing = asObject(capture.routing);
+    const model = routing.upstream_model ?? routing.requested_model;
+    if (model == null) continue;
+    const key = String(model);
+    const entry = byModel.get(key) ?? { model: key, provider: routing.provider == null ? null : String(routing.provider), observed_calls: 0 };
+    entry.observed_calls += 1;
+    if (entry.provider === null && routing.provider != null) entry.provider = String(routing.provider);
+    byModel.set(key, entry);
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
+/** Manifest-level incumbent roll-up over per-task incumbents (all models listed; dominant first). */
+export function manifestIncumbent(tasks: Obj[]): Obj | null {
+  const byModel = new Map<string, { model: string; provider: string | null; observed_calls: number }>();
+  for (const task of tasks) {
+    for (const value of asObject(task.incumbent).models ?? []) {
+      const observed = asObject(value);
+      if (typeof observed.model !== "string") continue;
+      const entry = byModel.get(observed.model) ?? { model: observed.model, provider: observed.provider == null ? null : String(observed.provider), observed_calls: 0 };
+      entry.observed_calls += Number(observed.observed_calls ?? 0);
+      if (entry.provider === null && observed.provider != null) entry.provider = String(observed.provider);
+      byModel.set(observed.model, entry);
+    }
+  }
+  if (byModel.size === 0) return null;
+  const models = [...byModel.values()].sort((a, b) => b.observed_calls - a.observed_calls || a.model.localeCompare(b.model));
+  return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
+}
+
 function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
   const rootTexts = new Map<string, string>(
@@ -365,6 +408,9 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     // build's --workload filter is flagged for review — never silently
     // truncated into a fragment-task.
     task.grouping_label = group.grouping_label ?? "heuristic_grouped";
+    // Incumbent provenance (additive; excluded from task_hash so pre-existing
+    // reviews stay valid): the production model that produced these captures.
+    task.incumbent = taskIncumbent(captures);
     task.trace = { trace_id: group.trace_id ?? null, grouping_label: task.grouping_label, workloads: group.workloads ?? [], workloads_spanned: group.workloads_spanned ?? group.workloads ?? [] };
     const hiddenWorkloads = (task.trace.workloads_spanned as string[]).filter((workload) => !(task.trace.workloads as string[]).includes(workload));
     if (hiddenWorkloads.length > 0) {
@@ -931,7 +977,7 @@ export function runFoundrySelfCheck(outputInput: string, tasks: Obj[]): Obj {
   }
   writeJsonl(join(output, "tasks.jsonl"), tasks);
   return {
-    schema_version: "understudy.foundry_self_check.v1",
+    schema_version: FOUNDRY_SELF_CHECK_SCHEMA,
     checked: tasks.length,
     failed: Object.keys(failing).length,
     cap_warnings: capWarnings,
@@ -1058,11 +1104,12 @@ type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: strin
 function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
   const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
   const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
-  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
+  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, incumbent: manifestIncumbent(tasks), taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit, incumbent: task.incumbent ?? null })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
 }
 
 const ACCEPTING_DECISIONS = ["accept", "restrict"];
-const REVIEW_DECISION_VALUES = ["accept", "restrict", "needs_more", "reject"];
+/** Shared with the hub via dist/benchmark-artifacts.js — never fork the enum. */
+const REVIEW_DECISION_VALUES: readonly string[] = REVIEW_DECISIONS;
 
 /**
  * `understudy traces promote` — the reviewed-proposal → promoted-benchmark
@@ -1083,8 +1130,7 @@ export function promoteTraceBenchmark(outputInput: string, options: { waiveDagRe
   for (const row of readJsonl(join(output, "review-decisions.jsonl"))) {
     if (typeof row.task_id === "string" && REVIEW_DECISION_VALUES.includes(row.decision)) decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.reviewed_at ?? row.created_at ?? null, source: "review-decisions.jsonl" });
   }
-  for (const row of readJsonl(join(output, "reviews.jsonl"))) {
-    if (row.schema_version !== "understudy.benchmark_review.v1" || typeof row.task_id !== "string" || !REVIEW_DECISION_VALUES.includes(row.decision)) continue;
+  for (const row of readReviews(join(output, "reviews.jsonl")).reviews) {
     decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.created_at ?? null, source: "reviews.jsonl" });
   }
   if (decisions.size === 0) throw new Error("Refusing to promote an unreviewed benchmark: no decisions found in reviews.jsonl or review-decisions.jsonl. Review the tasks in the Benchmark Hub (or run `understudy traces import-reviews`) first.");
@@ -1351,7 +1397,9 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   mkdirSync(capturesDir, { recursive: true });
   const captureIndex: Obj = {};
   for (const row of rows) {
-    const fileId = hash({ capture_id: row.capture_id, source_sha256: row.source.sha256 }).slice(0, 40);
+    // Shared file-id derivation (dist/benchmark-artifacts.js) — the hub
+    // RECOMPUTES this name from the pointer, so the two must never fork.
+    const fileId = captureFileId({ capture_id: String(row.capture_id), sha256: String(row.source.sha256) });
     const path = join(capturesDir, `${fileId}.json`);
     writeJson(path, row);
     captureIndex[row.capture_id] = { path: `data/captures/${fileId}.json`, source: row.source };
@@ -1383,7 +1431,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 

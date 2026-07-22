@@ -74,6 +74,8 @@ type PostBody = {
   split?: unknown;
   tasks?: unknown;
   rollouts_per_task?: unknown;
+  incumbent_models?: unknown;
+  calibration_threshold?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -154,6 +156,9 @@ export async function POST(request: Request) {
     split: body.split,
     tasks: body.tasks ?? "all",
     rollouts_per_task: body.rollouts_per_task ?? 1,
+    // Additive: the incumbent-baseline arm label + calibration threshold.
+    incumbent_models: body.incumbent_models,
+    calibration_threshold: body.calibration_threshold,
   };
   const errors = validateRunRequestInput(input, knownTaskIds);
   if (errors.length > 0) return NextResponse.json({ error: errors.join("; ") }, { status: 400 });
@@ -173,6 +178,8 @@ export async function POST(request: Request) {
     split: input.split as RunSplit,
     tasks: input.tasks as "all" | string[],
     rollouts_per_task: input.rollouts_per_task as number,
+    incumbent_models: input.incumbent_models as string[] | undefined,
+    calibration_threshold: input.calibration_threshold as number | undefined,
   });
   return NextResponse.json({
     ok: true,

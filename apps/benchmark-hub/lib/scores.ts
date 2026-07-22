@@ -31,6 +31,8 @@ export type ModelSummary = {
   p50LatencyMs: number | null;
   /** Normalized route from rows' `route` field. */
   route: RouteKind;
+  /** True when any row is labeled arm_kind "incumbent" (the capture-producing model rerun). */
+  incumbent: boolean;
 };
 
 export type LeaderboardOptions = {
@@ -155,6 +157,7 @@ export function computeLeaderboard(
       costPerSuccess,
       p50LatencyMs: median(latencies),
       route: routes.size === 1 ? [...routes][0] : null,
+      incumbent: modelRows.some((r) => r.arm_kind === "incumbent"),
     });
   }
   summaries.sort((a, b) => (b.overall ?? -1) - (a.overall ?? -1));
