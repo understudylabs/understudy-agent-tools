@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-// Vendored copy (this app) vs. the repo's source of truth. If this test
-// fails, re-copy src/benchmark.ts into lib/benchmark-core.ts — never fork.
+// lib/benchmark-core.ts is now a re-export of the repo's compiled
+// dist/benchmark.js (runs-core pattern) — this test keeps guarding the
+// contract in case the re-export ever regresses to a fork.
 import * as vendored from "./.build/lib/benchmark-core.js";
 import * as root from "../../../dist/benchmark.js";
 

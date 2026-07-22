@@ -2,7 +2,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { validateBenchmarkManifest } from "./benchmark-core";
-import { createHash } from "node:crypto";
+// Shared writer/reader codecs from the CLI's compiled dist (never forked).
+import {
+  BENCHMARK_OVERVIEW_SCHEMA,
+  BENCHMARK_FLAG_SCHEMA,
+  BENCHMARK_TASK_SCHEMA,
+  CALIBRATION_SCHEMA,
+  EVAL_RESULT_SCHEMA,
+  PROMOTION_RECORD_SCHEMA,
+  SOURCE_DAG_SCHEMA,
+  TRACE_FOUNDRY_SCHEMA,
+  captureBodyPath as sharedCaptureBodyPath,
+  isBenchmarkReview,
+  latestReviewByTask as sharedLatestReviewByTask,
+  readJsonlFile,
+} from "./artifacts-core";
 import type {
   AnyHubEntry,
   BenchmarkFlag,
@@ -22,7 +36,6 @@ import type {
   ProposedHubEntry,
   SourceDag,
 } from "./types";
-import { REVIEW_DECISIONS } from "./types";
 
 /**
  * Data-dir contract:
@@ -82,27 +95,8 @@ function slugRoots(): { prefix: string; root: string; source: HubEntry["source"]
   return roots;
 }
 
-function readJsonl<T>(file: string): { items: T[]; skipped: number } {
-  const items: T[] = [];
-  let skipped = 0;
-  let text: string;
-  try {
-    text = fs.readFileSync(file, "utf8");
-  } catch {
-    return { items, skipped };
-  }
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      items.push(JSON.parse(trimmed) as T);
-    } catch {
-      // count malformed lines rather than failing the page
-      skipped += 1;
-    }
-  }
-  return { items, skipped };
-}
+/** Tolerant JSONL read — the SHARED codec (dist/benchmark-artifacts.js). */
+const readJsonl = readJsonlFile;
 
 export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] {
   const warnings: EvidenceWarning[] = [];
@@ -169,7 +163,7 @@ function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: Entr
   }
   const rows: EvalRow[] = [];
   for (const r of rawRows) {
-    if (r?.schema_version !== "understudy.eval_result.v1") {
+    if (r?.schema_version !== EVAL_RESULT_SCHEMA) {
       diagnostics.droppedRows += 1;
       continue;
     }
@@ -190,7 +184,7 @@ function loadEvalRows(dir: string, benchmarkId: string | null, diagnostics: Entr
 function loadCalibration(dir: string, benchmarkId: string | null): CalibrationSummary | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "calibration.json"), "utf8"));
-    if (parsed?.schema_version !== "understudy.calibration.v1" || !Array.isArray(parsed.tasks)) return null;
+    if (parsed?.schema_version !== CALIBRATION_SCHEMA || !Array.isArray(parsed.tasks)) return null;
     if (benchmarkId !== null && typeof parsed.benchmark_id === "string" && parsed.benchmark_id !== benchmarkId) return null;
     return parsed as CalibrationSummary;
   } catch {
@@ -202,7 +196,7 @@ function loadCalibration(dir: string, benchmarkId: string | null): CalibrationSu
 function loadOverview(dir: string): BenchmarkOverview | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "benchmark-overview.json"), "utf8"));
-    if (parsed?.schema_version !== "understudy.benchmark_overview.v1" || !Array.isArray(parsed.categories)) return null;
+    if (parsed?.schema_version !== BENCHMARK_OVERVIEW_SCHEMA || !Array.isArray(parsed.categories)) return null;
     return parsed as BenchmarkOverview;
   } catch {
     return null;
@@ -233,7 +227,7 @@ export function loadProposedEntryFromDir(
   } catch {
     return null;
   }
-  if (foundry?.schema_version !== "understudy.trace_foundry.v1") return null;
+  if (foundry?.schema_version !== TRACE_FOUNDRY_SCHEMA) return null;
   const tasksPath = path.join(dir, "tasks.jsonl");
   if (!fs.existsSync(tasksPath)) return null;
 
@@ -243,7 +237,7 @@ export function loadProposedEntryFromDir(
   diagnostics.skippedLines += tasksRead.skipped;
   const tasks: FoundryTask[] = [];
   for (const t of tasksRead.items) {
-    if (t?.schema_version !== "understudy.benchmark_task.v1" || typeof t.task_id !== "string") {
+    if (t?.schema_version !== BENCHMARK_TASK_SCHEMA || typeof t.task_id !== "string") {
       diagnostics.droppedRows += 1;
       continue;
     }
@@ -253,7 +247,7 @@ export function loadProposedEntryFromDir(
   let dag: SourceDag | null = null;
   try {
     const parsed = JSON.parse(fs.readFileSync(path.join(dir, "source-dag.json"), "utf8"));
-    if (parsed?.schema_version === "understudy.source_dag.v1") dag = parsed;
+    if (parsed?.schema_version === SOURCE_DAG_SCHEMA) dag = parsed;
   } catch {
     // lineage section renders its empty state
   }
@@ -289,17 +283,11 @@ export function loadProposedEntryFromDir(
     }
   }
 
+  // Review validity + superseding rules come from the shared codec.
   const reviewsRead = readJsonl<BenchmarkReview>(path.join(dir, "reviews.jsonl"));
   diagnostics.skippedLines += reviewsRead.skipped;
-  const reviews: BenchmarkReview[] = reviewsRead.items.filter(
-    (r) =>
-      r?.schema_version === "understudy.benchmark_review.v1" &&
-      typeof r.task_id === "string" &&
-      REVIEW_DECISIONS.includes(r.decision),
-  );
-  // Superseding: append-only file, newest line per task wins.
-  const latestReviewByTask: Record<string, BenchmarkReview> = {};
-  for (const r of reviews) latestReviewByTask[r.task_id] = r;
+  const reviews: BenchmarkReview[] = reviewsRead.items.filter(isBenchmarkReview);
+  const latestReviewByTask = sharedLatestReviewByTask(reviews) as Record<string, BenchmarkReview>;
 
   return {
     kind: "proposed",
@@ -340,11 +328,7 @@ export function captureFilePath(entry: ProposedHubEntry, captureId: string): str
  * can resolve oracle spines after promotion too.
  */
 export function captureBodyPath(dir: string, ref: CaptureRef): string {
-  const fileId = createHash("sha256")
-    .update(JSON.stringify({ capture_id: ref.capture_id, source_sha256: ref.sha256 }))
-    .digest("hex")
-    .slice(0, 40);
-  return path.join(dir, "viewer", "data", "captures", `${fileId}.json`);
+  return sharedCaptureBodyPath(dir, ref);
 }
 
 /**
@@ -389,7 +373,7 @@ export function loadEntryFromDir(
       let promotionRecord: Record<string, unknown> | null = null;
       try {
         const parsed = JSON.parse(fs.readFileSync(path.join(dir, "promotion-record.json"), "utf8"));
-        if (parsed?.schema_version === "understudy.promotion_record.v1") promotionRecord = parsed;
+        if (parsed?.schema_version === PROMOTION_RECORD_SCHEMA) promotionRecord = parsed;
       } catch {
         // record unreadable — the promoted manifest still stands on its own
       }
@@ -397,12 +381,7 @@ export function loadEntryFromDir(
       promoted.diagnostics.skippedLines += reviewsRead.skipped;
       promoted.promotionRecord = promotionRecord;
       promoted.overview = loadOverview(dir);
-      promoted.reviews = reviewsRead.items.filter(
-        (r) =>
-          r?.schema_version === "understudy.benchmark_review.v1" &&
-          typeof r.task_id === "string" &&
-          REVIEW_DECISIONS.includes(r.decision),
-      );
+      promoted.reviews = reviewsRead.items.filter(isBenchmarkReview);
       return promoted;
     }
   }
@@ -458,7 +437,7 @@ function loadManifestEntry(
   diagnostics.skippedLines += flagsRead.skipped;
   const flags: BenchmarkFlag[] = [];
   for (const f of flagsRead.items) {
-    if (f?.schema_version !== "understudy.benchmark_flag.v1") continue;
+    if (f?.schema_version !== BENCHMARK_FLAG_SCHEMA) continue;
     if (typeof f.benchmark_id === "string" && f.benchmark_id !== manifest.benchmark_id) {
       diagnostics.foreignFlags += 1;
       continue;

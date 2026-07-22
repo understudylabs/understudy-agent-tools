@@ -141,6 +141,17 @@ enough provenance for another agent to repeat the step without guessing.
    failure, never a missing value), `status` (`ok`/`error`/`skipped`/`unscored`),
    model, route, cost/tokens/latency when known, and a `provenance` block whose
    `harness_sha256`/`split_sha256` carry the same hash chain as `baseline.json`.
+7. Run the trivial-agent floor.
+   Alongside the incumbent, run a do-nothing agent — empty output, or for
+   agentic workloads an immediate `finish` with no writes — through the same
+   frozen harness, metric, and split, and record its score in `baseline.json`
+   as `null_floor`. This is the Agentic Benchmark Checklist's trivial-agent
+   baseline ([uiuc-kang-lab/agentic-benchmarks](https://github.com/uiuc-kang-lab/agentic-benchmarks));
+   a do-nothing agent scores 38% on tau-bench, so an unmeasured floor makes
+   every downstream number uninterpretable. If the null agent scores above
+   ~5%, the metric or gold set is miscalibrated — fix it before freezing.
+   Every later claim packet cites this floor: a savings or quality claim is
+   invalid if the null agent also clears the bar.
 
 ## Flow
 
