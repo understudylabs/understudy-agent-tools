@@ -6,10 +6,11 @@ import { RunTaskControls } from "@/components/trajectory/run-task";
 import { formatScore } from "@/lib/scores";
 import { scoreColor } from "@/lib/trajectory-core";
 
-type ReplayRequired = { tool: string; observed_arguments: unknown; met_at: number | null };
+type ReplayRequired = { kind: string; label: string; tool: string | null; observed_arguments: unknown; met_at: number | null };
 type ReplayStep = {
   index: number;
   tool: string;
+  event?: "call" | "final_response";
   arguments: unknown;
   mutating: boolean;
   satisfies: number[];
@@ -21,6 +22,7 @@ type Verdict = { recall: number; precision: number; policy: number; strict: numb
 type Accumulation = {
   required: ReplayRequired[];
   forbidden_tools: string[];
+  forbidden_values?: number;
   steps: ReplayStep[];
   verdict: Verdict;
 };
@@ -130,9 +132,10 @@ function AccumulationView({
               <span style={{ color: r.met_at !== null ? "var(--ok)" : "var(--bad)" }}>
                 {r.met_at !== null ? "✓" : "✗"}
               </span>
-              <Badge className="text-ink-bright">{r.tool}</Badge>
+              <Badge className="text-ink-bright">{r.label ?? r.tool}</Badge>
+              {r.kind && r.kind !== "state_effect" && <span className="mono text-[10px] text-faint">{r.kind}</span>}
               <span className="text-ink-muted">
-                {r.met_at !== null ? `met at call #${r.met_at + 1}` : "never met"}
+                {r.met_at !== null ? `met at event #${r.met_at + 1}` : "never met"}
               </span>
             </li>
           ))}
@@ -140,12 +143,15 @@ function AccumulationView({
           {data.forbidden_tools.length > 0 && (
             <li className="mono text-xs text-warn">forbidden: {data.forbidden_tools.join(", ")} — any call zeroes the score</li>
           )}
+          {(data.forbidden_values ?? 0) > 0 && (
+            <li className="mono text-xs text-warn">{data.forbidden_values} forbidden value(s) — propagating one zeroes the score</li>
+          )}
         </ul>
       </div>
 
       {/* Event-by-event walk */}
       <div className="u-card" style={{ padding: "12px 14px" }}>
-        <h3>Tool events ({data.steps.length})</h3>
+        <h3>Events ({data.steps.length})</h3>
         <div className="mt-2 flex flex-col gap-1">
           {data.steps.map((s) => (
             <div key={s.index} className={"u-replay-step" + (s.forbidden_violation ? " violation" : "")}>
@@ -157,6 +163,7 @@ function AccumulationView({
                 <span className="u-rollout-no">#{s.index + 1}</span>
                 <span className="u-replay-tool">{s.tool}</span>
                 {s.mutating && <Badge>write</Badge>}
+                {s.event === "final_response" && <Badge>final response</Badge>}
                 {s.satisfies.map((i) => (
                   <Badge key={i} className="text-ok border-ok/50">
                     ✓ required[{i + 1}] met

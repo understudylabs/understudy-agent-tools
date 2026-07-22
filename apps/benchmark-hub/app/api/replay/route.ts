@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { captureBodyPath, getEntry, loadTaskSidecars } from "../../../lib/data-core";
 // Same event extraction the authoring pass grounds against (compiled foundry,
 // re-exported through replay-core).
-import { accumulateReplay, observedCalls, type ReplayCall } from "../../../lib/replay-core";
+import { accumulateReplay, finalResponseText, observedCalls, type ReplayCall } from "../../../lib/replay-core";
 import type { CaptureRef, EvalRow } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +30,9 @@ function oracleCalls(dir: string, refs: CaptureRef[]): { calls: ReplayCall[]; sp
   const spine = bodies.at(-1)?.body ?? null;
   return {
     calls: spine ? (observedCalls([spine]) as ReplayCall[]) : [],
+    // The captured final assistant response closes the event stream: value
+    // propagations and response obligations flip met/unmet on it.
+    finalResponse: spine ? (finalResponseText((spine.response ?? {}) as Obj) as string) : "",
     spineMissing: spine === null,
   };
 }
@@ -105,11 +108,11 @@ export async function GET(request: Request) {
     task = loadTaskSidecars(entry)[taskId] ?? null;
     rows = entry.rows.filter((r) => r.task_id === taskId);
   }
-  if (!task) return NextResponse.json({ error: "unknown task id (no contract sidecar)" }, { status: 404 });
+if (!task) return NextResponse.json({ error: "unknown task id (no contract sidecar)" }, { status: 404 });
 
   const refs = (asObject(task.source).captures ?? []) as CaptureRef[];
-  const { calls, spineMissing } = oracleCalls(entry.dir, Array.isArray(refs) ? refs : []);
-  const replay = accumulateReplay(task, calls);
+  const { calls, finalResponse, spineMissing } = oracleCalls(entry.dir, Array.isArray(refs) ? refs : []);
+  const replay = accumulateReplay(task, calls, finalResponse);
 
   // "Try with a new model" bridge: the generated environment's readiness.
   const envDir = path.join(entry.dir, "environment");
