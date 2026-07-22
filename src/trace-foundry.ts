@@ -369,7 +369,24 @@ export function runTraceReplays(outputInput: string, models: string[], variants:
   return report;
 }
 
+/**
+ * One compile invocation must exhaust the source: batching (--batch-size)
+ * exists so the capability-fit catalog grows incrementally, so batches are
+ * iterated INTERNALLY until no fresh capture is left queued. Stopping early
+ * used to hide the remainder in goal-state.json while stdout reported success.
+ */
 export function compileTraceFoundry(sourceInput: string, outputInput: string, maxAgeDays = 3, now = new Date(), options: TraceFoundryOptions = {}): FoundryResult {
+  let result = compileTraceFoundryBatch(sourceInput, outputInput, maxAgeDays, now, options);
+  // Each pass ingests at most batchSize new captures; total/batchSize passes always suffice.
+  for (let pass = 0; result.queued > 0 && pass < 10_000; pass += 1) result = compileTraceFoundryBatch(sourceInput, outputInput, maxAgeDays, now, options);
+  if (result.queued > 0) {
+    const compiled = result.result.counts.captures, total = compiled + result.queued;
+    throw new Error(`${compiled} of ${total} captures compiled before the batch loop stopped; resume with: understudy traces build-benchmark --source ${resolve(sourceInput)} --output ${resolve(outputInput)}`);
+  }
+  return result.result;
+}
+
+function compileTraceFoundryBatch(sourceInput: string, outputInput: string, maxAgeDays = 3, now = new Date(), options: TraceFoundryOptions = {}): { result: FoundryResult; queued: number } {
   if (!Number.isInteger(maxAgeDays) || maxAgeDays <= 0) throw new Error("--max-age-days must be a positive integer");
   const batchSize = options.batchSize ?? 10;
   if (!Number.isInteger(batchSize) || batchSize <= 0) throw new Error("--batch-size must be a positive integer");
@@ -419,5 +436,5 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   const goalState = { schema_version: "understudy.environment_goal.v1", status: batch.queued_captures > 0 ? "constructing" : diminishing ? "maintenance" : "reviewing", batch_index: batch.index, batch_size: batchSize, recent_batches: recent, next_action: batch.queued_captures > 0 ? "compile_next_batch" : promotionBlockers.length ? "review_close_calls_and_resolve_blockers" : "prepare_replays", input_hash: hash(rows.map((row) => row.source.sha256)), updated_at: now.toISOString() };
   writeJson(join(output, "goal-state.json"), goalState); appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "compile", input_hash: goalState.input_hash, batch, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: goalState.next_action }]);
   const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: all.length - fresh.length, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
-  writeJson(join(output, "manifest.json"), result); return result;
+  writeJson(join(output, "manifest.json"), result); return { result, queued: batch.queued_captures };
 }

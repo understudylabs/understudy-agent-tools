@@ -72,13 +72,16 @@ test("scopes workloads, preserves upstream requests, emits a resumable v1 enviro
   assert.throws(() => runTraceReplays(output, ["candidate"], ["authentic_history"], 1, false), /pass --yes/);
 });
 
-test("processes fresh captures in idempotent resumable batches", () => {
+test("exhausts the source in one invocation even when captures exceed the batch size", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-batches-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const rows = Array.from({ length: 12 }, (_, i) => capture(`row-${i}`, `2026-07-20T00:00:${String(i).padStart(2, "0")}Z`, [{ role: "user", content: `Task ${i}` }], { content: [{ type: "tool_use", id: `c-${i}`, name: "update-record", input: { id: i } }] }));
   writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
-  const first = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { batchSize: 10 }); assert.equal(first.counts.captures, 10); assert.equal(JSON.parse(readFileSync(join(output, "goal-state.json"), "utf8")).next_action, "compile_next_batch");
-  const second = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:01Z"), { batchSize: 10 }); assert.equal(second.counts.captures, 12); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
-  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:02Z"), { batchSize: 10 }); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
+  const first = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { batchSize: 10 });
+  assert.equal(first.counts.captures, 12, "no silent batch truncation: all 12 captures compiled in one invocation");
+  assert.notEqual(JSON.parse(readFileSync(join(output, "goal-state.json"), "utf8")).next_action, "compile_next_batch");
+  assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12);
+  const rerun = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:02Z"), { batchSize: 10 });
+  assert.equal(rerun.counts.captures, 12); assert.equal(readFileSync(join(output, "capture-ledger.jsonl"), "utf8").trim().split("\n").length, 12, "rerun stays idempotent");
 });
 
 test("serves the lazy local viewer and capture JSON", async () => {
