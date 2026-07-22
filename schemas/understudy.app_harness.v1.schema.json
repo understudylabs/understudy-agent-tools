@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.app_harness.v1.schema.json",
+  "title": "understudy.app_harness.v1",
+  "description": "app-harness.json sidecar in a benchmark directory: how the run executor launches the user's OWN application per frozen task for the app_replay arm. The executor injects the gateway redirect env vars (OPENAI_BASE_URL/ANTHROPIC_BASE_URL -> the Understudy gateway, UNDERSTUDY_API_KEY) plus UNDERSTUDY_TASK_ID / UNDERSTUDY_TASK_PROMPT / UNDERSTUDY_LIVE_JOURNAL, waits per_task_timeout_seconds, and scores observed tool events through the shared contract scorer. Tier-1 observation boundary: only tool calls surfaced in the live journal are scorable; an unobserved rollout is recorded with the app_replay_unobserved anomaly, never fabricated. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "command", "input_mode"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.app_harness.v1",
+      "description": "Version stamp for this harness shape."
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Argv vector: command[0] is the executable, the rest its fixed arguments. In input_mode argv, the task prompt is appended as the final argument."
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Working directory for the app; absolute, or relative to the benchmark directory (default: the benchmark directory)."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Extra env vars merged over the parent env. The executor's gateway redirect + task-input vars always win last (a harness cannot re-route the LLM traffic away from the gateway)."
+    },
+    "input_mode": {
+      "enum": ["argv", "stdin", "http"],
+      "description": "How the task input reaches the app: argv (prompt appended as the last argument), stdin (one JSON line {task_id, prompt}), or http (endpoint template; schema-valid in v1 but not executable by the tier-1 runner). UNDERSTUDY_TASK_ID / UNDERSTUDY_TASK_PROMPT env vars are set in every mode."
+    },
+    "http": {
+      "type": "object",
+      "required": ["url_template"],
+      "additionalProperties": true,
+      "properties": {
+        "url_template": { "type": "string", "minLength": 1, "description": "Endpoint template; {task_id} and {prompt} placeholders are substituted per task." },
+        "method": { "enum": ["POST", "GET"] },
+        "body_template": { "type": "string", "description": "Request body template with the same placeholders." }
+      },
+      "description": "Only allowed when input_mode is http."
+    },
+    "per_task_timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 3600,
+      "description": "Wall-clock budget per task rollout; the app subprocess is SIGKILLed on expiry and the row records the rollout_timeout anomaly (default 300)."
+    },
+    "llm_route": {
+      "const": "gateway",
+      "description": "v1 fixes the LLM route to the Understudy gateway via the injected base-URL redirect vars."
+    },
+    "tool_route": {
+      "enum": ["gateway_tools", "none"],
+      "description": "Where tool effects are observable from: gateway_tools (tool calls surfaced in the live journal via the gateway / a journal-honoring shim) or none (side effects are not observable; rollouts will honestly record app_replay_unobserved)."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text authoring notes (how the harness was derived from the user's repo, known caveats)."
+    }
+  }
+}

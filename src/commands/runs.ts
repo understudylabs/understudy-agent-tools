@@ -16,6 +16,7 @@ import {
   type RunEvent,
   type RunSplit,
 } from "../run-executor.js";
+import { appReplayRunner } from "../app-harness.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -115,7 +116,10 @@ export function registerRunsCommand(program: Command): void {
       // (the stale-watcher hijack class is diagnosable from the first line).
       console.error(`understudy runs execute — executor version ${EXECUTOR_VERSION} (pid ${process.pid})`);
       do {
-        const results = await executeQueuedRuns(benchmark, { runner, concurrency, rolloutTimeoutSeconds, onEvent });
+        // app_replay requests (request.app_replay) always use the app-harness
+        // runner regardless of --runner; providing it here is what advertises
+        // the "app_replay" capability to the queue.
+        const results = await executeQueuedRuns(benchmark, { runner, appReplayRunner: appReplayRunner(), concurrency, rolloutTimeoutSeconds, onEvent });
         if (results.length > 0) console.log(JSON.stringify(results, null, 2));
         else if (!options.watch) console.error("queue empty — nothing to execute");
         if (options.watch) await sleep(interval);
