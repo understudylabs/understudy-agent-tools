@@ -3,6 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 
+import {
+  abandonedPatch,
+  concludedPatch,
+  sftVerdict,
+  trainingExperimentInput,
+  type ExperimentDataSelection,
+  type ExperimentRecord,
+} from "../lib/experiment-bridge.mjs";
+import { BenchmarkLinkagePane } from "./BenchmarkLinkagePane";
+import { ExperimentLineageCard } from "./ExperimentLineageCard";
 import type { RemotePlan } from "./RemoteTrainingPanel";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
@@ -49,9 +59,32 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
   const [result, setResult] = useState<LocalSftResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(true);
+  const [experiment, setExperiment] = useState<ExperimentRecord | null>(null);
+  const [lineageError, setLineageError] = useState<string | null>(null);
   const runId = useRef(crypto.randomUUID());
   const generation = useRef(0);
   const startedKey = useRef("");
+  const lineage = useRef<{ dir: string; experimentId: string } | null>(null);
+
+  /** Append the terminal status/verdict (+ produced adapter) to the record. */
+  const concludeExperiment = useCallback(
+    (currentGeneration: number, patch: Record<string, unknown>) => {
+      const target = lineage.current;
+      if (!target) return;
+      void invoke<ExperimentRecord>("update_training_experiment", {
+        lineageDir: target.dir,
+        experimentId: target.experimentId,
+        patch,
+      })
+        .then((record) => {
+          if (generation.current === currentGeneration) setExperiment(record);
+        })
+        .catch((cause) => {
+          if (generation.current === currentGeneration) setLineageError(String(cause));
+        });
+    },
+    [],
+  );
 
   const start = useCallback(() => {
     const currentGeneration = generation.current + 1;
@@ -61,6 +94,39 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
     setResult(null);
     setError(null);
     setRunning(true);
+    // Experiment lineage from the prepared plan's own hashes (see
+    // LocalTrainingPanel): evidence for local runs, never a gate.
+    setExperiment(null);
+    setLineageError(null);
+    lineage.current = null;
+    void invoke<{ lineage_dir: string; data_selection: ExperimentDataSelection }>(
+      "plan_lineage_context",
+      { planPath: plan.plan_path },
+    )
+      .then((context) =>
+        invoke<ExperimentRecord>("record_training_experiment", {
+          lineageDir: context.lineage_dir,
+          input: trainingExperimentInput({
+            method: "lora",
+            baseModel: plan.recipe_id,
+            provider: "local",
+            dataSelection: context.data_selection,
+            config: {
+              task_kind: plan.task_kind,
+              epochs: plan.epochs,
+              output_model_name: plan.output_model_name,
+              run_id: runId.current,
+            },
+          }),
+        }).then((record) => {
+          if (generation.current !== currentGeneration) return;
+          lineage.current = { dir: context.lineage_dir, experimentId: record.experiment_id };
+          setExperiment(record);
+        }),
+      )
+      .catch((cause) => {
+        if (generation.current === currentGeneration) setLineageError(String(cause));
+      });
     const channel = new Channel<LocalSftPhaseEvent>();
     channel.onmessage = (event) => {
       if (generation.current === currentGeneration) setPhase(event);
@@ -74,13 +140,24 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
         if (generation.current !== currentGeneration) return;
         setResult(receipt);
         setRunning(false);
+        // Attach the produced adapter (when complete evidence exists) so the
+        // benchmark local arm and the experiment record cite the same artifact.
+        void invoke<{ kind: string; ref: string; sha256: string }>("training_artifact_ref", {
+          runManifestPath: receipt.manifest_path,
+        })
+          .catch(() => null)
+          .then((artifact) => {
+            const complete = artifact && artifact.ref && artifact.sha256 ? artifact : null;
+            concludeExperiment(currentGeneration, concludedPatch(sftVerdict(receipt), complete));
+          });
       })
       .catch((cause) => {
         if (generation.current !== currentGeneration) return;
         setError(String(cause));
         setRunning(false);
+        concludeExperiment(currentGeneration, abandonedPatch(`local SFT run failed: ${String(cause)}`));
       });
-  }, [plan.plan_path]);
+  }, [concludeExperiment, plan.plan_path]);
 
   useEffect(() => {
     const key = `${plan.plan_path}:${attempt}`;
@@ -163,6 +240,16 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
           <small>Promotion: {result.promotion.status === "promoted" ? "ready" : "needs another run"}</small>
           <small>Offline · no upload · receipt {result.manifest_path}</small>
         </details>
+        <ExperimentLineageCard experiment={experiment} error={lineageError} />
+        {lineage.current && (
+          <BenchmarkLinkagePane
+            artifactRoot={lineage.current.dir}
+            runManifestPath={result.manifest_path}
+            lineageDir={lineage.current.dir}
+            experimentId={lineage.current.experimentId}
+            armLabel={plan.output_model_name}
+          />
+        )}
         <div className="remote-training-actions">
           {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud</button>}
           <button type="button" className="btn ghost" onClick={() => setAttempt((value) => value + 1)}>Run again</button>

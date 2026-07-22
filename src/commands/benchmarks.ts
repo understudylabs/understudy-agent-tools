@@ -54,13 +54,21 @@ export function registerBenchmarksCommand(program: Command): void {
     return entry;
   };
 
+  const plainDirHelp =
+    "Write lineage into a plain directory (no benchmark.json required) — the desktop app keeps experiment records next to a prepared dataset before a benchmark exists";
+
   experiment
     .command("create <dir>")
     .description("Append one NEW understudy.experiment.v1 line to <dir>/experiments.jsonl (validated; JSON out)")
     .requiredOption("--input <json>", "Experiment record as inline JSON or @file (hypothesis, data_selection, training, ...)")
-    .action(async (dir: string, options: { input: string }) => {
-      const { createExperiment } = await import("../benchmark-hub-core.js");
-      const result = createExperiment(await loadDirEntry(dir), parseJsonOption(options.input) as never);
+    .option("--plain-dir", plainDirHelp, false)
+    .action(async (dir: string, options: { input: string; plainDir: boolean }) => {
+      const path = await import("node:path");
+      const { createExperiment, createExperimentInDir } = await import("../benchmark-hub-core.js");
+      const input = parseJsonOption(options.input) as never;
+      const result = options.plainDir
+        ? createExperimentInDir(path.resolve(dir), input)
+        : createExperiment(await loadDirEntry(dir), input);
       if (!result.ok) throw new Error(result.error);
       console.error(`appended ${result.file}`);
       console.log(JSON.stringify(result.experiment, null, 2));
@@ -70,9 +78,14 @@ export function registerBenchmarksCommand(program: Command): void {
     .command("update <dir> <experiment_id>")
     .description("Supersede one experiment: merge --input over its newest record and append the full merged record (approvals + eval_run_ids append; JSON out)")
     .requiredOption("--input <json>", "Partial understudy.experiment.v1 fields as inline JSON or @file")
-    .action(async (dir: string, experimentId: string, options: { input: string }) => {
-      const { updateExperiment } = await import("../benchmark-hub-core.js");
-      const result = updateExperiment(await loadDirEntry(dir), experimentId, parseJsonOption(options.input));
+    .option("--plain-dir", plainDirHelp, false)
+    .action(async (dir: string, experimentId: string, options: { input: string; plainDir: boolean }) => {
+      const path = await import("node:path");
+      const { updateExperiment, updateExperimentInDir } = await import("../benchmark-hub-core.js");
+      const patch = parseJsonOption(options.input);
+      const result = options.plainDir
+        ? updateExperimentInDir(path.resolve(dir), experimentId, patch)
+        : updateExperiment(await loadDirEntry(dir), experimentId, patch);
       if (!result.ok) throw new Error(result.error);
       console.error(`appended ${result.file}`);
       console.log(JSON.stringify(result.experiment, null, 2));

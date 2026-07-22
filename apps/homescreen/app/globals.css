@@ -8985,3 +8985,143 @@ select,
 .settings-danger-btn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--c-bad) 10%, transparent);
 }
+
+/* Experiment lineage + benchmark linkage (app → benchmark spine bridge) */
+.experiment-lineage-card {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  padding: 10px 14px 11px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--c-window) 94%, transparent);
+  text-align: left;
+  font-size: 12px;
+}
+.experiment-lineage-card > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.experiment-lineage-card > header > span {
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.experiment-lineage-card > header > code {
+  color: var(--c-ink);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.experiment-lineage-card > header > em {
+  margin-left: auto;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-style: normal;
+}
+.experiment-lineage-card > header > em[data-status="concluded"] {
+  border-color: color-mix(in srgb, #9edbd3 45%, transparent);
+  color: color-mix(in srgb, #9edbd3 80%, var(--text-2));
+}
+.experiment-lineage-card > header > em[data-status="abandoned"] {
+  border-color: color-mix(in srgb, var(--c-bad) 40%, transparent);
+  color: var(--c-bad);
+}
+.experiment-lineage-card > ul {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.experiment-lineage-card > ul code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.experiment-lineage-card > small {
+  color: var(--text-2);
+  font-size: 11px;
+}
+.experiment-lineage-card.is-error {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  border-color: color-mix(in srgb, var(--c-bad) 35%, transparent);
+}
+.experiment-lineage-card.is-error strong {
+  color: var(--c-bad);
+  font-size: 12px;
+}
+.experiment-lineage-card.is-error small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.benchmark-linkage {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 12px 16px 13px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--c-window) 94%, transparent);
+  text-align: left;
+}
+.benchmark-linkage > header {
+  display: grid;
+  gap: 2px;
+}
+.benchmark-linkage > header > span {
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.benchmark-linkage > header > strong {
+  color: var(--c-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.benchmark-linkage > small {
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.benchmark-linkage > small code {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.benchmark-linkage.is-landing {
+  border-style: dashed;
+}
+.benchmark-linkage p[role="alert"] {
+  margin: 0;
+  color: var(--c-bad);
+  font-size: 11px;
+}
+.remote-training-approval-gate {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #f2b34c 38%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #f2b34c 5%, transparent);
+}
+.remote-training-approval-gate strong {
+  color: var(--c-ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.remote-training-approval-gate small {
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}

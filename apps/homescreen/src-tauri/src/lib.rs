@@ -16,6 +16,7 @@ mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
+mod experiment_lineage;
 mod explore;
 mod gepa;
 mod knowledge;
@@ -378,6 +379,17 @@ pub fn run() {
             workload_drop::update_local_classification_run,
             workload_drop::repeat_local_classification_evaluation,
             workload_drop::export_local_classification_predictions,
+            experiment_lineage::experiment_approver_identity,
+            experiment_lineage::dataset_lineage_context,
+            experiment_lineage::plan_lineage_context,
+            experiment_lineage::record_training_experiment,
+            experiment_lineage::update_training_experiment,
+            experiment_lineage::training_experiment_lineage,
+            experiment_lineage::benchmark_bridge_status,
+            experiment_lineage::create_benchmark_from_dataset,
+            experiment_lineage::queue_benchmark_comparison_run,
+            experiment_lineage::benchmark_run_requests,
+            experiment_lineage::training_artifact_ref,
             remote_training::remote_training_capabilities,
             remote_training::inspect_remote_training_recipe,
             remote_training::automatic_training_goal_card,

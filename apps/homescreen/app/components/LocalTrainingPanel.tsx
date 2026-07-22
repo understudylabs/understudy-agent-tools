@@ -14,7 +14,17 @@ import {
   type LocalTrainingEvent,
   type LocalTrainingState,
 } from "../lib/local-training-state.mjs";
+import {
+  abandonedPatch,
+  classificationVerdict,
+  concludedPatch,
+  trainingExperimentInput,
+  type ExperimentDataSelection,
+  type ExperimentRecord,
+} from "../lib/experiment-bridge.mjs";
+import { BenchmarkLinkagePane } from "./BenchmarkLinkagePane";
 import { EvaluationRadar } from "./EvaluationRadar";
+import { ExperimentLineageCard } from "./ExperimentLineageCard";
 import {
   RemoteTrainingPanel,
   type RemoteTrainingCapabilities,
@@ -176,6 +186,12 @@ type Props = {
   onVisualChange?: (visual: TrainingHaloVisual | null) => void;
 };
 
+type LineageContext = {
+  schema_version: "understudy.desktop.lineage_context.v1";
+  lineage_dir: string;
+  data_selection: ExperimentDataSelection;
+};
+
 type RemoteCapabilitiesEnvelope = {
   schema_version: "understudy.remote_training.capabilities.v1";
   enabled: boolean;
@@ -234,6 +250,9 @@ export function LocalTrainingPanel({
   const [remoteActive, setRemoteActive] = useState(false);
   const [remoteVisual, setRemoteVisual] = useState<TrainingHaloVisual | null>(null);
   const [forceLocal, setForceLocal] = useState(false);
+  const [experiment, setExperiment] = useState<ExperimentRecord | null>(null);
+  const [lineageError, setLineageError] = useState<string | null>(null);
+  const lineage = useRef<{ dir: string; experimentId: string } | null>(null);
   const [clockMs, setClockMs] = useState(() => Date.now());
   const generation = useRef(0);
   const activeRunId = useRef<string | null>(null);
@@ -310,6 +329,9 @@ export function LocalTrainingPanel({
     setRemoteActive(false);
     setRemoteVisual(null);
     setForceLocal(false);
+    setExperiment(null);
+    setLineageError(null);
+    lineage.current = null;
     runStartedAt.current = null;
     trainingStartedAt.current = null;
     lastEpochCompletedAt.current = null;
@@ -379,6 +401,23 @@ export function LocalTrainingPanel({
     };
   }, [active, state.phase, trainingPreview]);
 
+  /** Append the terminal status/verdict to this run's experiment record. */
+  const concludeExperiment = useCallback((requestGeneration: number, patch: Record<string, unknown>) => {
+    const target = lineage.current;
+    if (!target) return;
+    void invoke<ExperimentRecord>("update_training_experiment", {
+      lineageDir: target.dir,
+      experimentId: target.experimentId,
+      patch,
+    })
+      .then((record) => {
+        if (generation.current === requestGeneration) setExperiment(record);
+      })
+      .catch((cause) => {
+        if (generation.current === requestGeneration) setLineageError(String(cause));
+      });
+  }, []);
+
   const startTraining = useCallback(() => {
     if (active) return;
     const id = runId();
@@ -403,6 +442,36 @@ export function LocalTrainingPanel({
     lastEpochCompletedAt.current = null;
     setClockMs(startedAt);
     dispatch({ type: "start", runId: id });
+    // Experiment lineage: one understudy.experiment.v1 record per training
+    // run, written through the CLI next to the prepared dataset. The data
+    // hashes come from the manifest the drop flow already verified. Lineage
+    // is evidence, never a gate for LOCAL training — failures are shown, not
+    // blocking.
+    setExperiment(null);
+    setLineageError(null);
+    lineage.current = null;
+    void invoke<LineageContext>("dataset_lineage_context", {
+      datasetManifestPath,
+    })
+      .then((context) =>
+        invoke<ExperimentRecord>("record_training_experiment", {
+          lineageDir: context.lineage_dir,
+          input: trainingExperimentInput({
+            method: "sft",
+            baseModel: MODERN_BERT_MODEL,
+            provider: "local",
+            dataSelection: context.data_selection,
+            config: { task: "text_classification", run_id: id },
+          }),
+        }).then((record) => {
+          if (generation.current !== requestGeneration) return;
+          lineage.current = { dir: context.lineage_dir, experimentId: record.experiment_id };
+          setExperiment(record);
+        }),
+      )
+      .catch((cause) => {
+        if (generation.current === requestGeneration) setLineageError(String(cause));
+      });
     void invoke<ClassificationTrainingPreview>("local_classification_training_examples", {
       manifestPath: datasetManifestPath,
     })
@@ -449,19 +518,31 @@ export function LocalTrainingPanel({
       .then((result) => {
         if (generation.current !== requestGeneration) return;
         activeRunId.current = null;
-        dispatch(cancellationRequested.current
+        const cancelled = cancellationRequested.current;
+        dispatch(cancelled
           ? { type: "cancelled" }
           : { type: "succeeded", result });
+        concludeExperiment(
+          requestGeneration,
+          cancelled
+            ? abandonedPatch("training run cancelled before completion")
+            : concludedPatch(classificationVerdict(result)),
+        );
       })
       .catch((error) => {
         if (generation.current !== requestGeneration) return;
         activeRunId.current = null;
         const message = String(error);
-        dispatch(cancellationRequested.current || message.toLowerCase().includes("cancel")
+        const cancelled = cancellationRequested.current || message.toLowerCase().includes("cancel");
+        dispatch(cancelled
           ? { type: "cancelled" }
           : { type: "failed", error: message });
+        concludeExperiment(
+          requestGeneration,
+          abandonedPatch(cancelled ? "training run cancelled before completion" : `training run failed: ${message}`),
+        );
       });
-  }, [active, datasetManifestPath]);
+  }, [active, concludeExperiment, datasetManifestPath]);
 
   useEffect(() => {
     if (
@@ -665,6 +746,16 @@ export function LocalTrainingPanel({
         <strong>{verdict.title}</strong>
         <small>{verdict.detail}</small>
       </div>
+      <ExperimentLineageCard experiment={experiment} error={lineageError} />
+      {lineage.current && (
+        <BenchmarkLinkagePane
+          artifactRoot={lineage.current.dir}
+          runManifestPath={state.result.manifest_path}
+          lineageDir={lineage.current.dir}
+          experimentId={lineage.current.experimentId}
+          armLabel={`classifier.${state.result.run_id}`}
+        />
+      )}
       {!frontierComparison && (
         <div className="frontier-comparison-prompt" aria-live="polite" aria-busy={comparingFrontier}>
           <div>

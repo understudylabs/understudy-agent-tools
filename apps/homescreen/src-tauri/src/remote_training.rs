@@ -3873,14 +3873,26 @@ fn verify_split(
     Ok(rows)
 }
 
+/// The desktop UI's remote-training entry point. Beyond the boolean consent
+/// flags, it enforces the und-289 approval discipline as a HARD boundary:
+/// the caller must name an understudy.experiment.v1 record whose newest line
+/// carries a cleared `provider_training_spend` gate, or nothing is uploaded.
+/// The approval-gate dialog in RemoteTrainingPanel appends that gate entry
+/// (approved_by = the app identity) BEFORE calling this command.
 #[tauri::command]
 pub async fn start_remote_training(
     plan_path: String,
     confirm_upload: bool,
     confirm_spend: bool,
     confirm_temporary_deployment: bool,
+    approval_lineage_dir: String,
+    approval_experiment_id: String,
     on_event: Channel<Value>,
 ) -> Result<Value, String> {
+    crate::experiment_lineage::verify_provider_training_spend_approval(
+        &approval_lineage_dir,
+        &approval_experiment_id,
+    )?;
     start_remote_classification_training(
         plan_path,
         confirm_upload,
