@@ -2,6 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import {
+  abandonedPatch,
+  concludedPatch,
+  providerSpendApproval,
+  remoteVerdict,
+  trainingExperimentInput,
+  type ExperimentDataSelection,
+  type ExperimentRecord,
+} from "../lib/experiment-bridge.mjs";
+import { ExperimentLineageCard } from "./ExperimentLineageCard";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 import { TrainingRunStatus } from "./TrainingRunStatus";
 import {
@@ -373,8 +383,11 @@ export function RemoteTrainingPanel(props: Props) {
   const [submitted, setSubmitted] = useState(false);
   const [, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
   const [backendCompatibilityError, setBackendCompatibilityError] = useState<string | null>(null);
+  const [experiment, setExperiment] = useState<ExperimentRecord | null>(null);
   const polling = useRef(false);
   const stopped = useRef(false);
+  const lineage = useRef<{ dir: string; experimentId: string } | null>(null);
+  const experimentConcluded = useRef(false);
   const provider = providers.find((candidate) => candidate.id === providerId) ?? providers[0];
   const profile = provider?.model_profiles.find((candidate) => candidate.id === profileId)
     ?? (provider ? profileDefault(provider) : undefined);
@@ -479,6 +492,9 @@ export function RemoteTrainingPanel(props: Props) {
     setRunStartedAt(null);
     setError(null);
     setSubmitted(false);
+    setExperiment(null);
+    lineage.current = null;
+    experimentConcluded.current = false;
     stopped.current = false;
     const recovery = preparedPlan
       ? invoke<RemoteRunReceipt | null>("existing_remote_training", {
@@ -533,6 +549,25 @@ export function RemoteTrainingPanel(props: Props) {
       });
   }, [capabilities, datasetManifestPath, profile, provider, stage]);
 
+  /** Append the terminal status/verdict to this run's experiment record (once). */
+  const concludeExperiment = useCallback((patch: Record<string, unknown>) => {
+    const target = lineage.current;
+    if (!target || experimentConcluded.current) return;
+    experimentConcluded.current = true;
+    void invoke<ExperimentRecord>("update_training_experiment", {
+      lineageDir: target.dir,
+      experimentId: target.experimentId,
+      patch,
+    })
+      .then((record) => {
+        if (!stopped.current) setExperiment(record);
+      })
+      .catch(() => {
+        // Lineage conclusion is evidence; the run outcome is already shown.
+        experimentConcluded.current = false;
+      });
+  }, []);
+
   const poll = useCallback(async (receipt: RemoteRunReceipt) => {
     if (polling.current || stopped.current) return;
     polling.current = true;
@@ -550,17 +585,23 @@ export function RemoteTrainingPanel(props: Props) {
       if (update.status.workflow_status === "completed" && update.status.result) {
         setResult(update.status.result);
         setStage("terminal");
+        concludeExperiment(concludedPatch(remoteVerdict(update.status.result)));
       } else if (update.status.workflow_status === "failed" || update.status.workflow_status === "cancelled") {
         setResult(update.status.result ?? null);
         setError(update.status.workflow_status === "cancelled" ? "Remote training stopped safely." : "The remote workflow did not finish.");
         setStage(update.status.workflow_status === "cancelled" ? "terminal" : "failed");
+        concludeExperiment(abandonedPatch(
+          update.status.workflow_status === "cancelled"
+            ? "remote training cancelled before completion"
+            : "remote training workflow failed",
+        ));
       }
     } catch (cause) {
       setError(`Connection interrupted: ${String(cause)}. The durable job is still safe; retrying.`);
     } finally {
       polling.current = false;
     }
-  }, []);
+  }, [concludeExperiment]);
 
   useEffect(() => {
     if (stage !== "running" || !run) return;
@@ -580,13 +621,60 @@ export function RemoteTrainingPanel(props: Props) {
     setLossPoints([]);
     const channel = new Channel<UploadEvent>();
     channel.onmessage = setUploadEvent;
-    void invoke<RemoteRunReceipt>("start_remote_training", {
-      planPath: plan.plan_path,
-      confirmUpload: true,
-      confirmSpend: true,
-      confirmTemporaryDeployment: true,
-      onEvent: channel,
-    })
+    // The approval gate is a HARD boundary, not prose: the cleared
+    // provider_training_spend entry (approved_by = this app's identity) is
+    // appended to the understudy.experiment.v1 record FIRST, and
+    // start_remote_training refuses to upload unless that record carries the
+    // gate. If lineage cannot be written, nothing is submitted.
+    void (async () => {
+      const [{ approved_by }, context] = await Promise.all([
+        invoke<{ approved_by: string }>("experiment_approver_identity"),
+        invoke<{ lineage_dir: string; data_selection: ExperimentDataSelection }>(
+          "plan_lineage_context",
+          { planPath: plan.plan_path },
+        ),
+      ]);
+      const approval = providerSpendApproval(approved_by);
+      let target = lineage.current;
+      if (!target) {
+        const record = await invoke<ExperimentRecord>("record_training_experiment", {
+          lineageDir: context.lineage_dir,
+          input: trainingExperimentInput({
+            method: "sft",
+            baseModel: plan.model_profile,
+            provider: providerId,
+            dataSelection: context.data_selection,
+            config: {
+              task_kind: plan.task_kind,
+              epochs: plan.epochs,
+              output_model_name: plan.output_model_name,
+              recipe_id: plan.recipe_id,
+            },
+            costEstimate: plan.maximum_spend_usd,
+            approvals: [approval],
+          }),
+        });
+        target = { dir: context.lineage_dir, experimentId: record.experiment_id };
+        lineage.current = target;
+        setExperiment(record);
+      } else {
+        const record = await invoke<ExperimentRecord>("update_training_experiment", {
+          lineageDir: target.dir,
+          experimentId: target.experimentId,
+          patch: { status: "training", training: { approvals: [approval] } },
+        });
+        setExperiment(record);
+      }
+      return invoke<RemoteRunReceipt>("start_remote_training", {
+        planPath: plan.plan_path,
+        confirmUpload: true,
+        confirmSpend: true,
+        confirmTemporaryDeployment: true,
+        approvalLineageDir: target.dir,
+        approvalExperimentId: target.experimentId,
+        onEvent: channel,
+      });
+    })()
       .then((receipt) => {
         setRun(receipt);
         setUploadEvent(null);
@@ -656,11 +744,20 @@ export function RemoteTrainingPanel(props: Props) {
 
   if (stage === "confirm" && plan) {
     return (
-      <div className="remote-training-confirm">
+      <div className="remote-training-confirm" role="group" aria-label="Provider training approval gate">
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <ConsentReceipts plan={plan} />
+        <section className="remote-training-approval-gate" aria-label="What approving records">
+          <strong>Approval gate · provider_training_spend</strong>
+          <small>
+            Provider: {provider?.label ?? "Understudy managed training"} · estimated cost up to{" "}
+            {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD" })} · the listed
+            training data leaves this Mac. Approving appends a signed gate entry to this dataset&apos;s experiment
+            record before anything uploads — without it, remote training refuses to start.
+          </small>
+        </section>
         <div className="remote-training-actions" style={{ justifyContent: "flex-end" }}>
-          <button type="button" className="btn primary" onClick={start}>Upload & train</button>
+          <button type="button" className="btn primary" onClick={start}>Approve upload & train</button>
         </div>
       </div>
     );
@@ -693,6 +790,7 @@ export function RemoteTrainingPanel(props: Props) {
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
         </header>
         <TrainingRunStatus events={events} lossPoints={lossPoints} />
+        <ExperimentLineageCard experiment={experiment} />
         {examples.length > 0 && (
           <div className="remote-training-example-window" aria-label="Actual prepared training examples">
             <header>
@@ -745,6 +843,7 @@ export function RemoteTrainingPanel(props: Props) {
       <div className={`remote-training-result ${result.outcome}`}>
         <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>{result.reconciled_spend_usd != null ? "Provider spend" : "Budget accounted"}: ${result.spend_usd.toFixed(2)}</small></div>
         {diagnostic && <p className="remote-training-diagnostic"><strong>{diagnostic.title}</strong><small>{diagnostic.message}</small></p>}
+        <ExperimentLineageCard experiment={experiment} />
         {primaryMetric && <div className="remote-training-metrics"><article><span>{primaryMetric.label}</span><strong>{primaryMetric.display_value}</strong></article></div>}
         {(secondaryMetrics.length > 0 || result.failures.length > 0 || result.output_model || result.provider_error || hasSpendBreakdown || hasCleanupDetails) && (
           <details className="remote-training-details">

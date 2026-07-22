@@ -57,6 +57,7 @@ export function registerRunsCommand(program: Command): void {
     .option("--tasks <ids>", 'Comma-separated task ids (default "all")')
     .option("--rollouts <count>", "Rollouts per task", "1")
     .option("--incumbent <ids>", "Comma-separated subset of --models labeled as the incumbent calibration arm")
+    .option("--experiment <id>", "experiments.jsonl experiment_id this run evaluates (must already exist in <benchmark>/experiments.jsonl)")
     .option("--rollout-timeout <seconds>", "Per-rollout wall-clock budget written onto the request")
     .option(
       "--prompt-override <label=model=file...>",
@@ -67,7 +68,7 @@ export function registerRunsCommand(program: Command): void {
         return [...prior, { arm_label: match[1], model: match[2], system_prompt_suffix: readFileSync(resolve(match[3]), "utf8").trim() }];
       },
     )
-    .action((options: { benchmark: string; models?: string; localArm?: { ref: string; label?: string }[]; trivialArms?: string; split: string; tasks?: string; rollouts: string; incumbent?: string; rolloutTimeout?: string; promptOverride?: PromptOverride[] }) => {
+    .action(async (options: { benchmark: string; models?: string; localArm?: { ref: string; label?: string }[]; trivialArms?: string; split: string; tasks?: string; rollouts: string; incumbent?: string; experiment?: string; rolloutTimeout?: string; promptOverride?: PromptOverride[] }) => {
       const benchmark = resolve(options.benchmark);
       const manifest = JSON.parse(readFileSync(join(benchmark, "benchmark.json"), "utf8")) as Record<string, unknown>;
       const knownTaskIds = (Array.isArray(manifest.tasks) ? (manifest.tasks as Record<string, unknown>[]) : []).map((t) => String(t.task_id));
@@ -86,7 +87,17 @@ export function registerRunsCommand(program: Command): void {
         rollout_timeout_seconds: options.rolloutTimeout !== undefined ? Number(options.rolloutTimeout) : undefined,
         prompt_overrides: options.promptOverride,
         trivial_arms: options.trivialArms ? (options.trivialArms.split(",").map((t) => t.trim()).filter(Boolean) as Parameters<typeof createRunRequest>[1]["trivial_arms"]) : undefined,
+        experiment_id: options.experiment,
       };
+      // Same cross-link discipline as the hub/MCP queue path: a declared
+      // experiment must already exist in the benchmark's experiments.jsonl.
+      if (options.experiment !== undefined) {
+        const { readExperiments, latestExperiments, experimentsPath } = await import("../benchmark-artifacts.js");
+        const { experiments } = readExperiments(experimentsPath(benchmark));
+        if (!latestExperiments(experiments)[options.experiment]) {
+          throw new Error(`unknown experiment_id: ${options.experiment} (understudy benchmarks experiment create first)`);
+        }
+      }
       const errors = validateRunRequestInput(input, knownTaskIds);
       if (errors.length > 0) throw new Error(`invalid run request: ${errors.join("; ")}`);
       if (selectTasks(manifest, { split: input.split, tasks: input.tasks }).length === 0) throw new Error(`no tasks match split=${input.split}`);

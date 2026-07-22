@@ -109,7 +109,10 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /existing_remote_training/);
   assert.match(panel, /compile_remote_training_backends/);
   assert.match(panel, /preparedPlan/);
-  assert.match(panel, /Upload & train/);
+  // The confirm action IS the approval gate (und-289): approving appends the
+  // provider_training_spend entry to the experiment record before upload.
+  assert.match(panel, /Approve upload & train/);
+  assert.match(panel, /provider_training_spend/);
   assert.doesNotMatch(panel, /Upload & train · \$/);
   assert.match(panel, /remote-training-example-track/);
   assert.match(panel, /trainingExamples/);

@@ -1169,7 +1169,17 @@ function experimentWriteGate(entry: AnyHubEntry | null): WriteFailure | null {
 export function createExperiment(entry: AnyHubEntry | null, input: ExperimentInput): ExperimentWriteResult {
   const gate = experimentWriteGate(entry);
   if (gate) return gate;
-  const dir = (entry as HubEntry | ProposedHubEntry).dir;
+  return createExperimentInDir((entry as HubEntry | ProposedHubEntry).dir, input);
+}
+
+/**
+ * Dir-addressed variant of createExperiment (additive). Used by the CLI's
+ * `--plain-dir` mode so the desktop app can keep experiment lineage next to a
+ * prepared dataset BEFORE a benchmark dir exists (benchmark.json absent).
+ * Same validation, same append-only file; only the hub-entry write gate is
+ * skipped (the caller owns the dir).
+ */
+export function createExperimentInDir(dir: string, input: ExperimentInput): ExperimentWriteResult {
   let experiment: Experiment;
   try {
     experiment = makeExperiment(input);
@@ -1198,7 +1208,15 @@ export function updateExperiment(
 ): ExperimentWriteResult {
   const gate = experimentWriteGate(entry);
   if (gate) return gate;
-  const dir = (entry as HubEntry | ProposedHubEntry).dir;
+  return updateExperimentInDir((entry as HubEntry | ProposedHubEntry).dir, experimentId, patch);
+}
+
+/** Dir-addressed variant of updateExperiment (additive; see createExperimentInDir). */
+export function updateExperimentInDir(
+  dir: string,
+  experimentId: unknown,
+  patch: Record<string, unknown>,
+): ExperimentWriteResult {
   if (typeof experimentId !== "string" || experimentId.length === 0) {
     return { ok: false, error: "experiment_id (string) is required", status: 400 };
   }
