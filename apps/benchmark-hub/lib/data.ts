@@ -9,6 +9,8 @@ export {
   captureFilePath,
   computeWarnings,
   deriveAutoReviewProposals,
+  deriveTaskAttention,
+  effectiveDecision,
   getEntry,
   loadEntryFromDir,
   loadHub,

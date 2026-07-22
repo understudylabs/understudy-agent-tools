@@ -21,6 +21,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   applyAutoAccepts,
+  deriveTaskAttention,
+  effectiveDecision,
   getEntry,
   loadHub,
   loadTaskSidecars,
@@ -297,17 +299,24 @@ function toolReadBenchmark(args: Obj): unknown {
       review_policy: entry.reviewPolicy ?? null,
       calibration: calibrationOut(entry.calibration),
       cross_check_errors: entry.crossCheckErrors,
-      tasks: entry.tasks.map((t) => ({
-        task_id: t.task_id,
-        name: taskDisplayName(t),
-        split: t.split,
-        status: t.status,
-        machine_confidence: t.machine_confidence,
-        review: entry.latestReviewByTask[t.task_id]
-          ? { decision: entry.latestReviewByTask[t.task_id].decision, note: entry.latestReviewByTask[t.task_id].note }
-          : null,
-        scores: taskScores(entry.rows, t.task_id),
-      })),
+      tasks: (() => {
+        const attentionByTask = new Map(deriveTaskAttention(entry).map((a) => [a.task_id, a.flags]));
+        return entry.tasks.map((t) => ({
+          task_id: t.task_id,
+          name: taskDisplayName(t),
+          split: t.split,
+          status: t.status,
+          machine_confidence: t.machine_confidence,
+          review: entry.latestReviewByTask[t.task_id]
+            ? { decision: entry.latestReviewByTask[t.task_id].decision, note: entry.latestReviewByTask[t.task_id].note }
+            : null,
+          // Additive (born-accepted model): the decision in force — an
+          // explicit line, else the policy default — plus attention flags.
+          effective_decision: effectiveDecision(entry, t.task_id),
+          attention_flags: attentionByTask.get(t.task_id) ?? [],
+          scores: taskScores(entry.rows, t.task_id),
+        }));
+      })(),
     };
   }
   const reviewsByTask = new Map<string, { decision: ReviewDecision; note: string }>();
@@ -360,6 +369,9 @@ function toolReadTask(args: Obj): unknown {
       },
       claims: task.claims,
       review: entry.latestReviewByTask[taskId] ?? null,
+      // Additive (born-accepted model): decision in force + attention flags.
+      effective_decision: effectiveDecision(entry, taskId),
+      attention_flags: deriveTaskAttention(entry).find((a) => a.task_id === taskId)?.flags ?? [],
       review_history: entry.reviews.filter((r) => r.task_id === taskId),
       scores: taskScores(entry.rows, taskId),
     };
@@ -646,10 +658,12 @@ export const BENCHMARKS_TOOLS = [
   {
     name: "apply_auto_accepts",
     description:
-      "Apply the exception-review auto-accept policy to one PROPOSED benchmark: recompute the classification " +
+      "Apply the auto-accept policy to one PROPOSED benchmark: recompute the classification " +
       "(review-policy.json bar; defaults min_confidence=high, require_incumbent_pass=true) and append one " +
-      "accept line per clean pending task to reviews.jsonl, stamped source:\"auto\" — the same shared code as " +
-      "the hub's 'Apply N auto-accepts' button. Calling this tool IS the explicit user action; reads never " +
+      "accept line per clean unreviewed task to reviews.jsonl, stamped source:\"auto\". Only needed for " +
+      "benchmarks running review-policy default_decision \"pending\" (the older explicit-accept flow) — under " +
+      "the default born-accepted model, unreviewed tasks are already effectively accepted and machine signals " +
+      "surface as attention_flags instead. Calling this tool IS the explicit user action; reads never " +
       "auto-apply. Reversible: newest review line per task wins.",
     inputSchema: {
       type: "object",

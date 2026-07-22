@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { REVIEW_DECISIONS, type ReviewDecision } from "@/lib/types";
+import type { ReviewDecision } from "@/lib/types";
 
 const DECISION_COLOR: Record<ReviewDecision, string> = {
   accept: "var(--live)",
@@ -11,10 +11,19 @@ const DECISION_COLOR: Record<ReviewDecision, string> = {
   reject: "var(--bad)",
 };
 
+/** Editing verbs, not judgment: accept is the resting state, never a button here. */
+const OVERRIDE_VERBS: { decision: ReviewDecision; label: string }[] = [
+  { decision: "reject", label: "Reject" },
+  { decision: "needs_more", label: "Needs work" },
+  { decision: "restrict", label: "Restrict" },
+];
+
 /**
- * Review action bar for one proposed task: accept / restrict / needs_more /
- * reject + optional note → POST /api/reviews. Optimistic: the chosen decision
- * renders immediately; a failed write rolls back and shows the error.
+ * Override bar for one proposed task. Tasks are BORN ACCEPTED (review-policy
+ * default_decision "accept"): there is no accept button — the verbs are
+ * Reject / Needs work / Restrict, each appending an explicit reviews.jsonl
+ * override (append-only, newest wins). "Re-accept" appears only on a task a
+ * previous line overrode, to bring it back to the resting state.
  */
 export function ReviewBar({
   slug,
@@ -24,7 +33,7 @@ export function ReviewBar({
 }: {
   slug: string;
   taskId: string;
-  /** Latest persisted decision, if any. */
+  /** Latest EXPLICIT persisted decision, if any (null = accepted by default). */
   current: ReviewDecision | null;
   readOnly: boolean;
 }) {
@@ -63,11 +72,13 @@ export function ReviewBar({
     router.refresh();
   };
 
+  const overridden = decision !== null && decision !== "accept";
+
   return (
     <div className="u-card flex flex-col gap-2.5" style={{ padding: "14px 16px" }}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="u-cats-label">Final judgment</span>
-        {REVIEW_DECISIONS.map((d) => (
+        <span className="u-cats-label">Override</span>
+        {OVERRIDE_VERBS.map(({ decision: d, label }) => (
           <button
             key={d}
             className="u-chip"
@@ -76,14 +87,22 @@ export function ReviewBar({
             onClick={() => judge(d)}
             style={decision === d ? undefined : { color: DECISION_COLOR[d] }}
           >
-            {d.replace("_", " ")}
+            {label}
           </button>
         ))}
-        {decision && (
-          <span className="mono text-xs text-ink-muted">
-            current: <b style={{ color: DECISION_COLOR[decision] }}>{decision.replace("_", " ")}</b>
-          </span>
+        {/* Re-accept only exists on an overridden task — accepted is the resting state. */}
+        {overridden && (
+          <button className="u-chip" disabled={busy} onClick={() => judge("accept")} style={{ color: DECISION_COLOR.accept }}>
+            Re-accept
+          </button>
         )}
+        <span className="mono text-xs text-ink-muted">
+          {decision === null ? (
+            <>current: <b style={{ color: DECISION_COLOR.accept }}>accepted (default)</b></>
+          ) : (
+            <>current: <b style={{ color: DECISION_COLOR[decision] }}>{decision.replace("_", " ")}</b></>
+          )}
+        </span>
       </div>
       <textarea
         value={note}

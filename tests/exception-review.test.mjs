@@ -8,6 +8,8 @@ import {
   applyAutoAccepts,
   buildTaskFeedbackHandoff,
   deriveAutoReviewProposals,
+  deriveTaskAttention,
+  effectiveDecision,
   loadProposedEntryFromDir,
   submitReview,
   submitTaskFeedback,
@@ -384,9 +386,28 @@ describe("readReviewPolicy — sidecar codec", () => {
     );
   });
 
+  it("default_decision parses additively: accept by default, 'pending' recognized, typos fall back", () => {
+    const dir = tmpDir();
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: REVIEW_POLICY_SCHEMA, default_decision: "pending" }),
+    );
+    assert.deepEqual(readReviewPolicy(dir), { ...DEFAULT_REVIEW_POLICY, default_decision: "pending" });
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: REVIEW_POLICY_SCHEMA, default_decision: "maybe" }),
+    );
+    assert.deepEqual(readReviewPolicy(dir), DEFAULT_REVIEW_POLICY, "unknown default_decision falls back to accept");
+    assert.deepEqual(
+      schemaErrors(policySchema, { schema_version: REVIEW_POLICY_SCHEMA, default_decision: "pending" }),
+      [],
+    );
+  });
+
   it("defaults match the historical hardcoded bar and confidence ordering is high > medium > low", () => {
     assert.equal(DEFAULT_REVIEW_POLICY.min_confidence, "high");
     assert.equal(DEFAULT_REVIEW_POLICY.require_incumbent_pass, true);
+    assert.equal(DEFAULT_REVIEW_POLICY.default_decision, "accept", "tasks are born accepted by default");
     assert.equal(meetsConfidenceBar("high", "high"), true);
     assert.equal(meetsConfidenceBar("medium", "high"), false);
     assert.equal(meetsConfidenceBar("medium", "medium"), true);

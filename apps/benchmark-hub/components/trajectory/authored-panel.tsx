@@ -29,7 +29,7 @@ export function AuthoredPanel({
   return (
     <section className="u-section" id="authored">
       <div className="u-sec-head">
-        <span className="u-sec-no">02</span>
+        <span className="u-sec-no">03</span>
         <h2>How this became a task</h2>
       </div>
 

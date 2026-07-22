@@ -242,11 +242,22 @@ describe("POST /api/runs — proposed per-task gating matrix", () => {
     assert.ok(fs.existsSync(path.join(dir, "runs", "queue", `${body.run.run_id}.json`)));
   });
 
-  it("unreviewed task → 403 'task not accepted yet'", async () => {
+  it("unreviewed task → 200 (born accepted under the default review policy)", async () => {
     makeProposedDir("prop-unreviewed");
     const res = await post({ slug: "data--prop-unreviewed", models: ["m"], tasks: ["p1"] });
+    assert.equal(res.status, 200);
+    assert.deepEqual((await res.json()).run.tasks, ["p1"]);
+  });
+
+  it("unreviewed task under review-policy default_decision 'pending' → 403", async () => {
+    const dir = makeProposedDir("prop-pending-mode");
+    fs.writeFileSync(
+      path.join(dir, "review-policy.json"),
+      JSON.stringify({ schema_version: "understudy.review_policy.v1", default_decision: "pending" }),
+    );
+    const res = await post({ slug: "data--prop-pending-mode", models: ["m"], tasks: ["p1"] });
     assert.equal(res.status, 403);
-    assert.match((await res.json()).error, /not accepted yet.*unreviewed/i);
+    assert.match((await res.json()).error, /not accepted yet.*unreviewed.*pending/i);
   });
 
   it("rejected task → 403 with the decision named", async () => {

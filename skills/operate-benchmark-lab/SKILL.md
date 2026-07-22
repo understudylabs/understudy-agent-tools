@@ -43,9 +43,11 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
   corruption hazard; new requests carry `requires:[...]` so old executors skip
   them with `run_unsupported` instead of running them bare.
 - Reviews and feedback are append-only ledgers; never edit
-  `reviews.jsonl`/`feedback.jsonl` lines in place. `apply_auto_accepts` is
-  itself the explicit user action — invoke it only when the developer asked
-  for the review pass.
+  `reviews.jsonl`/`feedback.jsonl` lines in place. Generated tasks are born
+  accepted (review-policy `default_decision: "accept"`) — `reviews.jsonl`
+  carries explicit overrides only. `apply_auto_accepts` matters only for
+  benchmarks opted into `default_decision: "pending"`, and is itself the
+  explicit user action — invoke it only when the developer asked.
 - Honest reporting only: anomaly rows (`rollout_timeout`,
   `app_replay_unobserved`, structural sentinels) are excluded from aggregates
   but reported, never fabricated as scores. Overlapping CIs are a tie.
@@ -58,11 +60,16 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
    (candidate-readable `fixtures.json` vs scorer-only `gold.json`) and the
    tiered gold-leakage audit (tier 1 verbatim findings, tier 2 fuzzy
    advisory) recorded in `manifest.leakage_audit` — read it, don't re-derive.
-2. **Review (exception-based).** `list_benchmarks` → `read_benchmark` →
-   `read_task`; run `apply_auto_accepts` so the review policy
-   (`review-policy.json`, defaults when absent) accepts the routine tasks,
-   leaving only exceptions for human/agent judgment via `submit_review`
-   (`accept | restrict | needs_more | reject`, newest line per task wins).
+2. **Review (born accepted).** `list_benchmarks` → `read_benchmark` →
+   `read_task`. Generated tasks are accepted by default — nothing to apply.
+   `read_benchmark` returns each task's `effective_decision` plus
+   `attention_flags` (low confidence, self-check, incumbent-failed, schema
+   conflict, anomaly): work the flagged tasks, tweaking via `submit_feedback`
+   or overriding via `submit_review`
+   (`reject | needs_more | restrict`, or `accept` to re-accept an overridden
+   task; newest line per task wins). `apply_auto_accepts` exists only for
+   benchmarks running `review-policy.json` `default_decision: "pending"`
+   (the old explicit-accept flow).
    Task or environment wrong? `submit_feedback` appends the ledger entry and
    returns the regenerate-env handoff (`understudy traces regenerate-env`).
 3. **Promote and calibrate.** `understudy traces promote` unlocks full runs.
