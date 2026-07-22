@@ -137,6 +137,54 @@ describe("deriveRigorReport", () => {
   });
 });
 
+describe("leakage-audit wiring", () => {
+  function writeAudit(dir, audit) {
+    fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify({ schema_version: "understudy.trace_foundry.v1", leakage_audit: audit }));
+  }
+
+  it("flips the leakage row to PASS from a clean manifest.json audit", () => {
+    const dir = makeBenchmarkDir();
+    writeAudit(dir, { schema_version: "understudy.leakage_audit.v1", status: "clean", checked_tasks: 2, findings: [], tier_counts: { verbatim: 0, fuzzy: 0, semantic: 0 }, heuristic: "test" });
+    const byItem = Object.fromEntries(deriveRigorReport(dir).items.map((i) => [i.item, i]));
+    assert.equal(byItem["Leakage / contamination audit"].status, "PASS");
+    assert.equal(byItem["Leakage / contamination audit"].value, "0 verbatim / 0 fuzzy over 2 task(s)");
+  });
+
+  it("FLAGs on verbatim findings and stays PASS (advisory) on fuzzy-only findings", () => {
+    const verbatimDir = makeBenchmarkDir();
+    writeAudit(verbatimDir, {
+      schema_version: "understudy.leakage_audit.v1", status: "findings", checked_tasks: 2, heuristic: "test",
+      findings: [{ task_id: "t1", location: "fixtures.json", kind: "state_effect_value", excerpt: "x", tier: "verbatim", similarity: 1, signal: "verbatim" }],
+      tier_counts: { verbatim: 1, fuzzy: 0, semantic: 0 },
+    });
+    const verbatimRow = deriveRigorReport(verbatimDir).items.find((i) => i.item === "Leakage / contamination audit");
+    assert.equal(verbatimRow.status, "FLAG");
+    assert.match(verbatimRow.value, /1 verbatim \/ 0 fuzzy/);
+
+    const fuzzyDir = makeBenchmarkDir();
+    writeAudit(fuzzyDir, {
+      schema_version: "understudy.leakage_audit.v1", status: "advisory", checked_tasks: 2, heuristic: "test",
+      findings: [{ task_id: "t1", location: "fixtures.json", kind: "state_effect_value", excerpt: "x", tier: "fuzzy", similarity: 0.6, signal: "shingle containment 3/5" }],
+      tier_counts: { verbatim: 0, fuzzy: 1, semantic: 0 },
+    });
+    const fuzzyRow = deriveRigorReport(fuzzyDir).items.find((i) => i.item === "Leakage / contamination audit");
+    assert.equal(fuzzyRow.status, "PASS", "fuzzy findings are advisory, not alarms");
+    assert.match(fuzzyRow.value, /0 verbatim \/ 1 fuzzy/);
+    assert.match(fuzzyRow.detail, /advisory/);
+  });
+
+  it("treats pre-tier findings (no tier field) as verbatim", () => {
+    const dir = makeBenchmarkDir();
+    writeAudit(dir, {
+      schema_version: "understudy.leakage_audit.v1", status: "findings", checked_tasks: 1, heuristic: "test",
+      findings: [{ task_id: "t1", location: "fixtures.json", kind: "state_effect_value", excerpt: "x" }],
+    });
+    const row = deriveRigorReport(dir).items.find((i) => i.item === "Leakage / contamination audit");
+    assert.equal(row.status, "FLAG");
+    assert.match(row.value, /1 verbatim/);
+  });
+});
+
 describe("renderRigorReport + writeRigorReport", () => {
   it("writes rigor-report.md into the benchmark dir with the ABC table and per-task table", async () => {
     const dir = await makeExecutedDir();

@@ -1011,20 +1011,127 @@ export function runFoundrySelfCheck(outputInput: string, tasks: Obj[]): Obj {
  * normalized chars) are skipped: single tokens like "active" collide with
  * ordinary fixture content and carry no copyable answer.
  *
+ * TIERS. Tier 1 ("verbatim") is exact normalized-substring matching. Tier 2
+ * ("fuzzy") catches paraphrased/restructured leaks with two deterministic,
+ * offline heuristics (no model calls, no network — this runs at build time):
+ *
+ *   (a) Token n-gram containment: the gold and each surface are tokenized;
+ *       the gold's LEAK_SHINGLE_SIZE-token shingles that do NOT already
+ *       appear in the task's own inputs are checked against the surface's
+ *       shingle set. Containment >= LEAK_SHINGLE_CONTAINMENT of those
+ *       informative shingles flags a fuzzy finding — a reordered or lightly
+ *       edited gold still shares most of its 5-token runs.
+ *   (b) Number/entity fingerprints: rare, copyable tokens are extracted from
+ *       the gold (emails, ISO dates, id-shaped tokens like `acct_401`,
+ *       digit runs of >= LEAK_MIN_DIGITS digits with thousands separators
+ *       stripped, so "$12,450" carries `12450`). A paraphrase of "the
+ *       meeting summary for acct_401 totaling $12,450" still carries
+ *       `acct_401` and `12450`; any fingerprint absent from the inputs but
+ *       present in a surface flags a fuzzy finding.
+ *
+ * Thresholds are deliberately conservative (documented on the constants
+ * below); the benign rule is unchanged — anything the task's own inputs
+ * already carry is never a finding at any tier. Verbatim findings keep the
+ * alarm status ("findings"); fuzzy-only audits report status "advisory" so
+ * heuristic matches don't create alarm fatigue.
+ *
  * REPORT-ONLY by design: findings land in the manifest (`leakage_audit`) and
  * on stderr at build time. Nothing is auto-redacted — removing a value from
  * a fixture changes task semantics, so a human (or a later reviewing agent)
  * decides.
  * ------------------------------------------------------------------------- */
 
-export type LeakageFinding = { task_id: string; location: string; kind: string; excerpt: string };
-export type LeakageAudit = { schema_version: "understudy.leakage_audit.v1"; status: "clean" | "findings"; checked_tasks: number; findings: LeakageFinding[]; heuristic: string };
+export type LeakageFindingTier = "verbatim" | "fuzzy" | "semantic";
+export type LeakageFinding = {
+  task_id: string;
+  location: string;
+  kind: string;
+  excerpt: string;
+  /** Which detection tier produced the finding. `semantic` is reserved for the tier-3 seam below. */
+  tier: LeakageFindingTier;
+  /** 1 for verbatim; shingle containment or fingerprint match fraction (0–1] for fuzzy; model-defined for semantic. */
+  similarity: number;
+  /** Human-readable evidence: which detector fired and what matched (e.g. "fingerprint: acct_401, 12450"). */
+  signal: string;
+};
+export type LeakageAudit = {
+  schema_version: "understudy.leakage_audit.v1";
+  /** "findings" = at least one verbatim hit; "advisory" = fuzzy/semantic hits only; "clean" otherwise. */
+  status: "clean" | "findings" | "advisory";
+  checked_tasks: number;
+  findings: LeakageFinding[];
+  tier_counts: Record<LeakageFindingTier, number>;
+  heuristic: string;
+};
+
+/**
+ * Tier-3 seam (NOT implemented): a future semantic pass via a LOCAL model
+ * (never a provider call — the audit must stay offline and deterministic per
+ * model+seed). An implementation judges whether a candidate-readable surface
+ * paraphrases a gold that tiers 1–2 missed, and returns findings in the SAME
+ * `LeakageFinding` shape with `tier: "semantic"` and its own `similarity`
+ * (e.g. an embedding cosine or judge confidence) — the audit record, manifest
+ * schema, and rigor-report wiring all accept it unchanged.
+ *
+ * TODO(tier-3): implement against the local-model lab runtime and pass an
+ * instance into `auditGoldLeakage`; findings merge after the fuzzy tier and
+ * keep the "advisory" status semantics.
+ */
+export interface SemanticLeakageChecker {
+  readonly tier: "semantic";
+  /** Must be pure/offline; `taskInputs` is the normalized benign-input text for the task. */
+  check(gold: { kind: string; value: string }, surface: { location: string; text: string }, taskInputs: string): Array<Pick<LeakageFinding, "similarity" | "signal">>;
+}
 
 /** Minimum normalized length for a gold string to be leak-checkable (shorter values are un-copyable noise). */
 const MIN_GOLD_LEN = 12;
+/** Shingle width for fuzzy containment: 5 consecutive tokens is a distinctive phrase, not vocabulary overlap. */
+const LEAK_SHINGLE_SIZE = 5;
+/** A gold needs at least this many tokens before shingle containment is meaningful (>= 4 shingles). */
+const LEAK_MIN_SHINGLE_TOKENS = LEAK_SHINGLE_SIZE + 3;
+/** Conservative: at least half the gold's informative (not-in-inputs) shingles must appear in the surface. */
+const LEAK_SHINGLE_CONTAINMENT = 0.5;
+/** Digit runs shorter than this are too common to fingerprint (avoids years, small counts, HTTP codes). */
+const LEAK_MIN_DIGITS = 5;
+/** Non-numeric fingerprints (ids, emails, dates) shorter than this are skipped as collision-prone. */
+const LEAK_MIN_FINGERPRINT_LEN = 6;
 
 const normalizeForLeak = (value: unknown): string =>
   (typeof value === "string" ? value : JSON.stringify(value ?? "")).toLowerCase().replace(/\s+/g, " ").trim();
+
+/** Tokenize normalized text for shingling; keeps id-shaped tokens (acct_401, 2026-07-22) whole. */
+const leakTokens = (normalized: string): string[] => normalized.match(/[a-z0-9]+(?:[_.\-][a-z0-9]+)*/g) ?? [];
+
+/** Strip thousands separators so "$12,450" and "12450" fingerprint identically. */
+const stripThousands = (text: string): string => text.replace(/(\d),(?=\d{3}(?:\D|$))/g, "$1");
+
+function leakShingles(tokens: string[]): Set<string> {
+  const out = new Set<string>();
+  for (let i = 0; i + LEAK_SHINGLE_SIZE <= tokens.length; i++) out.add(tokens.slice(i, i + LEAK_SHINGLE_SIZE).join(" "));
+  return out;
+}
+
+/**
+ * Rare, copyable tokens carried by a gold value: emails, ISO dates, id-shaped
+ * tokens (letters + separator + digits, e.g. acct_401 / INV-2024-0091), and
+ * long digit runs (>= LEAK_MIN_DIGITS, thousands separators stripped). These
+ * survive paraphrase — restating a summary still names the same account id
+ * and amount. Deliberately excludes bare short numbers and plain words.
+ */
+export function leakFingerprints(value: string): string[] {
+  const lower = stripThousands(value.toLowerCase());
+  const out = new Set<string>();
+  for (const email of lower.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? []) out.add(email);
+  for (const date of lower.match(/\d{4}-\d{2}-\d{2}/g) ?? []) out.add(date);
+  for (const id of lower.match(/[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*[_-][a-z0-9]*\d[a-z0-9_-]*/g) ?? []) {
+    if (id.length >= LEAK_MIN_FINGERPRINT_LEN) out.add(id);
+  }
+  for (const digits of lower.match(/\d+(?:\.\d+)?/g) ?? []) {
+    if (digits.replace(/\D/g, "").length >= LEAK_MIN_DIGITS) out.add(digits);
+  }
+  // Drop fingerprints contained in a longer one (the id already carries its digits).
+  return [...out].filter((fp) => ![...out].some((other) => other !== fp && other.includes(fp)));
+}
 
 /** All string leaf values of a JSON value (recursive; used over contract argument objects). */
 function stringLeaves(value: unknown): string[] {
@@ -1052,54 +1159,94 @@ function goldValues(task: Obj): Array<{ kind: string; value: string }> {
 }
 
 /**
- * Scan candidate-readable environment surfaces for verbatim contract targets.
- * Pure over the already-generated artifacts; see the block comment above for
- * the heuristic. Findings are deduped per (task, location, excerpt).
+ * Scan candidate-readable environment surfaces for verbatim (tier 1) and
+ * fuzzy (tier 2: shingle-containment + fingerprint) contract targets.
+ * Pure, deterministic, offline over the already-generated artifacts; see the
+ * block comment above for the heuristics. Findings are deduped per
+ * (task, location, tier, excerpt). `semanticChecker` is the tier-3 seam —
+ * see SemanticLeakageChecker; no implementation exists yet.
  */
-export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[], schemas: Obj): LeakageAudit {
+export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[], schemas: Obj, semanticChecker?: SemanticLeakageChecker): LeakageAudit {
   const rowByTask = new Map(taskRows.map((row) => [String(asObject(row).task_id), asObject(row)]));
   // Candidate-readable surfaces (global to the environment package).
-  const surfaces: Array<{ location: string; text: string }> = [
+  const surfaces = [
     { location: "environment/understudy_trace_env/servers/fixtures.json", text: normalizeForLeak(fixtures) },
     { location: "environment/understudy_trace_env/servers/schemas.json", text: normalizeForLeak(schemas) },
-  ];
+  ].map((surface) => ({ ...surface, numText: stripThousands(surface.text), shingles: leakShingles(leakTokens(surface.text)) }));
   const findings: LeakageFinding[] = [];
   const seen = new Set<string>();
+  const record = (finding: LeakageFinding): void => {
+    const key = `${finding.task_id} ${finding.location} ${finding.tier} ${finding.excerpt}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    findings.push(finding);
+  };
   for (const task of tasks) {
     const row = rowByTask.get(String(task.task_id)) ?? {};
     const userMessages = ((row.source_messages ?? []) as unknown[]).map(asObject).filter((m) => m.role === "user");
     const inputs = normalizeForLeak([row.prompt ?? "", row.system_prompt ?? "", ...userMessages.map((m) => m.content)]);
+    const inputsNum = stripThousands(inputs);
+    const inputShingles = leakShingles(leakTokens(inputs));
     for (const gold of goldValues(task)) {
       const needle = normalizeForLeak(gold.value);
       if (needle.length < MIN_GOLD_LEN) continue;
       if (inputs.includes(needle)) continue; // benign: the agent legitimately holds this value as an input
+      const excerpt = String(gold.value).slice(0, 160);
       for (const surface of surfaces) {
-        if (!surface.text.includes(needle)) continue;
-        const key = `${task.task_id} ${surface.location} ${needle}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        findings.push({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt: String(gold.value).slice(0, 160) });
+        // Tier 1 — verbatim normalized substring.
+        if (surface.text.includes(needle)) {
+          record({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt, tier: "verbatim", similarity: 1, signal: "verbatim normalized substring" });
+          continue; // a verbatim hit subsumes the fuzzy detectors for this surface
+        }
+        // Tier 2a — token n-gram containment over shingles the inputs don't already carry.
+        const goldTokens = leakTokens(needle);
+        if (goldTokens.length >= LEAK_MIN_SHINGLE_TOKENS) {
+          const informative = [...leakShingles(goldTokens)].filter((shingle) => !inputShingles.has(shingle));
+          const matched = informative.filter((shingle) => surface.shingles.has(shingle));
+          const containment = informative.length === 0 ? 0 : matched.length / informative.length;
+          if (containment >= LEAK_SHINGLE_CONTAINMENT) {
+            record({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt, tier: "fuzzy", similarity: Number(containment.toFixed(3)), signal: `shingle containment ${matched.length}/${informative.length} (${LEAK_SHINGLE_SIZE}-gram)` });
+            continue; // strongest fuzzy signal already recorded for this surface
+          }
+        }
+        // Tier 2b — number/entity fingerprints (ids, emails, amounts, dates).
+        const fingerprints = leakFingerprints(String(gold.value)).filter((fp) => !inputsNum.includes(fp));
+        const hit = fingerprints.filter((fp) => surface.numText.includes(fp));
+        if (hit.length > 0) {
+          record({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt, tier: "fuzzy", similarity: Number((hit.length / fingerprints.length).toFixed(3)), signal: `fingerprint: ${hit.slice(0, 6).join(", ")}` });
+          continue;
+        }
+        // Tier 3 seam — future semantic pass via a local model (see SemanticLeakageChecker).
+        if (semanticChecker) {
+          for (const partial of semanticChecker.check({ kind: gold.kind, value: String(gold.value) }, { location: surface.location, text: surface.text }, inputs)) {
+            record({ task_id: String(task.task_id), location: surface.location, kind: gold.kind, excerpt, tier: "semantic", similarity: partial.similarity, signal: partial.signal });
+          }
+        }
       }
     }
   }
+  const tier_counts: Record<LeakageFindingTier, number> = { verbatim: 0, fuzzy: 0, semantic: 0 };
+  for (const finding of findings) tier_counts[finding.tier] += 1;
   return {
     schema_version: "understudy.leakage_audit.v1",
-    status: findings.length > 0 ? "findings" : "clean",
+    status: tier_counts.verbatim > 0 ? "findings" : findings.length > 0 ? "advisory" : "clean",
     checked_tasks: tasks.length,
     findings,
-    heuristic: `flag contract/gold strings (>=${MIN_GOLD_LEN} normalized chars) verbatim in candidate-readable surfaces (fixtures.json, schemas.json) but absent from the task's own inputs (prompt / system prompt / user source messages); report-only, never auto-redacted`,
+    tier_counts,
+    heuristic: `tier 1 (verbatim, status "findings"): flag contract/gold strings (>=${MIN_GOLD_LEN} normalized chars) verbatim in candidate-readable surfaces (fixtures.json, schemas.json) but absent from the task's own inputs (prompt / system prompt / user source messages); tier 2 (fuzzy, status "advisory"): ${LEAK_SHINGLE_SIZE}-token shingle containment >= ${LEAK_SHINGLE_CONTAINMENT} over input-novel shingles (golds >= ${LEAK_MIN_SHINGLE_TOKENS} tokens), plus rare-token fingerprints (emails, ISO dates, id-shaped tokens >= ${LEAK_MIN_FINGERPRINT_LEN} chars, digit runs >= ${LEAK_MIN_DIGITS} digits with thousands separators stripped) absent from inputs but present in a surface; report-only, never auto-redacted`,
   };
 }
 
 /** Build-time report: the audit is advisory, so it prints and moves on. */
 function printLeakageAudit(audit: LeakageAudit): void {
   if (audit.status === "clean") {
-    console.error(`[leakage-audit] clean — no verbatim contract targets found in candidate-readable surfaces (${audit.checked_tasks} task(s) checked)`);
+    console.error(`[leakage-audit] clean — no verbatim or fuzzy contract targets found in candidate-readable surfaces (${audit.checked_tasks} task(s) checked)`);
     return;
   }
-  console.error(`[leakage-audit] ${audit.findings.length} potential gold-leakage finding(s) across ${audit.checked_tasks} task(s) — recorded in manifest.leakage_audit (report-only, nothing redacted):`);
+  const tierSummary = `${audit.tier_counts.verbatim} verbatim, ${audit.tier_counts.fuzzy} fuzzy (advisory)${audit.tier_counts.semantic > 0 ? `, ${audit.tier_counts.semantic} semantic` : ""}`;
+  console.error(`[leakage-audit] ${audit.findings.length} potential gold-leakage finding(s) [${tierSummary}] across ${audit.checked_tasks} task(s) — recorded in manifest.leakage_audit (report-only, nothing redacted):`);
   for (const finding of audit.findings.slice(0, 8)) {
-    console.error(`[leakage-audit]   ${finding.task_id} · ${finding.kind} · ${finding.location} · "${finding.excerpt.slice(0, 80)}"`);
+    console.error(`[leakage-audit]   ${finding.task_id} · ${finding.tier} (${finding.similarity}) · ${finding.kind} · ${finding.location} · "${finding.excerpt.slice(0, 80)}"`);
   }
   if (audit.findings.length > 8) console.error(`[leakage-audit]   … ${audit.findings.length - 8} more (see manifest.json)`);
 }
