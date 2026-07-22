@@ -18,7 +18,8 @@ function ProposedCard({ entry }: { entry: ProposedHubEntry }) {
         <SourceBadge entry={entry} />
       </div>
       <p className="mt-1 text-xs text-ink-muted">
-        Compiled from captured traces by the foundry — every task awaits human final judgment before promotion.
+        {entry.overview?.workload_summary ??
+          "Compiled from captured traces by the foundry — every task awaits human final judgment before promotion."}
       </p>
       <div className="mono mt-3 flex flex-wrap gap-4 text-xs text-ink-muted">
         <span>{total} tasks</span>
