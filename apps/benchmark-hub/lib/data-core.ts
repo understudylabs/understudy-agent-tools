@@ -267,11 +267,20 @@ export function loadProposedEntryFromDir(
 export function captureFilePath(entry: ProposedHubEntry, captureId: string): string | null {
   const ref = entry.captureIndex.find((c) => c.capture_id === captureId);
   if (!ref) return null;
+  return captureBodyPath(entry.dir, ref);
+}
+
+/**
+ * Same file-name recomputation from a capture ref directly — promoted dirs
+ * retain viewer/data/captures/ from their foundry stage, so the replay view
+ * can resolve oracle spines after promotion too.
+ */
+export function captureBodyPath(dir: string, ref: CaptureRef): string {
   const fileId = createHash("sha256")
     .update(JSON.stringify({ capture_id: ref.capture_id, source_sha256: ref.sha256 }))
     .digest("hex")
     .slice(0, 40);
-  return path.join(entry.dir, "viewer", "data", "captures", `${fileId}.json`);
+  return path.join(dir, "viewer", "data", "captures", `${fileId}.json`);
 }
 
 /**

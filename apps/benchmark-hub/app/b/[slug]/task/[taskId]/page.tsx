@@ -4,7 +4,7 @@ import { getEntry, loadTaskSidecars } from "@/lib/data";
 import { FlagBadge, SplitChip, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
 import { ProposedTaskPage } from "@/components/proposed/task-page";
-import { TrajectoryExplorer } from "@/components/trajectory/explorer";
+import { TaskViews } from "@/components/trajectory/task-views";
 
 export const dynamic = "force-dynamic";
 
@@ -136,7 +136,7 @@ export default async function TaskInspector({
           the rail carries the verifier contract and gold.
         </p>
         <div className="mt-4">
-          <TrajectoryExplorer slug={entry.slug} taskId={task.task_id} mode="promoted" rail={rail} />
+          <TaskViews slug={entry.slug} taskId={task.task_id} mode="promoted" rail={rail} />
         </div>
       </section>
     </div>

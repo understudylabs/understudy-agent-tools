@@ -20,10 +20,12 @@ import { CategoryRadar } from "@/components/radar";
 import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
 import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
+import { RunPanel } from "@/components/run-panel";
 
 export const dynamic = "force-dynamic";
 
 const RAIL = [
+  { id: "run", label: "Run" },
   { id: "leaderboard", label: "Leaderboard" },
   { id: "insights", label: "Insights" },
   { id: "evidence", label: "Evidence" },
@@ -242,6 +244,27 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
       <div className="u-layout">
         <AnchorRail sections={RAIL} />
         <div>
+          <Section
+            id="run"
+            title="Run"
+            explainer="Queue a benchmark run against gateway models. The hub only writes a run request file; a local `understudy runs execute --watch` daemon executes it and rows stream back into the leaderboard below."
+          >
+            <div className="mt-4">
+              <RunPanel
+                slug={entry.slug}
+                dir={entry.dir}
+                readOnly={entry.readOnly}
+                taskCountBySplit={{
+                  ...m.tasks.reduce<Record<string, number>>((acc, t) => {
+                    acc[t.split] = (acc[t.split] ?? 0) + 1;
+                    return acc;
+                  }, {}),
+                  all: m.tasks.length,
+                }}
+              />
+            </div>
+          </Section>
+
           <Section
             id="leaderboard"
             title="Leaderboard"
