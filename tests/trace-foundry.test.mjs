@@ -127,3 +127,32 @@ test("replay subprocess env is allowlisted, strips PRIME_*, and defaults to --no
   assert.ok(!pushing.args.includes("--no-push"));
   assert.equal(pushing.env.PRIME_API_KEY, "prime-secret");
 });
+
+test("gold is graded semantically: equivalent phrasing scores 1 strict, noop scores 0, forbidden zeroes", async () => {
+  const { scoreState, semanticArgumentsMatch } = await import("../dist/trace-foundry.js");
+  const task = { outcome_contract: { required: [{ tool: "create-automation", observed_arguments: { app: "pipesim", schedule: "daily 9am run" } }], forbidden: [{ tool: "delete-record" }] } };
+  const equivalent = scoreState(task, [{ tool: "create-automation", arguments: { app: "PipeSim", schedule: "Daily at 9am, run" } }]);
+  assert.equal(equivalent.strict, 1, "different-but-equivalent phrasing satisfies the contract");
+  assert.equal(scoreState(task, []).strict, 0, "a noop scores 0");
+  assert.ok(scoreState(task, []).score < 1);
+  const violating = scoreState(task, [{ tool: "create-automation", arguments: { app: "pipesim", schedule: "daily 9am run" } }, { tool: "delete-record", arguments: {} }]);
+  assert.equal(violating.strict, 0, "forbidden-effect violations zero the strict score");
+  assert.equal(semanticArgumentsMatch({ id: 7 }, { record_id: 7 }), true);
+  assert.equal(semanticArgumentsMatch({ id: 7 }, { __wrong__: true }), false);
+});
+
+test("generated environment scores final state, not exact trajectory substrings", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-semantic-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const taskset = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  assert.match(taskset, /trace\.state/, "scores the per-rollout world state");
+  assert.match(taskset, /_arguments_match/, "token-normalized semantic compare");
+  assert.doesNotMatch(taskset, /str\(v\) in text/, "no raw-substring grading");
+  const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+  assert.match(world, /used_fixtures/, "fixtures are stateful and consumed in order");
+  assert.match(world, /_arguments_match/);
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  assert.equal(validation.tasks[0].oracle.score, 1);
+  assert.ok(Object.values(validation.tasks[0].sentinels).every((s) => s.score < 1));
+});
