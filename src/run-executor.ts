@@ -23,6 +23,7 @@ import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, goldFinalResponseFor, isMutatingTool, oracleEventsFor, readCapturesByKey, responseJudgedRequired, scoreContract } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
 import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
+import { resolveLocalArm, type LocalServerHandle, type LocalServingRig, type ResolvedLocalArm } from "./local-serving.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -53,7 +54,7 @@ export const EXECUTOR_VERSION: string = (() => {
  * Old executors predate `requires` entirely, hence the belt-and-braces
  * EXECUTOR_VERSION stamps above.
  */
-export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout", "prompt_overrides", "app_replay"] as const;
+export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout", "prompt_overrides", "app_replay", "local_arms", "majority_class"] as const;
 
 /** The `requires` entries of a request this executor cannot honor (empty = safe to run). */
 export function unsupportedRequirements(request: Pick<RunRequest, "requires">, capabilities: readonly string[] = EXECUTOR_CAPABILITIES): string[] {
@@ -70,11 +71,46 @@ export type RunSplit = (typeof RUN_SPLITS)[number];
  * deterministic trivial calibration arms (extended additively — old readers
  * only ever see incumbent/candidate on old rows).
  */
-export const ARM_KINDS = ["incumbent", "candidate", "null_agent", "spam_agent", "app_replay"] as const;
+export const ARM_KINDS = ["incumbent", "candidate", "null_agent", "spam_agent", "app_replay", "majority_class"] as const;
 export type ArmKind = (typeof ARM_KINDS)[number];
-/** The trivial calibration arms (agentic-benchmarks floor discipline: a do-nothing agent must score ~0). */
-export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent"] as const;
+/**
+ * The trivial calibration arms (agentic-benchmarks floor discipline: a
+ * do-nothing agent must score ~0). "majority_class" is the imbalanced-
+ * classifier floor: on classification-shaped tasks it deterministically
+ * answers the most frequent TRAIN-split gold label (capability-gated via
+ * requires: ["majority_class"] so old executors skip, never mislabel).
+ */
+export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent", "majority_class"] as const;
 export type TrivialArmKind = (typeof TRIVIAL_ARM_KINDS)[number];
+
+/**
+ * A run-request model arm (additive union): the historical bare gateway model
+ * id string, OR a LOCAL trained-artifact arm — a path to a
+ * `.understudy-model` bundle or an MLX model dir (base + optional LoRA
+ * adapter), served by the executor through the MLX serving rig for the
+ * duration of the arm. Object entries require the "local_arms" capability;
+ * requests without them keep the exact prior shape.
+ */
+export type LocalModelArm = {
+  /** Local path to a .understudy-model bundle or an MLX model directory. */
+  ref: string;
+  /** Leaderboard/rows arm label (default: the ref's basename). */
+  label?: string;
+  /** Serving hints: {base_url} reuses a running server; {port, model_id, command} tune the spawn. */
+  serving?: Record<string, unknown>;
+};
+export type ModelArmEntry = string | LocalModelArm;
+
+export const isLocalArmEntry = (entry: ModelArmEntry): entry is LocalModelArm => typeof entry !== "string";
+
+/** The row/rows-file/leaderboard label of one model arm entry. */
+export function armLabelOf(entry: ModelArmEntry): string {
+  if (typeof entry === "string") return entry;
+  const label = entry.label?.trim();
+  if (label) return label;
+  const ref = String(entry.ref ?? "").replace(/\/+$/, "");
+  return ref.split("/").filter(Boolean).pop() ?? ref;
+}
 /**
  * A prompt-override experiment arm: the SAME model as `model`, with
  * `system_prompt_suffix` appended to the task's system/operating prompt at
@@ -108,7 +144,8 @@ export type RunRequest = {
   schema_version: typeof RUN_REQUEST_SCHEMA;
   run_id: string;
   benchmark_id: string;
-  models: string[];
+  /** Arm entries: gateway model id strings (unchanged) and/or additive local-artifact objects. */
+  models: ModelArmEntry[];
   split: RunSplit;
   tasks: "all" | string[];
   rollouts_per_task: number;
@@ -160,6 +197,12 @@ export type RunRequest = {
    * claim. Capability-gated via requires: ["app_replay"].
    */
   app_replay?: boolean;
+  /**
+   * Additive (absent when unused): the understudy.experiment.v1 experiment_id
+   * this run evaluates. Pure passthrough provenance — rows/events join back
+   * to the experiment via run_id → this request; executors need no capability.
+   */
+  experiment_id?: string;
   /** Additive: the executor that atomically claimed this request (stale-watcher hijack guard). */
   claimed_by?: RunClaim | null;
   /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
@@ -298,6 +341,8 @@ export type RunRequestInput = {
   prompt_overrides?: unknown;
   /** Optional (additive): replay the user's own app per app-harness.json (arm_kind "app_replay"). */
   app_replay?: unknown;
+  /** Optional (additive): understudy.experiment.v1 experiment_id this run evaluates (provenance passthrough). */
+  experiment_id?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -313,11 +358,32 @@ export const VERIFIERS_MAX_EXAMPLES = 1000;
 export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: string[]): string[] {
   const errors: string[] = [];
   const models = input.models;
-  if (!Array.isArray(models) || models.length === 0 || !models.every((m) => typeof m === "string" && m.trim().length > 0)) {
-    errors.push("models must be a non-empty array of model id strings");
+  // Arm labels of the valid entries (string ids as-is; local arms via
+  // armLabelOf) — every downstream membership/uniqueness check keys on these.
+  let armLabels: string[] | null = null;
+  if (!Array.isArray(models) || models.length === 0) {
+    errors.push("models must be a non-empty array of model id strings or {ref, label?, serving?} local arms");
   } else {
+    const labels: string[] = [];
+    for (const entry of models) {
+      if (typeof entry === "string") {
+        if (entry.trim().length === 0) errors.push("models: model id strings must be non-empty");
+        else labels.push(entry);
+      } else if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+        const o = asObject(entry);
+        if (typeof o.ref !== "string" || o.ref.trim().length === 0) {
+          errors.push("models: local arm entries need a non-empty ref (path to a .understudy-model bundle or an MLX model dir)");
+        }
+        if (o.label !== undefined && (typeof o.label !== "string" || o.label.trim().length === 0)) errors.push("models: local arm label must be a non-empty string when present");
+        if (o.serving !== undefined && (o.serving === null || typeof o.serving !== "object" || Array.isArray(o.serving))) errors.push("models: local arm serving must be an object when present");
+        if (typeof o.ref === "string" && o.ref.trim().length > 0) labels.push(armLabelOf(o as LocalModelArm));
+      } else {
+        errors.push("models entries must be model id strings or {ref, label?, serving?} objects");
+      }
+    }
     if (models.length > MAX_MODELS_PER_RUN) errors.push(`at most ${MAX_MODELS_PER_RUN} models per run`);
-    if (new Set(models).size !== models.length) errors.push("models must be unique");
+    if (new Set(labels).size !== labels.length) errors.push("model arm labels must be unique");
+    armLabels = labels;
   }
   if (!RUN_SPLITS.includes(input.split as RunSplit)) errors.push(`split must be one of ${RUN_SPLITS.join(", ")}`);
   const tasks = input.tasks;
@@ -337,7 +403,7 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (incumbents !== undefined) {
     if (!Array.isArray(incumbents) || !incumbents.every((m) => typeof m === "string" && m.trim().length > 0)) {
       errors.push("incumbent_models must be an array of model id strings");
-    } else if (Array.isArray(models) && !incumbents.every((m) => models.includes(m))) {
+    } else if (armLabels !== null && !incumbents.every((m) => armLabels!.includes(m))) {
       errors.push("incumbent_models must be a subset of models");
     }
   }
@@ -356,6 +422,10 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   const timeout = input.rollout_timeout_seconds;
   if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
     errors.push("rollout_timeout_seconds must be a positive number of seconds");
+  }
+  const experimentId = input.experiment_id;
+  if (experimentId !== undefined && (typeof experimentId !== "string" || !/^[A-Za-z0-9_.-]+$/.test(experimentId))) {
+    errors.push("experiment_id must be a non-empty string of [A-Za-z0-9_.-]");
   }
   const appReplay = input.app_replay;
   if (appReplay !== undefined && typeof appReplay !== "boolean") {
@@ -378,9 +448,9 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
         else labels.add(label);
         // The label is a leaderboard arm AND a rows-file key: it must never
         // collide with a bare model arm (that would merge two arms' rows).
-        if (label && Array.isArray(models) && models.includes(label)) errors.push(`prompt_overrides: arm_label ${label} collides with a model arm`);
+        if (label && armLabels !== null && armLabels.includes(label)) errors.push(`prompt_overrides: arm_label ${label} collides with a model arm`);
         if (typeof o.model !== "string" || !o.model.trim()) errors.push("prompt_overrides: model must be a non-empty string");
-        else if (Array.isArray(models) && !models.includes(o.model)) errors.push(`prompt_overrides: model ${o.model} must be one of the run's models`);
+        else if (armLabels !== null && !armLabels.includes(o.model)) errors.push(`prompt_overrides: model ${o.model} must be one of the run's models`);
         if (typeof o.system_prompt_suffix !== "string" || !o.system_prompt_suffix.trim()) errors.push("prompt_overrides: system_prompt_suffix must be a non-empty string");
       }
     }
@@ -391,7 +461,7 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; prompt_overrides?: PromptOverride[]; app_replay?: boolean },
+  input: { benchmark_id: string; models: ModelArmEntry[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; prompt_overrides?: PromptOverride[]; app_replay?: boolean; experiment_id?: string },
   now: Date = new Date(),
 ): RunRequest {
   // Writers declare the capabilities their feature use depends on, so an old
@@ -399,6 +469,10 @@ export function createRunRequest(
   // dropping the fields (the stale-watcher hijack class).
   const requires: string[] = [];
   if (input.trivial_arms && input.trivial_arms.length > 0) requires.push("trivial_arms");
+  // Old executors know "trivial_arms" but not the majority_class kind; a
+  // distinct capability keeps them from running the arm as an unknown no-op.
+  if ((input.trivial_arms ?? []).includes("majority_class")) requires.push("majority_class");
+  if (input.models.some(isLocalArmEntry)) requires.push("local_arms");
   if ((input.incumbent_models && input.incumbent_models.length > 0) || input.calibration_threshold !== undefined) requires.push("calibration");
   if (input.rollout_timeout_seconds !== undefined) requires.push("rollout_timeout");
   if (input.prompt_overrides && input.prompt_overrides.length > 0) requires.push("prompt_overrides");
@@ -424,6 +498,9 @@ export function createRunRequest(
     ...(input.rollout_timeout_seconds !== undefined ? { rollout_timeout_seconds: input.rollout_timeout_seconds } : {}),
     ...(input.prompt_overrides && input.prompt_overrides.length > 0 ? { prompt_overrides: input.prompt_overrides } : {}),
     ...(input.app_replay === true ? { app_replay: true } : {}),
+    // Additive provenance passthrough — no capability entry needed: an old
+    // executor ignoring it changes nothing (rows join via run_id anyway).
+    ...(input.experiment_id !== undefined ? { experiment_id: input.experiment_id } : {}),
     ...(requires.length > 0 ? { requires } : {}),
   };
   writeRunRequest(benchmarkDir, request);
@@ -491,6 +568,12 @@ export type RolloutResult = {
    * executor-detected sentinels — honest partial evidence, never a fake score.
    */
   anomaly?: RolloutAnomaly | null;
+  /**
+   * Additive perf evidence (local arms; where obtainable): generation
+   * throughput derived from the runner's own usage/timing data. Never
+   * estimated when the runner cannot tell.
+   */
+  perf?: { tokens_per_sec?: number | null } | null;
   error?: string | null;
 };
 
@@ -605,6 +688,8 @@ export type ArmRunner = (args: {
   armLabel?: string;
   /** Additive (prompt-override arms only): suffix appended to each task's system prompt at rollout time, run-scoped (task files are never mutated). */
   systemPromptSuffix?: string;
+  /** Additive (local arms only): the served artifact's endpoint — runners point their client at it instead of the gateway. */
+  local?: { baseUrl: string; modelId: string };
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
@@ -662,6 +747,16 @@ export type ExecuteOptions = {
    * are skipped-with-record — never executed as a model arm by mistake.
    */
   appReplayRunner?: ArmRunner;
+  /**
+   * Additive: the serving rig for LOCAL trained-artifact arms ({ref, …}
+   * model entries). The executor starts the server for the arm (or reuses a
+   * running one when the arm's serving.base_url points at it), hands the
+   * runner the endpoint, and tears the server down after the arm. When
+   * absent, this executor does not advertise the "local_arms" capability, so
+   * such requests are skipped-with-record — never run against the gateway
+   * with the ref silently dropped.
+   */
+  localServing?: LocalServingRig;
   /** Rollouts in flight per arm (the concurrency flag). */
   concurrency?: number;
   /** Per-rollout wall-clock budget in seconds; the request's rollout_timeout_seconds wins when present. */
@@ -699,8 +794,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // with the unknown fields silently dropped (the stale-watcher hijack class).
   // Status stays "queued" so a capable executor can still pick it up.
   const baseCapabilities = options.capabilities ?? EXECUTOR_CAPABILITIES;
-  // "app_replay" is only honestly supported when an app-replay runner was wired in.
-  const capabilities = options.appReplayRunner ? baseCapabilities : baseCapabilities.filter((c) => c !== "app_replay");
+  // "app_replay"/"local_arms" are only honestly supported when their runner/rig was wired in.
+  const capabilities = baseCapabilities
+    .filter((c) => c !== "app_replay" || options.appReplayRunner !== undefined)
+    .filter((c) => c !== "local_arms" || options.localServing !== undefined);
   const missing = unsupportedRequirements(initial, capabilities);
   if (missing.length > 0) {
     const note = { executor_version: EXECUTOR_VERSION, missing, at: now().toISOString() };
@@ -740,17 +837,26 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // Arms = the requested model arms plus any trivial calibration arms. Trivial
   // arms are deterministic, so they run exactly ONE rollout per task no matter
   // what rollouts_per_task says (repeats add nothing but identical rows).
-  type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number; override?: PromptOverride };
+  type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number; override?: PromptOverride; local?: ResolvedLocalArm };
   // app_replay requests replay the user's OWN app (labels stay per "model"
   // entry — typically the app/route name); the capability gate above already
   // guaranteed options.appReplayRunner is present when app_replay is true.
   const appReplay = request.app_replay === true && options.appReplayRunner !== undefined;
-  const arms: Arm[] = request.models.map((model) => ({
-    model,
-    kind: appReplay ? ("app_replay" as ArmKind) : (((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind),
-    runner: appReplay ? options.appReplayRunner! : options.runner,
-    rollouts: request.rollouts_per_task,
-  }));
+  const arms: Arm[] = request.models.map((entry) => {
+    const model = armLabelOf(entry);
+    // Local trained-artifact arm: resolve the ref NOW (provenance hash + base
+    // model + adapter flag) so a missing/renamed bundle fails the run up
+    // front, never mid-arm. The capability gate above guaranteed
+    // options.localServing is present when any local entry exists.
+    const local = isLocalArmEntry(entry) ? resolveLocalArm(entry) : undefined;
+    return {
+      model,
+      kind: appReplay ? ("app_replay" as ArmKind) : (((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind),
+      runner: appReplay ? options.appReplayRunner! : options.runner,
+      rollouts: request.rollouts_per_task,
+      ...(local ? { local } : {}),
+    };
+  });
   // Prompt-override experiment arms: same underlying model, a run-scoped
   // system-prompt suffix, rows labeled with the arm_label. ALWAYS candidates —
   // an override arm is not the incumbent baseline, so it never feeds
@@ -760,7 +866,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   }
   for (const kind of request.trivial_arms ?? []) {
     if (!TRIVIAL_ARM_KINDS.includes(kind)) continue;
-    arms.push({ model: kind, kind, runner: kind === "null_agent" ? nullAgentRunner() : spamAgentRunner(), rollouts: 1 });
+    arms.push({ model: kind, kind, runner: kind === "null_agent" ? nullAgentRunner() : kind === "spam_agent" ? spamAgentRunner() : majorityClassRunner(), rollouts: 1 });
   }
   const total = arms.reduce((sum, arm) => sum + selected.length * arm.rollouts, 0);
   request = { ...request, status: "running", started_at: now().toISOString(), progress: { completed: 0, total } };
@@ -795,6 +901,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       const model = arm.model;
       if (cancelled()) break;
       appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
+      // Local arm: stand the artifact's server up for the WHOLE arm (or reuse
+      // a running one the spec points at) and tear it down after — the runner
+      // gets the endpoint instead of the gateway.
+      let localServer: LocalServerHandle | null = null;
+      if (arm.local) localServer = await options.localServing!.start(arm.local);
+      try {
       const rowsFile = rowsFilePath(dir, runId, model);
       // Live journal for this arm: the world/runner appends tool events the
       // moment they happen; the hub's live endpoint tails it. The path is
@@ -834,7 +946,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           try {
             // Override arms invoke the BASE model; the arm label only labels
             // rows/files. The suffix + label ride the additive runner args.
-            const attempt = arm.runner({ benchmarkDir: dir, model: arm.override?.model ?? model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds, ...(arm.override ? { armLabel: arm.override.arm_label, systemPromptSuffix: arm.override.system_prompt_suffix } : {}) });
+            const attempt = arm.runner({ benchmarkDir: dir, model: arm.override?.model ?? model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds, ...(arm.override ? { armLabel: arm.override.arm_label, systemPromptSuffix: arm.override.system_prompt_suffix } : {}), ...(localServer ? { local: { baseUrl: localServer.baseUrl, modelId: localServer.modelId } } : {}) });
             const raced = await Promise.race([attempt, new Promise<typeof TIMED_OUT>((res) => { timer = setTimeout(() => res(TIMED_OUT), Math.max(1, Math.round(timeoutSeconds * 1000))); })]);
             if (raced === TIMED_OUT) {
               attempt.catch(() => { /* late settle of the abandoned rollout is irrelevant */ });
@@ -893,7 +1005,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             arm_kind: arm.kind,
             // Additive attribution stamp: which executor build produced this row.
             executor_version: EXECUTOR_VERSION,
-            route: "gateway",
+            route: arm.local ? "local" : "gateway",
             latency_ms: result.latency_ms,
             cost: result.cost,
             created_at: now().toISOString(),
@@ -908,6 +1020,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             // Additive override provenance: base model + suffix hash (full
             // text lives in runs/<run_id>-overrides.json, never on rows).
             ...(arm.override ? { prompt_override: { arm_label: arm.override.arm_label, base_model: arm.override.model, system_prompt_suffix_sha256: promptSuffixHash(arm.override.system_prompt_suffix) } } : {}),
+            // Additive local-artifact provenance + perf (local arms only):
+            // exactly which bundle was served, plus throughput/peak memory
+            // where the runner/rig can actually tell (never estimated).
+            ...(arm.local ? { local_artifact: arm.local.artifact } : {}),
+            ...(typeof result.perf?.tokens_per_sec === "number" ? { tokens_per_sec: result.perf.tokens_per_sec } : {}),
+            ...(localServer && typeof localServer.stats().peak_memory_bytes === "number" ? { peak_memory_bytes: localServer.stats().peak_memory_bytes } : {}),
             // Additive oracle diagnostic: missing-gold rows render "unverifiable", never a bare fail.
             ...(result.oracle && result.oracle.missing_gold.length > 0 ? { oracle: result.oracle } : {}),
             // Marked, not dropped: the primary anomaly plus the full list.
@@ -940,6 +1058,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, () => worker()));
       appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
       if (armCancelled) break;
+      } finally {
+        // Teardown after the arm — a server the rig REUSED is never ours to stop.
+        if (localServer && !localServer.reused) await localServer.stop();
+      }
     }
   } catch (err) {
     // A hard arm failure (e.g. HarnessError from the verifiers subprocess) is
@@ -1012,6 +1134,8 @@ export type CalibrationSummary = {
   null_floor?: TrivialFloor;
   /** Additive: spam-agent floor (absent when the run carried no spam_agent arm). */
   spam_floor?: TrivialFloor;
+  /** Additive: majority-class floor (absent when the run carried no majority_class arm) — the imbalanced-classifier trap. */
+  majority_floor?: TrivialFloor;
 };
 
 /**
@@ -1087,6 +1211,7 @@ export function deriveCalibrationSummary(args: {
     // Additive floors: absent unless the run carried the arm.
     ...(trivialArms.includes("null_agent") ? { null_floor: floorFor("null_agent") } : {}),
     ...(trivialArms.includes("spam_agent") ? { spam_floor: floorFor("spam_agent") } : {}),
+    ...(trivialArms.includes("majority_class") ? { majority_floor: floorFor("majority_class") } : {}),
   };
 }
 
@@ -1190,7 +1315,7 @@ export function oracleRunner(): ArmRunner {
 /** The null agent's entire output: deterministic boilerplate, never task-derived. */
 export const NULL_AGENT_FINAL_RESPONSE = "I was unable to complete this task.";
 
-const trivialSubscores = (scored: Obj, label: "runner_null_agent" | "runner_spam_agent"): Record<string, number> => ({
+const trivialSubscores = (scored: Obj, label: "runner_null_agent" | "runner_spam_agent" | "runner_majority_class"): Record<string, number> => ({
   final_state: Number(scored.strict ?? 0),
   final_state_partial_credit: Number(scored.recall ?? 0),
   recall: Number(scored.recall ?? 0),
@@ -1301,6 +1426,92 @@ export function spamAgentRunner(): ArmRunner {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Majority-class floor arm (the imbalanced-classifier trap)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The gold LABEL of a classification-shaped task, or null when the task is
+ * not classification-shaped. Classification-shaped = the outcome contract's
+ * required obligations are EXACTLY ONE response obligation whose gold is a
+ * label (`contains_category` with a string `expected`) — a task with state
+ * effects or multiple obligations is an agentic task, not a classifier row.
+ */
+export function classificationGoldLabel(task: Obj): string | null {
+  const required = ((asObject(task.outcome_contract).required ?? []) as unknown[]).map(asObject);
+  if (required.length !== 1) return null;
+  const rule = required[0];
+  if (String(rule.type ?? "state_effect") !== "response_obligation" || String(rule.kind ?? "") !== "contains_category") return null;
+  const expected = typeof rule.expected === "string" ? rule.expected.trim() : "";
+  return expected.length > 0 ? expected : null;
+}
+
+/**
+ * The most frequent classification gold label across the benchmark's TRAIN
+ * split — NEVER holdout/dev: the majority arm must not read the answer
+ * distribution of the split it is scored on. Ties break deterministically to
+ * the lexicographically smallest label. Null when the train split has no
+ * classification-shaped tasks.
+ */
+export function majorityTrainLabel(manifestTasks: Obj[], sidecarTasksById: Map<string, Obj>): string | null {
+  const counts = new Map<string, number>();
+  for (const task of manifestTasks.map(asObject)) {
+    if (String(task.split ?? "") !== "train") continue; // holdout/dev structurally excluded
+    const sidecar = sidecarTasksById.get(String(task.task_id));
+    const label = sidecar ? classificationGoldLabel(sidecar) : null;
+    if (label !== null) counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  for (const [label, count] of counts) {
+    if (best === null || count > counts.get(best)! || (count === counts.get(best)! && label < best)) best = label;
+  }
+  return best;
+}
+
+/** Read the benchmark's majority train label from its own artifacts (benchmark.json splits + tasks.jsonl contracts). */
+export function benchmarkMajorityTrainLabel(benchmarkDir: string): string | null {
+  const dir = resolve(benchmarkDir);
+  let manifestTasks: Obj[] = [];
+  try {
+    manifestTasks = (asObject(JSON.parse(readFileSync(join(dir, "benchmark.json"), "utf8"))).tasks ?? []).map(asObject);
+  } catch {
+    return null;
+  }
+  const sidecar = new Map(readJsonl(join(dir, "tasks.jsonl")).map((t) => [String(t.task_id), t]));
+  return majorityTrainLabel(manifestTasks, sidecar);
+}
+
+/**
+ * Majority-class arm: on classification-shaped tasks it deterministically
+ * answers the benchmark's most frequent TRAIN-split gold label (computed from
+ * the tasks' split assignment — never holdout); on every other task shape it
+ * behaves exactly like the null agent. Zero tool calls, zero cost, scored
+ * through the same full-contract scorer. Any classification benchmark this
+ * arm passes at a high rate is dominated by its majority label — the
+ * imbalanced-classifier trap a naive accuracy leaderboard hides.
+ */
+export function majorityClassRunner(): ArmRunner {
+  const labelCache = new Map<string, string | null>();
+  return async ({ benchmarkDir, task }) => {
+    const started = Date.now();
+    if (!labelCache.has(benchmarkDir)) labelCache.set(benchmarkDir, benchmarkMajorityTrainLabel(benchmarkDir));
+    const majority = labelCache.get(benchmarkDir) ?? null;
+    // Non-classification tasks (or no train-split labels at all): null-agent behavior.
+    const response = classificationGoldLabel(asObject(task)) !== null && majority !== null ? majority : NULL_AGENT_FINAL_RESPONSE;
+    const scored = asObject(scoreContract(asObject(task), { calls: [], finalResponse: response }));
+    return {
+      score: Number(scored.strict ?? 0),
+      subscores: trivialSubscores(scored, "runner_majority_class"),
+      status: "ok" as const,
+      latency_ms: Math.max(1, Date.now() - started),
+      cost: 0,
+      writes: [],
+      tool_call_count: 0,
+      final_response_chars: response.length,
+    };
+  };
+}
+
 /**
  * Per-invocation work directory for one verifiers eval subprocess. The eval
  * writes outputs/ relative to its CWD, so giving every (run, arm) invocation
@@ -1359,7 +1570,7 @@ export class HarnessExecutionError extends Error {
  * (Shape pinned by the golden fixture in tests/run-executor.test.mjs from a
  * real `uv run eval` run against the pinned commit.)
  */
-export function projectVerifiersTrace(trace: Obj, model: string): { taskId: string | null; result: RolloutResult } {
+export function projectVerifiersTrace(trace: Obj, model: string, options: { local?: boolean } = {}): { taskId: string | null; result: RolloutResult } {
   const taskId = (asObject(asObject(trace.task).data).task_id as string | undefined) ?? null;
   const rewards = asObject(trace.rewards);
   const metrics = asObject(trace.metrics);
@@ -1377,7 +1588,12 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
     completionTokens += Number(usage.completion_tokens ?? 0);
   }
   const rate = COST_PER_MTOKEN[model] ?? COST_PER_MTOKEN.default;
-  const cost = calls.length > 0 ? (promptTokens * rate.input + completionTokens * rate.output) / 1_000_000 : null;
+  // A LOCAL artifact arm costs $0 by construction (no provider tokens are
+  // billed); the gateway heuristic would fabricate spend from a made-up rate.
+  const cost = options.local ? 0 : calls.length > 0 ? (promptTokens * rate.input + completionTokens * rate.output) / 1_000_000 : null;
+  // Local-arm throughput evidence: completion tokens over measured model-call
+  // wall time — only when both are actually present in the trace.
+  const tokensPerSec = options.local && completionTokens > 0 && latencyMs > 0 ? Number(((completionTokens * 1000) / latencyMs).toFixed(2)) : null;
   // Mutating tool calls from the trace's message nodes → per-arm replay input.
   // Total call count (reads AND writes) + final assistant text feed the
   // structural anomaly sentinels.
@@ -1413,6 +1629,7 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
       writes,
       tool_call_count: toolCallCount,
       final_response_chars: finalAssistantText === null ? null : finalAssistantText.trim().length,
+      ...(tokensPerSec !== null ? { perf: { tokens_per_sec: tokensPerSec } } : {}),
       error: failed ? String(errors[0]?.type ?? "RolloutError") + ": " + String(errors[0]?.message ?? "rollout not ok").slice(0, 500) : null,
     },
   };
@@ -1432,6 +1649,8 @@ export type VerifiersArmOptions = {
   invocationTag?: string | null;
   /** Run-scoped prompt-override suffix: appended to each selected task's system prompt for THIS invocation only (the temp-rewrite pattern; the source rows are restored after). */
   systemPromptSuffix?: string | null;
+  /** Local-artifact arm: the served endpoint replaces the gateway creds for THIS invocation (the eval's -m gets modelId — MLX servers accept the weights path). */
+  local?: { baseUrl: string; modelId: string } | null;
 };
 
 /** Apply a run-scoped override suffix to one generated-environment task row (pure; used by the temp-rewrite below and its tests). */
@@ -1479,8 +1698,18 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
   // ~/.understudy/credentials.json) and are handed to buildReplayInvocation
   // through its own env contract — the executor ONLY talks to the Understudy
   // gateway, never a stray OPENAI_* pointing elsewhere.
-  const auth = resolveGatewayAuth(parentEnv);
-  const runnerEnv: NodeJS.ProcessEnv = { ...parentEnv, UNDERSTUDY_GATEWAY_URL: auth.baseUrl, UNDERSTUDY_API_KEY: auth.apiKey, OPENAI_BASE_URL: undefined, OPENAI_API_KEY: undefined };
+  // Local arms point the runner's OpenAI-compatible client at the served
+  // artifact instead — buildReplayInvocation's own env contract carries the
+  // base URL/key either way (no gateway credential is ever required for a
+  // fully-local arm).
+  const local = options.local ?? null;
+  const runnerEnv: NodeJS.ProcessEnv = local !== null
+    ? { ...parentEnv, UNDERSTUDY_GATEWAY_URL: local.baseUrl, UNDERSTUDY_API_KEY: "local", OPENAI_BASE_URL: undefined, OPENAI_API_KEY: undefined }
+    : (() => {
+        const auth = resolveGatewayAuth(parentEnv);
+        return { ...parentEnv, UNDERSTUDY_GATEWAY_URL: auth.baseUrl, UNDERSTUDY_API_KEY: auth.apiKey, OPENAI_BASE_URL: undefined, OPENAI_API_KEY: undefined };
+      })();
+  const evalModel = local?.modelId ?? model;
   // The generated taskset loads ONE split per eval (config default train), so
   // an arm covers all tasks by running each split; a split with no tasks
   // fails its own eval harmlessly (the merged map decides success below).
@@ -1493,7 +1722,7 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
   const workDir = options.invocationTag ? verifiersWorkDir(dir, options.invocationTag) : dir;
   if (workDir !== dir) mkdirSync(workDir, { recursive: true });
   for (const split of splits) {
-    const invocation = buildReplayInvocation(environment, model, "authentic_history", maxExamples, false, runnerEnv);
+    const invocation = buildReplayInvocation(environment, evalModel, "authentic_history", maxExamples, false, runnerEnv);
     // Live watching: the generated world server journals every tool call and
     // result to this file the moment it happens (no-op when unset). The var
     // rides the eval subprocess env, which the subprocess runtime inherits.
@@ -1518,7 +1747,7 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
     for (const file of files) {
       for (const line of readJsonl(file)) {
         for (const trace of (Array.isArray(line.traces) ? line.traces : []).map(asObject)) {
-          const { taskId, result } = projectVerifiersTrace(trace, model);
+          const { taskId, result } = projectVerifiersTrace(trace, model, { local: local !== null });
           if (taskId && !results.has(taskId)) results.set(taskId, result);
         }
       }
@@ -1549,11 +1778,11 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
  */
 export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): ArmRunner {
   const armCache = new Map<string, Map<string, RolloutResult> | Error>();
-  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath, runId, rolloutTimeoutSeconds, armLabel, systemPromptSuffix }) => {
+  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath, runId, rolloutTimeoutSeconds, armLabel, systemPromptSuffix, local }) => {
     // Cache/work-dir key on the arm LABEL: an override arm never shares its
     // memoized eval (or its output isolation) with the bare model arm.
     const arm = armLabel ?? model;
-    const key = `${benchmarkDir}::${runId ?? ""}::${arm}::${systemPromptSuffix ? promptSuffixHash(systemPromptSuffix) : ""}::${[...selectedTaskIds].sort().join(",")}`;
+    const key = `${benchmarkDir}::${runId ?? ""}::${arm}::${systemPromptSuffix ? promptSuffixHash(systemPromptSuffix) : ""}::${local ? local.baseUrl : ""}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
         armCache.set(key, runVerifiersArm(benchmarkDir, model, VERIFIERS_MAX_EXAMPLES, parentEnv, selectedTaskIds, journalPath, {
@@ -1561,6 +1790,8 @@ export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): Arm
           // run_id + arm in the path: structural per-invocation isolation.
           invocationTag: runId ? `${runId}--${arm}` : null,
           systemPromptSuffix: systemPromptSuffix ?? null,
+          // Local artifact arm: the eval talks to the served endpoint, never the gateway.
+          local: local ?? null,
         }));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));

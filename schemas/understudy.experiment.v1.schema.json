@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.experiment.v1.schema.json",
+  "title": "understudy.experiment.v1",
+  "description": "One machine-readable experiment-lineage record: what data was selected (a curate-trajectories selection hash), how a candidate was trained (method + config + explicit approval gates BEFORE any provider spend), what artifact the training produced, which eval runs scored it against which baseline, and the final verdict. Stored as one JSON object per line in an experiments.jsonl file next to the benchmark manifest (manifest.json or benchmark.json), append-only; the newest line per experiment_id supersedes older ones. Eval rows link back via the run request's additive experiment_id → run_id join. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "experiment_id", "created_at", "hypothesis", "status", "data_selection", "training", "eval_run_ids"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.experiment.v1",
+      "description": "Version stamp for this experiment shape."
+    },
+    "experiment_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "description": "Stable id for the experiment across superseding lines (e.g. exp-a1b2c3d4e5f6 or und-289-sft). Immutable once created."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp of the FIRST record for this experiment_id. Superseding lines carry it forward unchanged."
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The falsifiable claim the experiment tests, in the author's words (e.g. 'full-parameter SFT on qwen3-8b reaches >=90% exact L3 on the frozen holdout at <$25 training spend')."
+    },
+    "status": {
+      "enum": ["draft", "training", "evaluating", "concluded", "abandoned"],
+      "description": "Lifecycle: draft (planned, gates pending) -> training -> evaluating -> concluded (verdict recorded) | abandoned."
+    },
+    "data_selection": {
+      "type": "object",
+      "required": ["selection_hash", "source"],
+      "additionalProperties": true,
+      "description": "Provenance of the training/eval data, by content hash — never by path.",
+      "properties": {
+        "selection_hash": {
+          "type": "string",
+          "minLength": 1,
+          "description": "curate-trajectories selection hash (or an equivalent content hash stamped on the selection artifact)."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where the rows came from (dataset name, capture export, foundry dir slug…)."
+        },
+        "splits_sha256": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional sha256 of the frozen train/dev/holdout split artifact the selection honors."
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "required": ["method", "base_model", "config", "provider", "approvals"],
+      "additionalProperties": true,
+      "properties": {
+        "method": {
+          "enum": ["sft", "lora", "distill", "rl", "prompt_only", "none"],
+          "description": "Training method; prompt_only = no weights change (GEPA/prompt experiments); none = baseline-only record."
+        },
+        "base_model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model trained or prompted (provider id or local model id)."
+        },
+        "config": {
+          "type": "object",
+          "description": "Freeform provider/tool config (epochs, lr, lora_rank, max_context_length, class weights…)."
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Training location: 'local' or a provider id ('fireworks', 'tinker'…)."
+        },
+        "cost_estimate": {
+          "type": ["number", "object"],
+          "description": "Optional pre-spend estimate: a number (USD) or a structured breakdown object (e.g. token counts per prompt format)."
+        },
+        "approvals": {
+          "type": "array",
+          "description": "Approval gates CLEARED so far, in order (append-only across superseding lines). Gates before provider spend are first-class: a consumer must refuse to upload customer data or create a provider job while the corresponding gate entry (e.g. 'customer_data_upload', 'provider_training_spend') is absent.",
+          "items": {
+            "type": "object",
+            "required": ["gate", "approved_by", "at"],
+            "additionalProperties": true,
+            "properties": {
+              "gate": { "type": "string", "minLength": 1, "description": "Gate id (e.g. consensus_audit, customer_data_upload, provider_training_spend)." },
+              "approved_by": { "type": "string", "minLength": 1, "description": "Who cleared it (human name/handle; never 'auto' for spend gates)." },
+              "at": { "type": "string", "minLength": 1, "description": "ISO-8601 timestamp of the approval." }
+            }
+          }
+        }
+      }
+    },
+    "produced_artifact": {
+      "type": "object",
+      "required": ["kind", "ref", "sha256"],
+      "additionalProperties": true,
+      "description": "What the training produced; absent until it exists.",
+      "properties": {
+        "kind": { "type": "string", "minLength": 1, "description": "Artifact kind (checkpoint, adapter, prompt, model_id…)." },
+        "ref": { "type": "string", "minLength": 1, "description": "Where it lives (provider model id, local path, registry ref)." },
+        "sha256": { "type": "string", "minLength": 1, "description": "Content hash of the artifact (or of its manifest for provider-hosted weights)." }
+      }
+    },
+    "baseline_run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional: the frozen-incumbent baseline run (understudy.run_request.v1 run_id) this experiment is judged against."
+    },
+    "eval_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "run_ids that evaluated the produced artifact (append-only across superseding lines). Runs also point back: their run request carries the additive experiment_id."
+    },
+    "verdict": {
+      "type": "object",
+      "required": ["decision", "summary", "decided_at"],
+      "additionalProperties": true,
+      "description": "Final judgment; absent until the experiment concludes.",
+      "properties": {
+        "decision": {
+          "enum": ["promote", "shadow", "collect", "stop"],
+          "description": "Four-way outcome: promote (ship it), shadow (run alongside prod), collect (need more data), stop (abandon the direction)."
+        },
+        "summary": { "type": "string", "minLength": 1, "description": "The evidence behind the decision, in prose." },
+        "decided_at": { "type": "string", "minLength": 1, "description": "ISO-8601 timestamp of the decision." }
+      }
+    }
+  }
+}

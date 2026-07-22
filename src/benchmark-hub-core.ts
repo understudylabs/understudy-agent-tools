@@ -32,6 +32,15 @@ import {
   serializeReviewLine,
   serializeTaskFeedbackLine,
   DEFAULT_REVIEW_POLICY,
+  appendExperiment,
+  experimentsPath,
+  latestExperiments,
+  makeExperiment,
+  readExperiments,
+  validateExperiment,
+  EXPERIMENT_SCHEMA,
+  type Experiment,
+  type ExperimentInput,
   type ReviewPolicy,
   type TaskFeedback,
 } from "./benchmark-artifacts.js";
@@ -728,6 +737,8 @@ export type QueueRunBody = {
   calibration_threshold?: unknown;
   /** Optional (additive): replay the user's own app per app-harness.json (arm_kind "app_replay"; capability-gated). */
   app_replay?: unknown;
+  /** Optional (additive): experiments.jsonl experiment this run evaluates (must exist in the sidecar). */
+  experiment_id?: unknown;
 };
 
 export type QueueRunResult = { ok: true; run: RunRequest; execute_hint?: string } | WriteFailure;
@@ -830,9 +841,20 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     // Additive: current-code app replay (validated as a boolean; the executor
     // is capability-gated on "app_replay" so old executors skip, never corrupt).
     app_replay: body.app_replay,
+    // Additive: experiment-lineage cross-link (validated for shape below and
+    // for existence against experiments.jsonl right after).
+    experiment_id: body.experiment_id,
   };
   const errors = validateRunRequestInput(input, knownTaskIds);
   if (errors.length > 0) return { ok: false, error: errors.join("; "), status: 400 };
+  // Cross-link validation: a declared experiment must already exist in the
+  // benchmark's experiments.jsonl sidecar (create_experiment first).
+  if (typeof input.experiment_id === "string") {
+    const { experiments } = readExperiments(experimentsPath(entry.dir));
+    if (!latestExperiments(experiments)[input.experiment_id]) {
+      return { ok: false, error: `unknown experiment_id: ${input.experiment_id} (create_experiment first)`, status: 404 };
+    }
+  }
   // Reject selections that resolve to zero tasks up front (clear 400, not a
   // queued request the executor immediately fails).
   const selected = selectTasks(manifestForSelection, {
@@ -852,6 +874,7 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     incumbent_models: input.incumbent_models as string[] | undefined,
     calibration_threshold: input.calibration_threshold as number | undefined,
     app_replay: input.app_replay as boolean | undefined,
+    experiment_id: input.experiment_id as string | undefined,
   });
   return { ok: true, run, execute_hint: `understudy runs execute --benchmark ${entry.dir} --watch` };
 }
@@ -1112,4 +1135,128 @@ export function submitTaskFeedback(
   });
   fs.appendFileSync(path.join(entry.dir, "feedback.jsonl"), serializeTaskFeedbackLine(feedback), "utf8");
   return { ok: true, feedback, handoff: buildTaskFeedbackHandoff(entry.dir, input.task_id, feedback.feedback) };
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiment lineage (experiments.jsonl — append-only, newest per     */
+/* experiment_id wins). NEW exported functions only.                   */
+/* ------------------------------------------------------------------ */
+
+export type ExperimentWriteResult = { ok: true; experiment: Experiment; file: string } | WriteFailure;
+
+/** Both proposed and promoted benchmarks may carry experiments; read-only entries may not. */
+function experimentWriteGate(entry: AnyHubEntry | null): WriteFailure | null {
+  if (!entry || entry.kind === "invalid") return { ok: false, error: "unknown benchmark", status: 404 };
+  if (entry.readOnly) {
+    return {
+      ok: false,
+      error: "This entry is read-only (demo/fixture source); experiments cannot be written here.",
+      status: 403,
+    };
+  }
+  return null;
+}
+
+/**
+ * Validate + append one NEW understudy.experiment.v1 line to
+ * experiments.jsonl next to the benchmark manifest. Refuses to create an
+ * experiment_id that already exists (use updateExperiment to supersede).
+ */
+export function createExperiment(entry: AnyHubEntry | null, input: ExperimentInput): ExperimentWriteResult {
+  const gate = experimentWriteGate(entry);
+  if (gate) return gate;
+  const dir = (entry as HubEntry | ProposedHubEntry).dir;
+  let experiment: Experiment;
+  try {
+    experiment = makeExperiment(input);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err), status: 400 };
+  }
+  const existing = latestExperiments(readExperiments(experimentsPath(dir)).experiments);
+  if (existing[experiment.experiment_id]) {
+    return { ok: false, error: `experiment_id already exists: ${experiment.experiment_id} (use update)`, status: 409 };
+  }
+  const file = appendExperiment(dir, experiment);
+  return { ok: true, experiment, file };
+}
+
+/**
+ * Supersede one experiment: merge a patch over its newest record and append
+ * the FULL merged record (append-only, newest-wins — history is never
+ * rewritten). Top-level fields replace wholesale except `training.approvals`
+ * and `eval_run_ids`, which APPEND (an approval gate, once cleared and
+ * recorded, is never silently dropped by a later patch).
+ */
+export function updateExperiment(
+  entry: AnyHubEntry | null,
+  experimentId: unknown,
+  patch: Record<string, unknown>,
+): ExperimentWriteResult {
+  const gate = experimentWriteGate(entry);
+  if (gate) return gate;
+  const dir = (entry as HubEntry | ProposedHubEntry).dir;
+  if (typeof experimentId !== "string" || experimentId.length === 0) {
+    return { ok: false, error: "experiment_id (string) is required", status: 400 };
+  }
+  const latest = latestExperiments(readExperiments(experimentsPath(dir)).experiments)[experimentId];
+  if (!latest) return { ok: false, error: `unknown experiment_id: ${experimentId}`, status: 404 };
+
+  const patchTraining = (patch.training ?? null) as Record<string, unknown> | null;
+  const merged = {
+    ...latest,
+    ...patch,
+    // Immutable identity/lineage fields — a patch can never rewrite them.
+    schema_version: EXPERIMENT_SCHEMA,
+    experiment_id: experimentId,
+    created_at: latest.created_at,
+    training: {
+      ...latest.training,
+      ...(patchTraining ?? {}),
+      approvals: [
+        ...latest.training.approvals,
+        ...(Array.isArray(patchTraining?.approvals) ? (patchTraining.approvals as Experiment["training"]["approvals"]) : []),
+      ],
+    },
+    eval_run_ids: [
+      ...new Set([
+        ...latest.eval_run_ids,
+        ...(Array.isArray(patch.eval_run_ids) ? (patch.eval_run_ids as string[]) : []),
+      ]),
+    ],
+  } as Experiment;
+  const errors = validateExperiment(merged);
+  if (errors.length > 0) return { ok: false, error: errors.join("; "), status: 400 };
+  const file = appendExperiment(dir, merged);
+  return { ok: true, experiment: merged, file };
+}
+
+export type ListExperimentsResult = {
+  /** Latest record per experiment_id, oldest created_at first. */
+  experiments: Experiment[];
+  /** Total superseding lines in the sidecar (history depth). */
+  total_lines: number;
+  skipped: number;
+};
+
+/** Latest record per experiment_id from a benchmark dir's experiments.jsonl. */
+export function listExperiments(dir: string): ListExperimentsResult {
+  const { experiments, skipped } = readExperiments(experimentsPath(dir));
+  const latest = Object.values(latestExperiments(experiments)).sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.experiment_id.localeCompare(b.experiment_id),
+  );
+  return { experiments: latest, total_lines: experiments.length, skipped };
+}
+
+/** Compact additive projection for read_benchmark: count + latest per-experiment status/verdict. */
+export function experimentsSummary(dir: string): { count: number; latest: { experiment_id: string; status: string; decision: string | null; summary: string | null }[] } {
+  const { experiments } = listExperiments(dir);
+  return {
+    count: experiments.length,
+    latest: experiments.map((e) => ({
+      experiment_id: e.experiment_id,
+      status: e.status,
+      decision: e.verdict?.decision ?? null,
+      summary: e.verdict?.summary ?? null,
+    })),
+  };
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 
 /**
@@ -27,6 +28,106 @@ export function registerBenchmarksCommand(program: Command): void {
     .action(async (options: { root: string[] }) => {
       const { runBenchmarksMcpServer } = await import("../benchmarks-mcp.js");
       await runBenchmarksMcpServer(options.root);
+    });
+
+  // Experiment lineage (experiments.jsonl — understudy.experiment.v1,
+  // append-only, newest line per experiment_id wins). JSON in / JSON out so
+  // agents can round-trip records; shared read/write cores with the MCP tools.
+  const experiment = benchmarks
+    .command("experiment")
+    .description("Machine-readable experiment lineage: data selection → training (+approval gates) → artifact → eval runs → verdict");
+
+  /** Parse --input (inline JSON or @file) into an object. */
+  const parseJsonOption = (raw: string): Record<string, unknown> => {
+    const text = raw.startsWith("@") ? readFileSync(raw.slice(1), "utf8") : raw;
+    const parsed = JSON.parse(text);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("--input must be a JSON object");
+    return parsed as Record<string, unknown>;
+  };
+
+  const loadDirEntry = async (dir: string) => {
+    const path = await import("node:path");
+    const { loadEntryFromDir } = await import("../benchmark-hub-core.js");
+    const resolved = path.resolve(dir);
+    const entry = loadEntryFromDir(resolved, "data-dir", path.basename(resolved), false);
+    if (!entry) throw new Error(`not a benchmark dir (no benchmark.json or manifest.json): ${resolved}`);
+    return entry;
+  };
+
+  experiment
+    .command("create <dir>")
+    .description("Append one NEW understudy.experiment.v1 line to <dir>/experiments.jsonl (validated; JSON out)")
+    .requiredOption("--input <json>", "Experiment record as inline JSON or @file (hypothesis, data_selection, training, ...)")
+    .action(async (dir: string, options: { input: string }) => {
+      const { createExperiment } = await import("../benchmark-hub-core.js");
+      const result = createExperiment(await loadDirEntry(dir), parseJsonOption(options.input) as never);
+      if (!result.ok) throw new Error(result.error);
+      console.error(`appended ${result.file}`);
+      console.log(JSON.stringify(result.experiment, null, 2));
+    });
+
+  experiment
+    .command("update <dir> <experiment_id>")
+    .description("Supersede one experiment: merge --input over its newest record and append the full merged record (approvals + eval_run_ids append; JSON out)")
+    .requiredOption("--input <json>", "Partial understudy.experiment.v1 fields as inline JSON or @file")
+    .action(async (dir: string, experimentId: string, options: { input: string }) => {
+      const { updateExperiment } = await import("../benchmark-hub-core.js");
+      const result = updateExperiment(await loadDirEntry(dir), experimentId, parseJsonOption(options.input));
+      if (!result.ok) throw new Error(result.error);
+      console.error(`appended ${result.file}`);
+      console.log(JSON.stringify(result.experiment, null, 2));
+    });
+
+  experiment
+    .command("list <dir>")
+    .description("Latest record per experiment_id from <dir>/experiments.jsonl (JSON out)")
+    .action(async (dir: string) => {
+      const path = await import("node:path");
+      const { listExperiments } = await import("../benchmark-hub-core.js");
+      console.log(JSON.stringify(listExperiments(path.resolve(dir)), null, 2));
+    });
+
+  experiment
+    .command("show <dir> <experiment_id>")
+    .description("Newest record for one experiment_id (JSON out; exits non-zero when unknown)")
+    .action(async (dir: string, experimentId: string) => {
+      const path = await import("node:path");
+      const { listExperiments } = await import("../benchmark-hub-core.js");
+      const found = listExperiments(path.resolve(dir)).experiments.find((e) => e.experiment_id === experimentId);
+      if (!found) throw new Error(`unknown experiment_id: ${experimentId}`);
+      console.log(JSON.stringify(found, null, 2));
+    });
+
+  benchmarks
+    .command("evolve <dir>")
+    .description(
+      "GEPA-style prompt evolution over run arms: propose suffixes with an authoring model (fed per-class " +
+        "rejection counts + failed obligations from the run journals), queue prompt_overrides runs on train, " +
+        "select the champion on dev, then verify champion-vs-bare ONCE on the sealed holdout. Queue-only: " +
+        "`understudy runs execute --watch` must be running in another terminal",
+    )
+    .requiredOption("--model <id>", "The base model whose system prompt is being evolved (every arm runs this model)")
+    .option("--author-model <id>", "Gateway model that authors suffix proposals (default: resolveDefaultModel)")
+    .option("--generations <n>", "Evolution generations on the train split (1-6)", "2")
+    .option("--variants <n>", "Suffix variants per generation (2-4)", "3")
+    .option("--rollouts <n>", "Rollouts per task per arm", "1")
+    .option("--budget-runs <n>", "Hard cap on runs queued by this invocation (baseline + generations + dev + holdout)")
+    .option("--no-final", "Skip the holdout run; the result is explicitly UNVERIFIED and never a win")
+    .action(async (dir: string, options: { model: string; authorModel?: string; generations: string; variants: string; rollouts: string; budgetRuns?: string; final: boolean }) => {
+      const { evolvePrompts } = await import("../prompt-evolution.js");
+      const result = await evolvePrompts(dir, {
+        model: options.model,
+        authorModel: options.authorModel,
+        generations: Number(options.generations),
+        variants: Number(options.variants),
+        rolloutsPerTask: Number(options.rollouts),
+        budgetRuns: options.budgetRuns === undefined ? undefined : Number(options.budgetRuns),
+        final: options.final,
+      });
+      console.log(JSON.stringify(result, null, 2));
+      if (result.verdict.verdict !== "win") {
+        console.error(`evolve: verdict is "${result.verdict.verdict}" — do not report a win without a CI-positive holdout run`);
+      }
     });
 
   benchmarks

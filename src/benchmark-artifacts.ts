@@ -51,12 +51,16 @@ export const CALIBRATION_SCHEMA = "understudy.calibration.v1";
 export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
 /** Foundry generation-time structural self-check (manifest.self_check + task.self_check). */
 export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
+/** Generated servers/guidance.json — rejection-guidance message templates the world loads as data (an optimizable prompt surface). */
+export const REJECTION_GUIDANCE_SCHEMA = "understudy.rejection_guidance.v1";
 /** feedback.jsonl sidecar: free-text "what's wrong with this task" lines (append-only). */
 export const TASK_FEEDBACK_SCHEMA = "understudy.task_feedback.v1";
 /** review-policy.json sidecar: configurable exception-review auto-accept bar. */
 export const REVIEW_POLICY_SCHEMA = "understudy.review_policy.v1";
 /** app-harness.json sidecar: how to launch the user's OWN app per task (the app_replay arm). */
 export const APP_HARNESS_SCHEMA = "understudy.app_harness.v1";
+/** experiments.jsonl sidecar: data-selection → training → artifact → eval → verdict lineage (append-only). */
+export const EXPERIMENT_SCHEMA = "understudy.experiment.v1";
 
 /* ------------------------------------------------------------------ */
 /* JSONL codec                                                         */
@@ -408,6 +412,243 @@ export function readReviewPolicy(benchmarkDir: string): ReviewPolicy {
       ? { default_decision: parsed.default_decision }
       : {}),
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Experiments (<benchmark>/experiments.jsonl — append-only sidecar)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * understudy.experiment.v1 — one machine-readable record of an experiment's
+ * full lineage: what data was selected (a curate-trajectories selection hash),
+ * how a candidate was trained (method + config + explicit approval gates
+ * BEFORE any provider spend — the und-289 shape), what artifact the training
+ * produced, which eval runs scored it against which baseline, and the final
+ * verdict (promote / shadow / collect / stop — the distill-classifier
+ * four-way). Stored append-only next to the benchmark manifest; the newest
+ * line per experiment_id supersedes older ones (same superseding rule as
+ * reviews.jsonl). Eval rows link back via run_request.experiment_id → run_id.
+ */
+export const EXPERIMENT_STATUSES = ["draft", "training", "evaluating", "concluded", "abandoned"] as const;
+export type ExperimentStatus = (typeof EXPERIMENT_STATUSES)[number];
+
+export const EXPERIMENT_METHODS = ["sft", "lora", "distill", "rl", "prompt_only", "none"] as const;
+export type ExperimentMethod = (typeof EXPERIMENT_METHODS)[number];
+
+export const EXPERIMENT_DECISIONS = ["promote", "shadow", "collect", "stop"] as const;
+export type ExperimentDecision = (typeof EXPERIMENT_DECISIONS)[number];
+
+/** One cleared approval gate (e.g. "consensus_audit", "customer_data_upload", "provider_training_spend"). */
+export type ExperimentApproval = { gate: string; approved_by: string; at: string };
+
+export type Experiment = {
+  schema_version: typeof EXPERIMENT_SCHEMA;
+  experiment_id: string;
+  created_at: string;
+  /** The falsifiable claim the experiment tests, in the author's words. */
+  hypothesis: string;
+  status: ExperimentStatus;
+  /** What training/eval data was selected, by provenance hash — never by path. */
+  data_selection: {
+    /** curate-trajectories selection hash (or an equivalent content hash of the selection). */
+    selection_hash: string;
+    /** Where the rows came from (dataset name, capture export, foundry dir slug…). */
+    source: string;
+    /** Optional: sha256 of the frozen train/dev/holdout split artifact. */
+    splits_sha256?: string;
+  };
+  training: {
+    method: ExperimentMethod;
+    base_model: string;
+    /** Freeform provider/tool config (epochs, lr, lora_rank, max_context_length…). */
+    config: Record<string, unknown>;
+    /** Training location: "local" or a provider id ("fireworks", "tinker"…). */
+    provider: string;
+    /** Optional freeform estimate (number = USD, or a structured breakdown object). */
+    cost_estimate?: number | Record<string, unknown>;
+    /**
+     * Approval gates CLEARED so far, in order. Gates before provider spend are
+     * first-class: a consumer must refuse to upload/train while the record
+     * lacks the corresponding gate entry.
+     */
+    approvals: ExperimentApproval[];
+  };
+  /** What the training produced (absent until it exists). */
+  produced_artifact?: { kind: string; ref: string; sha256: string };
+  /** The frozen-incumbent baseline run this experiment is judged against. */
+  baseline_run_id?: string;
+  /** understudy.run_request.v1 run_ids that evaluated the produced artifact. */
+  eval_run_ids: string[];
+  /** Final judgment (absent until concluded). */
+  verdict?: { decision: ExperimentDecision; summary: string; decided_at: string };
+};
+
+export function experimentsPath(benchmarkDir: string): string {
+  return join(benchmarkDir, "experiments.jsonl");
+}
+
+const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+
+/**
+ * Field-level validation for one experiment record. Returns human-readable
+ * errors; empty means valid. Shared by makeExperiment/appendExperiment, the
+ * hub-core write ops, the CLI, and the MCP tools — one implementation.
+ */
+export function validateExperiment(row: unknown): string[] {
+  const errors: string[] = [];
+  const r = asObject(row);
+  if (r.schema_version !== EXPERIMENT_SCHEMA) errors.push(`schema_version must be ${EXPERIMENT_SCHEMA}`);
+  if (!isNonEmptyString(r.experiment_id) || !/^[A-Za-z0-9_.-]+$/.test(r.experiment_id as string)) {
+    errors.push("experiment_id must be a non-empty string of [A-Za-z0-9_.-]");
+  }
+  if (!isNonEmptyString(r.created_at)) errors.push("created_at must be an ISO-8601 string");
+  if (!isNonEmptyString(r.hypothesis)) errors.push("hypothesis must be a non-empty string");
+  if (!EXPERIMENT_STATUSES.includes(r.status as ExperimentStatus)) {
+    errors.push(`status must be one of ${EXPERIMENT_STATUSES.join(", ")}`);
+  }
+  const ds = asObject(r.data_selection);
+  if (!isNonEmptyString(ds.selection_hash)) errors.push("data_selection.selection_hash must be a non-empty string");
+  if (!isNonEmptyString(ds.source)) errors.push("data_selection.source must be a non-empty string");
+  if (ds.splits_sha256 !== undefined && !isNonEmptyString(ds.splits_sha256)) {
+    errors.push("data_selection.splits_sha256 must be a non-empty string when present");
+  }
+  const tr = asObject(r.training);
+  if (!EXPERIMENT_METHODS.includes(tr.method as ExperimentMethod)) {
+    errors.push(`training.method must be one of ${EXPERIMENT_METHODS.join(", ")}`);
+  }
+  if (!isNonEmptyString(tr.base_model)) errors.push("training.base_model must be a non-empty string");
+  if (tr.config === undefined || tr.config === null || typeof tr.config !== "object" || Array.isArray(tr.config)) {
+    errors.push("training.config must be an object (may be empty)");
+  }
+  if (!isNonEmptyString(tr.provider)) errors.push('training.provider must be "local" or a provider id string');
+  if (
+    tr.cost_estimate !== undefined &&
+    typeof tr.cost_estimate !== "number" &&
+    (tr.cost_estimate === null || typeof tr.cost_estimate !== "object" || Array.isArray(tr.cost_estimate))
+  ) {
+    errors.push("training.cost_estimate must be a number (USD) or an object when present");
+  }
+  if (!Array.isArray(tr.approvals)) {
+    errors.push("training.approvals must be an array (empty = no gates cleared yet)");
+  } else {
+    tr.approvals.forEach((a, i) => {
+      const g = asObject(a);
+      if (!isNonEmptyString(g.gate) || !isNonEmptyString(g.approved_by) || !isNonEmptyString(g.at)) {
+        errors.push(`training.approvals[${i}] must be {gate, approved_by, at} non-empty strings`);
+      }
+    });
+  }
+  if (r.produced_artifact !== undefined) {
+    const pa = asObject(r.produced_artifact);
+    if (!isNonEmptyString(pa.kind) || !isNonEmptyString(pa.ref) || !isNonEmptyString(pa.sha256)) {
+      errors.push("produced_artifact must be {kind, ref, sha256} non-empty strings when present");
+    }
+  }
+  if (r.baseline_run_id !== undefined && !isNonEmptyString(r.baseline_run_id)) {
+    errors.push("baseline_run_id must be a non-empty string when present");
+  }
+  if (!Array.isArray(r.eval_run_ids) || !(r.eval_run_ids as unknown[]).every(isNonEmptyString)) {
+    errors.push("eval_run_ids must be an array of run_id strings (empty until runs exist)");
+  }
+  if (r.verdict !== undefined) {
+    const v = asObject(r.verdict);
+    if (!EXPERIMENT_DECISIONS.includes(v.decision as ExperimentDecision)) {
+      errors.push(`verdict.decision must be one of ${EXPERIMENT_DECISIONS.join(", ")}`);
+    }
+    if (!isNonEmptyString(v.summary)) errors.push("verdict.summary must be a non-empty string");
+    if (!isNonEmptyString(v.decided_at)) errors.push("verdict.decided_at must be an ISO-8601 string");
+  }
+  return errors;
+}
+
+/** Reader-side acceptance test for one experiments.jsonl row. */
+export function isExperiment(row: unknown): row is Experiment {
+  return validateExperiment(row).length === 0;
+}
+
+export type ExperimentInput = {
+  experiment_id?: string;
+  created_at?: string;
+  hypothesis: string;
+  status?: ExperimentStatus;
+  data_selection: Experiment["data_selection"];
+  training: {
+    method: ExperimentMethod;
+    base_model: string;
+    config?: Record<string, unknown>;
+    provider: string;
+    cost_estimate?: number | Record<string, unknown>;
+    approvals?: ExperimentApproval[];
+  };
+  produced_artifact?: Experiment["produced_artifact"];
+  baseline_run_id?: string;
+  eval_run_ids?: string[];
+  verdict?: Experiment["verdict"];
+};
+
+/**
+ * The ONE constructor every experiment producer uses. Fills the stamp,
+ * a deterministic-enough id when absent, and the lifecycle defaults
+ * (status draft, no approvals, no eval runs), then VALIDATES — throws on an
+ * invalid record so a malformed experiment can never reach the sidecar.
+ */
+export function makeExperiment(input: ExperimentInput): Experiment {
+  const createdAt = input.created_at ?? new Date().toISOString();
+  const experiment: Experiment = {
+    schema_version: EXPERIMENT_SCHEMA,
+    experiment_id:
+      input.experiment_id ??
+      `exp-${createHash("sha256").update(JSON.stringify({ input, createdAt, nonce: Math.random() })).digest("hex").slice(0, 12)}`,
+    created_at: createdAt,
+    hypothesis: input.hypothesis,
+    status: input.status ?? "draft",
+    data_selection: input.data_selection,
+    training: {
+      method: input.training?.method,
+      base_model: input.training?.base_model,
+      config: input.training?.config ?? {},
+      provider: input.training?.provider,
+      ...(input.training?.cost_estimate !== undefined ? { cost_estimate: input.training.cost_estimate } : {}),
+      approvals: input.training?.approvals ?? [],
+    },
+    ...(input.produced_artifact !== undefined ? { produced_artifact: input.produced_artifact } : {}),
+    ...(input.baseline_run_id !== undefined ? { baseline_run_id: input.baseline_run_id } : {}),
+    eval_run_ids: input.eval_run_ids ?? [],
+    ...(input.verdict !== undefined ? { verdict: input.verdict } : {}),
+  };
+  const errors = validateExperiment(experiment);
+  if (errors.length > 0) throw new Error(`invalid experiment: ${errors.join("; ")}`);
+  return experiment;
+}
+
+export function serializeExperimentLine(experiment: Experiment): string {
+  return serializeJsonlLine(experiment);
+}
+
+/**
+ * Validate + append one experiment line to <benchmarkDir>/experiments.jsonl.
+ * Append-only: updates append a FULL superseding record for the same
+ * experiment_id (never rewrite the file). Throws on an invalid record.
+ */
+export function appendExperiment(benchmarkDir: string, experiment: Experiment): string {
+  const errors = validateExperiment(experiment);
+  if (errors.length > 0) throw new Error(`invalid experiment: ${errors.join("; ")}`);
+  const file = experimentsPath(benchmarkDir);
+  appendJsonlRows(file, [experiment]);
+  return file;
+}
+
+/** Valid experiments from an experiments.jsonl file (invalid rows dropped, lines tolerant). */
+export function readExperiments(file: string): { experiments: Experiment[]; skipped: number } {
+  const { items, skipped } = readJsonlFile(file);
+  return { experiments: items.filter(isExperiment), skipped };
+}
+
+/** Superseding rule: append-only file, newest line per experiment_id wins. */
+export function latestExperiments(experiments: Experiment[]): Record<string, Experiment> {
+  const latest: Record<string, Experiment> = {};
+  for (const experiment of experiments) latest[experiment.experiment_id] = experiment;
+  return latest;
 }
 
 /* ------------------------------------------------------------------ */

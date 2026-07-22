@@ -21,9 +21,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
   applyAutoAccepts,
+  createExperiment,
   deriveTaskAttention,
   effectiveDecision,
+  experimentsSummary,
   getEntry,
+  listExperiments,
+  updateExperiment,
   loadHub,
   loadTaskSidecars,
   queueOrCancelRun,
@@ -298,6 +302,8 @@ function toolReadBenchmark(args: Obj): unknown {
       // defaults when the file is absent) + the incumbent/trivial calibration.
       review_policy: entry.reviewPolicy ?? null,
       calibration: calibrationOut(entry.calibration),
+      // Additive: experiment-lineage sidecar summary (experiments.jsonl).
+      experiments: experimentsSummary(entry.dir),
       cross_check_errors: entry.crossCheckErrors,
       tasks: (() => {
         const attentionByTask = new Map(deriveTaskAttention(entry).map((a) => [a.task_id, a.flags]));
@@ -331,6 +337,8 @@ function toolReadBenchmark(args: Obj): unknown {
     // (incumbent gate counts and trivial-arm floors when arms ran).
     calibration_present: entry.calibration != null,
     calibration: calibrationOut(entry.calibration),
+    // Additive: experiment-lineage sidecar summary (experiments.jsonl).
+    experiments: experimentsSummary(entry.dir),
     tasks: entry.manifest.tasks.map((t) => ({
       task_id: t.task_id,
       split: t.split,
@@ -538,6 +546,8 @@ function toolQueueRun(args: Obj): unknown {
     // Additive: incumbent-baseline arm + calibration threshold pass-through.
     incumbent_models: args.incumbent_models,
     calibration_threshold: args.calibration_threshold,
+    // Additive: experiment-lineage cross-link (validated against experiments.jsonl).
+    experiment_id: args.experiment_id,
   });
   if (!result.ok) throw new ToolError(result.error);
   return { ok: true, run_id: result.run.run_id, run: result.run, execute_hint: result.execute_hint };
@@ -569,6 +579,31 @@ function toolRunStatus(args: Obj): unknown {
     rows: rowsSummary(rows),
     per_task: [...new Set(rows.map((r) => r.task_id))].sort().map((taskId) => ({ task_id: taskId, ...taskScores(rows, taskId) })),
   };
+}
+
+/* ---------------- experiment lineage (experiments.jsonl) ---------------- */
+
+function toolCreateExperiment(args: Obj): unknown {
+  const slug = requireString(args, "slug");
+  // Shared validation + append (dist/benchmark-hub-core.js →
+  // dist/benchmark-artifacts.js) — one understudy.experiment.v1 line into
+  // experiments.jsonl next to the benchmark manifest.
+  const result = createExperiment(getEntry(slug), asObject(args.experiment) as never);
+  if (!result.ok) throw new ToolError(result.error);
+  return { ok: true, experiment: result.experiment, file: result.file };
+}
+
+function toolUpdateExperiment(args: Obj): unknown {
+  const slug = requireString(args, "slug");
+  const result = updateExperiment(getEntry(slug), args.experiment_id, asObject(args.patch));
+  if (!result.ok) throw new ToolError(result.error);
+  return { ok: true, experiment: result.experiment, file: result.file };
+}
+
+function toolListExperiments(args: Obj): unknown {
+  const entry = requireEntry(requireString(args, "slug"));
+  if (entry.kind === "invalid") throw new ToolError(`benchmark dir is invalid: ${entry.errors.join("; ")}`);
+  return listExperiments(entry.dir);
 }
 
 /* ---------------- MCP wiring ---------------- */
@@ -718,8 +753,69 @@ export const BENCHMARKS_TOOLS = [
           maximum: 1,
           description: "Incumbent calibration pass threshold on the strict score (default 1).",
         },
+        experiment_id: {
+          type: "string",
+          description:
+            "Optional understudy.experiment.v1 experiment this run evaluates; must already exist in the " +
+            "benchmark's experiments.jsonl (create_experiment first). Recorded on the run request so rows/" +
+            "events join back to the experiment via run_id.",
+        },
       },
       required: ["slug", "models"],
+    },
+  },
+  {
+    name: "create_experiment",
+    description:
+      "Append one NEW understudy.experiment.v1 line to experiments.jsonl next to the benchmark manifest: " +
+      "hypothesis, data_selection (curate-trajectories selection hash + source), training plan (method, " +
+      "base_model, config, provider, cost_estimate, cleared approval gates), optional produced_artifact / " +
+      "baseline_run_id / eval_run_ids / verdict. Append-only; refuses an existing experiment_id (use " +
+      "update_experiment). Records lineage only — never uploads data or spends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Slug from list_benchmarks." },
+        experiment: {
+          type: "object",
+          description:
+            "The experiment record. Required: hypothesis (string), data_selection {selection_hash, source, " +
+            "splits_sha256?}, training {method sft|lora|distill|rl|prompt_only|none, base_model, provider " +
+            "('local' or a provider id), config?, cost_estimate?, approvals?: [{gate, approved_by, at}]}. " +
+            "Optional: experiment_id (generated when omitted), status (default draft), produced_artifact " +
+            "{kind, ref, sha256}, baseline_run_id, eval_run_ids, verdict {decision promote|shadow|collect|stop, summary, decided_at}.",
+        },
+      },
+      required: ["slug", "experiment"],
+    },
+  },
+  {
+    name: "update_experiment",
+    description:
+      "Supersede one experiment: merge a patch over its newest experiments.jsonl record and append the FULL " +
+      "merged record (append-only, newest per experiment_id wins — history is never rewritten). " +
+      "training.approvals and eval_run_ids APPEND (cleared gates are never dropped); experiment_id and " +
+      "created_at are immutable. Typical patches: status flips, a new approval gate, produced_artifact after " +
+      "training, eval_run_ids after runs, the final verdict.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        experiment_id: { type: "string" },
+        patch: { type: "object", description: "Partial understudy.experiment.v1 fields to merge over the newest record." },
+      },
+      required: ["slug", "experiment_id", "patch"],
+    },
+  },
+  {
+    name: "list_experiments",
+    description:
+      "Latest understudy.experiment.v1 record per experiment_id from the benchmark's experiments.jsonl " +
+      "(append-only sidecar; newest line per experiment_id wins), plus total superseding line count.",
+    inputSchema: {
+      type: "object",
+      properties: { slug: { type: "string" } },
+      required: ["slug"],
     },
   },
   {
@@ -748,6 +844,9 @@ export function callBenchmarksTool(name: string, args: Obj): unknown {
     case "submit_feedback": return toolSubmitFeedback(args);
     case "queue_run": return toolQueueRun(args);
     case "run_status": return toolRunStatus(args);
+    case "create_experiment": return toolCreateExperiment(args);
+    case "update_experiment": return toolUpdateExperiment(args);
+    case "list_experiments": return toolListExperiments(args);
     default: throw new ToolError(`unknown tool: ${name}`);
   }
 }

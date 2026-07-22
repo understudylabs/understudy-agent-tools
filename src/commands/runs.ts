@@ -12,11 +12,13 @@ import {
   validateRunRequestInput,
   verifiersRunner,
   type ArmRunner,
+  type ModelArmEntry,
   type PromptOverride,
   type RunEvent,
   type RunSplit,
 } from "../run-executor.js";
 import { appReplayRunner } from "../app-harness.js";
+import { mlxServingRig } from "../local-serving.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -40,7 +42,17 @@ export function registerRunsCommand(program: Command): void {
     .command("queue")
     .description("Queue a run request (validated by the same shared schema the hub API uses); execute it with `understudy runs execute`")
     .requiredOption("--benchmark <dir>", "Promoted benchmark directory")
-    .requiredOption("--models <ids>", "Comma-separated model ids")
+    .option("--models <ids>", "Comma-separated gateway model ids")
+    .option(
+      "--local-arm <label=ref...>",
+      "Local trained-artifact arm: <label>=<path to a .understudy-model bundle or MLX model dir>; the executor serves it via the MLX rig for the arm (repeatable; requires the local_arms capability)",
+      (value: string, prior: { ref: string; label?: string }[] = []) => {
+        const match = /^([^=]+)=(.+)$/.exec(value);
+        if (!match) throw new Error(`--local-arm must be <label>=<ref>, got: ${value}`);
+        return [...prior, { label: match[1], ref: match[2] }];
+      },
+    )
+    .option("--trivial-arms <kinds>", "Comma-separated trivial calibration arms: null_agent, spam_agent, majority_class")
     .option("--split <split>", "train | dev | holdout | all", "all")
     .option("--tasks <ids>", 'Comma-separated task ids (default "all")')
     .option("--rollouts <count>", "Rollouts per task", "1")
@@ -55,19 +67,25 @@ export function registerRunsCommand(program: Command): void {
         return [...prior, { arm_label: match[1], model: match[2], system_prompt_suffix: readFileSync(resolve(match[3]), "utf8").trim() }];
       },
     )
-    .action((options: { benchmark: string; models: string; split: string; tasks?: string; rollouts: string; incumbent?: string; rolloutTimeout?: string; promptOverride?: PromptOverride[] }) => {
+    .action((options: { benchmark: string; models?: string; localArm?: { ref: string; label?: string }[]; trivialArms?: string; split: string; tasks?: string; rollouts: string; incumbent?: string; rolloutTimeout?: string; promptOverride?: PromptOverride[] }) => {
       const benchmark = resolve(options.benchmark);
       const manifest = JSON.parse(readFileSync(join(benchmark, "benchmark.json"), "utf8")) as Record<string, unknown>;
       const knownTaskIds = (Array.isArray(manifest.tasks) ? (manifest.tasks as Record<string, unknown>[]) : []).map((t) => String(t.task_id));
+      // Arms = gateway ids (strings, unchanged) + local artifact arms (objects).
+      const models: ModelArmEntry[] = [
+        ...(options.models ? options.models.split(",").map((m) => m.trim()).filter(Boolean) : []),
+        ...(options.localArm ?? []),
+      ];
       const input = {
         benchmark_id: String(manifest.benchmark_id),
-        models: options.models.split(",").map((m) => m.trim()).filter(Boolean),
+        models,
         split: options.split as RunSplit,
         tasks: options.tasks ? options.tasks.split(",").map((t) => t.trim()).filter(Boolean) : ("all" as const),
         rollouts_per_task: Number(options.rollouts),
         incumbent_models: options.incumbent ? options.incumbent.split(",").map((m) => m.trim()).filter(Boolean) : undefined,
         rollout_timeout_seconds: options.rolloutTimeout !== undefined ? Number(options.rolloutTimeout) : undefined,
         prompt_overrides: options.promptOverride,
+        trivial_arms: options.trivialArms ? (options.trivialArms.split(",").map((t) => t.trim()).filter(Boolean) as Parameters<typeof createRunRequest>[1]["trivial_arms"]) : undefined,
       };
       const errors = validateRunRequestInput(input, knownTaskIds);
       if (errors.length > 0) throw new Error(`invalid run request: ${errors.join("; ")}`);
@@ -119,7 +137,9 @@ export function registerRunsCommand(program: Command): void {
         // app_replay requests (request.app_replay) always use the app-harness
         // runner regardless of --runner; providing it here is what advertises
         // the "app_replay" capability to the queue.
-        const results = await executeQueuedRuns(benchmark, { runner, appReplayRunner: appReplayRunner(), concurrency, rolloutTimeoutSeconds, onEvent });
+        // localServing advertises the "local_arms" capability: local-artifact
+        // arms are served through the MLX rig for the arm's duration.
+        const results = await executeQueuedRuns(benchmark, { runner, appReplayRunner: appReplayRunner(), localServing: mlxServingRig({ onLog: (line) => console.error(`[local-serving] ${line}`) }), concurrency, rolloutTimeoutSeconds, onEvent });
         if (results.length > 0) console.log(JSON.stringify(results, null, 2));
         else if (!options.watch) console.error("queue empty — nothing to execute");
         if (options.watch) await sleep(interval);
