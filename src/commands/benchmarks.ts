@@ -28,4 +28,18 @@ export function registerBenchmarksCommand(program: Command): void {
       const { runBenchmarksMcpServer } = await import("../benchmarks-mcp.js");
       await runBenchmarksMcpServer(options.root);
     });
+
+  benchmarks
+    .command("rigor <dir>")
+    .description(
+      "Generate rigor-report.md in the benchmark dir: ABC checklist (oracle solvability, null/spam trivial-agent " +
+        "floors, incumbent calibration, per-task contract complexity, anomaly counts, split provenance) derived " +
+        "purely from existing artifacts — no network, no model calls",
+    )
+    .action(async (dir: string) => {
+      const { writeRigorReport } = await import("../rigor-report.js");
+      const { path, report } = writeRigorReport(dir);
+      console.error(`wrote ${path}`);
+      console.log(JSON.stringify(report, null, 2));
+    });
 }

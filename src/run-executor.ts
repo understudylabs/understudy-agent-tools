@@ -19,7 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renam
 import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { buildReplayInvocation, isMutatingTool, scoreState } from "./trace-foundry.js";
+import { buildReplayInvocation, isMutatingTool, scoreContract, scoreState } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
 import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 
@@ -33,11 +33,21 @@ export type RunStatus = (typeof RUN_STATUSES)[number];
 export const RUN_SPLITS = ["train", "dev", "holdout", "all"] as const;
 export type RunSplit = (typeof RUN_SPLITS)[number];
 
-/** Row arm labels: "incumbent" = the model that produced the source captures, rerun; everything else is a "candidate". */
-export const ARM_KINDS = ["incumbent", "candidate"] as const;
+/**
+ * Row arm labels: "incumbent" = the model that produced the source captures,
+ * rerun; "candidate" = any other model arm; "null_agent"/"spam_agent" are the
+ * deterministic trivial calibration arms (extended additively — old readers
+ * only ever see incumbent/candidate on old rows).
+ */
+export const ARM_KINDS = ["incumbent", "candidate", "null_agent", "spam_agent"] as const;
 export type ArmKind = (typeof ARM_KINDS)[number];
+/** The trivial calibration arms (agentic-benchmarks floor discipline: a do-nothing agent must score ~0). */
+export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent"] as const;
+export type TrivialArmKind = (typeof TRIVIAL_ARM_KINDS)[number];
 /** Default incumbent-pass threshold on the strict contract score. */
 export const DEFAULT_CALIBRATION_THRESHOLD = 1;
+/** A trivial arm passing more than this fraction of tasks flags the benchmark floor_exceeded. */
+export const TRIVIAL_FLOOR_LIMIT = 0.05;
 
 export type RunRequest = {
   schema_version: typeof RUN_REQUEST_SCHEMA;
@@ -64,6 +74,12 @@ export type RunRequest = {
   incumbent_models?: string[];
   /** Additive: strict-score pass threshold for the incumbent calibration gate (default 1). */
   calibration_threshold?: number;
+  /**
+   * Additive (absent when unused — old readers see the exact prior shape):
+   * trivial calibration arms to run alongside the model arms. Deterministic,
+   * zero-cost, one rollout per task; rows are labeled with the arm kind.
+   */
+  trivial_arms?: TrivialArmKind[];
 };
 
 /** Live journals live under <benchmark>/runs/live/ and stay after the run for replay-scrubbing. */
@@ -132,6 +148,8 @@ export type RunRequestInput = {
   incumbent_models?: unknown;
   /** Optional (additive): calibration pass threshold in (0, 1]. */
   calibration_threshold?: unknown;
+  /** Optional (additive): trivial calibration arms ("null_agent" / "spam_agent"). */
+  trivial_arms?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -179,13 +197,21 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (threshold !== undefined && (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold <= 0 || threshold > 1)) {
     errors.push("calibration_threshold must be a number in (0, 1]");
   }
+  const trivial = input.trivial_arms;
+  if (trivial !== undefined) {
+    if (!Array.isArray(trivial) || !trivial.every((kind) => TRIVIAL_ARM_KINDS.includes(kind as TrivialArmKind))) {
+      errors.push(`trivial_arms must be an array of ${TRIVIAL_ARM_KINDS.join(" / ")}`);
+    } else if (new Set(trivial).size !== trivial.length) {
+      errors.push("trivial_arms must be unique");
+    }
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[] },
   now: Date = new Date(),
 ): RunRequest {
   const request: RunRequest = {
@@ -205,6 +231,7 @@ export function createRunRequest(
     // Additive fields stay absent unless requested, so old readers see the exact prior shape.
     ...(input.incumbent_models && input.incumbent_models.length > 0 ? { incumbent_models: input.incumbent_models } : {}),
     ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
+    ...(input.trivial_arms && input.trivial_arms.length > 0 ? { trivial_arms: input.trivial_arms } : {}),
   };
   writeRunRequest(benchmarkDir, request);
   return request;
@@ -436,7 +463,21 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
     return request;
   }
 
-  const total = request.models.length * selected.length * request.rollouts_per_task;
+  // Arms = the requested model arms plus any trivial calibration arms. Trivial
+  // arms are deterministic, so they run exactly ONE rollout per task no matter
+  // what rollouts_per_task says (repeats add nothing but identical rows).
+  type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number };
+  const arms: Arm[] = request.models.map((model) => ({
+    model,
+    kind: ((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind,
+    runner: options.runner,
+    rollouts: request.rollouts_per_task,
+  }));
+  for (const kind of request.trivial_arms ?? []) {
+    if (!TRIVIAL_ARM_KINDS.includes(kind)) continue;
+    arms.push({ model: kind, kind, runner: kind === "null_agent" ? nullAgentRunner() : spamAgentRunner(), rollouts: 1 });
+  }
+  const total = arms.reduce((sum, arm) => sum + selected.length * arm.rollouts, 0);
   request = { ...request, status: "running", started_at: now().toISOString(), progress: { completed: 0, total } };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
@@ -465,7 +506,8 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   };
 
   try {
-    for (const model of request.models) {
+    for (const arm of arms) {
+      const model = arm.model;
       if (cancelled()) break;
       appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
       const rowsFile = rowsFilePath(dir, runId, model);
@@ -478,7 +520,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       // Work items for this arm; a bounded pool honors --concurrency while the
       // cancel check between dequeues keeps the flip responsive.
       const queue: { task: Obj; rollout: number }[] = [];
-      for (const task of selected) for (let rollout = 0; rollout < request.rollouts_per_task; rollout += 1) queue.push({ task, rollout });
+      for (const task of selected) for (let rollout = 0; rollout < arm.rollouts; rollout += 1) queue.push({ task, rollout });
       let armCancelled = false;
       const worker = async (): Promise<void> => {
         for (;;) {
@@ -497,7 +539,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           writeRunRequest(dir, request);
           let result: RolloutResult;
           try {
-            result = await options.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath });
+            result = await arm.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath });
           } catch (err) {
             result = { score: null, subscores: null, status: "error", latency_ms: null, cost: null, writes: [], error: err instanceof Error ? `${err.constructor.name}: ${err.message}` : String(err) };
           }
@@ -513,7 +555,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           const envRow = envTaskRows.get(taskId);
           let journalBytes: number | null = null;
           try { journalBytes = statSync(journalPath).size; } catch { journalBytes = 0; }
-          const anomalies = detectRolloutAnomalies({
+          // Structural sentinels are MODEL-arm-only: a trivial arm making zero
+          // tool calls / an empty final response is behaving exactly as
+          // designed, never a harness anomaly (its floor is the signal).
+          const anomalies = (TRIVIAL_ARM_KINDS as readonly string[]).includes(arm.kind) ? [] : detectRolloutAnomalies({
             task: sidecar,
             result,
             promptSent: envRow === undefined ? undefined : String(envRow.prompt ?? ""),
@@ -529,9 +574,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             subscores: result.subscores,
             status: result.status,
             model,
-            // Additive arm label: incumbent reruns are distinguishable from
-            // candidate arms everywhere downstream (hub badges, calibration).
-            arm_kind: (request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate",
+            // Additive arm label: incumbent reruns and trivial calibration
+            // arms are distinguishable from candidate arms everywhere
+            // downstream (hub badges, calibration, floors).
+            arm_kind: arm.kind,
             route: "gateway",
             latency_ms: result.latency_ms,
             cost: result.cost,
@@ -596,9 +642,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
-  // Calibration gate: a finished run with an incumbent arm updates the
-  // benchmark's calibration.json sidecar from its own rows + run events.
-  if ((request.incumbent_models ?? []).length > 0) writeCalibrationSummary(dir, request, selected.map((t) => String(t.task_id)));
+  // Calibration gate: a finished run with an incumbent arm and/or trivial
+  // arms updates the benchmark's calibration.json sidecar from its own
+  // rows + run events.
+  if ((request.incumbent_models ?? []).length > 0 || (request.trivial_arms ?? []).length > 0) writeCalibrationSummary(dir, request, selected.map((t) => String(t.task_id)));
   return request;
 }
 
@@ -611,6 +658,21 @@ export function calibrationPath(benchmarkDir: string): string {
 }
 
 export type CalibrationTask = { task_id: string; score: number | null; passed: boolean; rollouts: number; anomalous_rollouts: number };
+
+/**
+ * Per-benchmark trivial-arm floor: the fraction of selected tasks the arm
+ * passes at the calibration threshold. A trivial agent passing tasks means
+ * the contract is satisfiable by doing nothing (null) or by ritual tool
+ * calling (spam) — floor > TRIVIAL_FLOOR_LIMIT flags the benchmark.
+ */
+export type TrivialFloor = {
+  arm_kind: TrivialArmKind;
+  /** passed / selected tasks, at the calibration threshold. Null when the arm produced no rows. */
+  floor: number | null;
+  /** The offending tasks: every selected task the trivial arm passes. */
+  passed_task_ids: string[];
+  floor_exceeded: boolean;
+};
 
 export type CalibrationSummary = {
   schema_version: typeof CALIBRATION_SCHEMA;
@@ -626,6 +688,10 @@ export type CalibrationSummary = {
   failed_count: number;
   /** Tasks the incumbent fails on rerun — the hub flags these incumbent_failed (suspect). */
   failed_task_ids: string[];
+  /** Additive: null-agent floor (absent when the run carried no null_agent arm — old readers see the prior shape). */
+  null_floor?: TrivialFloor;
+  /** Additive: spam-agent floor (absent when the run carried no spam_agent arm). */
+  spam_floor?: TrivialFloor;
 };
 
 /**
@@ -649,6 +715,8 @@ export function deriveCalibrationSummary(args: {
   selectedTaskIds: string[];
   rows: Obj[];
   events: Obj[];
+  /** Trivial arms the run carried; each contributes its floor to the summary. */
+  trivialArms?: TrivialArmKind[];
 }): CalibrationSummary {
   const threshold = args.threshold ?? DEFAULT_CALIBRATION_THRESHOLD;
   const incumbents = new Set(args.incumbentModels);
@@ -658,7 +726,9 @@ export function deriveCalibrationSummary(args: {
     return typeof event?.ts === "string" ? event.ts : null;
   };
   const rows = args.rows.filter((row) => row.run_id === args.runId && incumbents.has(String(row.model ?? "")));
-  const tasks: CalibrationTask[] = args.selectedTaskIds.map((taskId) => {
+  // A trivial-only run makes NO incumbent claim: tasks stay empty rather than
+  // reading "every task failed calibration" off arms that never ran.
+  const tasks: CalibrationTask[] = incumbents.size === 0 ? [] : args.selectedTaskIds.map((taskId) => {
     const taskRows = rows.filter((row) => String(row.task_id) === taskId);
     const anomalous = taskRows.filter(isAnomalousEvalRow);
     const scores = taskRows.filter((row) => !isAnomalousEvalRow(row) && row.status === "ok" && typeof row.score === "number").map((row) => Number(row.score));
@@ -666,6 +736,22 @@ export function deriveCalibrationSummary(args: {
     return { task_id: taskId, score: best, passed: best !== null && best >= threshold, rollouts: taskRows.length, anomalous_rollouts: anomalous.length };
   });
   const failed = tasks.filter((task) => !task.passed);
+  // Trivial-arm floors: a task "passes" for a trivial arm when its best ok,
+  // non-anomalous row for that arm_kind reaches the SAME threshold the
+  // incumbent gate uses. floor = passed / selected.
+  const runRows = args.rows.filter((row) => row.run_id === args.runId);
+  const floorFor = (kind: TrivialArmKind): TrivialFloor => {
+    const armRows = runRows.filter((row) => String(row.arm_kind ?? "") === kind);
+    const passedIds = args.selectedTaskIds.filter((taskId) => {
+      const scores = armRows
+        .filter((row) => String(row.task_id) === taskId && !isAnomalousEvalRow(row) && row.status === "ok" && typeof row.score === "number")
+        .map((row) => Number(row.score));
+      return scores.length > 0 && Math.max(...scores) >= threshold;
+    });
+    const floor = armRows.length === 0 ? null : args.selectedTaskIds.length === 0 ? 0 : passedIds.length / args.selectedTaskIds.length;
+    return { arm_kind: kind, floor, passed_task_ids: passedIds, floor_exceeded: floor !== null && floor > TRIVIAL_FLOOR_LIMIT };
+  };
+  const trivialArms = args.trivialArms ?? [];
   return {
     schema_version: CALIBRATION_SCHEMA,
     benchmark_id: args.benchmarkId,
@@ -678,6 +764,9 @@ export function deriveCalibrationSummary(args: {
     passed_count: tasks.length - failed.length,
     failed_count: failed.length,
     failed_task_ids: failed.map((task) => task.task_id),
+    // Additive floors: absent unless the run carried the arm.
+    ...(trivialArms.includes("null_agent") ? { null_floor: floorFor("null_agent") } : {}),
+    ...(trivialArms.includes("spam_agent") ? { spam_floor: floorFor("spam_agent") } : {}),
   };
 }
 
@@ -685,7 +774,7 @@ export function deriveCalibrationSummary(args: {
 function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, selectedTaskIds: string[]): void {
   try {
     // Rows/events re-read through the SHARED tolerant codec (never a private parser).
-    const rows = (request.incumbent_models ?? []).flatMap((model) => readJsonlFile<Obj>(rowsFilePath(benchmarkDir, request.run_id, model)).items);
+    const rows = [...(request.incumbent_models ?? []), ...(request.trivial_arms ?? [])].flatMap((model) => readJsonlFile<Obj>(rowsFilePath(benchmarkDir, request.run_id, model)).items);
     const summary = deriveCalibrationSummary({
       benchmarkId: request.benchmark_id,
       runId: request.run_id,
@@ -694,6 +783,7 @@ function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, sele
       selectedTaskIds,
       rows,
       events: readJsonlFile<Obj>(runEventsPath(benchmarkDir)).items,
+      trivialArms: request.trivial_arms ?? [],
     });
     const file = calibrationPath(benchmarkDir);
     const tmp = `${file}.tmp`;
@@ -751,6 +841,124 @@ export function oracleRunner(): ArmRunner {
       writes,
       tool_call_count: writes.length,
       final_response_chars: null,
+    };
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Trivial calibration arms (agentic-benchmarks floor discipline)      */
+/* ------------------------------------------------------------------ */
+
+/** The null agent's entire output: deterministic boilerplate, never task-derived. */
+export const NULL_AGENT_FINAL_RESPONSE = "I was unable to complete this task.";
+
+const trivialSubscores = (scored: Obj, label: "runner_null_agent" | "runner_spam_agent"): Record<string, number> => ({
+  final_state: Number(scored.strict ?? 0),
+  final_state_partial_credit: Number(scored.recall ?? 0),
+  recall: Number(scored.recall ?? 0),
+  precision: Number(scored.precision ?? 0),
+  policy: Number(scored.policy ?? 0),
+  [label]: 1,
+});
+
+/**
+ * Null-agent arm: adversarially inert. Makes NO tool calls and answers every
+ * task with the same boilerplate final response, scored through the SAME
+ * full-contract scorer real arms are judged by (scoreContract over the empty
+ * event stream). Deterministic, zero provider calls, zero cost. Any task this
+ * arm passes is satisfiable by doing nothing — the tau-bench 38% class.
+ */
+export function nullAgentRunner(): ArmRunner {
+  return async ({ task }) => {
+    const started = Date.now();
+    const scored = asObject(scoreContract(asObject(task), { calls: [], finalResponse: NULL_AGENT_FINAL_RESPONSE }));
+    return {
+      score: Number(scored.strict ?? 0),
+      subscores: trivialSubscores(scored, "runner_null_agent"),
+      status: "ok" as const,
+      latency_ms: Math.max(1, Date.now() - started),
+      cost: 0,
+      writes: [],
+      tool_call_count: 0,
+      final_response_chars: NULL_AGENT_FINAL_RESPONSE.length,
+    };
+  };
+}
+
+/**
+ * Deterministic schema-minimal arguments for one declared tool schema
+ * (environment/understudy_trace_env/servers/schemas.json entry): every
+ * required property gets the zero value of its declared type; observed enums
+ * get their first (sorted-stable as recorded) allowed value. No randomness,
+ * no task-derived content — the point is ritual, content-free tool calling.
+ */
+export function schemaMinimalArguments(schema: Obj): Obj {
+  const properties = asObject(schema.properties);
+  const enums = asObject(schema.enums_by_observation);
+  const zero = (type: unknown): unknown => {
+    if (type === "number" || type === "integer") return 0;
+    if (type === "boolean") return false;
+    if (type === "array") return [];
+    if (type === "object") return {};
+    return "";
+  };
+  const args: Obj = {};
+  const required = (Array.isArray(schema.required) ? schema.required : []).map(String);
+  for (const key of required) args[key] = zero(properties[key]);
+  // Observation-tightened requirements/enums keep the call schema-valid in
+  // the strict world server; only top-level paths are synthesized.
+  for (const path of (Array.isArray(schema.required_by_observation) ? schema.required_by_observation : []).map(String)) {
+    if (!path.includes(".") && args[path] === undefined) args[path] = zero(properties[path]);
+  }
+  for (const [path, allowed] of Object.entries(enums)) {
+    if (!path.includes(".") && Array.isArray(allowed) && allowed.length > 0) args[path] = allowed[0];
+  }
+  return args;
+}
+
+/** The benchmark's declared tool surface: schemas.json when present, else the tools named by the task's own contract (empty args). */
+export function spamToolSurface(benchmarkDir: string, task: Obj): { tool: string; arguments: Obj }[] {
+  try {
+    const schemas = asObject(JSON.parse(readFileSync(join(resolve(benchmarkDir), "environment", "understudy_trace_env", "servers", "schemas.json"), "utf8")));
+    const tools = Object.keys(schemas).sort();
+    if (tools.length > 0) return tools.map((tool) => ({ tool, arguments: schemaMinimalArguments(asObject(schemas[tool])) }));
+  } catch { /* no generated environment — fall back to the contract's tools */ }
+  const contract = asObject(task.outcome_contract);
+  const tools = new Set<string>();
+  for (const listName of ["required", "preserved", "forbidden"]) {
+    for (const rule of (Array.isArray(contract[listName]) ? (contract[listName] as unknown[]) : []).map(asObject)) {
+      if (typeof rule.tool === "string" && rule.tool) tools.add(rule.tool);
+    }
+  }
+  return [...tools].sort().map((tool) => ({ tool, arguments: {} }));
+}
+
+/**
+ * Spam-agent arm: deterministically calls EVERY tool in the benchmark's tool
+ * surface exactly once with schema-minimal arguments, then stops with a
+ * boilerplate final response. Scored through the same full-contract scorer.
+ * Any task this arm passes is satisfiable by ritual behavior (touch every
+ * tool, say nothing) rather than by understanding the task.
+ */
+export function spamAgentRunner(): ArmRunner {
+  const journal = appendJournalEntry;
+  return async ({ benchmarkDir, task, journalPath }) => {
+    const started = Date.now();
+    const calls = spamToolSurface(benchmarkDir, asObject(task));
+    for (const call of calls) {
+      journal(journalPath, { at: Date.now() / 1000, kind: "call", tool: call.tool, write: isMutatingTool(call.tool), status: "ok", arguments: JSON.stringify(call.arguments).slice(0, 800) });
+      journal(journalPath, { at: Date.now() / 1000, kind: "result", tool: call.tool, status: "ok", content: "{\"ok\": true}" });
+    }
+    const scored = asObject(scoreContract(asObject(task), { calls, finalResponse: NULL_AGENT_FINAL_RESPONSE }));
+    return {
+      score: Number(scored.strict ?? 0),
+      subscores: trivialSubscores(scored, "runner_spam_agent"),
+      status: "ok" as const,
+      latency_ms: Math.max(1, Date.now() - started),
+      cost: 0,
+      writes: calls.filter((call) => isMutatingTool(call.tool)),
+      tool_call_count: calls.length,
+      final_response_chars: NULL_AGENT_FINAL_RESPONSE.length,
     };
   };
 }

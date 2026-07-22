@@ -39,24 +39,51 @@ and WebArena's string-matching validators were exploitable.
 | Non-AI baselines | Incumbent baseline is always rerun on the frozen harness before any candidate claim; deterministic/scripted baselines are encouraged where the workload has one |
 | Flaw discussion | Claim packets require caveats, coverage matrices, uncovered strata, and counterexample review before any conclusion |
 
+## Trivial calibration arms + the rigor report (tooling)
+
+The run executor now ships the ABC floor discipline directly:
+
+- **Null-agent arm** (`arm_kind: "null_agent"`) — deterministic, zero-cost:
+  makes NO tool calls and answers every task with the same boilerplate final
+  response, scored through the same full-contract scorer as real arms. Any
+  task it passes is satisfiable by doing nothing (the tau-bench 38% class).
+- **Spam-agent arm** (`arm_kind: "spam_agent"`) — deterministically calls
+  every tool in the benchmark's declared tool surface exactly once with
+  schema-minimal arguments (zero values per declared type, first observed
+  enum value; derived from the generated environment's `schemas.json`), then
+  stops. Catches contracts satisfiable by ritual tool calling.
+
+Queue them additively on `understudy.run_request.v1` with
+`trivial_arms: ["null_agent", "spam_agent"]` (omitted = prior shape; old
+readers unaffected). Trivial arms run one rollout per task (repeats of a
+deterministic agent add nothing), their rows are never anomaly-flagged (zero
+tool calls IS the design — the structural sentinels stay model-arm-only), and
+a finished run extends `calibration.json` additively with `null_floor` /
+`spam_floor`: the fraction of selected tasks each arm passes at the
+calibration threshold, with `floor_exceeded: true` plus the offending
+`passed_task_ids` when the floor exceeds 5%.
+
+`understudy benchmarks rigor <dir>` generates `rigor-report.md` in the
+benchmark dir — the ABC attestation artifact: oracle solvability, null/spam
+floors, incumbent calibration, per-task contract complexity (obligation
+counts by kind from `tasks.jsonl`), anomaly counts, and split/contamination
+provenance, derived purely from existing artifacts (no network, no model
+calls). Items it cannot check yet appear as honest UNKNOWN rows.
+
 ## Current gaps (in progress)
 
 Honest accounting — these ABC items are specified in the skills but not yet
 enforced by tooling:
 
-- **Null-agent arm** — the do-nothing floor run is a documented requirement,
-  not yet an automatic arm in the CLI harnesses or `understudy traces
-  build-benchmark` output. In progress.
 - **Gold-leakage audit** — currently a manual grep/checklist step; no
   automated scanner walks the reachable synthetic state for gold
-  keys/values. In progress.
+  keys/values. Reported as UNKNOWN in the rigor report. In progress.
 - **Confidence intervals** — bootstrap CIs are required by the sweep and
   claim contracts but computed ad hoc; `summary.csv` and `claim.json` have no
-  enforced CI fields yet. In progress.
-- **Rigor report** — there is no single generated artifact attesting which
-  ABC checkpoints a given benchmark passed (oracle score, null floor,
-  leakage audit, isolation rerun). Planned as a companion to the canonical
-  benchmark manifest. In progress.
+  enforced CI fields yet. Reported as UNKNOWN in the rigor report. In
+  progress.
+- **Hub display of trivial-arm floors** — `calibration.json` carries the
+  floors, but the benchmark-hub UI does not render them yet. Follow-up.
 
 When a gap matters for a decision, run the manual checkpoint from the
 relevant skill rather than waiting for the tooling.
