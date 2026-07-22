@@ -21,6 +21,8 @@ export type FoundryResult = {
   self_check?: Record<string, unknown>;
   /** Gold-leakage audit (understudy.leakage_audit.v1): contract targets verbatim-readable in candidate-facing surfaces. Report-only. */
   leakage_audit?: Record<string, unknown>;
+  /** Candidate/scorer surface split (additive): fixtures.json = pre-state only; expected post-state lives in environment/gold.json. */
+  fixtures_split?: Record<string, unknown>;
 };
 
 export type TraceFoundryOptions = {
@@ -1052,12 +1054,19 @@ export function runFoundrySelfCheck(outputInput: string, tasks: Obj[]): Obj {
  * response-obligation gold string) is verbatim-readable in a candidate-facing
  * surface, the task can be passed by copying instead of doing the work.
  *
- * Candidate-readable surfaces scanned: fixtures.json (the seeded initial
- * world state AND every tool-result template the world will return) and
- * servers/schemas.json (validation schemas — observation-tightened enums and
- * observed_error_example strings are echoed to the candidate in rejections).
- * tasks.json's source_messages are NOT scanned: the taskset feeds the
- * candidate only prompt + system_prompt, not the stored history.
+ * Candidate-readable surfaces scanned: fixtures.json (post fixtures-state-
+ * split: the PRE-STATE world only — tool results the incumbent observed
+ * before its first gold write; expected post-state lives in the scorer-side
+ * environment/gold.json, which world.py never serves and this audit therefore
+ * does not treat as candidate-readable; additionally fixtures are task_id-
+ * tagged and the world serves a rollout only its own task's fixtures, so each
+ * task is audited against exactly the fixtures its rollouts can be served —
+ * another task's pre-state that echoes this task's gold is unreachable) and
+ * servers/schemas.json (validation
+ * schemas — observation-tightened enums and observed_error_example strings
+ * are echoed to the candidate in rejections). tasks.json's source_messages
+ * are NOT scanned: the taskset feeds the candidate only prompt +
+ * system_prompt, not the stored history.
  *
  * Benign-overlap heuristic (documented, deliberately conservative): a gold
  * value is only a finding when it is NOT present in the task's own inputs
@@ -1224,11 +1233,17 @@ function goldValues(task: Obj): Array<{ kind: string; value: string }> {
  */
 export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[], schemas: Obj, semanticChecker?: SemanticLeakageChecker): LeakageAudit {
   const rowByTask = new Map(taskRows.map((row) => [String(asObject(row).task_id), asObject(row)]));
-  // Candidate-readable surfaces (global to the environment package).
-  const surfaces = [
-    { location: "environment/understudy_trace_env/servers/fixtures.json", text: normalizeForLeak(fixtures) },
-    { location: "environment/understudy_trace_env/servers/schemas.json", text: normalizeForLeak(schemas) },
-  ].map((surface) => ({ ...surface, numText: stripThousands(surface.text), shingles: leakShingles(leakTokens(surface.text)) }));
+  const prepareSurface = (location: string, text: string) => ({ location, text, numText: stripThousands(text), shingles: leakShingles(leakTokens(text)) });
+  // Candidate-readable surfaces. schemas.json is global; fixtures are
+  // TASK-SCOPED (the generated world serves a rollout only its own task's
+  // fixtures plus untagged old-layout ones), so each task is audited against
+  // exactly the fixtures a rollout of that task could ever be served.
+  const schemaSurface = prepareSurface("environment/understudy_trace_env/servers/schemas.json", normalizeForLeak(schemas));
+  const fixtureRows = fixtures.map(asObject);
+  const fixtureSurfaceFor = (taskId: string) => prepareSurface(
+    "environment/understudy_trace_env/servers/fixtures.json",
+    normalizeForLeak(fixtureRows.filter((fixture) => fixture.task_id === undefined || fixture.task_id === null || String(fixture.task_id) === taskId)),
+  );
   const findings: LeakageFinding[] = [];
   const seen = new Set<string>();
   const record = (finding: LeakageFinding): void => {
@@ -1243,6 +1258,7 @@ export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[],
     const inputs = normalizeForLeak([row.prompt ?? "", row.system_prompt ?? "", ...userMessages.map((m) => m.content)]);
     const inputsNum = stripThousands(inputs);
     const inputShingles = leakShingles(leakTokens(inputs));
+    const surfaces = [fixtureSurfaceFor(String(task.task_id)), schemaSurface];
     for (const gold of goldValues(task)) {
       const needle = normalizeForLeak(gold.value);
       if (needle.length < MIN_GOLD_LEN) continue;
@@ -1289,7 +1305,7 @@ export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[],
     checked_tasks: tasks.length,
     findings,
     tier_counts,
-    heuristic: `tier 1 (verbatim, status "findings"): flag contract/gold strings (>=${MIN_GOLD_LEN} normalized chars) verbatim in candidate-readable surfaces (fixtures.json, schemas.json) but absent from the task's own inputs (prompt / system prompt / user source messages); tier 2 (fuzzy, status "advisory"): ${LEAK_SHINGLE_SIZE}-token shingle containment >= ${LEAK_SHINGLE_CONTAINMENT} over input-novel shingles (golds >= ${LEAK_MIN_SHINGLE_TOKENS} tokens), plus rare-token fingerprints (emails, ISO dates, id-shaped tokens >= ${LEAK_MIN_FINGERPRINT_LEN} chars, digit runs >= ${LEAK_MIN_DIGITS} digits with thousands separators stripped) absent from inputs but present in a surface; report-only, never auto-redacted`,
+    heuristic: `tier 1 (verbatim, status "findings"): flag contract/gold strings (>=${MIN_GOLD_LEN} normalized chars) verbatim in candidate-readable surfaces (fixtures.json scoped to the fixtures servable to the task's own rollouts — the task's own task_id-tagged fixtures plus untagged old-layout ones — and schemas.json globally) but absent from the task's own inputs (prompt / system prompt / user source messages); tier 2 (fuzzy, status "advisory"): ${LEAK_SHINGLE_SIZE}-token shingle containment >= ${LEAK_SHINGLE_CONTAINMENT} over input-novel shingles (golds >= ${LEAK_MIN_SHINGLE_TOKENS} tokens), plus rare-token fingerprints (emails, ISO dates, id-shaped tokens >= ${LEAK_MIN_FINGERPRINT_LEN} chars, digit runs >= ${LEAK_MIN_DIGITS} digits with thousands separators stripped) absent from inputs but present in a surface; report-only, never auto-redacted`,
   };
 }
 
@@ -1305,6 +1321,44 @@ function printLeakageAudit(audit: LeakageAudit): void {
     console.error(`[leakage-audit]   ${finding.task_id} · ${finding.tier} (${finding.similarity}) · ${finding.kind} · ${finding.location} · "${finding.excerpt.slice(0, 80)}"`);
   }
   if (audit.findings.length > 8) console.error(`[leakage-audit]   … ${audit.findings.length - 8} more (see manifest.json)`);
+}
+
+/**
+ * Split one task's observed tool results into candidate-safe PRE-STATE
+ * fixtures and scorer-only POST-STATE gold. The boundary is the incumbent's
+ * first mutating call: everything the incumbent observed BEFORE it produced
+ * the first gold effect is legitimately the candidate's starting world;
+ * every result at/after that point (the write's own echo, and any re-read of
+ * the world the write changed) is expected post-state — serving it would let
+ * a candidate copy the answer instead of producing it (the 171-finding
+ * gold-leakage class found on the cedar-automation proof run).
+ *
+ * When the normalized captures are available (both build and regenerate paths
+ * pass them) the boundary is computed over the full ordered call+result event
+ * stream, so a post-write READ is excluded even when the write's own result
+ * was never captured. Fallback for capture-less invocations: order over the
+ * stored observations, cutting at the first mutating-tool result.
+ *
+ * A pre-write read that happens to carry a value the contract also targets
+ * (the agent must read X to write X) is KEPT deliberately — that overlap is
+ * the audit's benign-input class, not a leak; the split targets values that
+ * exist ONLY as gold.
+ */
+export function splitTaskObservations(task: Obj, capturesByKey?: Map<string, Obj>): { pre: Obj[]; post: Obj[] } {
+  const observations = ((asObject(asObject(task.world_model).initial_state).observations ?? []) as unknown[]).map(asObject);
+  const nodeIds = ((asObject(task.source).node_ids ?? []) as unknown[]).map(String);
+  const captures = capturesByKey === undefined ? [] : nodeIds.map((id) => capturesByKey.get(id)).filter(Boolean) as Obj[];
+  if (captures.length > 0) {
+    const pre: Obj[] = [], post: Obj[] = [];
+    let written = false;
+    for (const event of toolEvents(captures)) {
+      if (event.kind === "call" && event.name && isMutatingTool(String(event.name))) written = true;
+      if (event.kind === "result" && event.tool) (written ? post : pre).push(event);
+    }
+    return { pre, post };
+  }
+  const boundary = observations.findIndex((obs) => typeof obs.tool === "string" && isMutatingTool(String(obs.tool)));
+  return boundary === -1 ? { pre: observations, post: [] } : { pre: observations.slice(0, boundary), post: observations.slice(boundary) };
 }
 
 function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string, rows: Obj[] = []): Obj {
@@ -1390,16 +1444,35 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
     const mutating = mutationPrefixes.some((prefix) => name.toLowerCase().startsWith(prefix));
     return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute the trace-derived ${name} transition against per-rollout state.\"\"\"\n        return self._accept({\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}, ${mutating ? "True" : "False"})`;
   }).join("\n\n");
-  const fixtures = tasks.flatMap((task) => task.world_model?.initial_state?.observations ?? []).map((result: Obj) => ({ tool: result.tool, arguments: result.arguments ?? {}, status: result.status, content: result.content }));
+  // Candidate-readable vs scorer-only split (fixtures-state-split): fixtures
+  // carry ONLY what the incumbent observed BEFORE its first gold write —
+  // pre-state reads and tool-result templates. Post-state results (the write's
+  // own echo, post-write re-reads) are the contract's expected outcome and go
+  // to the scorer-side gold.json below, which world.py never loads. A world
+  // call with no matching fixture gets _fixture_reply's generic ok-ack.
+  const capturesByKey = new Map<string, Obj>(rows.map((row) => [String(row.capture_key), row]));
+  // task_id on every fixture: fixtures are TASK-SCOPED. A later task's
+  // pre-state read of the same underlying object legitimately contains an
+  // earlier task's gold writes (cross-task temporal leakage — 44 of cedar's
+  // findings); the world serves a rollout only its own task's fixtures (plus
+  // untagged old-layout ones), so that overlap is unreachable in-rollout.
+  const toFixture = (taskId: string) => (result: Obj): Obj => ({ task_id: taskId, tool: result.tool, arguments: result.arguments ?? {}, status: result.status, content: result.content });
+  const observationSplit = tasks.map((task) => { const split = splitTaskObservations(task, capturesByKey); return { task_id: String(task.task_id), pre: split.pre.map(toFixture(String(task.task_id))), post: split.post.map(toFixture(String(task.task_id))) }; });
+  const fixtures = observationSplit.flatMap((split) => split.pre);
+  const goldRows = observationSplit.filter((split) => split.post.length > 0).map((split) => ({ task_id: split.task_id, post_state_observations: split.post }));
   // Stateful per-rollout world: fixtures are matched token-normalized (not
   // byte-exact) and consumed in captured order, so a transient captured error
   // is transient here too instead of being returned forever.
-  const fixtureReply = `    def _fixture_reply(self, event: dict) -> str:\n        matches = [(index, fixture) for index, fixture in enumerate(self.FIXTURES) if fixture.get("tool") == event["tool"] and _arguments_match(fixture.get("arguments") or {}, event["arguments"])]\n        pick = next(((index, fixture) for index, fixture in matches if index not in self.state.used_fixtures), matches[-1] if matches else None)\n        if pick is None:\n            return json.dumps({"ok": True, **event})\n        index, fixture = pick\n        self.state.used_fixtures.append(index)\n        content = fixture.get("content")\n        body = content if isinstance(content, str) else json.dumps(content)\n        return f"ERROR: {body}" if fixture.get("status") == "error" else body`;
+  const fixtureReply = `    async def setup_task(self, task) -> None:\n        \"\"\"Task-scoped fixtures: a rollout may only be served ITS OWN task's\n        observed pre-state (plus untagged old-layout fixtures). Another task's\n        pre-state can legitimately contain this task's expected post-state\n        (a later trace read the world after this task's incumbent wrote it) —\n        serving it would leak gold across tasks.\"\"\"\n        task_id = getattr(task, "task_id", None)\n        if task_id:\n            self._task_fixtures = [(index, fixture) for index, fixture in enumerate(self.FIXTURES) if fixture.get("task_id") in (None, task_id)]\n\n    def _fixture_reply(self, event: dict) -> str:\n        scoped = getattr(self, "_task_fixtures", None) or list(enumerate(self.FIXTURES))\n        matches = [(index, fixture) for index, fixture in scoped if fixture.get("tool") == event["tool"] and _arguments_match(fixture.get("arguments") or {}, event["arguments"])]\n        pick = next(((index, fixture) for index, fixture in matches if index not in self.state.used_fixtures), matches[-1] if matches else None)\n        if pick is None:\n            return json.dumps({"ok": True, **event})\n        index, fixture = pick\n        self.state.used_fixtures.append(index)\n        content = fixture.get("content")\n        body = content if isinstance(content, str) else json.dumps(content)\n        return f"ERROR: {body}" if fixture.get("status") == "error" else body`;
   // Fixtures load from a sidecar JSON file — inlining JSON.stringify output
   // into Python source is invalid the moment a fixture contains a bare
   // true/false/null (Python spells them True/False/None; a real customer
   // environment died with `NameError: name 'false' is not defined`).
   writeJson(join(servers, "fixtures.json"), fixtures);
+  // Scorer-side gold: expected post-state observations, OUTSIDE the pip
+  // package (never shipped in the wheel, never read by world.py) — the
+  // scoring path's provenance for what the incumbent's writes produced.
+  writeJson(join(root, "gold.json"), { schema_version: "understudy.environment_gold.v1", note: "Scorer-side only. Expected post-state tool results (the incumbent's writes and post-write reads). world.py never serves this file; candidate rollouts must not read it.", tasks: goldRows });
   // _accept: schema validation gates every call (rejects are recorded as
   // status=error events — never writes — and still journal live, so recovery
   // after a rejected call is visible in the watch view, AutomationBench-style).
@@ -1416,14 +1489,17 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   // Response/value obligations are oracle-verified against the CAPTURED
   // incumbent final response (the real gold) whenever the build has the
   // normalized captures; without them the legacy synthesized oracle stands.
-  const capturesByKey = new Map<string, Obj>(rows.map((row) => [String(row.capture_key), row]));
   const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas, capturesByKey.size > 0 ? goldFinalResponseFor(task, capturesByKey) : undefined));
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
+  // Layout documentation for humans and downstream agents (the split is a
+  // layout change: pre-split environments had post-state results inside
+  // fixtures.json and no gold.json; readers must tolerate both).
+  writeFileSync(join(root, "README.md"), `# Generated verifiers environment\n\nLayout (fixtures-state-split, \`understudy.environment_gold.v1\`):\n\n- \`understudy_trace_env/servers/fixtures.json\` — CANDIDATE-READABLE. Pre-state only:\n  tool results the incumbent observed BEFORE its first mutating (gold) call.\n  Each fixture is tagged with its \`task_id\`; world.py serves a rollout only its\n  own task's fixtures (untagged fixtures from pre-split environments are served\n  to every task).\n- \`gold.json\` — SCORER-SIDE ONLY. Expected post-state observations (the gold\n  writes' echoes and post-write reads), grouped per task. Never read by\n  world.py, never shipped in the pip package, never served to a candidate.\n- \`understudy_trace_env/tasks.json\` — prompts + outcome contracts (contracts are\n  consumed by the scoring path in taskset.py, not surfaced as model input).\n- \`offline-validation.json\` — oracle/sentinel validation rows.\n\nOlder environments (generated before the split) have no \`gold.json\` and may\ncarry post-state results in fixtures.json; \`understudy traces regenerate-env\`\nrebuilds them into this layout. Readers must treat \`gold.json\` as optional.\n`, { mode: 0o600 });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "servers", "fixtures.json"), join(pkg, "tasks.json")];
   // Gold-leakage audit over the exact artifacts just written (report-only).
   const leakageAudit = auditGoldLeakage(tasks, taskRows, fixtures, validationSchemas);
   printLeakageAudit(leakageAudit);
-  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)), leakage_audit: leakageAudit };
+  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)), leakage_audit: leakageAudit, fixtures_split: { layout: "prestate_only.v1", pre_state_fixtures: fixtures.length, post_state_gold_observations: goldRows.reduce((count, row) => count + row.post_state_observations.length, 0), gold_ref: "gold.json" } };
 }
 
 type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[] };
@@ -1759,7 +1835,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
@@ -1808,6 +1884,7 @@ export function regenerateEnvironment(benchmarkDirInput: string): { path: string
     const manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
     manifest.self_check = selfCheck;
     manifest.leakage_audit = environment.leakage_audit;
+    manifest.fixtures_split = environment.fixtures_split;
     writeJson(manifestPath, manifest);
   }
   return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
