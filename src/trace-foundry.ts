@@ -675,12 +675,123 @@ export function oracleEventsFor(task: Obj): ContractEvents {
   return { calls, finalResponse };
 }
 
+// ---------------------------------------------------------------------------
+// Observation-tightened schema validation: the declared schema is a floor, not
+// the whole truth. When EVERY observed incumbent call carries a declared-
+// optional property (N>=5), a strict real API would too — so the generated
+// world requires it (required_by_observation); small closed string value sets
+// become enums (enums_by_observation). Rejections stay recoverable error
+// events: never writes, never contract satisfaction.
+// ---------------------------------------------------------------------------
+
+/** Minimum observed calls before observation may tighten a schema. */
+export const OBSERVATION_MIN_N = 5;
+/** Enum inference bounds: <= 5 distinct string values, each <= 3 word tokens. */
+const ENUM_MAX_VALUES = 5;
+const enumSized = (value: string): boolean => value.length > 0 && value.length <= 48 && (value.match(/[A-Za-z0-9]+/g) ?? []).length <= 3;
+
+/**
+ * Tighten a validation schema from observed-usage stats over ALL observed
+ * calls of the tool in the build. Provenance lands in the schema itself:
+ * `required` stays exactly the declared/inferred baseline;
+ * `required_by_observation` and `enums_by_observation` are the tightening;
+ * `observed_n`/`observation_counts` carry the evidence for error messages.
+ */
+export function tightenSchema(base: Obj, callsInput: Obj[]): Obj {
+  const calls = callsInput.map(asObject);
+  const n = calls.length;
+  const declaredRequired = new Set((Array.isArray(base.required) ? base.required : []).map(String));
+  const stats: Record<string, { present: number; of: number; values: unknown[] }> = {};
+  const topKeys = [...new Set(calls.flatMap((call) => Object.keys(call)))];
+  for (const key of topKeys) {
+    const present = calls.filter((call) => call[key] !== undefined && call[key] !== null);
+    stats[key] = { present: present.length, of: n, values: present.map((call) => call[key]) };
+    // One level into object-valued properties (e.g. metadata.status).
+    const parents = present.map((call) => call[key]).filter((value) => value !== null && typeof value === "object" && !Array.isArray(value)).map(asObject);
+    if (parents.length === 0) continue;
+    for (const child of [...new Set(parents.flatMap((parent) => Object.keys(parent)))]) {
+      const childPresent = parents.filter((parent) => parent[child] !== undefined && parent[child] !== null);
+      stats[`${key}.${child}`] = { present: childPresent.length, of: parents.length, values: childPresent.map((parent) => parent[child]) };
+    }
+  }
+  const requiredByObservation: string[] = [];
+  const enums: Record<string, string[]> = {};
+  const observationCounts: Record<string, [number, number]> = {};
+  for (const [path, stat] of Object.entries(stats)) {
+    // 100% presence (never 96%) with at least OBSERVATION_MIN_N observations promotes.
+    if (stat.of >= OBSERVATION_MIN_N && stat.present === stat.of && !declaredRequired.has(path)) {
+      requiredByObservation.push(path);
+      observationCounts[path] = [stat.present, stat.of];
+    }
+    if (stat.present >= OBSERVATION_MIN_N && stat.values.every((value) => typeof value === "string")) {
+      const distinct = [...new Set(stat.values as string[])].sort();
+      if (distinct.length <= ENUM_MAX_VALUES && distinct.every(enumSized)) {
+        enums[path] = distinct;
+        observationCounts[path] = observationCounts[path] ?? [stat.present, stat.of];
+      }
+    }
+  }
+  return { ...base, required_by_observation: requiredByObservation.sort(), enums_by_observation: enums, observed_n: n, observation_counts: observationCounts };
+}
+
+const lookupPath = (args: Obj, path: string): unknown => path.split(".").reduce<unknown>((node, part) => (node !== null && typeof node === "object" && !Array.isArray(node) ? (node as Obj)[part] : undefined), args);
+
+/**
+ * TS mirror of the generated world's _validate — used by offline validation so
+ * the sentinel gate exercises the SAME rejection rules the live world applies.
+ */
+export function validateCallAgainstSchema(tool: string, argsInput: Obj, schemas: Obj): string | null {
+  const schema = schemas[tool] === undefined ? undefined : asObject(schemas[tool]);
+  if (schema === undefined) return `unknown tool '${tool}'`;
+  const args = asObject(argsInput);
+  for (const key of (Array.isArray(schema.required) ? schema.required : []).map(String)) {
+    if (args[key] === undefined || args[key] === null) return `missing required field '${key}'`;
+  }
+  for (const path of (Array.isArray(schema.required_by_observation) ? schema.required_by_observation : []).map(String)) {
+    if (path.includes(".")) {
+      const parent = lookupPath(args, path.slice(0, path.lastIndexOf(".")));
+      if (parent === null || parent === undefined || typeof parent !== "object" || Array.isArray(parent)) continue;
+    }
+    if (lookupPath(args, path) === undefined || lookupPath(args, path) === null) {
+      const [present, of] = (asObject(schema.observation_counts)[path] as [number, number] | undefined) ?? [0, 0];
+      return `missing field '${path}' — required by observed usage (${present}/${of} calls)`;
+    }
+  }
+  for (const [key, declared] of Object.entries(asObject(schema.properties))) {
+    const value = args[key];
+    if (value === undefined || value === null) continue;
+    const type = String(declared);
+    const bad =
+      type === "string" ? typeof value !== "string"
+      : ["number", "integer"].includes(type) ? typeof value !== "number"
+      : type === "boolean" ? typeof value !== "boolean"
+      : type === "object" ? typeof value !== "object" || Array.isArray(value)
+      : type === "array" ? !Array.isArray(value)
+      : false;
+    if (bad) return `field '${key}' must be ${type}`;
+  }
+  for (const [path, allowed] of Object.entries(asObject(schema.enums_by_observation))) {
+    const value = lookupPath(args, path);
+    if (value === undefined || value === null) continue;
+    if (!(Array.isArray(allowed) ? allowed : []).includes(value)) return `field '${path}' must be one of ${JSON.stringify(allowed)} — required by observed usage`;
+  }
+  return null;
+}
+
+const setPath = (obj: Obj, path: string, value: unknown): Obj => {
+  const [head, ...rest] = path.split(".");
+  return rest.length === 0 ? { ...obj, [head]: value } : { ...obj, [head]: setPath(asObject(obj[head]), rest.join("."), value) };
+};
+
 /**
  * Oracle + sentinel row for one task, recomputed with the full-contract
  * scorer: the contract's own oracle events must score 1 strict; doing nothing,
- * writing wrong values, and writing everything must all fail.
+ * writing wrong values, and writing everything must all fail. When validation
+ * schemas are supplied, an additional enum_violation sentinel proves that a
+ * call rejected by observation-tightened validation (out-of-enum value)
+ * scores 0.
  */
-export function offlineValidationRow(task: Obj): Obj {
+export function offlineValidationRow(task: Obj, schemas?: Obj): Obj {
   const oracle = oracleEventsFor(task);
   // wrong_value corrupts the ANCHOR values (the discrete fields matching now
   // keys on). A call whose rule has NO anchors is satisfied by any-args by
@@ -690,15 +801,28 @@ export function offlineValidationRow(task: Obj): Obj {
     Object.keys(anchorArguments(asObject(call.arguments))).length > 0
       ? { ...call, arguments: { __wrong__: true } }
       : { ...call, tool: `${call.tool}--wrong-sentinel` });
-  return {
-    task_id: task.task_id,
-    oracle: scoreContract(task, oracle),
-    sentinels: {
-      noop: scoreContract(task, { calls: [], finalResponse: "" }),
-      wrong_value: scoreContract(task, { calls: wrongCalls, finalResponse: "sentinel wrong output" }),
-      write_everything: scoreContract(task, { calls: [...oracle.calls, { tool: "delete-sentinel-extra", arguments: {} }], finalResponse: oracle.finalResponse }),
-    },
+  const sentinels: Obj = {
+    noop: scoreContract(task, { calls: [], finalResponse: "" }),
+    wrong_value: scoreContract(task, { calls: wrongCalls, finalResponse: "sentinel wrong output" }),
+    write_everything: scoreContract(task, { calls: [...oracle.calls, { tool: "delete-sentinel-extra", arguments: {} }], finalResponse: oracle.finalResponse }),
   };
+  if (schemas !== undefined) {
+    const enumPathsFor = (tool: string): string[] => Object.keys(asObject(asObject(schemas[tool]).enums_by_observation));
+    if (oracle.calls.some((call) => enumPathsFor(String(call.tool)).length > 0)) {
+      const enumCalls = oracle.calls
+        .map((call): Obj => {
+          let args = asObject(call.arguments);
+          for (const path of enumPathsFor(String(call.tool))) args = setPath(args, path, "__enum_violation_sentinel__");
+          return { ...call, arguments: args };
+        })
+        .map((call) => {
+          const error = validateCallAgainstSchema(String(call.tool), asObject(call.arguments), schemas);
+          return error === null ? call : { ...call, status: "error", error };
+        });
+      sentinels.enum_violation = scoreContract(task, { calls: enumCalls, finalResponse: oracle.finalResponse });
+    }
+  }
+  return { task_id: task.task_id, oracle: scoreContract(task, oracle), sentinels };
 }
 
 /**
@@ -709,16 +833,18 @@ export function offlineValidationRow(task: Obj): Obj {
 export function refreshOfflineValidation(benchmarkDir: string, tasks: Obj[]): boolean {
   const path = join(resolve(benchmarkDir), "environment", "offline-validation.json");
   if (!existsSync(path)) return false;
+  const schemasPath = join(resolve(benchmarkDir), "environment", "understudy_trace_env", "servers", "schemas.json");
+  const schemas = existsSync(schemasPath) ? asObject(JSON.parse(readFileSync(schemasPath, "utf8"))) : undefined;
   const validation = asObject(JSON.parse(readFileSync(path, "utf8")));
   const rows = (Array.isArray(validation.tasks) ? validation.tasks : []).map(asObject);
   const byId = new Map(rows.map((row) => [row.task_id, row]));
-  for (const task of tasks) byId.set(task.task_id, offlineValidationRow(task));
+  for (const task of tasks) byId.set(task.task_id, offlineValidationRow(task, schemas));
   validation.tasks = [...byId.values()];
   writeJson(path, validation);
   return true;
 }
 
-function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string): Obj {
+function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string, rows: Obj[] = []): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
   mkdirSync(servers, { recursive: true });
   const toolNames = [...new Set<string>(tasks.flatMap((task) => (task.tool_surface ?? []).map(String)))].sort();
@@ -732,9 +858,19 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   // EVERY observed call of that tool — marked "inferred". Better than
   // accepting anything.
   const observedCallsByTool = new Map<string, Obj[]>();
-  for (const task of tasks) {
-    for (const rule of task.outcome_contract?.required ?? []) if (typeof rule.tool === "string") observedCallsByTool.set(rule.tool, [...(observedCallsByTool.get(rule.tool) ?? []), asObject(rule.observed_arguments)]);
-    for (const obs of task.world_model?.initial_state?.observations ?? []) if (typeof obs.tool === "string") observedCallsByTool.set(obs.tool, [...(observedCallsByTool.get(obs.tool) ?? []), asObject(obs.arguments)]);
+  if (rows.length > 0) {
+    // ALL observed incumbent calls in the build (normalized captures) — the
+    // observation basis for schema tightening; deduped by toolEvents so a call
+    // repeated across message-history snapshots counts once.
+    for (const event of toolEvents(rows)) {
+      if (event.kind !== "call" || !event.name) continue;
+      observedCallsByTool.set(String(event.name), [...(observedCallsByTool.get(String(event.name)) ?? []), asObject(jsonish(event.arguments))]);
+    }
+  } else {
+    for (const task of tasks) {
+      for (const rule of task.outcome_contract?.required ?? []) if (typeof rule.tool === "string") observedCallsByTool.set(rule.tool, [...(observedCallsByTool.get(rule.tool) ?? []), asObject(rule.observed_arguments)]);
+      for (const obs of task.world_model?.initial_state?.observations ?? []) if (typeof obs.tool === "string") observedCallsByTool.set(obs.tool, [...(observedCallsByTool.get(obs.tool) ?? []), asObject(obs.arguments)]);
+    }
   }
   const jsonType = (value: unknown): string => typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : Array.isArray(value) ? "array" : value !== null && typeof value === "object" ? "object" : "string";
   const validationSchemaFor = (name: string): Obj => {
@@ -751,7 +887,36 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
     const keys = observed.length > 0 ? Object.keys(observed[0]).filter((key) => observed.every((o) => o[key] !== undefined && o[key] !== null)) : [];
     return { inferred: true, required: keys, properties: Object.fromEntries(keys.map((key) => [key, jsonType(observed[0][key])])) };
   };
-  writeJson(join(servers, "schemas.json"), Object.fromEntries(toolNames.map((name) => [name, validationSchemaFor(name)])));
+  // Production error-shape census: observed RESULT payloads per tool teach the
+  // world how this tool family phrases rejections (e.g. {"success": false,
+  // "error": ...} envelopes vs plain "ERROR: ..." strings), so validation
+  // rejections read production-shaped to the candidate.
+  const rejectionStyleByTool = new Map<string, string>();
+  const observedErrorByTool = new Map<string, string>();
+  if (rows.length > 0) for (const event of toolEvents(rows)) {
+    if (event.kind !== "result" || !event.tool) continue;
+    const tool = String(event.tool);
+    const text = typeof event.content === "string" ? event.content : contentText(event.content) || JSON.stringify(event.content ?? "");
+    const parsed = jsonish(text);
+    const parsedObject = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Obj) : null;
+    if (!rejectionStyleByTool.has(tool)) {
+      if (parsedObject !== null && "success" in parsedObject) rejectionStyleByTool.set(tool, "success_envelope");
+      else if (event.status === "error" && parsedObject === null) rejectionStyleByTool.set(tool, "string");
+    }
+    const failed = event.status === "error" || parsedObject?.success === false;
+    if (failed && !observedErrorByTool.has(tool)) observedErrorByTool.set(tool, text.slice(0, 240));
+  }
+  // Observation-tightened validation schemas: declared/inferred baseline plus
+  // required_by_observation / enums_by_observation provenance from usage stats.
+  const validationSchemas: Obj = Object.fromEntries(toolNames.map((name) => {
+    const schema = tightenSchema(validationSchemaFor(name), observedCallsByTool.get(name) ?? []);
+    const style = rejectionStyleByTool.get(name);
+    if (style !== undefined) schema.rejection_style = style;
+    const example = observedErrorByTool.get(name);
+    if (example !== undefined) schema.observed_error_example = example;
+    return [name, schema];
+  }));
+  writeJson(join(servers, "schemas.json"), validationSchemas);
   const pyType = (value: unknown): string => typeof value === "boolean" ? "bool" : typeof value === "number" ? "float" : Array.isArray(value) ? "list" : value && typeof value === "object" ? "dict" : "str";
   const schemaType = (schema: Obj, fallback: unknown): string => schema.type === "boolean" ? "bool" : ["number", "integer"].includes(schema.type) ? "float" : schema.type === "array" ? "list" : schema.type === "object" ? "dict" : schema.type === "string" ? "str" : pyType(fallback);
   const methods = toolNames.map((name) => {
@@ -775,20 +940,20 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   // _accept: schema validation gates every call (rejects are recorded as
   // status=error events — never writes — and still journal live, so recovery
   // after a rejected call is visible in the watch view, AutomationBench-style).
-  const acceptHelper = `    def _accept(self, event: dict, mutating: bool) -> str:\n        error = _validate(event["tool"], event["arguments"] or {})\n        _journal({"at": time.time(), "kind": "call", "tool": event["tool"], "write": bool(mutating and not error), "status": "error" if error else "ok", "arguments": _summary(event["arguments"] or {})})\n        if error:\n            self.state.events.append({**event, "status": "error", "error": error})\n            reply = json.dumps({"ok": False, "error": error})\n        else:\n            self.state.events.append(event)\n            if mutating:\n                self.state.writes.append(event)\n            reply = self._fixture_reply(event)\n        _journal({"at": time.time(), "kind": "result", "tool": event["tool"], "status": "error" if error else "ok", "content": _summary(reply or "")})\n        return reply`;
+  const acceptHelper = `    def _accept(self, event: dict, mutating: bool) -> str:\n        error = _validate(event["tool"], event["arguments"] or {})\n        _journal({"at": time.time(), "kind": "call", "tool": event["tool"], "write": bool(mutating and not error), "status": "error" if error else "ok", "arguments": _summary(event["arguments"] or {})})\n        if error:\n            self.state.events.append({**event, "status": "error", "error": error})\n            reply = _rejection_reply(event["tool"], error)\n        else:\n            self.state.events.append(event)\n            if mutating:\n                self.state.writes.append(event)\n            reply = self._fixture_reply(event)\n        _journal({"at": time.time(), "kind": "result", "tool": event["tool"], "status": "error" if error else "ok", "content": _summary(reply or "")})\n        return reply`;
   const worldMethods = `    FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text())\n\n${fixtureReply}\n\n${acceptHelper}\n\n${methods}`;
   const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: (()=>{ const msgs = (sourceContext.get(task.task_id)?.messages ?? []) as Obj[]; const firstUser = msgs.find((m) => m.role === "user"); const text = firstUser ? contentText(firstUser.content) : ""; return text.trim() || task.title; })(), system_prompt: (()=>{ const sys = sourceContext.get(task.task_id)?.system; if (sys == null) return null; return typeof sys === "string" ? sys : contentText(sys); })(), source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
   writeJson(join(pkg, "tasks.json"), taskRows);
-  writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport os\nimport re\nimport time\nfrom pathlib import Path\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\ndef _anchor_arguments(observed: dict, depth: int = 0) -> dict:\n    \"\"\"ANCHOR fields only: numbers, booleans, id-shaped strings (uuid / long alnum / path-like)\n    and short strings (<=6 canonical tokens). Long free text is dropped — requiring token\n    containment of the incumbent's full prose zeroed every honest candidate rollout.\n    Recurses one level into nested dicts; arrays and deeper nesting are dropped too.\"\"\"\n    out = {}\n    for key, value in (observed or {}).items():\n        if isinstance(value, bool) or isinstance(value, (int, float)):\n            out[key] = value\n        elif isinstance(value, str):\n            s = value.strip()\n            no_space = not any(ch.isspace() for ch in s)\n            id_shaped = bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", s, re.I)) or (no_space and (bool(re.search(r"[A-Za-z0-9_-]{16,}", s)) or "/" in s))\n            if id_shaped or len(_tokens(s)) <= 6:\n                out[key] = value\n        elif isinstance(value, dict) and depth < 1:\n            nested = _anchor_arguments(value, depth + 1)\n            if nested:\n                out[key] = nested\n    return out\n\n\n# Live rollout journal: one JSON line per tool call and result, written the\n# moment it happens, gated on UNDERSTUDY_LIVE_JOURNAL (no-op when unset).\n_JOURNAL_PATH = os.environ.get("UNDERSTUDY_LIVE_JOURNAL")\n\n\ndef _journal(entry: dict) -> None:\n    if not _JOURNAL_PATH:\n        return\n    try:\n        fd = os.open(_JOURNAL_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n        with os.fdopen(fd, "a") as fh:\n            fh.write(json.dumps(entry) + "\\\\n")\n    except Exception:\n        pass\n\n\ndef _summary(value, cap: int = 800) -> str:\n    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)\n    return text if len(text) <= cap else text[: cap - 1] + "…"\n\n\n# Declared tool schemas (captured from the incumbent's requests); tools with\n# no declared schema carry one inferred from observed calls (inferred: true).\nSCHEMAS = json.loads((Path(__file__).parent / "schemas.json").read_text())\n_TYPES = {"string": str, "number": (int, float), "integer": (int, float), "boolean": bool, "object": dict, "array": list}\n\n\ndef _validate(tool: str, arguments: dict) -> str | None:\n    \"\"\"AutomationBench-style call validation: required properties present and\n    basic type checks against the declared (or inferred) schema. Unknown tools\n    are unroutable by construction (only defined tools are exposed).\"\"\"\n    schema = SCHEMAS.get(tool)\n    if schema is None:\n        return f"unknown tool '{tool}'"\n    for key in schema.get("required") or []:\n        if arguments.get(key) is None:\n            return f"missing required field '{key}'"\n    for key, declared in (schema.get("properties") or {}).items():\n        value = arguments.get(key)\n        if value is None:\n            continue\n        expected = _TYPES.get(declared)\n        if expected is None:\n            continue\n        if declared in ("number", "integer") and isinstance(value, bool):\n            return f"field '{key}' must be {declared}"\n        if not isinstance(value, expected):\n            return f"field '{key}' must be {declared}"\n    return None\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport os\nimport re\nimport time\nfrom pathlib import Path\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\ndef _anchor_arguments(observed: dict, depth: int = 0) -> dict:\n    \"\"\"ANCHOR fields only: numbers, booleans, id-shaped strings (uuid / long alnum / path-like)\n    and short strings (<=6 canonical tokens). Long free text is dropped — requiring token\n    containment of the incumbent's full prose zeroed every honest candidate rollout.\n    Recurses one level into nested dicts; arrays and deeper nesting are dropped too.\"\"\"\n    out = {}\n    for key, value in (observed or {}).items():\n        if isinstance(value, bool) or isinstance(value, (int, float)):\n            out[key] = value\n        elif isinstance(value, str):\n            s = value.strip()\n            no_space = not any(ch.isspace() for ch in s)\n            id_shaped = bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", s, re.I)) or (no_space and (bool(re.search(r"[A-Za-z0-9_-]{16,}", s)) or "/" in s))\n            if id_shaped or len(_tokens(s)) <= 6:\n                out[key] = value\n        elif isinstance(value, dict) and depth < 1:\n            nested = _anchor_arguments(value, depth + 1)\n            if nested:\n                out[key] = nested\n    return out\n\n\n# Live rollout journal: one JSON line per tool call and result, written the\n# moment it happens, gated on UNDERSTUDY_LIVE_JOURNAL (no-op when unset).\n_JOURNAL_PATH = os.environ.get("UNDERSTUDY_LIVE_JOURNAL")\n\n\ndef _journal(entry: dict) -> None:\n    if not _JOURNAL_PATH:\n        return\n    try:\n        fd = os.open(_JOURNAL_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n        with os.fdopen(fd, "a") as fh:\n            fh.write(json.dumps(entry) + "\\\\n")\n    except Exception:\n        pass\n\n\ndef _summary(value, cap: int = 800) -> str:\n    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)\n    return text if len(text) <= cap else text[: cap - 1] + "…"\n\n\n# Declared tool schemas (captured from the incumbent's requests); tools with\n# no declared schema carry one inferred from observed calls (inferred: true).\nSCHEMAS = json.loads((Path(__file__).parent / "schemas.json").read_text())\n# Observation-tightened checks (required_by_observation / enums_by_observation)\n# are a deliberate strictness choice, on by default; set\n# UNDERSTUDY_STRICT_VALIDATION=0 to fall back to declared-schema-only checks.\n_STRICT_VALIDATION = os.environ.get("UNDERSTUDY_STRICT_VALIDATION", "1") != "0"\n_TYPES ={"string": str, "number": (int, float), "integer": (int, float), "boolean": bool, "object": dict, "array": list}\n\n\ndef _lookup(arguments: dict, path: str):\n    node = arguments\n    for part in path.split("."):\n        if not isinstance(node, dict):\n            return None\n        node = node.get(part)\n    return node\n\n\ndef _validate(tool: str, arguments: dict) -> str | None:\n    \"\"\"AutomationBench-style call validation: required properties present and\n    basic type checks against the declared (or inferred) schema, TIGHTENED by\n    observed incumbent usage (required_by_observation / enums_by_observation —\n    a strict real API rejects what the incumbent never omitted). Rejections\n    are recoverable error events. Unknown tools are unroutable by construction\n    (only defined tools are exposed).\"\"\"\n    schema = SCHEMAS.get(tool)\n    if schema is None:\n        return f"unknown tool '{tool}'"\n    for key in schema.get("required") or []:\n        if arguments.get(key) is None:\n            return f"missing required field '{key}'"\n    for path in (schema.get("required_by_observation") or []) if _STRICT_VALIDATION else []:\n        if "." in path and not isinstance(_lookup(arguments, path.rsplit(".", 1)[0]), dict):\n            continue\n        if _lookup(arguments, path) is None:\n            present, of = (schema.get("observation_counts") or {}).get(path) or [0, 0]\n            return f"missing field '{path}' — required by observed usage ({present}/{of} calls)"\n    for key, declared in (schema.get("properties") or {}).items():\n        value = arguments.get(key)\n        if value is None:\n            continue\n        expected = _TYPES.get(declared)\n        if expected is None:\n            continue\n        if declared in ("number", "integer") and isinstance(value, bool):\n            return f"field '{key}' must be {declared}"\n        if not isinstance(value, expected):\n            return f"field '{key}' must be {declared}"\n    for path, allowed in ((schema.get("enums_by_observation") or {}) if _STRICT_VALIDATION else {}).items():\n        value = _lookup(arguments, path)\n        if value is None:\n            continue\n        if value not in allowed:\n            return f"field '{path}' must be one of {json.dumps(allowed)} — required by observed usage"\n    return None\n\n\ndef _rejection_reply(tool: str, error: str) -> str:\n    \"\"\"Production-shaped rejection: mirror the error payload shape this tool\n    family was observed to use — {"success": false, "error": ...} envelopes,\n    plain "ERROR: ..." strings, or a generic JSON error envelope.\"\"\"\n    schema = SCHEMAS.get(tool) or {}\n    style = schema.get("rejection_style")\n    if style == "string":\n        return f"ERROR: {error}"\n    if style == "success_envelope":\n        return json.dumps({"success": False, "error": error})\n    return json.dumps({"ok": False, "error": error})\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _anchor_arguments, _arguments_match, _tokens\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\n\ndef _value_present(value, hay: str) -> bool:\n    \"\"\"Token-normalized value containment — the same canonicalization _arguments_match uses.\"\"\"\n    toks = _tokens(value)\n    return bool(toks) and all(t in hay for t in toks)\n\n\ndef _final_text(trace) -> str:\n    \"\"\"Last assistant text of the rollout (the final response the contract's response/value obligations judge).\"\"\"\n    for attr in (\"messages\", \"completion\", \"history\"):\n        msgs = getattr(trace, attr, None)\n        if isinstance(msgs, list) and msgs:\n            texts = []\n            for m in msgs:\n                if isinstance(m, dict) and m.get(\"role\") == \"assistant\":\n                    c = m.get(\"content\")\n                    if isinstance(c, str):\n                        texts.append(c)\n                    elif isinstance(c, list):\n                        texts.extend(str(b.get(\"text\") or \"\") for b in c if isinstance(b, dict) and b.get(\"type\") == \"text\")\n            if texts:\n                return texts[-1]\n    return str(getattr(trace, \"final_response\", \"\") or \"\")\n\n\ndef _parsed_json(text: str):\n    t = (text or \"\").strip()\n    if not t.startswith((\"{\", \"[\")):\n        return None\n    try:\n        return json.loads(t)\n    except Exception:\n        return None\n\n\ndef _entry_met(rule: dict, calls: list, final_text: str) -> bool:\n    \"\"\"Deterministic met/unmet per contract entry kind: state_effect,\n    read_obligation, value_propagation, response_obligation. Mirrors the\n    foundry's contractEntryMet exactly — never an LLM at eval time.\"\"\"\n    kind = rule.get(\"type\") or \"state_effect\"\n    # Validation precedes matching: rejected calls (status=error) never satisfy anything.\n    calls = [c for c in calls if c.get(\"status\") != \"error\"]\n    if kind == \"state_effect\":\n        # Anchor matching: authored arguments_semantic first, then the discrete\n        # anchors of the observed arguments (long prose dropped). Zero anchors +\n        # no semantics => the tool call itself (with any args) satisfies.\n        sem = _anchor_arguments(rule.get(\"arguments_semantic\") or {})\n        anchors = _anchor_arguments(rule.get(\"observed_arguments\") or {})\n        for c in calls:\n            if c.get(\"tool\") != rule.get(\"tool\"):\n                continue\n            if sem and _arguments_match(sem, c.get(\"arguments\") or {}):\n                return True\n            if _arguments_match(anchors, c.get(\"arguments\") or {}):\n                return True\n        return False\n    if kind == \"read_obligation\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(_anchor_arguments(rule.get(\"arguments_semantic\") or {}), c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"value_propagation\":\n        dest = rule.get(\"must_reach\") or {}\n        if dest.get(\"kind\") == \"final_response\":\n            return _value_present(rule.get(\"value\"), (final_text or \"\").lower())\n        return any((not dest.get(\"tool\") or c.get(\"tool\") == dest.get(\"tool\")) and _value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    if kind == \"response_obligation\":\n        parsed = _parsed_json(final_text)\n        if rule.get(\"kind\") == \"json_parses\":\n            return parsed is not None\n        if rule.get(\"kind\") == \"schema_valid\":\n            return isinstance(parsed, dict) and all(str(k) in parsed for k in (rule.get(\"expected_keys\") or []))\n        if rule.get(\"kind\") == \"contains_category\":\n            return _value_present(rule.get(\"expected\"), (final_text or \"\").lower())\n    return False\n\n\ndef _forbidden_violated(rule: dict, calls: list, final_text: str) -> bool:\n    if (rule.get(\"type\") or \"\") == \"forbidden_value\":\n        hay = (final_text or \"\").lower()\n        return _value_present(rule.get(\"value\"), hay) or any(_value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    return any(c.get(\"tool\") == rule.get(\"tool\") for c in calls)\n\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Full-contract comparison over the per-rollout world state AND the\n        final assistant response: state effects and read obligations match\n        tool events semantically (token-normalized), value propagations and\n        response obligations judge the final response deterministically.\n        Forbidden tools/values are violations.\"\"\"\n        events = list(getattr(trace.state, \"events\", None) or [])\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        final_text = _final_text(trace)\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if _entry_met(rule, events, final_text))\n        violated = any(_forbidden_violated(rule, writes, final_text) for rule in contract.get(\"forbidden\", []))\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        def well_formed(r):\n            kind = r.get(\"type\") or \"state_effect\"\n            if kind == \"state_effect\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict)\n            if kind == \"read_obligation\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"arguments_semantic\"), dict)\n            if kind == \"value_propagation\":\n                return bool(r.get(\"value\")) and (r.get(\"must_reach\") or {}).get(\"kind\") in (\"final_response\", \"tool_args\")\n            if kind == \"response_obligation\":\n                return r.get(\"kind\") in (\"json_parses\", \"schema_valid\", \"contains_category\")\n            return False\n        return bool(required) and all(well_formed(r) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "environment.py"), `import verifiers.v1 as vf\nfrom understudy_trace_env.taskset import TraceConfig, TraceTaskset\n\nclass TraceHarnessConfig(vf.HarnessConfig):\n    max_turns: int = 24\n\nclass TraceHarness(vf.Harness[TraceHarnessConfig]):\n    pass\n\ndef load_taskset(config: TraceConfig) -> TraceTaskset:\n    return TraceTaskset(config=config)\n\ndef load_harness(config: TraceHarnessConfig) -> TraceHarness:\n    return TraceHarness(config=config)\n\ndef load_environment(config: vf.EnvConfig) -> vf.Env:\n    return vf.Env(taskset=vf.load_taskset(config.taskset), harness=vf.load_harness(config.harness))\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.environment import load_environment, load_harness, load_taskset\nfrom understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\", \"load_environment\", \"load_harness\", \"load_taskset\"]\n", { mode: 0o600 });
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
   writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.metadata]\nallow-direct-references = true\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
-  const validation = tasks.map(offlineValidationRow);
+  const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas));
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "servers", "fixtures.json"), join(pkg, "tasks.json")];
-  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => row.sentinels.noop.score < 1 && row.sentinels.wrong_value.score < 1 && row.sentinels.write_everything.score < 1) };
+  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)) };
 }
 
 type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[] };
@@ -1098,7 +1263,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   // Ledger + per-batch goal audit were appended by the batch loop; only the
   // bulk artifacts are written here, exactly once per invocation.
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
-  const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: row?.request.system ?? null, messages: row?.request.messages ?? [] }]; })), "cb9c84969186f8a0954b1027320f225e6b6b0afb");
+  const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: row?.request.system ?? null, messages: row?.request.messages ?? [] }]; })), "cb9c84969186f8a0954b1027320f225e6b6b0afb", rows);
   const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
   const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
   // Pre-promotion output is a PROPOSAL, stamped honestly: the schema name
@@ -1157,7 +1322,7 @@ export function regenerateEnvironment(benchmarkDirInput: string): { path: string
     }
   }
   if (repaired > 0) writeJsonl(join(output, "tasks.jsonl"), tasks);
-  const environment = writeVerifiersEnvironment(output, tasks, sourceContext, "cb9c84969186f8a0954b1027320f225e6b6b0afb");
+  const environment = writeVerifiersEnvironment(output, tasks, sourceContext, "cb9c84969186f8a0954b1027320f225e6b6b0afb", rows);
   refreshOfflineValidation(output, tasks);
   return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
 }
