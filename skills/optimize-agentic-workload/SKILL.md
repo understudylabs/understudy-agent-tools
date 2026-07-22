@@ -190,6 +190,19 @@ single-output optimization does not need a tool environment.
    [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md); never tune
    on holdout.
 
+   **Prompt experiments as run arms (`prompt_overrides`).** When the workload
+   lives in a trace-compiled benchmark directory, test a prompt candidate
+   without touching the app: queue a run whose request carries
+   `prompt_overrides` — each `{arm_label, model, system_prompt_suffix}` arm
+   appends the suffix file's text to every task's system prompt at rollout
+   time (`understudy runs queue --prompt-override
+   <arm_label>=<model>=<suffix-file>`). The canonical use is the SOP-suffix
+   experiment: distill the workload's standard operating procedure (order of
+   operations, argument conventions, termination rules) into a short suffix
+   and run it as its own arm beside the bare model on the same frozen tasks —
+   one run, same scorer, per-arm rows. Operating detail in
+   [`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md).
+
 9. **Escalate to RL only as a true handoff, behind three gates.** If model swap
    and prompt/distillation stall while real headroom remains and the residual
    is genuinely *stateful* multi-step behavior, route to

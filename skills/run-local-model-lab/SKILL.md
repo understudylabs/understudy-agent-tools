@@ -70,6 +70,15 @@ and canonical image chat over its authenticated REST + CLI + MCP surface. Use
 streamed runtime events, cancellation, and immutable replay; do not drive the
 GUI or stand up a second server against the same weights and memory budget.
 
+**Local bundles as benchmark arms (landing now).** Support for running a
+local model bundle directly as an arm of a benchmark run request — beside
+gateway, incumbent, trivial-floor, and prompt-override arms — is landing in
+the run executor. Until it ships, serve the local model (daemon slot or your
+own MLX server) as an OpenAI-compatible endpoint and point the existing
+verifiers runner at it; see
+[`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md) for
+the run-queue side. Do not claim the bundle arm exists until it is merged.
+
 ## Flow
 
 1. **Inventory hardware + runtime.** Confirm Apple Silicon (M-series) and the

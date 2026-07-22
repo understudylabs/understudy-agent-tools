@@ -205,6 +205,15 @@ Identify the developer's current stage and load exactly one:
   workstation-hosted model through the same frozen workload/eval, choose a
   runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
+- **Benchmark-lab lifecycle / run queue / rigor** — the developer has (or
+  wants) a trace-compiled benchmark directory and asks to operate it end to
+  end: review tasks, apply the auto-accept policy, calibrate with the
+  incumbent and null/spam trivial floors, queue candidate or prompt-override
+  runs, keep the run executor (`understudy runs execute --watch`) alive, read
+  `rigor-report.md`, or run an `app_replay` regression after code edits →
+  [`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md)
+  (MCP tools preferred; CLI verbs otherwise). For only the app-replay slice,
+  [`../replay-app-harness/SKILL.md`](../replay-app-harness/SKILL.md).
 - **Multi-model sweep / Pareto comparison** — the developer has a frozen eval and
   wants to run the same rows across several local, gateway, or frontier models to
   compare quality, latency, cost, and reliability →

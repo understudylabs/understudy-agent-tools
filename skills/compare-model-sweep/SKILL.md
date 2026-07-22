@@ -72,6 +72,20 @@ comparison.
    export under `.understudy/model-sweeps/<timestamp>/candidate-runs/<candidate>/`,
    with per-row results in the required `understudy.eval_result.v1` eval-evidence format ([schema](../../schemas/understudy.eval_result.v1.schema.json)).
 
+   **Benchmark-dir sweeps run as arms of one request.** When the frozen eval
+   is a trace-compiled benchmark directory, don't hand-loop the harness:
+   queue one `understudy.run_request.v1` whose arms are the whole matrix —
+   candidate models, the incumbent (`incumbent_models`, feeding
+   `calibration.json`), the trivial floors
+   (`trivial_arms: ["null_agent", "spam_agent"]` — a candidate beating a
+   floor-exceeded benchmark proves nothing), and prompt experiments as
+   `prompt_overrides` arms — and let `understudy runs execute` score them all
+   through the identical contract scorer. Operating manual:
+   [`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md).
+   A built-in Pareto view and CSV export over these rows are landing now in
+   the hub; until they ship, project `rows-*.jsonl` into `summary.csv` /
+   `pareto.json` yourself per steps 5–7.
+
 5. **Summarize at the same grain.** Build `summary.csv` with candidate, route,
    route type, requested model, effective model, model family, tool-access mode,
    task count, pass rate, partial credit, total tokens, cost/task, run seconds,
