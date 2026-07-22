@@ -1,4 +1,5 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { semanticArgumentsMatch } from "./trace-foundry.js";
@@ -48,6 +49,18 @@ const COST_PER_MTOKEN: Record<string, { input: number; output: number }> = {
 };
 
 const readJsonl = (path: string): Obj[] => existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as Obj) : [];
+/** Streaming JSONL filter: normalized-captures.jsonl can exceed V8's string cap, so never readFileSync it. */
+async function readJsonlWhere(path: string, keep: (row: Obj) => boolean): Promise<Obj[]> {
+  if (!existsSync(path)) return [];
+  const rows: Obj[] = [];
+  const lines = createInterface({ input: createReadStream(path, "utf8"), crlfDelay: Number.POSITIVE_INFINITY });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    const row = JSON.parse(line) as Obj;
+    if (keep(row)) rows.push(row);
+  }
+  return rows;
+}
 function writeJsonl(path: string, rows: Obj[]): void {
   mkdirSync(resolve(path, ".."), { recursive: true });
   writeFileSync(path, "", { mode: 0o600 });
@@ -108,6 +121,7 @@ export function buildAuthoringContext(task: Obj, capturesByKey: Map<string, Obj>
       return { round: index + 1, capture_key: capture.capture_key, message_count: messages.length, messages: unique.map((m) => ({ role: m.role, content: clipText(contentText(m.content), messageClip) })) };
     }),
     observed_tool_calls: observedCalls(rounds).map((call) => { const serialized = JSON.stringify(call.arguments ?? {}); return { id: call.id, tool: call.name, arguments: serialized.length <= messageClip ? call.arguments ?? {} : { __clipped__: clipText(serialized, messageClip) } }; }),
+    tool_surface: task.tool_surface ?? [],
     dag_edges: (task.source?.edges ?? []).map((edge: Obj) => ({ from: edge.from, to: edge.to, type: edge.type })),
     deterministic_contract: task.outcome_contract ?? null,
   });
@@ -183,8 +197,8 @@ Write a legible, human-confirmable task definition. Respond with ONLY a JSON obj
 
 Rules:
 - Ground every contract.required entry in the OBSERVED tool calls: use the exact observed tool name, keep the semantically load-bearing argument values (ids, names, statuses) so the entry still matches the observed call, and cite the observed call ids in maps_to_observed. Never invent tools or argument values.
-- arguments_semantic should generalize formatting (drop boilerplate, keep identity/state values), not replace values.
-- preserved/forbidden may only reference tools that appear in the task's tool surface.
+- arguments_semantic values must be COPIED from the observed call's arguments: you may drop boilerplate keys, but every value you keep must appear verbatim (case-insensitive) in that observed call. Never paraphrase, rename, or summarize a value. Include an entry for EVERY effect listed in deterministic_contract.required.
+- preserved/forbidden may ONLY name tools that appear in the provided tool_surface list. Do not invent hypothetical tools; if nothing must be preserved or forbidden, use [].
 - statement and success_criteria are for a human reviewer: no raw JSON blobs, no message dumps.
 - If the evidence is thin or contradictory, say so in ambiguities and lower confidence.
 
@@ -282,14 +296,17 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
   const tasksPath = join(benchmarkDir, "tasks.jsonl");
   const tasks = readJsonl(tasksPath);
   if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${benchmarkDir}; run build-benchmark first.`);
-  const captures = readJsonl(join(benchmarkDir, "normalized-captures.jsonl"));
-  const capturesByKey = new Map(captures.map((row) => [String(row.capture_key), row]));
   const onlyUnauthored = options.onlyUnauthored ?? true;
   const writeback = options.writeback ?? true;
   const client = options.client ?? (() => { const auth = resolveGatewayAuth(); return gatewayClient(auth.baseUrl, auth.apiKey); })();
   const now = options.now ?? new Date();
   const wanted = options.taskIds ? new Set(options.taskIds) : null;
   const selected = tasks.filter((task) => (!wanted || wanted.has(task.task_id)) && (!onlyUnauthored || !task.authored)).slice(0, options.limit ?? Number.POSITIVE_INFINITY);
+  // Stream only the captures the selected tasks actually reference; the full
+  // normalized file can be hundreds of MB and must never be read as one string.
+  const neededKeys = new Set<string>(selected.flatMap((task) => (task.source?.node_ids ?? []).map(String)));
+  const captures = await readJsonlWhere(join(benchmarkDir, "normalized-captures.jsonl"), (row) => neededKeys.has(String(row.capture_key)));
+  const capturesByKey = new Map(captures.map((row) => [String(row.capture_key), row]));
 
   const results: AuthoredResult[] = [];
   const events: Obj[] = [];
