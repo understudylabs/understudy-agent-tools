@@ -196,8 +196,55 @@ function capabilityFit(candidate: Obj, catalog: Obj[]): Obj {
   return { classification: "environment_extension", matched_task_id: best.prior.task_id, similarity: best.similarity };
 }
 
+/**
+ * Title a task from the DISTINCTIVE part of its first user message. Agent
+ * prompts are mostly a static context envelope shared by every task in the
+ * benchmark (raw truncation titled every Cedar task with the same injected
+ * preamble); the task-specific payload is whatever varies. So: count line
+ * frequency across all groups' root messages and title each task with its
+ * first sufficiently-rare, human-readable line ("Subject:" lines preferred).
+ */
+function taskTitles(rootTexts: Map<string, string>): Map<string, string> {
+  // Lines canonicalize before frequency counting so a template line with an
+  // embedded unique id/name ("your namespace is conversation/<uuid>/") still
+  // counts as boilerplate rather than task-distinctive content.
+  const canon = (line: string): string =>
+    line
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "#")
+      .replace(/[A-Za-z0-9+/_-]{16,}/g, "#")
+      .replace(/\S+@\S+/g, "#")
+      .replace(/\(([^)]{0,40})\)/g, "(#)")
+      .replace(/\d[\d:,./-]*/g, "#");
+  const linesOf = (text: string): string[] =>
+    text.split("\n").map((l) => l.trim()).filter((l) => l.length >= 16 && !/^[<{\[]/.test(l) && !/^[-*#|]/.test(l));
+  const lineCount = new Map<string, number>();
+  for (const text of rootTexts.values()) for (const line of new Set(linesOf(text).map(canon))) lineCount.set(line, (lineCount.get(line) ?? 0) + 1);
+  const threshold = Math.max(1, Math.ceil(rootTexts.size * 0.2));
+  const titles = new Map<string, string>();
+  for (const [groupId, text] of rootTexts) {
+    const rare = linesOf(text).filter((line) => {
+      const c = canon(line);
+      const maskedFraction = (c.match(/#/g) ?? []).length / Math.max(c.split(/\s+/).length, 1);
+      return (lineCount.get(c) ?? 0) <= threshold && maskedFraction < 0.5;
+    });
+    const subject = rare.find((line) => /subject\s*:/i.test(line));
+    const pick = subject ?? rare[0];
+    if (pick) titles.set(groupId, pick.replace(/^.*?subject\s*:\s*/i, subject ? "email: " : "").slice(0, 120));
+  }
+  return titles;
+}
+
 function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
+  const rootTexts = new Map<string, string>(
+    dag.groups.map((group: Obj) => {
+      const nodes = dag.nodes.filter((node: Obj) => node.execution_group === group.id).sort((a: Obj, b: Obj) => a.captured_at.localeCompare(b.captured_at));
+      const root = byId.get(nodes[0]?.id);
+      const first = root?.request.messages.find((m: Obj) => m.role === "user");
+      return [group.id, contentText(first?.content ?? "")];
+    }),
+  );
+  const distinctiveTitles = taskTitles(rootTexts);
   return dag.groups.map((group: Obj) => {
     const nodes = dag.nodes.filter((node: Obj) => node.execution_group === group.id).sort((a: Obj, b: Obj) => a.captured_at.localeCompare(b.captured_at));
     const captures = nodes.map((node: Obj) => byId.get(node.id)).filter(Boolean) as Obj[];
@@ -208,7 +255,7 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     const bucket = Number.parseInt(hash(group.id).slice(0, 8), 16) % 100;
     const definitions = captures.flatMap((capture) => capture.request.tools ?? []).map(asObject);
     const observedResults = events.filter((event) => event.kind === "result" && event.tool);
-    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: contentText(first.content).trim().slice(0, 160) || `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
+    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: distinctiveTitles.get(group.id) ?? contentText(first.content).trim().slice(0, 160) ?? `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
     task.capability_fit = capabilityFit(task, catalog);
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
     return task;
