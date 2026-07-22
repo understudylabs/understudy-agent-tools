@@ -491,8 +491,10 @@ describe("server wiring", () => {
       names,
       [
         "apply_auto_accepts",
+        "create_experiment",
         "diff_rollouts",
         "list_benchmarks",
+        "list_experiments",
         "queue_run",
         "read_benchmark",
         "read_rollout",
@@ -500,6 +502,7 @@ describe("server wiring", () => {
         "run_status",
         "submit_feedback",
         "submit_review",
+        "update_experiment",
       ],
     );
     assert.equal(responses.get(2).result.tools.length, BENCHMARKS_TOOLS.length);
