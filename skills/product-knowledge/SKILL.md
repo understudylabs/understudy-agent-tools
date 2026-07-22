@@ -54,6 +54,30 @@ node dist/bin.js status --json
 - **Candidate results** — Test Results-style view that groups model-family task outcomes into passed, failed, running, skipped, score, latency, and drilldown rows.
 - **Training** — progression from evals to GEPA/prompt optimization, datasets, SFT, RL, and distributed rollout jobs.
 
+## Getting Understudy Desktop
+
+How the app is actually distributed today (say exactly this; do not invent a
+download site):
+
+- **GitHub Releases** on `understudylabs/understudy-agent-tools`, tags
+  `desktop-vX.Y.Z-mvp`. Each release carries
+  `Understudy_<version>_aarch64.dmg` plus a signed `Understudy.app.tar.gz`
+  and the Tauri updater manifest `latest.json`.
+- **macOS Apple Silicon only** for now — no Intel-mac, Windows, or Linux
+  builds exist. Mark them "not yet available" if asked.
+- **Self-updates** via the signed Tauri v2 updater against
+  `releases/latest/download/latest.json` once installed.
+- An agent can fetch it directly:
+  `gh release download <tag> -R understudylabs/understudy-agent-tools -p '*.dmg'`.
+
+What the app manages vs headless: the app owns the local daemon
+(`~/.understudy/agent-card.json`), warm model slots, managed downloads, chat
+runs, and supervision — inspect it with `understudy daemon status` and the
+`understudy desktop ...` verbs. The trace → benchmark → review → run → rigor
+lifecycle is fully headless via the CLI and the benchmarks MCP server
+(`understudy benchmarks mcp`); see
+[`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md).
+
 ## Explanation Pattern
 
 When explaining a feature, cover:
