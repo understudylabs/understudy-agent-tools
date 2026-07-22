@@ -115,7 +115,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                 <div className="u-card">
                   <h3>What we&apos;ve seen in your workload</h3>
                   {entry.overview.workload_summary ? (
-                    <p className="mt-2 text-sm" style={{ maxWidth: "70ch" }}>{entry.overview.workload_summary}</p>
+                    <WorkloadSummary text={entry.overview.workload_summary} />
                   ) : (
                     <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
                   )}
@@ -137,12 +137,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                           </div>
                         ))}
                         {(entry.overview.tool_usage ?? []).length > 0 && (
-                          <div className="mono text-[11px] text-ink-muted">
-                            tool usage:{" "}
-                            {(entry.overview.tool_usage ?? [])
-                              .map((r) => `${r.tool} ×${r.calls}${r.defined ? "" : " (undeclared)"}${r.calls === 0 ? " (defined, never called)" : ""}`)
-                              .join(" · ")}
-                          </div>
+                          <ToolUsageTable rows={entry.overview.tool_usage ?? []} />
                         )}
                       </div>
                     </details>
@@ -255,6 +250,54 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
 
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Authored summaries arrive as one paragraph; render the first two sentences
+ * as the lead and fold the rest behind a disclosure so the narrative never
+ * reads as a wall of text.
+ */
+function WorkloadSummary({ text }: { text: string }) {
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)/g) ?? [text];
+  const lead = sentences.slice(0, 2).join("").trim();
+  const rest = sentences.slice(2).join("").trim();
+  return (
+    <div className="mt-2" style={{ maxWidth: "70ch" }}>
+      <p className="text-sm">{lead}</p>
+      {rest.length > 0 && (
+        <details className="mt-1">
+          <summary className="mono cursor-pointer text-[11px] text-ink-muted">read the full summary</summary>
+          <p className="mt-1 text-sm text-ink-muted">{rest}</p>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** Compact top-N tool table instead of a run-on joined line. */
+function ToolUsageTable({ rows }: { rows: { tool: string; calls: number; defined: boolean }[] }) {
+  const sorted = [...rows].sort((a, b) => b.calls - a.calls);
+  const top = sorted.slice(0, 10);
+  const more = sorted.slice(10);
+  const row = (r: { tool: string; calls: number; defined: boolean }) => (
+    <div key={r.tool} className="flex items-baseline justify-between gap-3">
+      <span className="mono text-[11px]">{r.tool}{r.defined ? "" : " *"}</span>
+      <span className="mono text-[11px] text-faint">{r.calls === 0 ? "never called" : `×${r.calls}`}</span>
+    </div>
+  );
+  return (
+    <div className="mt-2" style={{ maxWidth: "44ch" }}>
+      <div className="mono mb-1 text-[10px] uppercase tracking-wide text-faint">tool usage</div>
+      <div className="flex flex-col gap-0.5">{top.map(row)}</div>
+      {more.length > 0 && (
+        <details className="mt-1">
+          <summary className="mono cursor-pointer text-[11px] text-ink-muted">{more.length} more tools</summary>
+          <div className="mt-1 flex flex-col gap-0.5">{more.map(row)}</div>
+        </details>
+      )}
+      {rows.some((r) => !r.defined) && <div className="mono mt-1 text-[10px] text-faint">* called but not declared</div>}
     </div>
   );
 }
