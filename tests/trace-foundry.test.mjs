@@ -1016,6 +1016,7 @@ function stubVerifiersV1(root) {
     "class TaskData(BaseModel):",
     "    def __init__(self, **kw): self.__dict__.update(kw)",
     "class Trace: pass",
+    "class Runtime: pass",  // annotation-only in taskset.py — but pre-3.14 pythons evaluate annotations at class-body time
     "class _Sub:",
     "    def __class_getitem__(cls, item): return cls",
     "class Task(_Sub, Generic[A, B]):",
