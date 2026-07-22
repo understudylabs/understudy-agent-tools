@@ -32,12 +32,16 @@ const STATUS_COLOR: Record<RunRequest["status"], string> = {
 export function RunTaskControls({
   slug,
   taskId,
-  stage,
+  canRun,
+  disabledReason,
   onRunFinished,
 }: {
   slug: string;
   taskId: string;
-  stage: "proposed" | "promoted";
+  /** Promoted tasks always run; proposed tasks run once ACCEPTED with a validated environment. */
+  canRun: boolean;
+  /** Why the button is disabled (e.g. "accept this task to run it"). */
+  disabledReason: string | null;
   /** Called when a task-scoped run reaches a terminal state (rows landed). */
   onRunFinished: () => void;
 }) {
@@ -59,7 +63,7 @@ export function RunTaskControls({
   }, [slug, taskId]);
 
   useEffect(() => {
-    if (stage !== "promoted") return;
+    if (!canRun) return;
     fetch("/api/models")
       .then((res) => res.json())
       .then((body: { models?: string[]; error?: string | null }) => {
@@ -69,7 +73,7 @@ export function RunTaskControls({
       })
       .catch(() => setModelsError("could not load gateway models"));
     refreshRuns();
-  }, [stage, refreshRuns]);
+  }, [canRun, refreshRuns]);
 
   // Poll while a task-scoped run is in flight; refetch the replay when it lands.
   const active = runs.some((r) => r.status === "queued" || r.status === "running");
@@ -94,16 +98,16 @@ export function RunTaskControls({
     return () => clearInterval(timer);
   }, [active, runs, slug, taskId, onRunFinished]);
 
-  if (stage !== "promoted") {
+  if (!canRun) {
     return (
       <button
         type="button"
         disabled
         className="u-tab mono"
         style={{ border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", opacity: 0.5 }}
-        title="proposed benchmarks cannot run yet"
+        title={disabledReason ?? "this task cannot run yet"}
       >
-        Run this task — promote first
+        Run this task — {disabledReason ?? "not ready"}
       </button>
     );
   }

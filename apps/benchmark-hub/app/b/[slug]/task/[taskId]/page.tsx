@@ -131,10 +131,6 @@ export default async function TaskInspector({
           <span className="u-sec-no">01</span>
           <h2>Trajectories</h2>
         </div>
-        <p className="u-sec-sub">
-          One entry per rollout — eval rows joined to their retained trace branch. Conversation content loads lazily;
-          the rail carries the verifier contract and gold.
-        </p>
         <div className="mt-4">
           <TaskViews slug={entry.slug} taskId={task.task_id} mode="promoted" rail={rail} />
         </div>

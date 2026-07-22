@@ -66,10 +66,10 @@ describe("POST /api/runs", () => {
     assert.equal(res.status, 404);
   });
 
-  it("rejects proposed (unpromoted) benchmarks with 400", async () => {
+  it("rejects proposed benchmark-LEVEL runs with 400 (single-task only pre-promotion)", async () => {
     const res = await post({ slug: "data--proposed-only", models: ["m"], split: "all" });
     assert.equal(res.status, 400);
-    assert.match((await res.json()).error, /promote/i);
+    assert.match((await res.json()).error, /single-task/i);
   });
 
   it("rejects read-only fixture entries with 403", async () => {
@@ -139,5 +139,137 @@ describe("POST /api/runs", () => {
     assert.equal(missing.status, 404);
     const traversal = await post({ slug: "data--runnable", action: "cancel", run_id: "../escape" });
     assert.equal(traversal.status, 400);
+  });
+});
+
+/* ---- Proposed per-task run gating: accepted + validated env unlocks a
+   single-task run pre-promotion; everything else is refused clearly. ---- */
+
+/** A full proposed foundry dir with reviewable tasks and (optionally) a validated env. */
+function makeProposedDir(name, { reviews = [], withEnv = true, oracleStrict = 1 } = {}) {
+  const dir = path.join(tmp, name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "manifest.json"),
+    JSON.stringify({ schema_version: "understudy.trace_foundry.v1", counts: {}, freshness: {} }),
+  );
+  const tasks = ["p1", "p2"].map((id) => ({
+    schema_version: "understudy.benchmark_task.v1",
+    task_id: id,
+    outcome_contract: { required: [{ tool: "update-x", observed_arguments: { id } }], preserved: [], forbidden: [], grading: "final_state_and_obligations" },
+  }));
+  fs.writeFileSync(path.join(dir, "tasks.jsonl"), tasks.map((t) => JSON.stringify(t)).join("\n") + "\n");
+  // Proposal-stamped benchmark.json: the executor accepts it and rows carry its id.
+  fs.writeFileSync(
+    path.join(dir, "benchmark.json"),
+    JSON.stringify({ schema_version: "understudy.benchmark_proposal.v1", benchmark_id: `prop-${name}`, tasks: tasks.map((t) => ({ task_id: t.task_id, split: "train" })) }),
+  );
+  if (reviews.length > 0) {
+    fs.writeFileSync(
+      path.join(dir, "reviews.jsonl"),
+      reviews
+        .map((r) =>
+          JSON.stringify({
+            schema_version: "understudy.benchmark_review.v1",
+            benchmark_id: name,
+            task_id: r.task_id,
+            decision: r.decision,
+            note: "",
+            created_at: new Date().toISOString(),
+          }),
+        )
+        .join("\n") + "\n",
+    );
+  }
+  if (withEnv) {
+    fs.mkdirSync(path.join(dir, "environment"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "environment", "offline-validation.json"),
+      JSON.stringify({
+        schema_version: "understudy.verifier_validation.v1",
+        tasks: ["p1", "p2"].map((id) => ({
+          task_id: id,
+          oracle: { strict: oracleStrict, score: oracleStrict },
+          sentinels: { noop: { strict: 0, score: 0 }, wrong_value: { strict: 0, score: 0 } },
+        })),
+      }),
+    );
+  }
+  return dir;
+}
+
+describe("POST /api/runs — proposed per-task gating matrix", () => {
+  it("accepted task + validated environment → 200 and a queued single-task request", async () => {
+    const dir = makeProposedDir("prop-ok", { reviews: [{ task_id: "p1", decision: "accept" }] });
+    const res = await post({ slug: "data--prop-ok", models: ["m"], tasks: ["p1"], rollouts_per_task: 1 });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.run.status, "queued");
+    assert.deepEqual(body.run.tasks, ["p1"]);
+    assert.equal(body.run.benchmark_id, "prop-prop-ok");
+    assert.ok(fs.existsSync(path.join(dir, "runs", "queue", `${body.run.run_id}.json`)));
+  });
+
+  it("unreviewed task → 403 'task not accepted yet'", async () => {
+    makeProposedDir("prop-unreviewed");
+    const res = await post({ slug: "data--prop-unreviewed", models: ["m"], tasks: ["p1"] });
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /not accepted yet.*unreviewed/i);
+  });
+
+  it("rejected task → 403 with the decision named", async () => {
+    makeProposedDir("prop-rejected", { reviews: [{ task_id: "p1", decision: "reject" }] });
+    const res = await post({ slug: "data--prop-rejected", models: ["m"], tasks: ["p1"] });
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /not accepted yet.*reject/i);
+  });
+
+  it("accepted but environment missing → 503 'environment not ready'", async () => {
+    makeProposedDir("prop-noenv", { reviews: [{ task_id: "p1", decision: "accept" }], withEnv: false });
+    const res = await post({ slug: "data--prop-noenv", models: ["m"], tasks: ["p1"] });
+    assert.equal(res.status, 503);
+    assert.match((await res.json()).error, /environment not ready/i);
+  });
+
+  it("accepted but oracle validation failing → 503", async () => {
+    makeProposedDir("prop-badoracle", { reviews: [{ task_id: "p1", decision: "accept" }], oracleStrict: 0 });
+    const res = await post({ slug: "data--prop-badoracle", models: ["m"], tasks: ["p1"] });
+    assert.equal(res.status, 503);
+    assert.match((await res.json()).error, /oracle/i);
+  });
+
+  it("multi-task and tasks:'all' requests on proposed stay 400", async () => {
+    makeProposedDir("prop-multi", { reviews: [{ task_id: "p1", decision: "accept" }, { task_id: "p2", decision: "accept" }] });
+    for (const tasks of [["p1", "p2"], "all", undefined]) {
+      const res = await post({ slug: "data--prop-multi", models: ["m"], split: "all", tasks });
+      assert.equal(res.status, 400, JSON.stringify(tasks));
+    }
+  });
+
+  it("unknown task id on proposed → 404", async () => {
+    makeProposedDir("prop-unknown", { reviews: [{ task_id: "p1", decision: "accept" }] });
+    const res = await post({ slug: "data--prop-unknown", models: ["m"], tasks: ["nope"] });
+    assert.equal(res.status, 404);
+  });
+
+  it("proposed entries load pre-promotion run rows (rows-*.jsonl) with foreign rows dropped", async () => {
+    const dir = makeProposedDir("prop-rows", { reviews: [{ task_id: "p1", decision: "accept" }] });
+    const row = {
+      schema_version: "understudy.eval_result.v1",
+      run_id: "run-x",
+      task_id: "p1",
+      status: "ok",
+      score: 1,
+      model: "m",
+      benchmark_id: "prop-prop-rows",
+    };
+    const foreign = { ...row, benchmark_id: "someone-else" };
+    fs.writeFileSync(path.join(dir, "rows-run-x-m.jsonl"), JSON.stringify(row) + "\n" + JSON.stringify(foreign) + "\n");
+    const { getEntry } = await import("./.build/lib/data-core.js");
+    const entry = getEntry("data--prop-rows");
+    assert.equal(entry.kind, "proposed");
+    assert.equal(entry.rows.length, 1);
+    assert.equal(entry.rows[0].task_id, "p1");
+    assert.equal(entry.diagnostics.foreignRows, 1);
   });
 });

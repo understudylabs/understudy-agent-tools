@@ -369,6 +369,8 @@ export type ProposedHubEntry = {
   dag: SourceDag | null;
   /** Capture pointers only — bodies stay on disk until /api/captures fetches one. */
   captureIndex: CaptureRef[];
+  /** Pre-promotion run rows (accepted tasks are runnable): rows-*.jsonl in the foundry dir. */
+  rows: EvalRow[];
   /** All review lines, oldest first (append-only; newest per task wins). */
   reviews: BenchmarkReview[];
   /** Latest review per task_id. */

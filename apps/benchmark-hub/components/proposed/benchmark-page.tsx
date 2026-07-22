@@ -264,7 +264,7 @@ function WorkloadSummary({ text }: { text: string }) {
   const lead = sentences.slice(0, 2).join("").trim();
   const rest = sentences.slice(2).join("").trim();
   return (
-    <div className="mt-2" style={{ maxWidth: "70ch" }}>
+    <div className="mt-2">
       <p className="text-sm">{lead}</p>
       {rest.length > 0 && (
         <details className="mt-1">
