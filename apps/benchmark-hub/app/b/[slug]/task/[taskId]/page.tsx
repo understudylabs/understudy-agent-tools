@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getEntry, loadTraceRecords } from "@/lib/data";
+import { getEntry, loadTaskSidecars, loadTraceRecords } from "@/lib/data";
 import { extractBranches, normalizeTraceRecord, type TraceNode } from "@/lib/benchmark-core";
 import { formatScore } from "@/lib/scores";
-import { FlagBadge, StatusBadge, Badge } from "@/components/badges";
+import { FlagBadge, SplitChip, StatusBadge, Badge } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { FlagForm } from "@/components/flag-form";
+import { ProposedTaskPage } from "@/components/proposed/task-page";
 
 export const dynamic = "force-dynamic";
 
 type RawRecord = Record<string, unknown>;
+
+/** Render cap: only the first N trace branches render (plus a count). */
+const BRANCH_RENDER_CAP = 20;
 
 function SectionHead({ n, title }: { n: string; title: string }) {
   return (
@@ -17,6 +22,23 @@ function SectionHead({ n, title }: { n: string; title: string }) {
       <h2>{title}</h2>
     </div>
   );
+}
+
+/** Sidecar values render as prose when short strings, JSON blocks otherwise. */
+function SidecarValue({ value }: { value: unknown }) {
+  if (typeof value === "string") {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      /* plain prose */
+    }
+    if (parsed && typeof parsed === "object") {
+      return <pre className="u-pre mt-2" style={{ maxHeight: 240 }}>{JSON.stringify(parsed, null, 2)}</pre>;
+    }
+    return <p className="mt-2 text-sm">{value}</p>;
+  }
+  return <pre className="u-pre mt-2" style={{ maxHeight: 240 }}>{JSON.stringify(value, null, 2)}</pre>;
 }
 
 export default async function TaskInspector({
@@ -28,11 +50,16 @@ export default async function TaskInspector({
   const taskId = decodeURIComponent(rawTaskId);
   const entry = getEntry(slug);
   if (!entry || entry.kind === "invalid") notFound();
+  if (entry.kind === "proposed") return <ProposedTaskPage entry={entry} taskId={taskId} />;
   const task = entry.manifest.tasks.find((t) => t.task_id === taskId);
   if (!task) notFound();
 
   const rows = entry.rows.filter((r) => r.task_id === taskId);
   const openFlags = entry.flags.filter((f) => f.status === "open" && f.task_id === taskId);
+  const sidecar = loadTaskSidecars(entry)[taskId] ?? null;
+  const sidecarExtras = sidecar
+    ? Object.entries(sidecar).filter(([k]) => !["task_id", "question", "gold"].includes(k))
+    : [];
 
   // Trace drill-down: branches for this task from every traces*.jsonl file.
   const traceFiles = loadTraceRecords(entry);
@@ -58,13 +85,15 @@ export default async function TaskInspector({
         <p className="lb-eyebrow">
           <Link href={`/b/${entry.slug}`}>← {entry.manifest.name ?? entry.manifest.benchmark_id}</Link>
         </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="mono" style={{ fontSize: "clamp(22px,3vw,32px)" }}>
-            {task.task_id}
-          </h1>
+        {/* Long mono task ids wrap; chips live on their own line below. */}
+        <h1 className="mono" style={{ fontSize: "clamp(18px,2.6vw,28px)", overflowWrap: "anywhere" }}>
+          {task.task_id}
+        </h1>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <Badge>{task.category_id}</Badge>
           <Badge>{task.genesis}</Badge>
-          <Badge>split: {task.split}</Badge>
+          <SplitChip split={task.split} />
+          {task.gold ? <Badge>gold: {task.gold.kind}</Badge> : <Badge className="border-warn/40 text-warn">no gold (unscored)</Badge>}
           <FlagBadge count={openFlags.length} />
         </div>
         <div className="mt-4 flex flex-col gap-2">
@@ -79,16 +108,49 @@ export default async function TaskInspector({
       </section>
 
       <section className="lb-section">
-        <SectionHead n="01" title="Manifest entry" />
-        <pre className="lb-card mono mt-4 overflow-x-auto text-xs text-ink-muted">{JSON.stringify(task, null, 2)}</pre>
+        <SectionHead n="01" title="Task content" />
+        {!sidecar ? (
+          <>
+            <p className="lb-sec-sub">
+              No tasks*.jsonl sidecar carries content for this task — only the manifest entry below is available.
+            </p>
+            <pre className="u-pre mt-4" style={{ maxHeight: 300 }}>{JSON.stringify(task, null, 2)}</pre>
+          </>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {sidecar.question != null && (
+              <div className="lb-card">
+                <h3>Question</h3>
+                <SidecarValue value={sidecar.question} />
+              </div>
+            )}
+            {sidecar.gold != null && (
+              <div className="lb-card">
+                <h3>Gold contract</h3>
+                <SidecarValue value={sidecar.gold} />
+              </div>
+            )}
+            {sidecarExtras.map(([key, value]) => (
+              <div key={key} className="lb-card">
+                <h3>{key}</h3>
+                <SidecarValue value={value} />
+              </div>
+            ))}
+            <div className="lb-card md:col-span-2">
+              <h3>Manifest entry</h3>
+              <pre className="u-pre mt-2" style={{ maxHeight: 240 }}>{JSON.stringify(task, null, 2)}</pre>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="lb-section">
         <SectionHead n="02" title={`Eval rows (${rows.length})`} />
         {rows.length === 0 ? (
-          <div className="lb-state">
-            No eval rows yet for this task. Run the benchmark and drop rows-*.jsonl next to benchmark.json.
-          </div>
+          <EmptyState
+            what="No eval rows yet for this task — nothing has run against it."
+            next="drop understudy.eval_result.v1 lines into rows-*.jsonl (or rows/*.jsonl) next to benchmark.json"
+          />
         ) : (
           <div className="lb-tbl-scroll mt-4">
             <table className="lb-tbl w-full">
@@ -111,7 +173,19 @@ export default async function TaskInspector({
                       <StatusBadge status={r.status} />
                     </td>
                     <td className="l mono text-xs font-bold">{formatScore(r.score)}</td>
-                    <td className="l mono text-xs text-ink-muted">{r.subscores ? JSON.stringify(r.subscores) : "—"}</td>
+                    <td className="l" style={{ whiteSpace: "normal" }}>
+                      {r.subscores ? (
+                        <span className="flex flex-wrap gap-1">
+                          {Object.entries(r.subscores).map(([k, v]) => (
+                            <Badge key={k}>
+                              {k} {v == null ? "—" : formatScore(v)}
+                            </Badge>
+                          ))}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="l mono text-xs text-ink-muted">{r.trace_ref?.branch_leaf ?? "—"}</td>
                   </tr>
                 ))}
@@ -124,16 +198,22 @@ export default async function TaskInspector({
       <section className="lb-section" style={{ borderBottom: "none" }}>
         <SectionHead n="03" title="Trace branches" />
         {branchesByFile.length === 0 ? (
-          <div className="lb-state">
-            No trace DAG evidence for this task. When a run retains <code className="mono">traces.jsonl</code> beside
-            the manifest, each root-to-leaf branch renders here.
-          </div>
+          <EmptyState
+            what="No trace DAG evidence for this task — no run retained its message tree."
+            next="keep traces.jsonl beside benchmark.json; each root-to-leaf branch renders here"
+          />
         ) : (
           branchesByFile.map(({ file, branches, recordsById }) => (
             <div key={file} className="mt-4 mb-4">
-              <p className="lb-foot-note !mt-0 mb-2">{"// " + file}</p>
+              <p className="lb-foot-note !mt-0 mb-2">
+                {"// " +
+                  file +
+                  (branches.length > BRANCH_RENDER_CAP
+                    ? ` — showing first ${BRANCH_RENDER_CAP} of ${branches.length} branches`
+                    : "")}
+              </p>
               <div className="flex flex-col gap-3">
-                {branches.map((b, i) => (
+                {branches.slice(0, BRANCH_RENDER_CAP).map((b, i) => (
                   <div key={i} className="lb-card">
                     <div className="mono mb-2 flex items-center gap-3 text-xs text-ink-muted">
                       <span>branch {i + 1}</span>

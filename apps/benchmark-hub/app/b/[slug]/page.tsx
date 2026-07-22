@@ -9,7 +9,7 @@ import {
   formatScore,
   hasSplits,
 } from "@/lib/scores";
-import { OriginBadge, SourceBadge, Badge } from "@/components/badges";
+import { OriginBadge, SourceBadge, SplitChip, StageBadge, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
 import { FlagBadge } from "@/components/badges";
 import { Leaderboard } from "@/components/leaderboard";
@@ -18,6 +18,7 @@ import { CategoryRadar } from "@/components/radar";
 import { VersionTimeline } from "@/components/version-timeline";
 import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
+import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const entry = getEntry(slug);
   if (!entry) notFound();
+  if (entry.kind === "proposed") return <ProposedBenchmarkPage entry={entry} />;
   if (entry.kind === "invalid") {
     return (
       <div className="ent-page">
@@ -93,6 +95,10 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
                 {"// " + err}
               </span>
             ))}
+          </div>
+          <div className="u-empty" style={{ borderColor: "var(--bad-border)" }}>
+            <p className="what">This directory stays visible (never silently hidden) until its manifest validates.</p>
+            <span className="next">{"fix " + entry.manifestPath + " against schemas/understudy.benchmark.v1.schema.json"}</span>
           </div>
         </header>
       </div>
@@ -153,6 +159,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <div className="ent-title-row">
           <h1>{m.name ?? m.benchmark_id}</h1>
           <OriginBadge origin={m.provenance.origin} />
+          <StageBadge stage="promoted" />
           <SourceBadge entry={entry} />
           <FlagBadge count={openFlags.length} />
           <div className="ent-flag-slot">
@@ -320,7 +327,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
                         </td>
                         <td className="l">{t.category_id}</td>
                         <td className="l mono text-xs">{t.genesis}</td>
-                        <td className="l mono text-xs">{t.split}</td>
+                        <td className="l"><SplitChip split={t.split} /></td>
                         <td className="l mono text-xs">
                           {t.gold ? t.gold.kind : <span className="text-warn">none (unscored)</span>}
                         </td>

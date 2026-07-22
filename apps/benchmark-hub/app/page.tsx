@@ -1,14 +1,51 @@
 import Link from "next/link";
 import { loadHub } from "@/lib/data";
-import type { HubEntry, InvalidHubEntry } from "@/lib/types";
-import { FlagBadge, OriginBadge, SourceBadge, WarningList } from "@/components/badges";
+import type { HubEntry, InvalidHubEntry, ProposedHubEntry } from "@/lib/types";
+import { FlagBadge, OriginBadge, SourceBadge, StageBadge, WarningList } from "@/components/badges";
 import { VersionTimeline } from "@/components/version-timeline";
 
 export const dynamic = "force-dynamic";
 
+function ProposedCard({ entry }: { entry: ProposedHubEntry }) {
+  const reviewed = Object.keys(entry.latestReviewByTask).length;
+  const total = entry.tasks.length;
+  const awaiting = Math.max(0, total - reviewed);
+  const newest = entry.foundry.freshness?.newest_capture_utc?.slice(0, 10) ?? "unknown";
+  return (
+    <Link href={`/b/${entry.slug}`} className="lb-card block !text-ink transition-shadow hover:shadow-md">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[15px] font-bold">{entry.dir.split("/").pop()}</span>
+        <StageBadge stage="proposed" />
+        <SourceBadge entry={entry} />
+      </div>
+      <p className="mt-1 text-xs text-ink-muted">
+        Compiled from captured traces by the foundry — every task awaits human final judgment before promotion.
+      </p>
+      <div className="mono mt-3 flex flex-wrap gap-4 text-xs text-ink-muted">
+        <span>{total} tasks</span>
+        <span>{entry.foundry.counts?.captures ?? 0} captures</span>
+        <span>
+          reviewed {reviewed}/{total}
+        </span>
+        <span>newest capture {newest}</span>
+      </div>
+      <div className="mono mt-2 text-[11px] text-ink-muted">local only · contains customer payloads</div>
+      {awaiting > 0 && (
+        <div className="mt-3">
+          <span className="lb-warn inline-block text-xs">
+            <span className="lab">machine-proposed</span> · {awaiting} task{awaiting === 1 ? "" : "s"} awaiting
+            review
+          </span>
+        </div>
+      )}
+    </Link>
+  );
+}
+
 export default function HubIndex() {
   const allEntries = loadHub();
   const entries = allEntries.filter((e): e is HubEntry => e.kind === "ok");
+  const proposedEntries = allEntries.filter((e): e is ProposedHubEntry => e.kind === "proposed");
   const invalidEntries = allEntries.filter((e): e is InvalidHubEntry => e.kind === "invalid");
   // Union of every benchmark's split freezes drives the hub-level release rail.
   const allVersions = entries
@@ -58,12 +95,21 @@ export default function HubIndex() {
           </div>
         )}
         {allEntries.length === 0 && (
-          <div className="lb-state">
-            No benchmarks found. Point BENCHMARK_HUB_DATA_DIR at a directory of benchmark dirs (each with a
-            benchmark.json manifest).
+          <div className="u-empty">
+            <p className="what">
+              No benchmarks found — the data dir has no benchmark directories yet. Build one from your own traces,
+              or import/derive one with the skills.
+            </p>
+            <span className="next">
+              {"understudy traces build-benchmark --source ~/.understudy/captures --output ~/.understudy/benchmarks/<name>\n" +
+                "# or: point BENCHMARK_HUB_DATA_DIR at existing benchmark dirs · import/derive via the capture-evidence & ingest-traces skills"}
+            </span>
           </div>
         )}
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          {proposedEntries.map((entry) => (
+            <ProposedCard key={entry.slug} entry={entry} />
+          ))}
           {entries.map((entry) => {
             const openFlags = entry.flags.filter((f) => f.status === "open").length;
             const models = new Set(entry.rows.map((r) => r.model ?? "(unknown)")).size;

@@ -149,10 +149,23 @@ export function Leaderboard({
         </div>
       )}
       {summaries.length === 0 ? (
-        <div className="lb-state">
-          No eval rows match this filter. Drop rows-*.jsonl (understudy.eval_result.v1) next to benchmark.json, or
-          widen the filters.
-        </div>
+        rows.length === 0 ? (
+          <div className="u-empty">
+            <p className="what">No runs yet — nothing has been evaluated against this benchmark.</p>
+            <span className="next">
+              {"run your harness and drop understudy.eval_result.v1 lines into rows-*.jsonl next to benchmark.json\n" +
+                "e.g. node normalize-and-project.mjs <results.jsonl> <model> <run-id>  # see the demo dir's DOGFOOD.md"}
+            </span>
+          </div>
+        ) : (
+          <div className="u-empty">
+            <p className="what">
+              {rows.length} eval row{rows.length === 1 ? "" : "s"} exist, but none match the current filter — the
+              leaderboard defaults to the frozen holdout split so optimizer-touched numbers never headline.
+            </p>
+            <span className="next">split: all  # or tag rows with split: &quot;holdout&quot;</span>
+          </div>
+        )
       ) : (
         <div className="lb-tbl-scroll">
           <table className="lb-tbl w-full">
