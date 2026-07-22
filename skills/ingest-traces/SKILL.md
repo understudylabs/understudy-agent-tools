@@ -107,6 +107,13 @@ understudy traces build-benchmark \
   --max-age-days 3
 ```
 
+Add `--workload <id-or-name>` whenever the capture directory contains multiple
+workloads, and keep the default ten-row resumable batches. The CLI helpers are
+the canonical implementation; do not recreate their normalization, DAG,
+manifest, viewer, review, environment, or replay logic in an ad-hoc script.
+Follow [`references/trace-foundry-cli.md`](references/trace-foundry-cli.md) for
+the complete compile → review → replay lifecycle.
+
 This fails closed when no capture falls inside the requested freshness window.
 It writes normalized captures, a source DAG, machine-proposed tasks and outcome
 contracts, a canonical benchmark manifest, and a local Design Language v2
@@ -165,6 +172,9 @@ skill for this workload.
   versioned-envelope decoding, SSE, raw preservation, and freshness.
 - [`references/source-history-dag.md`](references/source-history-dag.md) —
   fingerprints, retries, branches, folds, mutations, and validation.
+- [`references/trace-foundry-cli.md`](references/trace-foundry-cli.md) — the
+  deterministic compiler, review importer, Verifiers v1 generator, replay
+  planner/runner, resumable artifacts, and promotion contract.
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — owns the
   metric/validator/baseline contract the frozen slices feed.
 - [`references/profile-captures.md`](references/profile-captures.md) —

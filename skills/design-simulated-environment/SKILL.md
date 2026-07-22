@@ -156,41 +156,19 @@ Caveat: the bricks look independent, but the **parser must match the model** (an
 the trainer's renderer must too) — that's the seam that breaks on a new model arch.
 When you swap the model brick, re-check the parser/renderer.
 
-When the env is built as an actual `verifiers` Environment (the form
-[`prepare-verifier-handoff`'s authoring and packaging stages](../prepare-verifier-handoff/references/stage-1-author-env.md) consume),
-these API facts save real trial — re-verified against the `verifiers` `0.2.0`
-source, 2026-07-14 (https://github.com/PrimeIntellect-ai/verifiers ; APIs move,
-re-check the pin). Pin exactly `verifiers==0.2.0`: the tag and `main` diverged
-within days of release. Note `0.2.0` ships **two API generations** — everything
-below is the **v0 API**, still exported and working but frozen upstream
-(deprecated, no new features); new upstream work lands in the `verifiers.v1`
-Taskset/Harness/Runtime namespace (landscape notes in
-[`reference.md`](reference.md)). Never mix v0 and v1 in one environment.
-Don't start from a blank file: the traces→env recipe is
-[`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md)
-and the copyable, smoke-tested scaffold is
-[`examples/event-categorizer/`](examples/event-categorizer/README.md):
+For trace-derived work, generate the environment through `understudy traces
+build-benchmark`; do not begin from the legacy v0 example. The helper was
+live-verified on 2026-07-21 against Prime Intellect Verifiers v1 commit
+`cb9c84969186f8a0954b1027320f225e6b6b0afb`. It emits the current typed
+`TasksetConfig`/`Taskset`, per-rollout `State`, `Toolset` methods, strict and
+dense rewards, `HarnessConfig`/`Harness`, and `load_environment(EnvConfig)`
+package shape, with the audited commit recorded in the canonical benchmark.
 
-- `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
-  `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
-  functions (type hints + docstring → auto tool schema).
-- **Tools are stateless** — a tool gets only its JSON args, not the dataset row.
-  For per-example scoping (each task targets a different account/inbox), subclass
-  ToolEnv and override `env_response(messages, state)` to set a **contextvar** from
-  `state["info"]` before `super().env_response(...)`; tools read the contextvar
-  (concurrency-safe across parallel rollouts).
-- Dataset rows: `question` + `answer` + `info` (dict); verifiers derives `prompt`
-  and `example_id`. Final answer = last assistant message with text (no submit
-  tool; the episode ends when the model stops calling tools).
-- Rubric: `vf.Rubric(funcs=[...], weights=[...])`; reward funcs take kwargs
-  `(prompt, completion, answer, state, ...)` — pull what you need by name.
-- Eval: `env.evaluate` is a **coroutine** — use `evaluate_sync` for blocking calls,
-  and pass a verifiers **`ClientConfig`** (a raw `openai.OpenAI` raises
-  "Unsupported client type"): `ClientConfig(client_type="openai_chat_completions",
-  api_key_var="<ENV_VAR_NAME>", api_base_url="<…/v1>")` — `api_key_var` is the
-  env-var *name* (default `PRIME_API_KEY`); `extra_headers` carries per-route
-  headers. Pointed at the Understudy gateway this runs a full rollout+reward
-  eval on CPU for pennies — strong pre-GPU validation.
+The checked-in event-categorizer remains a legacy v0 compatibility example;
+never copy it into a new trace-derived environment. Use the helper lifecycle in
+[`../ingest-traces/references/trace-foundry-cli.md`](../ingest-traces/references/trace-foundry-cli.md).
+Re-audit upstream before changing the generator's commit pin, then smoke-install
+and import the generated package against that exact commit.
 
 ## Output Standard
 
