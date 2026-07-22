@@ -3348,11 +3348,11 @@ select,
 .structured-data-field-grid article {
   position: relative;
   display: grid;
-  min-height: 128px;
+  min-height: 112px;
   align-content: end;
   gap: 5px;
   overflow: hidden;
-  padding: 18px;
+  padding: 14px 16px;
   border: 1px solid color-mix(in srgb, var(--text) 11%, transparent);
   border-radius: 13px;
   background: color-mix(in srgb, var(--c-window) 94%, transparent);
@@ -3362,8 +3362,8 @@ select,
   display: flex;
   align-items: end;
   gap: 4px;
-  height: 46px;
-  margin-bottom: 9px;
+  height: 40px;
+  margin-bottom: 8px;
   border-bottom: 1px dashed color-mix(in srgb, var(--text) 14%, transparent);
 }
 .structured-data-field-histogram i {
@@ -3387,17 +3387,21 @@ select,
 .automatic-goal-card-preview article:nth-child(2) { animation-delay: 35ms; }
 .structured-data-field-grid article:nth-child(3) { animation-delay: 70ms; }
 .structured-data-field-grid article:nth-child(4) { animation-delay: 105ms; }
+/* Role accent: a hairline in the field's semantic color (cyan input,
+   violet target, amber preference), inset from the rounded corners and
+   drawn at one weight/opacity so the cards read as a matched set. */
 .structured-data-field-grid article::before {
   position: absolute;
-  inset: 0 0 auto;
+  inset: 0 12px auto;
   height: 2px;
+  border-radius: 999px;
   background: var(--text-3);
   content: "";
   opacity: 0.32;
 }
-.structured-data-field-grid article[data-role="input"]::before { background: var(--model-cyan); opacity: 0.72; }
-.structured-data-field-grid article[data-role="target"]::before { background: var(--model-violet); opacity: 0.72; }
-.structured-data-field-grid article[data-role="preference"]::before { background: var(--model-amber); opacity: 0.72; }
+.structured-data-field-grid article[data-role="input"]::before { background: var(--model-cyan); opacity: 0.62; }
+.structured-data-field-grid article[data-role="target"]::before { background: var(--model-violet); opacity: 0.62; }
+.structured-data-field-grid article[data-role="preference"]::before { background: var(--model-amber); opacity: 0.62; }
 .structured-data-field-grid article > strong {
   overflow: hidden;
   color: var(--c-ink);
@@ -3581,6 +3585,31 @@ select,
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   margin-top: 14px;
 }
+/* Per-gap connectors instead of one rail behind the pills: a short segment
+   centered in each gap, inset so it never touches the pill borders. */
+.training-flow-stepper::before {
+  content: none;
+}
+.training-flow-stepper li + li::before {
+  position: absolute;
+  top: 50%;
+  left: -9px;
+  width: 6px;
+  height: 1px;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+  content: "";
+}
+/* Room for the two-line label ("Data / Your decision") to breathe. */
+.training-flow-stepper li {
+  padding: 9px 12px;
+}
+.training-flow-stepper li div {
+  gap: 4px;
+}
+.training-flow-stepper .training-flow-step-jump {
+  margin: -9px -12px;
+  padding: 9px 12px;
+}
 .training-flow-step-jump {
   display: flex;
   flex: 1;
@@ -3613,7 +3642,33 @@ select,
   gap: 12px;
   max-height: min(62vh, 640px);
   overflow-y: auto;
-  padding-right: 2px;
+  /* Keep the scrollbar off the cards' rounded right edge. */
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-3) 16%, transparent) transparent;
+}
+.training-flow-timeline::-webkit-scrollbar { width: 6px; }
+.training-flow-timeline::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-3) 18%, transparent);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.training-flow-timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* The decision row is the card's one interactive moment — pin it to the
+   scrollport bottom so the question and its buttons are never clipped
+   mid-height while the evidence above scrolls. */
+.training-flow-timeline .dataset-profile-confirm {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: 0 -24px -24px;
+  padding: 16px 24px 20px;
+  border-radius: 0 0 16px 16px;
+  background: color-mix(in srgb, var(--c-content) 97%, var(--c-window));
+  box-shadow: 0 -14px 20px -16px rgb(0 0 0 / 0.55);
 }
 /* Frontier connector: the thin lineage line the design explorations draw
    between records — vertical here, one notebook column. */
@@ -3768,7 +3823,9 @@ select,
 .automatic-goal-card-preview > header,
 .automatic-goal-card-design > header {
   display: flex;
-  align-items: end;
+  /* Baseline, not box-edge: keeps the "n shown" annotation sitting on the
+     same line as the section heading. */
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
 }
@@ -3800,14 +3857,18 @@ select,
 .automatic-goal-card-preview-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
   gap: 12px;
 }
 .automatic-goal-card-preview article {
   display: grid;
   min-width: 0;
   min-height: 148px;
+  /* Header row, then the excerpt fills the rest — sibling examples in the
+     same row stay the same height regardless of text length. */
+  grid-template-rows: auto 1fr;
   align-content: start;
-  gap: 14px;
+  gap: 12px;
   padding: 16px;
   border: 1px solid color-mix(in srgb, var(--model-cyan) 18%, var(--border));
   border-radius: 12px;
@@ -4010,6 +4071,11 @@ select,
   .dataset-profile-confirm {
     align-items: stretch;
     flex-direction: column;
+  }
+  /* Card padding drops to 18px here; keep the pinned row flush with it. */
+  .training-flow-timeline .dataset-profile-confirm {
+    margin: 0 -18px -18px;
+    padding: 14px 18px 16px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
