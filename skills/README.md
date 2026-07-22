@@ -135,6 +135,16 @@ logprobs (which tokens?), and tool-trace forensics (why did this call fail?).
   models — any mix of local, gateway, or frontier — on one frozen eval and
   writes Pareto-style quality, latency, cost, reliability, and caveat artifacts
   for route decisions.
+- [`operate-benchmark-lab`](operate-benchmark-lab/SKILL.md) is the coding
+  agent's operator manual for a trace-compiled benchmark directory: the
+  benchmarks MCP server and CLI verbs across build → exception-based review
+  (auto-accepts, feedback → regenerate-env) → calibration (incumbent gate +
+  null/spam trivial floors) → candidate and prompt-override runs → the rigor
+  report — plus the run-executor daemon lifecycle
+  (`understudy runs execute --watch`, claiming, capability gates).
+- [`replay-app-harness`](replay-app-harness/SKILL.md) runs the user's own app
+  (via an `app-harness.json` sidecar) as an `app_replay` arm on the frozen
+  benchmark tasks — the regression verdict after editing the user's code.
 - [`compare-trajectories`](compare-trajectories/SKILL.md) is the behavioral
   complement to `compare-model-sweep`: it aligns two trajectory-run exports by
   task id, builds the outcome-delta matrix, measures per-step divergence

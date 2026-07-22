@@ -145,7 +145,14 @@ exploits. Full mapping in
   final state: gold answers must not appear in seeded fixtures, tool results,
   file listings, error messages, or record fields the read tools can reach.
   Grep the reachable synthetic state for gold keys/values; anything findable
-  by a read call is a leak.
+  by a read call is a leak. For trace-compiled environments this is now
+  partly automatic: `understudy traces build-benchmark` splits fixtures into
+  candidate-readable pre-state (`fixtures.json`, task_id-scoped) and
+  scorer-only post-state (`gold.json`, never served to a rollout), and runs a
+  tiered leakage audit — tier 1 verbatim matches are `findings`, tier 2 fuzzy
+  shingle/fingerprint matches are `advisory` — recorded report-only in
+  `manifest.leakage_audit`. Read that record first; keep the manual grep for
+  environments built any other way.
 - **State isolation between rollouts.** Each rollout must start from a fresh
   deep copy of the seeded state — no residual writes from a previous run, no
   shared mutable module-level state, no order dependence. Prove it: run the
@@ -155,6 +162,14 @@ exploits. Full mapping in
   are guessable — a coin-flip agent clears them half the time. Prefer gold
   states with multiple required keys/values plus forbidden writes, so recall,
   precision, and policy must all hold at once.
+- **Attest it.** For a benchmark directory, `understudy benchmarks rigor
+  <dir>` writes `rigor-report.md` — the ABC attestation over the artifacts on
+  disk (oracle solvability, null/spam trivial-arm floors from
+  `calibration.json`, incumbent calibration, per-task contract complexity,
+  anomaly counts, contamination provenance) with honest UNKNOWN rows for
+  items tooling cannot check yet. Queue the trivial floors themselves via the
+  run executor (`trivial_arms: ["null_agent", "spam_agent"]`); see
+  [`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md).
 
 ## Running it as a real `verifiers` env
 
