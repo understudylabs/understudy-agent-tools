@@ -1,9 +1,10 @@
 import Link from "next/link";
-import type { ProposedHubEntry } from "@/lib/types";
-import { Badge, DecisionBadge, SourceBadge, SplitChip, StageBadge, ConfidenceChip } from "@/components/badges";
+import { taskDisplayName, type ProposedHubEntry } from "@/lib/types";
+import { Badge, SourceBadge, StageBadge } from "@/components/badges";
 import { AnchorRail } from "@/components/anchor-rail";
 import { EmptyState } from "@/components/empty-state";
 import { LineageRail } from "@/components/proposed/lineage";
+import { TaskTable } from "@/components/task-table";
 
 const RAIL = [
   { id: "tasks", label: "Tasks" },
@@ -139,45 +140,21 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                     next="promotion tooling lands upstream; accepted tasks become the promoted benchmark's manifest"
                   />
                 )}
-                <div className="u-tbl-scroll mt-5">
-                  <table className="u-tbl w-full">
-                    <thead>
-                      <tr>
-                        {["title", "split", "confidence", "close call", "review", "status"].map((h) => (
-                          <th key={h} className="l" style={{ cursor: "default" }}>
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entry.tasks.map((t) => {
-                        const review = entry.latestReviewByTask[t.task_id];
-                        return (
-                          <tr key={t.task_id}>
-                            <td className="l" style={{ whiteSpace: "normal", maxWidth: 420 }}>
-                              <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>
-                                {t.title || t.task_id}
-                              </Link>
-                              <span className="mono block text-[10px] text-faint">{t.task_id}</span>
-                            </td>
-                            <td className="l">
-                              <SplitChip split={t.split} />
-                            </td>
-                            <td className="l">
-                              <ConfidenceChip level={t.machine_confidence} />
-                            </td>
-                            <td className="l mono text-xs">{t.close_call ? <span className="text-warn">close call</span> : "—"}</td>
-                            <td className="l">
-                              <DecisionBadge decision={review?.decision ?? null} />
-                            </td>
-                            <td className="l mono text-xs text-ink-muted">{t.status}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <TaskTable
+                  stage="proposed"
+                  rows={entry.tasks.map((t) => ({
+                    taskId: t.task_id,
+                    href: `/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`,
+                    displayName: taskDisplayName(t),
+                    rawTitle: t.title,
+                    split: t.split,
+                    confidence: t.machine_confidence,
+                    reviewDecision: entry.latestReviewByTask[t.task_id]?.decision ?? null,
+                    closeCall: t.close_call,
+                    authored: !!t.authored,
+                    promptLength: (t.authored?.statement ?? t.title ?? "").length,
+                  }))}
+                />
               </>
             )}
           </section>
