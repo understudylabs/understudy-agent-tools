@@ -2,7 +2,6 @@ import Link from "next/link";
 import { loadHub } from "@/lib/data";
 import type { HubEntry, InvalidHubEntry, ProposedHubEntry } from "@/lib/types";
 import { FlagBadge, OriginBadge, SourceBadge, StageBadge, WarningList } from "@/components/badges";
-import { VersionTimeline } from "@/components/version-timeline";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +46,6 @@ export default function HubIndex() {
   const entries = allEntries.filter((e): e is HubEntry => e.kind === "ok");
   const proposedEntries = allEntries.filter((e): e is ProposedHubEntry => e.kind === "proposed");
   const invalidEntries = allEntries.filter((e): e is InvalidHubEntry => e.kind === "invalid");
-  // Union of every benchmark's split freezes drives the hub-level release rail.
-  const allVersions = entries
-    .flatMap((e) => e.versions)
-    .sort((a, b) => a.created_at.localeCompare(b.created_at));
-
   return (
     <div>
       <section className="u-hero" style={{ paddingTop: 34 }}>
@@ -61,7 +55,6 @@ export default function HubIndex() {
           Manifests, frozen splits, and eval rows from your own machine — no upload, no account.{" "}
           <b>Every number here is backed by local, auditable evidence.</b>
         </p>
-        {allVersions.length > 0 && <VersionTimeline versions={allVersions} label="release" />}
       </section>
 
       <section className="u-section">

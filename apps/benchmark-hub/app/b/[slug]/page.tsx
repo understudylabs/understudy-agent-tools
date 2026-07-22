@@ -17,7 +17,6 @@ import { FlagBadge } from "@/components/badges";
 import { Leaderboard } from "@/components/leaderboard";
 import { InsightsSection } from "@/components/insights";
 import { CategoryRadar } from "@/components/radar";
-import { VersionTimeline } from "@/components/version-timeline";
 import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
 import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
@@ -267,9 +266,18 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="evidence"
             title="Evidence"
-            explainer="Split-freeze history from versions.jsonl: each dot is a frozen split contract, the ringed dot is the freeze in force."
+            explainer="The split-freeze contract in force, from versions.jsonl (newest last)."
           >
-            <VersionTimeline versions={entry.versions} label="split freeze" />
+            {entry.versions.length > 0 ? (
+              <p className="mono mt-3 text-xs text-ink-muted">
+                {entry.versions.length} freeze{entry.versions.length === 1 ? "" : "s"} · latest{" "}
+                {entry.versions[entry.versions.length - 1].created_at.slice(0, 10)} · splits{" "}
+                {entry.versions[entry.versions.length - 1].splits_sha256?.slice(0, 12) ?? "no hash"} ·{" "}
+                {entry.versions[entry.versions.length - 1].contamination ?? "contamination unknown"}
+              </p>
+            ) : (
+              <p className="mono mt-3 text-xs text-ink-muted">no split freezes recorded (versions.jsonl absent)</p>
+            )}
           </Section>
 
           <Section
