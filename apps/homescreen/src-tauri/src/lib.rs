@@ -132,6 +132,15 @@ pub fn run() {
             let db_started = Instant::now();
             let db = db::Db::open(data_dir).expect("understudy database opened");
             let db_ms = db_started.elapsed().as_millis();
+            // Abandoned/crashed training flows must not stay "active" forever:
+            // reconcile them to dismissed in the store (the sidebar previously
+            // only hid them cosmetically). 24h comfortably exceeds any real
+            // local training or review session.
+            match db.reconcile_stale_training_threads(24) {
+                Ok(0) => {}
+                Ok(n) => eprintln!("understudy: reconciled {n} stale active training thread(s) to dismissed"),
+                Err(e) => eprintln!("understudy: training-thread reconcile skipped: {e}"),
+            }
             app.manage(db);
             app.manage(metrics::MetricsReader::new());
             app.manage(machine);

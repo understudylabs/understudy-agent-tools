@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -38,6 +38,8 @@ import type { AnyHubEntry, CalibrationSummary, EvalRow, FoundryTask, ProposedHub
 import { REVIEW_DECISIONS, taskDisplayName } from "./benchmark-hub-types.js";
 import { isAnomalousEvalRow, liveJournalPath, readRunRequest, runRequestPath, RUN_SPLITS } from "./run-executor.js";
 import { accumulateReplay, type OracleReplay, type ReplayCall } from "./benchmark-replay.js";
+import { compileCaptureImport } from "./capture-import.js";
+import { compileDatasetFoundry, type DatasetFoundryOptions } from "./dataset-foundry.js";
 
 type Obj = Record<string, unknown>;
 const asObject = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -606,6 +608,126 @@ function toolListExperiments(args: Obj): unknown {
   return listExperiments(entry.dir);
 }
 
+/* ---------------- workload intake: profile + dataset foundry ---------------- */
+
+/** Extensions dataset-foundry can load (mirrors its DATA_EXTENSIONS). */
+const DATASET_EXTENSIONS = new Set([".jsonl", ".ndjson", ".csv", ".tsv", ".xlsx"]);
+const MAX_DATASET_CANDIDATES = 50;
+const MAX_CANDIDATE_SCAN_DEPTH = 3;
+const SKIPPED_SCAN_DIRS = new Set(["node_modules", ".git", ".venv", "__pycache__", "dist", "build"]);
+
+function datasetCandidates(root: string, depth = 0, found: string[] = []): string[] {
+  if (depth > MAX_CANDIDATE_SCAN_DEPTH || found.length >= MAX_DATASET_CANDIDATES) return found;
+  let names: string[];
+  try {
+    names = readdirSync(root).sort();
+  } catch {
+    return found;
+  }
+  for (const name of names) {
+    if (found.length >= MAX_DATASET_CANDIDATES) break;
+    if (name.startsWith(".") || SKIPPED_SCAN_DIRS.has(name)) continue;
+    const full = join(root, name);
+    let stat;
+    try {
+      stat = statSync(full);
+    } catch {
+      continue;
+    }
+    if (stat.isDirectory()) datasetCandidates(full, depth + 1, found);
+    else if (stat.isFile() && DATASET_EXTENSIONS.has(extname(name).toLowerCase())) found.push(full);
+  }
+  return found;
+}
+
+/**
+ * Profile a dropped file or directory with the SAME local-only scanner the
+ * desktop drop path uses (`understudy capture-import compile`): writes
+ * workload-card.json / capture-sources.json under ~/.understudy/capture-imports
+ * and returns the compile summary plus any dataset files the foundry could
+ * consume. Payloads are never read; nothing leaves the machine.
+ */
+function toolProfileWorkload(args: Obj): unknown {
+  const path = resolve(requireString(args, "path"));
+  if (!existsSync(path)) throw new ToolError(`path does not exist: ${path}`);
+  const stat = statSync(path);
+  if (!stat.isFile() && !stat.isDirectory()) throw new ToolError(`path must be a file or directory: ${path}`);
+  const outputRoot = optionalString(args, "output_root");
+  const compiled = outputRoot
+    ? compileCaptureImport(path, new Date(), resolve(outputRoot))
+    : compileCaptureImport(path);
+  const candidates = stat.isDirectory()
+    ? datasetCandidates(path)
+    : DATASET_EXTENSIONS.has(extname(path).toLowerCase())
+      ? [path]
+      : [];
+  return {
+    ...compiled,
+    dataset_candidates: candidates,
+    dataset_candidates_truncated: candidates.length >= MAX_DATASET_CANDIDATES,
+    next:
+      candidates.length > 0
+        ? "Inspect the workload card, confirm the labeled dataset with the user, then call from_dataset to compile a proposed benchmark (tasks land in the review inbox — nothing runs)."
+        : "No foundry-consumable dataset files (.jsonl/.csv/.tsv/.xlsx) found; discuss with the user what the workload's ground truth is before proposing a benchmark.",
+  };
+}
+
+const SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+function hubPrimaryRoot(): string {
+  const roots = (process.env.BENCHMARK_HUB_DATA_DIR ?? join(homedir(), ".understudy", "benchmarks"))
+    .split(":")
+    .filter(Boolean);
+  return roots[0] ?? join(homedir(), ".understudy", "benchmarks");
+}
+
+function optionalString(args: Obj, key: string): string | undefined {
+  const v = args[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string" || v.length === 0) throw new ToolError(`${key} must be a non-empty string when provided`);
+  return v;
+}
+
+/**
+ * `understudy benchmarks from-dataset` behind the tool codec: compile a
+ * labeled dataset into a PROPOSED benchmark under the primary hub root. The
+ * output is machine_compiled_review_pending with executable:false and
+ * human_final_judgment among its promotion blockers — creating it queues
+ * nothing and spends nothing; the user confirms via the task inbox.
+ */
+function toolFromDataset(args: Obj): unknown {
+  const source = resolve(requireString(args, "source"));
+  if (!existsSync(source)) throw new ToolError(`source does not exist: ${source}`);
+  const slug = requireString(args, "slug");
+  if (!SLUG_RE.test(slug)) {
+    throw new ToolError("slug must be lowercase [a-z0-9._-], start alphanumeric, max 64 chars");
+  }
+  const dir = join(hubPrimaryRoot(), slug);
+  if (existsSync(dir)) throw new ToolError(`benchmark dir already exists: ${dir} (pick a new slug)`);
+  const options: DatasetFoundryOptions = {};
+  const name = optionalString(args, "name");
+  if (name) options.name = name;
+  const labelColumn = optionalString(args, "label_column");
+  if (labelColumn) options.labelColumn = labelColumn;
+  if (args.input_columns !== undefined) {
+    if (!Array.isArray(args.input_columns) || args.input_columns.some((c) => typeof c !== "string" || c.length === 0)) {
+      throw new ToolError("input_columns must be an array of non-empty strings when provided");
+    }
+    options.inputColumns = args.input_columns as string[];
+  }
+  const groupColumn = optionalString(args, "group_column");
+  if (groupColumn) options.groupColumn = groupColumn;
+  const systemPrompt = optionalString(args, "system_prompt");
+  if (systemPrompt) options.systemPrompt = systemPrompt;
+  const result = compileDatasetFoundry(source, dir, options);
+  // Hub slugs are <root-prefix>--<dir-name>: the first BENCHMARK_HUB_DATA_DIR
+  // root gets prefix "data"; the ~/.understudy/benchmarks default gets "local"
+  // (benchmark-hub-core slugRoots). Return the resolvable slug so the caller
+  // can read_benchmark / read_task immediately.
+  const prefix = process.env.BENCHMARK_HUB_DATA_DIR ? "data" : "local";
+  return { ok: true, slug: `${prefix}--${slug}`, dir, result };
+}
+
 /* ---------------- MCP wiring ---------------- */
 
 export const BENCHMARKS_TOOLS = [
@@ -819,6 +941,44 @@ export const BENCHMARKS_TOOLS = [
     },
   },
   {
+    name: "profile_workload",
+    description:
+      "Profile a dropped file or directory with the local-only capture-import scanner (same as the desktop " +
+      "drop path): classifies every file, writes workload-card.json + capture-sources.json under " +
+      "~/.understudy/capture-imports, and lists dataset files (.jsonl/.csv/.tsv/.xlsx) the foundry could " +
+      "consume. Payload bytes are never read as model input and nothing leaves the machine.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Absolute path to the dropped file or directory." },
+        output_root: { type: "string", description: "Override artifact root (default ~/.understudy/capture-imports)." },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "from_dataset",
+    description:
+      "Compile one labeled dataset (file, or directory containing exactly one data file) into a PROPOSED " +
+      "benchmark under the primary hub root — the same `understudy benchmarks from-dataset` foundry: curated " +
+      "normalized captures, grouped train/dev/holdout splits, a verifiers environment, and machine_proposed " +
+      "tasks awaiting the user's review in the task inbox. Creates review-pending artifacts only: " +
+      "executable:false, human_final_judgment blocked — never queues a run, never spends.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string", description: "Absolute path to the dataset file or its directory." },
+        slug: { type: "string", description: "New benchmark slug (lowercase [a-z0-9._-]); becomes the dir name under the hub root." },
+        name: { type: "string", description: "Human benchmark name; defaults from the source filename." },
+        label_column: { type: "string", description: "Label/target column; inferred when omitted." },
+        input_columns: { type: "array", items: { type: "string" }, description: "Input columns; inferred when omitted." },
+        group_column: { type: "string", description: "Leakage-group column; defaults to the normalized input text." },
+        system_prompt: { type: "string", description: "Literal system prompt recorded for the workload." },
+      },
+      required: ["source", "slug"],
+    },
+  },
+  {
     name: "run_status",
     description:
       "Status of a queued/running/finished run request plus a row summary (per model and per task) as " +
@@ -843,6 +1003,8 @@ export function callBenchmarksTool(name: string, args: Obj): unknown {
     case "apply_auto_accepts": return toolApplyAutoAccepts(args);
     case "submit_feedback": return toolSubmitFeedback(args);
     case "queue_run": return toolQueueRun(args);
+    case "profile_workload": return toolProfileWorkload(args);
+    case "from_dataset": return toolFromDataset(args);
     case "run_status": return toolRunStatus(args);
     case "create_experiment": return toolCreateExperiment(args);
     case "update_experiment": return toolUpdateExperiment(args);

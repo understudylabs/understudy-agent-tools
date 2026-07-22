@@ -474,6 +474,71 @@ describe("floors in read_benchmark / run_status (additive)", () => {
 
 /* ---------------- roots + stdio protocol ---------------- */
 
+/* ---------------- workload intake: profile_workload + from_dataset ---------------- */
+
+describe("profile_workload", () => {
+  const dropDir = path.join(tmp, "drop-src");
+  fs.mkdirSync(path.join(dropDir, "data"), { recursive: true });
+  fs.writeFileSync(path.join(dropDir, "README.md"), "# demo\n");
+  fs.writeFileSync(
+    path.join(dropDir, "data", "labeled.csv"),
+    "text,label\nhello there,ham\nWIN A PRIZE,spam\nsee you at 5,ham\nFREE CASH NOW,spam\n",
+  );
+  const outputRoot = path.join(tmp, "capture-imports");
+
+  it("profiles a directory and lists foundry-consumable dataset candidates", () => {
+    const out = callBenchmarksTool("profile_workload", { path: dropDir, output_root: outputRoot });
+    assert.equal(out.source_type, "directory");
+    assert.equal(out.local_only, true);
+    assert.deepEqual(out.dataset_candidates, [path.join(dropDir, "data", "labeled.csv")]);
+    assert.equal(out.dataset_candidates_truncated, false);
+    assert.ok(fs.existsSync(path.join(out.artifact_root, "workload-card.json")));
+    assert.match(out.next, /from_dataset/);
+  });
+
+  it("profiles a single dataset file as its own candidate", () => {
+    const out = callBenchmarksTool("profile_workload", {
+      path: path.join(dropDir, "data", "labeled.csv"),
+      output_root: outputRoot,
+    });
+    assert.equal(out.source_type, "file");
+    assert.deepEqual(out.dataset_candidates, [path.join(dropDir, "data", "labeled.csv")]);
+  });
+
+  it("rejects a missing path", () => {
+    assert.throws(() => callBenchmarksTool("profile_workload", { path: path.join(tmp, "nope") }), /does not exist/);
+    assert.throws(() => callBenchmarksTool("profile_workload", {}), /path \(string\) is required/);
+  });
+});
+
+describe("from_dataset", () => {
+  const dataFile = path.join(tmp, "spam.csv");
+  const rows = [["text", "label"]];
+  for (let i = 0; i < 12; i += 1) rows.push([`ham message number ${i}`, "ham"], [`spam offer number ${i}`, "spam"]);
+  fs.writeFileSync(dataFile, rows.map((r) => r.join(",")).join("\n") + "\n");
+
+  it("compiles a labeled dataset into a proposed benchmark under the hub root", () => {
+    const out = callBenchmarksTool("from_dataset", { source: dataFile, slug: "spam-intake", label_column: "label" });
+    assert.equal(out.ok, true);
+    assert.equal(out.slug, "data--spam-intake");
+    assert.equal(out.dir, path.join(tmp, "spam-intake"));
+    const manifest = JSON.parse(fs.readFileSync(path.join(out.dir, "benchmark.json"), "utf8"));
+    assert.equal(manifest.schema_version, "understudy.benchmark_proposal.v1");
+    assert.equal(manifest.status, "machine_compiled_review_pending");
+    assert.equal(manifest.executable, false);
+    assert.ok(manifest.promotion_blockers.includes("human_final_judgment"));
+    // The proposed benchmark is immediately visible to the operator surface.
+    const listed = callBenchmarksTool("list_benchmarks");
+    assert.ok(listed.benchmarks.some((b) => b.slug === "data--spam-intake" && b.stage === "proposed"));
+  });
+
+  it("refuses an existing dir, a bad slug, and a missing source", () => {
+    assert.throws(() => callBenchmarksTool("from_dataset", { source: dataFile, slug: "spam-intake" }), /already exists/);
+    assert.throws(() => callBenchmarksTool("from_dataset", { source: dataFile, slug: "Bad Slug!" }), /slug must be/);
+    assert.throws(() => callBenchmarksTool("from_dataset", { source: path.join(tmp, "nope.csv"), slug: "x" }), /does not exist/);
+  });
+});
+
 describe("server wiring", () => {
   it("configureBenchmarksMcpRoots appends extra roots after the defaults", () => {
     const saved = process.env.BENCHMARK_HUB_DATA_DIR;
@@ -501,8 +566,10 @@ describe("server wiring", () => {
         "apply_auto_accepts",
         "create_experiment",
         "diff_rollouts",
+        "from_dataset",
         "list_benchmarks",
         "list_experiments",
+        "profile_workload",
         "queue_run",
         "read_benchmark",
         "read_rollout",

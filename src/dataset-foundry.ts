@@ -42,7 +42,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { createHash } from "node:crypto";
 import { basename, extname, join, resolve } from "node:path";
 import { readCaptureDelimitedTable, inferTableMapping } from "./capture-import.js";
-import { parseJsonlText, toPortablePath } from "./benchmark-artifacts.js";
+import { DATASET_FOUNDRY_SCHEMA, parseJsonlText, toPortablePath } from "./benchmark-artifacts.js";
 import { benchmarkManifestFrom, runFoundrySelfCheck, writeVerifiersEnvironment } from "./trace-foundry.js";
 import { validateBenchmarkManifest } from "./benchmark.js";
 
@@ -52,7 +52,9 @@ const hash = (value: unknown): string => createHash("sha256").update(JSON.string
 function writeJson(path: string, value: unknown): void { mkdirSync(resolve(path, ".."), { recursive: true }); writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 }); }
 function writeJsonl(path: string, rows: unknown[]): void { mkdirSync(resolve(path, ".."), { recursive: true }); writeFileSync(path, rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length > 0 ? "\n" : ""), { mode: 0o600 }); }
 
-export const DATASET_FOUNDRY_SCHEMA = "understudy.dataset_foundry.v1";
+// Schema id lives in benchmark-artifacts.ts (the single home for schema
+// literals); re-exported here so existing importers keep working.
+export { DATASET_FOUNDRY_SCHEMA } from "./benchmark-artifacts.js";
 export const DATASET_CURATION_SCHEMA = "understudy.dataset_curation.v1";
 
 /** Verifiers commit the generated environment pins (same as the trace foundry). */

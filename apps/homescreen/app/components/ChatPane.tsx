@@ -76,6 +76,7 @@ import {
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
   shouldInspectStructuredDataset,
+  workloadHandoffPrompt,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -1369,6 +1370,9 @@ export function ChatPane({
   const wasTrainingActive = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
+  // Fresh `send` for the drag-drop effect (its dep array is deliberately
+  // narrow, so calling `send` directly from there would capture stale state).
+  const sendRef = useRef<((text: string) => Promise<void>) | null>(null);
   const environmentArchitectAttempted = useRef<string | null>(null);
   const customCompileAttempted = useRef<string | null>(null);
   const environmentArchitectDraftRef = useRef("");
@@ -1998,14 +2002,29 @@ export function ChatPane({
       })
         .then(async (result) => {
           if (disposed || dropRequestGeneration.current !== requestGeneration) return;
+          const inspectTable = shouldInspectDroppedTable(result);
+          const inspectStructured = shouldInspectStructuredDataset(result);
+          if (!inspectTable && !inspectStructured) {
+            // Directories and non-table files have no deterministic training
+            // flow — handing them to the in-chat agent (which carries the
+            // benchmark-lab profile_workload/from_dataset tools) instead of
+            // opening a training thread that nothing would ever advance.
+            dispatchDrop({ type: "succeeded" });
+            dispatchDrop({ type: "reset" });
+            const handoff = sendRef.current;
+            if (handoff) {
+              void handoff(workloadHandoffPrompt(result));
+            } else {
+              setNotice("Workload draft created locally; ask in chat to profile it.");
+            }
+            return;
+          }
           setDroppedWorkload(result);
           // Dropping data creates the thread immediately (status active) so
           // a mid-flow restart can resume this flow from the nav.
           const threadId = crypto.randomUUID();
           setTrainingThreadId(threadId);
           void persistTrainingThread(threadId, result, null, "active");
-          const inspectTable = shouldInspectDroppedTable(result);
-          const inspectStructured = shouldInspectStructuredDataset(result);
           if (inspectStructured) {
             dispatchDrop({ type: "inspection_started" });
             try {
@@ -2020,7 +2039,7 @@ export function ChatPane({
                 throw error;
               }
             }
-          } else if (inspectTable) {
+          } else {
             dispatchDrop({ type: "inspection_started" });
             try {
               await inspectCsvWorkload(result, requestGeneration);
@@ -2030,13 +2049,6 @@ export function ChatPane({
               dispatchDrop({ type: "succeeded" });
               setNotice("Workload draft created locally; this file is not a supported table.");
             }
-          } else {
-            dispatchDrop({ type: "succeeded" });
-            setNotice(
-              result.truncated
-                ? "Workload draft created at the safety limit; no file contents were read."
-                : "Workload draft created locally; no file contents were read.",
-            );
           }
         })
         .catch((error) => {
@@ -2842,6 +2854,7 @@ export function ChatPane({
       setAssistantSpeaking(false);
     }
   };
+  sendRef.current = (text: string) => send(text);
 
   const connectAnthropic = async () => {
     const key = window.prompt(

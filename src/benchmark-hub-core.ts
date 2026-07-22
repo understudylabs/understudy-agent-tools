@@ -17,6 +17,7 @@ import {
   BENCHMARK_FLAG_SCHEMA,
   BENCHMARK_TASK_SCHEMA,
   CALIBRATION_SCHEMA,
+  DATASET_FOUNDRY_SCHEMA,
   EVAL_RESULT_SCHEMA,
   PROMOTION_RECORD_SCHEMA,
   SOURCE_DAG_SCHEMA,
@@ -266,7 +267,12 @@ export function loadProposedEntryFromDir(
   } catch {
     return null;
   }
-  if (foundry?.schema_version !== TRACE_FOUNDRY_SCHEMA) return null;
+  // Both foundry entrances land on the same proposed spine: trace-derived
+  // dirs carry understudy.trace_foundry.v1, dataset-derived dirs the sibling
+  // understudy.dataset_foundry.v1 (see dataset-foundry.ts SCHEMA DECISION).
+  if (foundry?.schema_version !== TRACE_FOUNDRY_SCHEMA && foundry?.schema_version !== DATASET_FOUNDRY_SCHEMA) {
+    return null;
+  }
   const tasksPath = path.join(dir, "tasks.jsonl");
   if (!fs.existsSync(tasksPath)) return null;
 

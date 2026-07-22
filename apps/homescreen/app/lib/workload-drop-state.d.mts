@@ -40,6 +40,12 @@ export function shouldInspectStructuredDataset(workload: {
   source_name?: string | null;
 } | null): boolean;
 
+export function workloadHandoffPrompt(workload: {
+  source_path?: string | null;
+  source_type?: string | null;
+  scanned_file_count?: number | null;
+} | null): string;
+
 export function workloadDropReducer(
   phase: WorkloadDropPhase,
   action: WorkloadDropAction,
