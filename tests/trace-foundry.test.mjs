@@ -156,3 +156,61 @@ test("generated environment scores final state, not exact trajectory substrings"
   assert.equal(validation.tasks[0].oracle.score, 1);
   assert.ok(Object.values(validation.tasks[0].sentinels).every((s) => s.score < 1));
 });
+
+test("promote consumes mixed review decisions: rejected tasks are excluded, not blockers", async () => {
+  const { promoteTraceBenchmark } = await import("../dist/trace-foundry.js");
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-promote-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    capture("a1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create automation alpha for pipesim" }], { content: [{ type: "tool_use", id: "x1", name: "update-record", input: { id: 1, status: "active" } }] }),
+    capture("b1", "2026-07-20T01:00:00Z", [{ role: "user", content: "Archive report beta please" }], { content: [{ type: "tool_use", id: "x2", name: "archive-report", input: { report: "beta" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(tasks.length, 2);
+
+  // Unreviewed benchmark refuses to promote.
+  assert.throws(() => promoteTraceBenchmark(output), /unreviewed/);
+
+  // Hub-shaped reviews.jsonl: accept one, reject the other; newest line per task wins.
+  const review = (task_id, decision, created_at) => ({ schema_version: "understudy.benchmark_review.v1", benchmark_id: "out", task_id, decision, note: "", created_at });
+  writeFileSync(join(output, "reviews.jsonl"), [
+    review(tasks[0].task_id, "needs_more", "2026-07-21T01:00:00Z"),
+    review(tasks[1].task_id, "reject", "2026-07-21T01:01:00Z"),
+    review(tasks[0].task_id, "accept", "2026-07-21T02:00:00Z"),
+  ].map(JSON.stringify).join("\n") + "\n");
+
+  const result = promoteTraceBenchmark(output, { now: new Date("2026-07-21T03:00:00Z"), promotedBy: "reviewer-1" });
+  assert.equal(result.promoted, 1); assert.equal(result.excluded, 1);
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8"));
+  assert.equal(benchmark.schema_version, "understudy.benchmark.v1");
+  assert.equal(benchmark.status, "promoted"); assert.equal(benchmark.executable, true);
+  assert.deepEqual(benchmark.promotion_blockers, []);
+  assert.equal(benchmark.tasks.length, 1); assert.equal(benchmark.tasks[0].task_id, tasks[0].task_id);
+  assert.equal(benchmark.taxonomy.length, 1, "taxonomy recomputed over accepted tasks");
+  const record = JSON.parse(readFileSync(join(output, "promotion-record.json"), "utf8"));
+  assert.equal(record.schema_version, "understudy.promotion_record.v1");
+  assert.equal(record.promoted_by, "reviewer-1");
+  assert.deepEqual(record.counts, { proposed: 2, accepted: 1, excluded: 1 });
+  assert.equal(record.excluded_tasks[0].decision, "reject");
+  assert.ok(existsSync(join(output, "benchmark-proposal.json")), "pre-promotion manifest preserved for audit");
+});
+
+test("import-reviews no longer demands unanimity", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-unanimity-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const rows = [
+    capture("u1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create thing one" }], { content: [{ type: "tool_use", id: "y1", name: "update-record", input: { id: 1, status: "one" } }] }),
+    capture("u2", "2026-07-20T01:00:00Z", [{ role: "user", content: "Archive thing two" }], { content: [{ type: "tool_use", id: "y2", name: "archive-report", input: { report: "two" } }] }),
+  ];
+  writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  const reviews = join(root, "reviews.jsonl");
+  writeFileSync(reviews, [
+    JSON.stringify({ task_id: tasks[0].task_id, decision: "accept" }),
+    JSON.stringify({ task_id: tasks[1].task_id, decision: "reject" }),
+  ].join("\n") + "\n");
+  const imported = importTraceReviews(output, reviews);
+  assert.equal(imported.accepted, 1);
+  assert.equal(imported.status, "human_approved", "one honest reject no longer vetoes the benchmark");
+});

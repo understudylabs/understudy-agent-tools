@@ -291,6 +291,114 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => row.sentinels.noop.score < 1 && row.sentinels.wrong_value.score < 1 && row.sentinels.write_everything.score < 1) };
 }
 
+type ManifestOptions = { schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[] };
+
+/** Shared benchmark-manifest projection: taxonomy/splits/tasks are always recomputed over exactly the tasks passed in. */
+function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
+  const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
+  const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
+  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: "derived-from-traces", source_refs: options.sourceRefs }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
+}
+
+const ACCEPTING_DECISIONS = ["accept", "restrict"];
+const REVIEW_DECISION_VALUES = ["accept", "restrict", "needs_more", "reject"];
+
+/**
+ * `understudy traces promote` — the reviewed-proposal → promoted-benchmark
+ * verb. Consumes the hub's reviews.jsonl (understudy.benchmark_review.v1,
+ * append-only, newest line per task wins) and/or the import-reviews output
+ * (review-decisions.jsonl). Rejected/needs_more tasks are EXCLUDED, never
+ * blockers. Gates recomputed over the accepted subset; DAG issues need either
+ * evidenced-retry evidence or an explicit --waive-dag reason, both recorded in
+ * promotion-record.json. Only then is the executable understudy.benchmark.v1
+ * written — and it must validate against validateBenchmarkManifest.
+ */
+export function promoteTraceBenchmark(outputInput: string, options: { waiveDagReason?: string; promotedBy?: string; now?: Date } = {}): Obj {
+  const output = resolve(outputInput), now = options.now ?? new Date();
+  const tasks = readJsonl(join(output, "tasks.jsonl"));
+  if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${output}; run build-benchmark first.`);
+  // Newest decision per task wins; hub reviews.jsonl supersedes import-reviews output.
+  const decisions = new Map<string, Obj>();
+  for (const row of readJsonl(join(output, "review-decisions.jsonl"))) {
+    if (typeof row.task_id === "string" && REVIEW_DECISION_VALUES.includes(row.decision)) decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.reviewed_at ?? row.created_at ?? null, source: "review-decisions.jsonl" });
+  }
+  for (const row of readJsonl(join(output, "reviews.jsonl"))) {
+    if (row.schema_version !== "understudy.benchmark_review.v1" || typeof row.task_id !== "string" || !REVIEW_DECISION_VALUES.includes(row.decision)) continue;
+    decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.created_at ?? null, source: "reviews.jsonl" });
+  }
+  if (decisions.size === 0) throw new Error("Refusing to promote an unreviewed benchmark: no decisions found in reviews.jsonl or review-decisions.jsonl. Review the tasks in the Benchmark Hub (or run `understudy traces import-reviews`) first.");
+  const accepted = tasks.filter((task) => ACCEPTING_DECISIONS.includes(decisions.get(task.task_id)?.decision));
+  const excluded = tasks.filter((task) => !ACCEPTING_DECISIONS.includes(decisions.get(task.task_id)?.decision)).map((task) => ({ task_id: task.task_id, decision: decisions.get(task.task_id)?.decision ?? "unreviewed" }));
+  if (accepted.length === 0) throw new Error("No task was accepted by review; nothing to promote.");
+  const acceptedIds = new Set(accepted.map((task) => task.task_id));
+
+  // Gate 1 — oracle + sentinels, recomputed over the accepted subset only.
+  const validationPath = join(output, "environment", "offline-validation.json");
+  if (!existsSync(validationPath)) throw new Error(`Missing ${validationPath}; rebuild the environment before promoting.`);
+  const validation = asObject(JSON.parse(readFileSync(validationPath, "utf8")));
+  const sentinelRows = (Array.isArray(validation.tasks) ? validation.tasks : []).map(asObject).filter((row) => acceptedIds.has(row.task_id));
+  const sentinelFailures = sentinelRows.filter((row) => asObject(row.oracle).score !== 1 || Object.values(asObject(row.sentinels)).some((sentinel) => asObject(sentinel).score >= 1)).map((row) => row.task_id);
+  if (sentinelFailures.length > 0) throw new Error(`Sentinel/oracle gate fails on the accepted subset (${sentinelFailures.join(", ")}); refusing to promote.`);
+
+  // Gate 2 — source DAG: issues are promotable only with recorded waivers.
+  const dagPath = join(output, "source-dag.json");
+  const dag = existsSync(dagPath) ? asObject(JSON.parse(readFileSync(dagPath, "utf8"))) : { valid: true, issues: [], edges: [] };
+  const edges = (Array.isArray(dag.edges) ? dag.edges : []).map(asObject);
+  const edgeByPair = new Map(edges.map((edge) => [`${edge.from}->${edge.to}`, edge]));
+  const waivers: Obj[] = [], unwaived: Obj[] = [];
+  for (const issueValue of Array.isArray(dag.issues) ? dag.issues : []) {
+    const issue = asObject(issueValue), edge = issue.edge ? edgeByPair.get(`${asObject(issue.edge).from}->${asObject(issue.edge).to}`) : undefined;
+    const evidencedRetry = issue.code === "ambiguous_parent" && edges.some((candidate) => candidate.execution_group === edge?.execution_group && candidate.type === "retry" && asObject(candidate.evidence).prior_error === true);
+    if (evidencedRetry) waivers.push({ issue, rationale: "ambiguous_parent tie caused by an evidenced retry (prior_error=true) followed by continuation — a normal production pattern", evidence: { edge: edge ?? null, evidenced_retry: true } });
+    else if (options.waiveDagReason) waivers.push({ issue, rationale: options.waiveDagReason, evidence: { edge: edge ?? null, waived_by: "--waive-dag" } });
+    else unwaived.push(issue);
+  }
+  if (unwaived.length > 0) throw new Error(`Source DAG issues without evidence or waiver: ${JSON.stringify(unwaived)}. Re-run with --waive-dag <reason> to waive them with a recorded rationale.`);
+
+  // Promoted manifest: splits/taxonomy recomputed over the accepted subset.
+  const proposalPath = join(output, "benchmark.json");
+  const proposal = existsSync(proposalPath) ? asObject(JSON.parse(readFileSync(proposalPath, "utf8"))) : {};
+  const heldoutNovel = accepted.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(asObject(task.capability_fit).classification));
+  const benchmark = benchmarkManifestFrom(accepted, {
+    schemaVersion: "understudy.benchmark.v1",
+    benchmarkId: String(proposal.benchmark_id ?? `trace-${hash({ output }).slice(0, 16)}`),
+    name: String(proposal.name ?? "Trace-derived benchmark"),
+    description: `${String(proposal.description ?? "Machine-compiled from a source-history DAG.")} Promoted after human review: rejected/needs_more tasks are excluded, not blockers.`,
+    createdAt: String(proposal.created_at ?? now.toISOString()),
+    sourceRefs: ["capture-ledger.jsonl", "source-dag.json", "review-decisions.jsonl", "promotion-record.json"],
+    packageSha256: (asObject(proposal.environment).package_sha256 as string | null) ?? null,
+    auditedCommit: String(asObject(proposal.environment).verifiers_version_pin ?? "cb9c84969186f8a0954b1027320f225e6b6b0afb"),
+    heldoutNovel,
+    status: "promoted",
+    executable: true,
+    promotionBlockers: [],
+  });
+  const errors = validateBenchmarkManifest(benchmark);
+  if (errors.length > 0) throw new Error(`Promoted benchmark manifest is invalid; refusing to write benchmark.json:\n${errors.join("\n")}`);
+
+  // Record first (who/when/waivers/counts/blockers-cleared), THEN the manifest.
+  if (Object.keys(proposal).length > 0 && proposal.status !== "promoted") writeJson(join(output, "benchmark-proposal.json"), proposal);
+  const record = {
+    schema_version: "understudy.promotion_record.v1",
+    benchmark_id: benchmark.benchmark_id,
+    promoted_at: now.toISOString(),
+    promoted_by: options.promotedBy ?? process.env.USER ?? "unknown",
+    counts: { proposed: tasks.length, accepted: accepted.length, excluded: excluded.length },
+    accepted_tasks: [...acceptedIds],
+    excluded_tasks: excluded,
+    decisions: Object.fromEntries([...decisions.entries()]),
+    blockers_cleared: {
+      human_final_judgment: "every promoted task individually accepted (accept/restrict); rejected/needs_more tasks excluded rather than blocking",
+      sentinel_tests: { recomputed_over_accepted_subset: true, pass: true, tasks_checked: sentinelRows.length },
+      source_dag_invalid: waivers.length > 0 ? "waived with recorded evidence" : "no issues",
+    },
+    waivers,
+  };
+  writeJson(join(output, "promotion-record.json"), record);
+  writeJson(proposalPath, benchmark);
+  return { schema_version: "understudy.promotion_result.v1", benchmark_id: benchmark.benchmark_id, promoted: accepted.length, excluded: excluded.length, total: tasks.length, waivers: waivers.length, benchmark: proposalPath, promotion_record: join(output, "promotion-record.json") };
+}
+
 export function importTraceReviews(outputInput: string, reviewsInput: string): Obj {
   const output = resolve(outputInput), tasksPath = join(output, "tasks.jsonl"), tasks = readJsonl(tasksPath), reviews = readJsonl(resolve(reviewsInput));
   const byTask = new Map(tasks.map((task) => [task.task_id, task]));
@@ -304,8 +412,12 @@ export function importTraceReviews(outputInput: string, reviewsInput: string): O
   const decisions = new Map(reviews.map((review) => [review.task_id, review]));
   for (const task of tasks) if (decisions.has(task.task_id)) task.review = decisions.get(task.task_id);
   writeJsonl(tasksPath, tasks);
-  const accepted = tasks.filter((task) => ["accept", "restrict"].includes(task.review?.decision)).length;
-  const humanApproved = accepted === tasks.length;
+  const accepted = tasks.filter((task) => ACCEPTING_DECISIONS.includes(task.review?.decision)).length;
+  const reviewed = tasks.filter((task) => REVIEW_DECISION_VALUES.includes(task.review?.decision)).length;
+  // No unanimity: rejected/needs_more tasks are excluded at promotion time, not
+  // blockers. Human judgment is complete once every task has a decision and at
+  // least one task survived it.
+  const humanApproved = reviewed === tasks.length && accepted > 0;
   const benchmark = asObject(JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")));
   const blockers = (benchmark.promotion_blockers ?? []).filter((blocker: string) => blocker !== "human_final_judgment");
   if (!humanApproved) blockers.unshift("human_final_judgment");
@@ -443,10 +555,8 @@ function compileTraceFoundryBatch(sourceInput: string, outputInput: string, maxA
   const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: row?.request.system ?? null, messages: row?.request.messages ?? [] }]; })), "cb9c84969186f8a0954b1027320f225e6b6b0afb");
   const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
   const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
-  const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
-  const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
-  const benchmark = { schema_version: "understudy.benchmark.v1", benchmark_id: `trace-${hash({ source, workload: options.workload ?? null }).slice(0, 16)}`, name: options.workload ? `${options.workload} trace benchmark` : "Trace-derived benchmark", description: "Machine-compiled from a source-history DAG with human final judgment.", created_at: now.toISOString(), provenance: { origin: "derived-from-traces", source_refs: [relative(output, join(output, "capture-ledger.jsonl")), relative(output, join(output, "source-dag.json"))] }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: environment.package_sha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: environment.audited_commit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: "machine_compiled_review_pending", executable: true, promotion_blockers: promotionBlockers };
-  const manifestErrors = validateBenchmarkManifest(benchmark);
+  const benchmark = benchmarkManifestFrom(tasks, { schemaVersion: "understudy.benchmark.v1", benchmarkId: `trace-${hash({ source, workload: options.workload ?? null }).slice(0, 16)}`, name: options.workload ? `${options.workload} trace benchmark` : "Trace-derived benchmark", description: "Machine-compiled from a source-history DAG with human final judgment.", createdAt: now.toISOString(), sourceRefs: [relative(output, join(output, "capture-ledger.jsonl")), relative(output, join(output, "source-dag.json"))], packageSha256: environment.package_sha256, auditedCommit: environment.audited_commit, heldoutNovel, status: "machine_compiled_review_pending", executable: true, promotionBlockers });
+  const manifestErrors = validateBenchmarkManifest({ ...benchmark, schema_version: "understudy.benchmark.v1" });
   if (manifestErrors.length > 0) throw new Error(`Generated benchmark manifest is invalid: ${manifestErrors.join("; ")}`);
   writeJson(join(output, "benchmark.json"), benchmark);
   writeFileSync(join(viewer, "index.html"), traceFoundryViewer({ tasks, nodes: dag.nodes, issues: dag.issues, captures: captureIndex, benchmark: { splits: benchmark.splits, promotion_blockers: benchmark.promotion_blockers, environment: benchmark.environment } }), { mode: 0o600 });

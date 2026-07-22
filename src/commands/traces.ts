@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { join, resolve } from "node:path";
-import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "../trace-foundry.js";
+import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays } from "../trace-foundry.js";
 import { serveTraceFoundry } from "../trace-foundry-server.js";
 
 export function registerTracesCommand(program: Command): void {
@@ -22,6 +22,11 @@ export function registerTracesCommand(program: Command): void {
     .requiredOption("--benchmark <path>", "Benchmark output directory")
     .requiredOption("--reviews <path>", "Exported review JSONL")
     .action((options: { benchmark: string; reviews: string }) => console.log(JSON.stringify(importTraceReviews(resolve(options.benchmark), resolve(options.reviews)), null, 2)));
+  traces.command("promote")
+    .description("Promote a reviewed proposal to an executable understudy.benchmark.v1 (accepted tasks only)")
+    .requiredOption("--benchmark <path>", "Benchmark output directory")
+    .option("--waive-dag <reason>", "Waive remaining source-DAG issues with this recorded rationale")
+    .action((options: { benchmark: string; waiveDag?: string }) => console.log(JSON.stringify(promoteTraceBenchmark(resolve(options.benchmark), { waiveDagReason: options.waiveDag }), null, 2)));
   traces.command("plan-replays")
     .description("Create a no-spend multi-model and context-rot replay plan")
     .requiredOption("--benchmark <path>", "Benchmark output directory")
