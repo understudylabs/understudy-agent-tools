@@ -61,7 +61,7 @@ export async function GET(request: Request) {
   const lines: Obj[] = [];
   let total = 0;
   if (journal && fs.existsSync(journal)) {
-    const raw = fs.readFileSync(journal, "utf8").split("\n").flatMap((l) => l.split("\\n")).filter(Boolean).slice(0, MAX_JOURNAL_LINES);
+    const raw = fs.readFileSync(journal, "utf8").split("\n").filter(Boolean).slice(0, MAX_JOURNAL_LINES);
     total = raw.length;
     for (const line of raw.slice(since)) {
       try {
@@ -86,7 +86,7 @@ export async function GET(request: Request) {
       // Full journal (not just the `since` window) so met-flips are stable.
       const allLines: Obj[] = [];
       if (journal && fs.existsSync(journal)) {
-        for (const line of fs.readFileSync(journal, "utf8").split("\n").flatMap((l) => l.split("\\n")).filter(Boolean).slice(0, MAX_JOURNAL_LINES)) {
+        for (const line of fs.readFileSync(journal, "utf8").split("\n").filter(Boolean).slice(0, MAX_JOURNAL_LINES)) {
           try {
             allLines.push(JSON.parse(line) as Obj);
           } catch {
