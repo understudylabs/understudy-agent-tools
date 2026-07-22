@@ -121,7 +121,12 @@ Keep the incumbent reachable (snapshot retained, rollback tested) for an
 agreed observation window. Then assemble the before/after: incumbent baseline
 vs routed steady-state on quality-from-captures, latency, and cost/call —
 into the claim packet. That packet, not the ramp log, is what any cost or
-quality statement cites.
+quality statement cites. It inherits the claim-packet rigor fields from
+[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md): the
+trivial-agent floor (the claim is invalid if a do-nothing agent also clears
+the quality bar) and bootstrap confidence intervals on the before/after
+quality delta — an overlap means "no measured regression", never "measured
+improvement" (see [`../../docs/benchmark-rigor.md`](../../docs/benchmark-rigor.md)).
 
 ## Output Standard
 

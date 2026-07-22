@@ -108,11 +108,23 @@ comparison.
    free-text wording, scorer/rubric errors, labels, and harness/parser failures.
    Scope conclusions to represented coverage strata.
 
-6. **Compute the frontier.** A candidate is dominated when another candidate has
+6. **Quantify uncertainty before ranking.** Point estimates on a small N are
+   not a ranking. For each candidate, compute a bootstrap confidence interval
+   over per-task scores: resample the task rows with replacement (≥1,000
+   resamples), recompute the aggregate, take the 2.5/97.5 percentiles. Report
+   N, the CI, and per-task variance in `summary.csv` alongside the pass rate.
+   **Refuse to declare a winner when the top candidates' CIs overlap** — call
+   it a statistical tie and either expand the frozen row set or pick on the
+   secondary axes (cost, latency) while saying quality is tied. This is the
+   Agentic Benchmark Checklist's reporting bar
+   ([uiuc-kang-lab/agentic-benchmarks](https://github.com/uiuc-kang-lab/agentic-benchmarks));
+   see [`../../docs/benchmark-rigor.md`](../../docs/benchmark-rigor.md).
+
+7. **Compute the frontier.** A candidate is dominated when another candidate has
    equal or better quality and equal or lower cost and latency, with no worse
    error rate or safety result. Write `pareto.json` with dominated reasons.
 
-7. **Report the decision.** Write `report.md` with the top frontier candidates,
+8. **Report the decision.** Write `report.md` with the top frontier candidates,
    the best route for the agreed objective and constraints, and the next action:
    ship route, build retrieval/tooling, run GEPA, climb local model, or use remote.
    Candidate quality cells must come from measured rows or say `not run`;
@@ -156,7 +168,9 @@ next action.
 When the sweep informs a real route decision, also write the report as a
 **decision memo** the developer can paste to their team unedited:
 
-- a results table: candidate, pass rate against the production validator,
+- a results table: candidate, pass rate against the production validator
+  (with its bootstrap CI and N — a "winner" whose CI overlaps the runner-up
+  is reported as a tie),
   total cost, cost per unit of work the business counts (per deal, per ticket,
   per call — not per token), and the cost ratio vs the incumbent;
 - caching basis per row (see step 5) and any other comparability caveats;
