@@ -186,9 +186,32 @@ single-output optimization does not need a tool environment.
 8. **SECONDARY intervention — optimize the cheap model's prompt.** If a cheaper
    model wins on latency and cost but trails on quality, close the gap with a
    train/dev-only GEPA pass against the feedback-rich rubric, keeping the
-   latency/cost win. Hand this off to
-   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md); never tune
-   on holdout.
+   latency/cost win. When the workload already lives in a promoted benchmark
+   dir with frozen splits, run the automatic loop directly:
+
+   ```sh
+   # terminal 1 — the only thing that executes models
+   understudy runs execute --benchmark <benchmark-dir> --watch
+   # terminal 2 — proposes, queues override arms, waits, scores
+   understudy benchmarks evolve <benchmark-dir> --model <candidate-id> --budget-runs 6
+   ```
+
+   `evolve` is GEPA-style prompt evolution over `prompt_overrides` run arms:
+   an authoring model proposes system-prompt suffixes from the failure
+   evidence (per-class tool-call rejection counts and unmet contract
+   obligations read from the run journals), each proposal runs as a labeled
+   override arm, and every generation is recorded in `evolution.jsonl`
+   (suffix + sha256 + scores). See
+   [`../../docs/prompt-evolution.md`](../../docs/prompt-evolution.md) for the
+   loop and budget guidance. **Claim rules** mirror
+   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md): it evolves
+   on train, selects the champion on dev, touches the sealed holdout exactly
+   once for the final champion-vs-bare run, and reports a win only when that
+   holdout run's paired 95% CI excludes zero — a `no_win`/`unverified`/
+   `inconclusive` verdict must never be presented as an improvement. For
+   single-output workloads, hand off to
+   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) instead;
+   never tune on holdout.
 
 9. **Escalate to RL only as a true handoff, behind three gates.** If model swap
    and prompt/distillation stall while real headroom remains and the residual
