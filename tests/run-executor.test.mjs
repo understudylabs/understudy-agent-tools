@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -610,5 +611,248 @@ describe("oracle full-contract coverage (response obligations vs stored gold)", 
     assert.equal(row.score, 0, "response obligations cannot be verified without gold — the task flips to not-runnable");
     assert.deepEqual(row.oracle, { missing_gold: ["response"] }, "distinct diagnostic so the hub renders unverifiable, not broken");
     assert.equal(row.final_response_chars, undefined, "unknown final response is never persisted as 0 chars");
+  });
+});
+
+describe("claim / skip / takeover (stale-watcher hijack guard)", () => {
+  let claimRunRequest, pidAlive, EXECUTOR_VERSION;
+  it("loads the claim exports", async () => {
+    ({ claimRunRequest, pidAlive, EXECUTOR_VERSION } = await import("../dist/run-executor.js"));
+    assert.equal(typeof claimRunRequest, "function");
+    assert.ok(pidAlive(process.pid));
+  });
+
+  /** A pid that definitely ran and definitely exited. */
+  function deadPid() {
+    const child = spawnSync("true");
+    assert.ok(child.pid > 0);
+    return child.pid;
+  }
+
+  const okRunner = async () => ({ score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-record", arguments: {} }], tool_call_count: 1 });
+
+  it("claims an unclaimed queued request and verifies its own nonce landed", () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir);
+    const claimed = claimRunRequest(dir, run.run_id);
+    assert.equal(claimed.ok, true);
+    assert.equal(claimed.claim.pid, process.pid);
+    assert.equal(claimed.claim.executor_version, EXECUTOR_VERSION);
+    const persisted = readRunRequest(runRequestPath(dir, run.run_id));
+    assert.equal(persisted.claimed_by.nonce, claimed.claim.nonce, "claim persisted on the request file");
+  });
+
+  it("skips a request claimed by a LIVE foreign pid (both claim + execute paths)", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    const first = claimRunRequest(dir, run.run_id, { pid: process.pid });
+    assert.equal(first.ok, true);
+    const second = claimRunRequest(dir, run.run_id, { pid: process.pid + 1 });
+    assert.equal(second.ok, false);
+    assert.equal(second.reason, "claimed");
+    // executeRunRequest with a different pid must not run a single rollout.
+    let calls = 0;
+    const result = await executeRunRequest(dir, run.run_id, { runner: async () => { calls += 1; return okRunner(); }, pid: process.pid + 1 });
+    assert.equal(result.status, "queued", "request stays queued for the claiming executor");
+    assert.equal(calls, 0, "no rollout ran under a foreign live claim");
+  });
+
+  it("takes over a claim whose pid is dead (staleness takeover) and runs to done", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    const stale = claimRunRequest(dir, run.run_id, { pid: deadPid() });
+    assert.equal(stale.ok, true, "the dead pid claims first (simulating a crashed executor)");
+    const result = await executeRunRequest(dir, run.run_id, { runner: okRunner });
+    assert.equal(result.status, "done", "a dead claim never wedges the queue");
+    assert.equal(readRunRequest(runRequestPath(dir, run.run_id)).claimed_by.pid, process.pid);
+  });
+
+  it("re-claiming with the SAME pid is allowed (resume after an interrupted start)", () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir);
+    assert.equal(claimRunRequest(dir, run.run_id).ok, true);
+    assert.equal(claimRunRequest(dir, run.run_id).ok, true);
+  });
+
+  it("executeQueuedRuns skips claimed requests without reporting them as results", async () => {
+    const { executeQueuedRuns } = await import("../dist/run-executor.js");
+    const dir = makeBenchmarkDir();
+    const claimedRun = queueRun(dir, { models: ["m1"] });
+    claimRunRequest(dir, claimedRun.run_id, { pid: process.pid });
+    const freeRun = queueRun(dir, { models: ["m2"] });
+    const results = await executeQueuedRuns(dir, { runner: okRunner, pid: process.pid + 1 });
+    assert.deepEqual(results.map((r) => r.run_id), [freeRun.run_id]);
+    assert.equal(readRunRequest(runRequestPath(dir, claimedRun.run_id)).status, "queued");
+  });
+});
+
+describe("capability gate (requires) + executor_version attribution", () => {
+  const okRunner = async () => ({ score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-record", arguments: {} }], tool_call_count: 1 });
+
+  it("createRunRequest populates requires for the features actually used, and omits it otherwise", () => {
+    const dir = makeBenchmarkDir();
+    const plain = queueRun(dir, { models: ["m1"] });
+    assert.ok(!("requires" in readRunRequest(runRequestPath(dir, plain.run_id))), "old shape stays exact when no feature is used");
+    const featured = queueRun(dir, { models: ["m1"], incumbent_models: ["m1"], trivial_arms: ["null_agent"], rollout_timeout_seconds: 60 });
+    assert.deepEqual(readRunRequest(runRequestPath(dir, featured.run_id)).requires.sort(), ["calibration", "rollout_timeout", "trivial_arms"]);
+  });
+
+  it("skips a request requiring an unknown capability with a recorded run_unsupported note — never silently drops fields", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    // Simulate a NEWER writer: a capability this executor build does not know.
+    const file = runRequestPath(dir, run.run_id);
+    fs.writeFileSync(file, JSON.stringify({ ...readRunRequest(file), requires: ["holographic_arms"] }));
+    let calls = 0;
+    const result = await executeRunRequest(dir, run.run_id, { runner: async () => { calls += 1; return okRunner(); } });
+    assert.equal(result.status, "queued", "stays queued for a capable executor");
+    assert.equal(calls, 0, "nothing executed");
+    assert.deepEqual(result.unsupported.missing, ["holographic_arms"]);
+    const events = readEvents(dir).filter((e) => e.run_id === run.run_id);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, "run_unsupported");
+    assert.match(events[0].error, /holographic_arms/);
+    // A polling watch daemon must not spam duplicate notes.
+    await executeRunRequest(dir, run.run_id, { runner: okRunner });
+    assert.equal(readEvents(dir).filter((e) => e.type === "run_unsupported").length, 1);
+  });
+
+  it("simulated OLD executor (narrow capability set) skips a trivial-arms request instead of hijacking it", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"], trivial_arms: ["null_agent", "spam_agent"] });
+    const result = await executeRunRequest(dir, run.run_id, { runner: okRunner, capabilities: [] });
+    assert.equal(result.status, "queued");
+    assert.deepEqual(result.unsupported.missing, ["trivial_arms"]);
+    assert.equal(readRows(dir).length, 0, "the old executor produced no unlabeled rows");
+    // A current executor then runs it fully, trivial arms included.
+    const done = await executeRunRequest(dir, run.run_id, { runner: okRunner });
+    assert.equal(done.status, "done");
+    const kinds = new Set(readRows(dir).map((r) => r.arm_kind));
+    assert.ok(kinds.has("null_agent") && kinds.has("spam_agent"));
+  });
+
+  it("old-shape requests (no requires) execute exactly as before", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    const result = await executeRunRequest(dir, run.run_id, { runner: okRunner });
+    assert.equal(result.status, "done");
+  });
+
+  it("stamps executor_version on every row and event (degraded-run attribution)", async () => {
+    const { EXECUTOR_VERSION } = await import("../dist/run-executor.js");
+    const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+    assert.equal(EXECUTOR_VERSION, pkg.version);
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"] });
+    await executeRunRequest(dir, run.run_id, { runner: okRunner });
+    assert.ok(readRows(dir).every((r) => r.executor_version === EXECUTOR_VERSION));
+    assert.ok(readEvents(dir).every((e) => e.executor_version === EXECUTOR_VERSION));
+  });
+
+  it("validates rollout_timeout_seconds", () => {
+    const base = { models: ["a"], split: "all", tasks: "all", rollouts_per_task: 1 };
+    assert.deepEqual(validateRunRequestInput({ ...base, rollout_timeout_seconds: 600 }, ["t1"]), []);
+    assert.ok(validateRunRequestInput({ ...base, rollout_timeout_seconds: 0 }, ["t1"]).length > 0);
+    assert.ok(validateRunRequestInput({ ...base, rollout_timeout_seconds: "600" }, ["t1"]).length > 0);
+  });
+});
+
+describe("per-rollout timeout → rollout_timeout anomaly row", () => {
+  it("kills a hung rollout at the request's rollout_timeout_seconds, marks the row, and continues the run", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"], rollout_timeout_seconds: 0.05 });
+    // t1 hangs (simulating the ~30min open-gateway-connection hang); t2 is fine.
+    const runner = async ({ task, journalPath }) => {
+      if (task.task_id === "t1") await new Promise((r) => setTimeout(r, 60_000).unref());
+      if (journalPath) fs.appendFileSync(journalPath, JSON.stringify({ at: Date.now() / 1000, kind: "call", tool: "create-item", status: "ok" }) + "\n");
+      return { score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "create-item", arguments: {} }], tool_call_count: 1 };
+    };
+    const result = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(result.status, "done", "the run continues past the hang");
+    const rows = readRows(dir);
+    assert.equal(rows.length, 2, "the timed-out rollout is recorded, never dropped");
+    const hung = rows.find((r) => r.task_id === "t1");
+    assert.equal(hung.status, "error");
+    assert.equal(hung.anomaly.kind, "rollout_timeout");
+    assert.match(hung.error, /rollout_timeout/);
+    const fine = rows.find((r) => r.task_id === "t2");
+    assert.equal(fine.status, "ok");
+    assert.equal(fine.anomaly, undefined);
+    // The anomaly rides the rollout event too.
+    const events = readEvents(dir).filter((e) => e.run_id === run.run_id);
+    assert.ok(events.some((e) => e.type === "rollout_error" && e.anomaly?.kind === "rollout_timeout"));
+  });
+
+  it("executor-flag timeout applies when the request carries none; request-level wins over the flag", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"], tasks: ["t1"], rollout_timeout_seconds: 5 });
+    const seen = [];
+    const runner = async ({ rolloutTimeoutSeconds }) => {
+      seen.push(rolloutTimeoutSeconds);
+      return { score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [{ tool: "update-record", arguments: {} }], tool_call_count: 1 };
+    };
+    await executeRunRequest(dir, run.run_id, { runner, rolloutTimeoutSeconds: 99 });
+    assert.deepEqual(seen, [5], "the request's rollout_timeout_seconds wins and is handed to the runner");
+    const { DEFAULT_ROLLOUT_TIMEOUT_SECONDS } = await import("../dist/run-executor.js");
+    const run2 = queueRun(dir, { models: ["m2"], tasks: ["t1"] });
+    seen.length = 0;
+    await executeRunRequest(dir, run2.run_id, { runner });
+    assert.deepEqual(seen, [DEFAULT_ROLLOUT_TIMEOUT_SECONDS], "generous default when neither request nor flag sets one");
+  });
+
+  it("a runner reporting timed_out (subprocess killed inside the runner) gets the same anomaly", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"], tasks: ["t1"] });
+    const runner = async () => ({ score: null, subscores: null, status: "error", latency_ms: 1000, cost: null, writes: [], timed_out: true, error: "rollout_timeout: verifiers eval killed" });
+    const result = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(result.status, "done");
+    assert.equal(readRows(dir)[0].anomaly.kind, "rollout_timeout");
+  });
+});
+
+describe("per-invocation output isolation (cross-run trace attribution)", () => {
+  let verifiersWorkDir, newOutputFiles;
+  it("loads the isolation exports", async () => {
+    ({ verifiersWorkDir, newOutputFiles } = await import("../dist/run-executor.js"));
+    assert.equal(typeof verifiersWorkDir, "function");
+  });
+
+  const writeTrace = (root, model, taskId) => {
+    const out = path.join(root, "outputs", `understudy-trace-env--${model}--bash`);
+    fs.mkdirSync(out, { recursive: true });
+    fs.writeFileSync(path.join(out, "traces.jsonl"), JSON.stringify({ traces: [{ task: { data: { task_id: taskId } }, rewards: { final_state: 1 }, ok: true }] }) + "\n");
+  };
+
+  it("run_id + arm are in the work-dir path, and paths are unique per invocation", () => {
+    const dir = makeBenchmarkDir();
+    const a = verifiersWorkDir(dir, "run-aaa--gemma-4");
+    const b = verifiersWorkDir(dir, "run-bbb--gemma-4");
+    assert.notEqual(a, b);
+    assert.match(a, /runs\/work\/run-aaa--gemma-4$/);
+    assert.ok(a.startsWith(path.resolve(dir)));
+  });
+
+  it("two simulated CONCURRENT same-model invocations never cross-read each other's traces (structural, not mtime)", () => {
+    const dir = makeBenchmarkDir();
+    const workA = verifiersWorkDir(dir, "run-aaa--gemma-4");
+    const workB = verifiersWorkDir(dir, "run-bbb--gemma-4");
+    // Both write concurrently (identical mtimes — the exact hazard) for the SAME model.
+    writeTrace(workA, "gemma-4", "task-from-run-A");
+    writeTrace(workB, "gemma-4", "task-from-run-B");
+    const filesA = newOutputFiles(workA, 0);
+    const filesB = newOutputFiles(workB, 0);
+    assert.equal(filesA.length, 1);
+    assert.equal(filesB.length, 1);
+    assert.ok(filesA[0].includes("run-aaa--gemma-4") && !filesA[0].includes("run-bbb"));
+    assert.ok(filesB[0].includes("run-bbb--gemma-4") && !filesB[0].includes("run-aaa"));
+    assert.equal(JSON.parse(fs.readFileSync(filesA[0], "utf8")).traces[0].task.data.task_id, "task-from-run-A");
+  });
+
+  it("keeps reading the legacy shared-outputs layout (backward compatible)", () => {
+    const dir = makeBenchmarkDir();
+    writeTrace(dir, "gemma-4", "legacy-task");
+    const files = newOutputFiles(dir, 0);
+    assert.equal(files.length, 1);
+    assert.match(files[0], /outputs\/understudy-trace-env--gemma-4--bash\/traces\.jsonl$/);
   });
 });

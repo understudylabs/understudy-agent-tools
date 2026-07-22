@@ -17,6 +17,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { hostname } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, goldFinalResponseFor, isMutatingTool, oracleEventsFor, readCapturesByKey, responseJudgedRequired, scoreContract } from "./trace-foundry.js";
@@ -28,6 +29,36 @@ const asObject = (value: unknown): Obj => (value !== null && typeof value === "o
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export const RUN_REQUEST_SCHEMA = "understudy.run_request.v1";
+
+/**
+ * The executor's own package version, stamped into every run event and eval
+ * row so a degraded run (e.g. a stale watcher built before a feature landed)
+ * is attributable post-hoc. Best-effort: "unknown" when package.json is
+ * unreadable (never fails the run).
+ */
+export const EXECUTOR_VERSION: string = (() => {
+  try {
+    return String(asObject(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))).version ?? "unknown");
+  } catch {
+    return "unknown";
+  }
+})();
+
+/**
+ * Capabilities THIS executor understands. A run request may carry an additive
+ * `requires` list (populated by writers when they use a feature whose silent
+ * omission would corrupt results); an executor that does not recognize a
+ * required capability must SKIP the request with a recorded `run_unsupported`
+ * event — never execute it with the unknown fields silently dropped.
+ * Old executors predate `requires` entirely, hence the belt-and-braces
+ * EXECUTOR_VERSION stamps above.
+ */
+export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout"] as const;
+
+/** The `requires` entries of a request this executor cannot honor (empty = safe to run). */
+export function unsupportedRequirements(request: Pick<RunRequest, "requires">, capabilities: readonly string[] = EXECUTOR_CAPABILITIES): string[] {
+  return (request.requires ?? []).filter((capability) => !capabilities.includes(capability));
+}
 export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export const RUN_SPLITS = ["train", "dev", "holdout", "all"] as const;
@@ -80,7 +111,79 @@ export type RunRequest = {
    * zero-cost, one rollout per task; rows are labeled with the arm kind.
    */
   trivial_arms?: TrivialArmKind[];
+  /**
+   * Additive: capabilities an executor MUST understand to run this request
+   * (populated by writers whenever they use a feature — e.g. "trivial_arms",
+   * "calibration", "rollout_timeout" — whose silent omission by an old
+   * executor would corrupt results). Executors skip-with-record on any entry
+   * they do not recognize.
+   */
+  requires?: string[];
+  /** Additive: per-rollout wall-clock budget in seconds (default DEFAULT_ROLLOUT_TIMEOUT_SECONDS). */
+  rollout_timeout_seconds?: number;
+  /** Additive: the executor that atomically claimed this request (stale-watcher hijack guard). */
+  claimed_by?: RunClaim | null;
+  /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
+  unsupported?: { executor_version: string; missing: string[]; at: string } | null;
 };
+
+/* ------------------------------------------------------------------ */
+/* Request claiming (stale-watcher hijack guard)                       */
+/* ------------------------------------------------------------------ */
+
+export type RunClaim = {
+  pid: number;
+  /** Random tie-break token: the claim survives only if OUR nonce is what re-reads from disk. */
+  nonce: string;
+  executor_version: string;
+  host: string;
+  claimed_at: string;
+};
+
+/** True when a pid is (probably) alive on this host. EPERM = alive but not ours. */
+export function pidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+export type ClaimOutcome = { ok: true; request: RunRequest; claim: RunClaim } | { ok: false; reason: "missing" | "not_queued" | "claimed"; request: RunRequest | null };
+
+/**
+ * Atomically claim a queued request before executing it: write our claim
+ * (pid + executor version + nonce + timestamp) onto the request file, then
+ * RE-READ to verify our nonce is what actually landed — two racing executors
+ * both write, but only the one whose write survived proceeds. A claim held by
+ * a live pid is respected (skip); a claim whose pid is dead is taken over
+ * (the claiming executor crashed / was killed).
+ */
+export function claimRunRequest(benchmarkDir: string, runId: string, options?: { pid?: number; executorVersion?: string; now?: () => Date }): ClaimOutcome {
+  const file = runRequestPath(benchmarkDir, runId);
+  const request = existsSync(file) ? readRunRequest(file) : null;
+  if (!request) return { ok: false, reason: "missing", request: null };
+  if (request.status !== "queued") return { ok: false, reason: "not_queued", request };
+  const pid = options?.pid ?? process.pid;
+  const existing = request.claimed_by ?? null;
+  // Respect a live foreign claim; take over a dead one (staleness takeover).
+  if (existing && existing.pid !== pid && pidAlive(existing.pid)) return { ok: false, reason: "claimed", request };
+  const claim: RunClaim = {
+    pid,
+    nonce: createHash("sha256").update(`${pid}:${Date.now()}:${Math.random()}`).digest("hex").slice(0, 16),
+    executor_version: options?.executorVersion ?? EXECUTOR_VERSION,
+    host: hostname(),
+    claimed_at: (options?.now?.() ?? new Date()).toISOString(),
+  };
+  writeRunRequest(benchmarkDir, { ...request, claimed_by: claim });
+  // Verify the claim actually landed (atomic-rename write means the LAST
+  // racing writer wins; only that executor may proceed).
+  const reread = readRunRequest(file);
+  if (!reread || reread.claimed_by?.nonce !== claim.nonce) return { ok: false, reason: "claimed", request: reread ?? request };
+  return { ok: true, request: reread, claim };
+}
 
 /** Live journals live under <benchmark>/runs/live/ and stay after the run for replay-scrubbing. */
 export function liveJournalPath(benchmarkDir: string, runId: string, model: string): string {
@@ -150,6 +253,8 @@ export type RunRequestInput = {
   calibration_threshold?: unknown;
   /** Optional (additive): trivial calibration arms ("null_agent" / "spam_agent"). */
   trivial_arms?: unknown;
+  /** Optional (additive): per-rollout wall-clock budget in seconds. */
+  rollout_timeout_seconds?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -205,15 +310,26 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
       errors.push("trivial_arms must be unique");
     }
   }
+  const timeout = input.rollout_timeout_seconds;
+  if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
+    errors.push("rollout_timeout_seconds must be a positive number of seconds");
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[] },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number },
   now: Date = new Date(),
 ): RunRequest {
+  // Writers declare the capabilities their feature use depends on, so an old
+  // executor (which cannot honor them) skips the request instead of silently
+  // dropping the fields (the stale-watcher hijack class).
+  const requires: string[] = [];
+  if (input.trivial_arms && input.trivial_arms.length > 0) requires.push("trivial_arms");
+  if ((input.incumbent_models && input.incumbent_models.length > 0) || input.calibration_threshold !== undefined) requires.push("calibration");
+  if (input.rollout_timeout_seconds !== undefined) requires.push("rollout_timeout");
   const request: RunRequest = {
     schema_version: RUN_REQUEST_SCHEMA,
     run_id: `run-${hash({ ...input, at: now.toISOString(), nonce: Math.random() }).slice(0, 16)}`,
@@ -232,6 +348,8 @@ export function createRunRequest(
     ...(input.incumbent_models && input.incumbent_models.length > 0 ? { incumbent_models: input.incumbent_models } : {}),
     ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
     ...(input.trivial_arms && input.trivial_arms.length > 0 ? { trivial_arms: input.trivial_arms } : {}),
+    ...(input.rollout_timeout_seconds !== undefined ? { rollout_timeout_seconds: input.rollout_timeout_seconds } : {}),
+    ...(requires.length > 0 ? { requires } : {}),
   };
   writeRunRequest(benchmarkDir, request);
   return request;
@@ -277,6 +395,8 @@ export type RolloutResult = {
    * "unverifiable" from "broken" — absent on every other runner's results.
    */
   oracle?: { missing_gold: string[] } | null;
+  /** Additive: true when the rollout was killed by the per-rollout timeout (row gets the rollout_timeout anomaly). */
+  timed_out?: boolean;
   error?: string | null;
 };
 
@@ -297,7 +417,8 @@ export type RolloutAnomalyKind =
   | "no_tool_calls"
   | "empty_final_response"
   | "no_journal_events"
-  | "zero_score_zero_calls";
+  | "zero_score_zero_calls"
+  | "rollout_timeout";
 
 export type RolloutAnomaly = { kind: RolloutAnomalyKind; detail: string };
 
@@ -381,13 +502,17 @@ export type ArmRunner = (args: {
   selectedTaskIds: string[];
   /** Live journal file for this arm (runners/worlds append one JSON line per tool call/result); null disables. */
   journalPath: string | null;
+  /** Additive: the executing run's id — runners use it to isolate per-invocation outputs structurally. */
+  runId?: string;
+  /** Additive: per-rollout wall-clock budget in seconds (runners spawning subprocesses enforce it on the child). */
+  rolloutTimeoutSeconds?: number;
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
   schema_version: typeof RUN_EVENT_SCHEMA;
   ts: string;
   run_id: string;
-  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning";
+  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning" | "run_unsupported";
   model?: string;
   task_id?: string;
   rollout?: number;
@@ -399,12 +524,15 @@ export type RunEvent = {
   anomaly?: RolloutAnomaly | null;
   /** Explicit no-silent-caps record: present on cap_warning events when a hard cap binds. */
   warning?: string;
+  /** Additive: the executor package version that emitted this event (degraded-run attribution). */
+  executor_version?: string;
 };
 
 function appendEvent(benchmarkDir: string, event: RunEvent, onEvent?: (event: RunEvent) => void): void {
+  const stamped: RunEvent = { ...event, executor_version: event.executor_version ?? EXECUTOR_VERSION };
   mkdirSync(runsDir(benchmarkDir), { recursive: true });
-  appendFileSync(runEventsPath(benchmarkDir), serializeRunEvent(event), { mode: 0o600 });
-  onEvent?.(event);
+  appendFileSync(runEventsPath(benchmarkDir), serializeRunEvent(stamped), { mode: 0o600 });
+  onEvent?.(stamped);
 }
 
 const sanitizeForFile = (value: string): string => value.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 80);
@@ -430,9 +558,18 @@ export type ExecuteOptions = {
   runner: ArmRunner;
   /** Rollouts in flight per arm (the concurrency flag). */
   concurrency?: number;
+  /** Per-rollout wall-clock budget in seconds; the request's rollout_timeout_seconds wins when present. */
+  rolloutTimeoutSeconds?: number;
   now?: () => Date;
   onEvent?: (event: RunEvent) => void;
+  /** Test seam: this executor's pid for claiming (default process.pid). */
+  pid?: number;
+  /** Test seam: this executor's capability set (default EXECUTOR_CAPABILITIES). */
+  capabilities?: readonly string[];
 };
+
+/** Generous default per-rollout budget: a rollout past this is a hang, not a slow model. */
+export const DEFAULT_ROLLOUT_TIMEOUT_SECONDS = 600;
 
 /**
  * Execute ONE queued request to a terminal state. State machine:
@@ -450,7 +587,28 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   const initial = readRunRequest(file);
   if (!initial) throw new Error(`No run request ${runId} in ${runsQueueDir(dir)}`);
   if (initial.status !== "queued") throw new Error(`Run ${runId} is ${initial.status}, not queued`);
-  let request: RunRequest = initial;
+
+  // Capability gate: a request requiring features this executor does not
+  // recognize is SKIPPED with a recorded run_unsupported note — never executed
+  // with the unknown fields silently dropped (the stale-watcher hijack class).
+  // Status stays "queued" so a capable executor can still pick it up.
+  const missing = unsupportedRequirements(initial, options.capabilities ?? EXECUTOR_CAPABILITIES);
+  if (missing.length > 0) {
+    const note = { executor_version: EXECUTOR_VERSION, missing, at: now().toISOString() };
+    // Record once per executor version (a watch daemon polls forever).
+    const prior = initial.unsupported;
+    if (!prior || prior.executor_version !== note.executor_version || prior.missing.join(",") !== missing.join(",")) {
+      writeRunRequest(dir, { ...initial, unsupported: note });
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: note.at, run_id: runId, type: "run_unsupported", status: "unsupported", error: `executor ${EXECUTOR_VERSION} does not support required capabilities: ${missing.join(", ")}` }, options.onEvent);
+    }
+    return readRunRequest(file) ?? initial;
+  }
+
+  // Atomic claim before any execution: a request claimed by another LIVE
+  // executor is skipped (returned still-queued); a dead claimant is taken over.
+  const claimed = claimRunRequest(dir, runId, { pid: options.pid, now });
+  if (!claimed.ok) return claimed.request ?? initial;
+  let request: RunRequest = claimed.request;
 
   const manifest = asObject(JSON.parse(readFileSync(join(dir, "benchmark.json"), "utf8")));
   // Promoted manifests always run; proposal-stamped dirs run too — the hub
@@ -544,11 +702,28 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           const current = readRunRequest(file) ?? request;
           request = { ...current, live: { journal: journalRel, model, task_id: taskId } };
           writeRunRequest(dir, request);
+          // Per-rollout wall-clock budget: the request's additive
+          // rollout_timeout_seconds wins, then the executor flag, then the
+          // generous default. Subprocess-spawning runners also receive the
+          // budget so they can kill the child (a blocked event loop cannot be
+          // preempted from here); either path yields a rollout_timeout row.
+          const timeoutSeconds = request.rollout_timeout_seconds ?? options.rolloutTimeoutSeconds ?? DEFAULT_ROLLOUT_TIMEOUT_SECONDS;
           let result: RolloutResult;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const TIMED_OUT = Symbol("rollout_timeout");
           try {
-            result = await arm.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath });
+            const attempt = arm.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath, runId, rolloutTimeoutSeconds: timeoutSeconds });
+            const raced = await Promise.race([attempt, new Promise<typeof TIMED_OUT>((res) => { timer = setTimeout(() => res(TIMED_OUT), Math.max(1, Math.round(timeoutSeconds * 1000))); })]);
+            if (raced === TIMED_OUT) {
+              attempt.catch(() => { /* late settle of the abandoned rollout is irrelevant */ });
+              result = { score: null, subscores: null, status: "error", latency_ms: Math.round(timeoutSeconds * 1000), cost: null, writes: [], timed_out: true, error: `rollout_timeout: rollout exceeded ${timeoutSeconds}s` };
+            } else {
+              result = raced;
+            }
           } catch (err) {
             result = { score: null, subscores: null, status: "error", latency_ms: null, cost: null, writes: [], error: err instanceof Error ? `${err.constructor.name}: ${err.message}` : String(err) };
+          } finally {
+            clearTimeout(timer);
           }
           // Defensive: an empty contract is not judgeable — rows are unscored,
           // never ok-with-vacuous-numbers. (The foundry now guarantees a
@@ -565,13 +740,19 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           // Structural sentinels are MODEL-arm-only: a trivial arm making zero
           // tool calls / an empty final response is behaving exactly as
           // designed, never a harness anomaly (its floor is the signal).
-          const anomalies = (TRIVIAL_ARM_KINDS as readonly string[]).includes(arm.kind) ? [] : detectRolloutAnomalies({
+          const anomalies: RolloutAnomaly[] = (TRIVIAL_ARM_KINDS as readonly string[]).includes(arm.kind) ? [] : detectRolloutAnomalies({
             task: sidecar,
             result,
             promptSent: envRow === undefined ? undefined : String(envRow.prompt ?? ""),
             storedPrompt: envRow === undefined ? undefined : textOfContent(((Array.isArray(envRow.source_messages) ? envRow.source_messages : []).map(asObject).find((m) => m.role === "user") ?? {}).content),
             journalBytes,
           });
+          // Timeout kills are structural anomalies on EVERY arm kind: the row
+          // is marked (and excluded from aggregates like other anomalies),
+          // never silently dropped, and the run continues.
+          if (result.timed_out === true) {
+            anomalies.unshift({ kind: "rollout_timeout", detail: result.error ?? `rollout exceeded ${timeoutSeconds}s` });
+          }
           const row: Obj = {
             schema_version: EVAL_RESULT_SCHEMA,
             run_id: runId,
@@ -585,6 +766,8 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             // arms are distinguishable from candidate arms everywhere
             // downstream (hub badges, calibration, floors).
             arm_kind: arm.kind,
+            // Additive attribution stamp: which executor build produced this row.
+            executor_version: EXECUTOR_VERSION,
             route: "gateway",
             latency_ms: result.latency_ms,
             cost: result.cost,
@@ -803,12 +986,13 @@ function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, sele
   }
 }
 
-/** Execute every queued request once, oldest first. */
+/** Execute every queued request once, oldest first. Requests skipped as claimed-by-a-live-executor or capability-unsupported stay queued and are not reported as results. */
 export async function executeQueuedRuns(benchmarkDir: string, options: ExecuteOptions): Promise<RunRequest[]> {
   const results: RunRequest[] = [];
   for (const request of listRunRequests(benchmarkDir)) {
     if (request.status !== "queued") continue;
-    results.push(await executeRunRequest(benchmarkDir, request.run_id, options));
+    const outcome = await executeRunRequest(benchmarkDir, request.run_id, options);
+    if (outcome.status !== "queued") results.push(outcome);
   }
   return results;
 }
@@ -990,10 +1174,24 @@ export function spamAgentRunner(): ArmRunner {
 }
 
 /**
- * Newest traces.jsonl files under the run's outputs/ (the verifiers eval
- * writes outputs/ relative to its cwd — the benchmark dir) after `since`.
+ * Per-invocation work directory for one verifiers eval subprocess. The eval
+ * writes outputs/ relative to its CWD, so giving every (run, arm) invocation
+ * its own cwd makes trace attribution STRUCTURAL: two concurrent runs of the
+ * same model can never cross-read each other's traces.jsonl (the mtime-based
+ * hazard this replaces). Old layouts (outputs/ directly under the benchmark
+ * dir) stay readable via the legacy fallback in runVerifiersSplits.
  */
-function newOutputFiles(benchmarkDir: string, since: number): string[] {
+export function verifiersWorkDir(benchmarkDir: string, invocationTag: string): string {
+  return join(resolve(benchmarkDir), "runs", "work", sanitizeForFile(invocationTag));
+}
+
+/**
+ * traces.jsonl files under <root>/outputs/ newer than `since` (the verifiers
+ * eval writes outputs/ relative to its cwd). With per-invocation work dirs the
+ * root is already unique per (run, arm); the mtime filter only matters for the
+ * legacy shared-outputs layout.
+ */
+export function newOutputFiles(root: string, since: number): string[] {
   const out: string[] = [];
   const walk = (dir: string): void => {
     let entries: string[] = [];
@@ -1014,7 +1212,7 @@ function newOutputFiles(benchmarkDir: string, since: number): string[] {
       else if (name === "traces.jsonl" && st.mtimeMs >= since) out.push(path);
     }
   };
-  walk(join(benchmarkDir, "outputs"));
+  walk(join(root, "outputs"));
   return out.sort();
 }
 
@@ -1099,7 +1297,14 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
  * dir's outputs/) is projected onto per-task results. Throws
  * HarnessExecutionError with the subprocess tail on failure.
  */
-export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null, journalPath: string | null = null): Map<string, RolloutResult> {
+export type VerifiersArmOptions = {
+  /** Per-rollout budget in seconds — the eval subprocess gets timeout × tasks-in-split and is killed on expiry (each unresolved task becomes a rollout_timeout row). */
+  timeoutSeconds?: number | null;
+  /** Unique per-invocation tag (run_id + arm) — the eval runs in its own work dir so trace attribution is structural, never mtime-based. */
+  invocationTag?: string | null;
+};
+
+export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null, journalPath: string | null = null, options: VerifiersArmOptions = {}): Map<string, RolloutResult> {
   const dir = resolve(benchmarkDir);
   const environment = join(dir, "environment");
   // Scope the eval to exactly the requested tasks (a single-task run on a
@@ -1107,19 +1312,27 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
   // rows from tasks.json, so temporarily filter it — the same temp-rewrite
   // pattern runTraceReplays uses for context variants — and restore after.
   const taskRowsPath = join(environment, "understudy_trace_env", "tasks.json");
-  const sourceTaskRows = taskIds !== null && existsSync(taskRowsPath) ? (JSON.parse(readFileSync(taskRowsPath, "utf8")) as Obj[]) : null;
+  const allTaskRows: Obj[] | null = existsSync(taskRowsPath) ? ((JSON.parse(readFileSync(taskRowsPath, "utf8")) as unknown[]).map(asObject)) : null;
+  const sourceTaskRows = taskIds !== null ? allTaskRows : null;
   const wanted = taskIds === null ? null : new Set(taskIds);
   const filteredRows = sourceTaskRows?.filter((row) => wanted!.has(String(row.task_id))) ?? null;
   const splits = filteredRows === null ? ["train", "dev", "holdout"] : [...new Set(filteredRows.map((row) => String(row.split)))];
+  // Split → task ids the eval will attempt: sizes the per-split subprocess
+  // timeout budget and names the tasks a killed split leaves unresolved.
+  const taskIdsBySplit = new Map<string, string[]>();
+  for (const row of filteredRows ?? allTaskRows ?? []) {
+    const split = String(row.split);
+    taskIdsBySplit.set(split, [...(taskIdsBySplit.get(split) ?? []), String(row.task_id)]);
+  }
   if (filteredRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(filteredRows, null, 2)}\n`, { mode: 0o600 });
   try {
-    return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits, journalPath);
+    return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits, journalPath, { ...options, taskIdsBySplit });
   } finally {
     if (sourceTaskRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(sourceTaskRows, null, 2)}\n`, { mode: 0o600 });
   }
 }
 
-function runVerifiersSplits(dir: string, environment: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv, splits: string[], journalPath: string | null = null): Map<string, RolloutResult> {
+function runVerifiersSplits(dir: string, environment: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv, splits: string[], journalPath: string | null = null, options: VerifiersArmOptions & { taskIdsBySplit?: Map<string, string[]> } = {}): Map<string, RolloutResult> {
   // Gateway creds resolve the CLI's canonical way (env first, then
   // ~/.understudy/credentials.json) and are handed to buildReplayInvocation
   // through its own env contract — the executor ONLY talks to the Understudy
@@ -1131,6 +1344,12 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
   // fails its own eval harmlessly (the merged map decides success below).
   const results = new Map<string, RolloutResult>();
   const failures: string[] = [];
+  // Per-invocation output isolation: the eval writes outputs/ relative to its
+  // cwd, so an invocation tag gives this (run, arm) its own work dir — trace
+  // attribution becomes structural instead of "traces.jsonl newer than start",
+  // which two concurrent same-model runs could cross-read.
+  const workDir = options.invocationTag ? verifiersWorkDir(dir, options.invocationTag) : dir;
+  if (workDir !== dir) mkdirSync(workDir, { recursive: true });
   for (const split of splits) {
     const invocation = buildReplayInvocation(environment, model, "authentic_history", maxExamples, false, runnerEnv);
     // Live watching: the generated world server journals every tool call and
@@ -1138,20 +1357,39 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
     // rides the eval subprocess env, which the subprocess runtime inherits.
     if (journalPath !== null) invocation.env.UNDERSTUDY_LIVE_JOURNAL = journalPath;
     invocation.args.push("--env.taskset.split", split);
+    // Subprocess kill switch for hung rollouts: the eval runs the split's
+    // tasks in one child, so its budget is per-rollout timeout × task count.
+    const splitTaskIds = options.taskIdsBySplit?.get(split) ?? [];
+    const budgetMs = options.timeoutSeconds ? Math.max(1, Math.round(options.timeoutSeconds * 1000)) * Math.max(1, splitTaskIds.length) : undefined;
     const started = Date.now();
-    const child = spawnSync("uv", invocation.args, { cwd: dir, encoding: "utf8", env: invocation.env, maxBuffer: 64 * 1024 * 1024 });
-    if (child.error) throw new HarnessExecutionError(`could not start uv/verifiers: ${child.error.message}`);
-    if (child.status !== 0) {
+    const child = spawnSync("uv", invocation.args, { cwd: workDir, encoding: "utf8", env: invocation.env, maxBuffer: 64 * 1024 * 1024, ...(budgetMs !== undefined ? { timeout: budgetMs, killSignal: "SIGKILL" as const } : {}) });
+    const timedOut = (child.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" || (budgetMs !== undefined && child.status === null && child.signal !== null);
+    if (child.error && !timedOut) throw new HarnessExecutionError(`could not start uv/verifiers: ${child.error.message}`);
+    if (child.status !== 0 && !timedOut) {
       failures.push(`split ${split}: exited ${child.status}: ${`${child.stderr ?? ""}`.trim().split("\n").slice(-6).join("\n")}`);
       continue;
     }
-    for (const file of newOutputFiles(dir, started - 1000)) {
+    // Structural read first (this invocation's own work dir); the legacy
+    // shared-outputs layout stays readable for old runs / untagged callers.
+    let files = newOutputFiles(workDir, started - 1000);
+    if (files.length === 0 && workDir !== dir) files = newOutputFiles(dir, started - 1000);
+    for (const file of files) {
       for (const line of readJsonl(file)) {
         for (const trace of (Array.isArray(line.traces) ? line.traces : []).map(asObject)) {
           const { taskId, result } = projectVerifiersTrace(trace, model);
           if (taskId && !results.has(taskId)) results.set(taskId, result);
         }
       }
+    }
+    if (timedOut) {
+      // Every task the killed split left unresolved becomes an explicit
+      // rollout_timeout result (marked + excluded like other anomalies);
+      // traces the child wrote before the kill are kept above.
+      for (const taskId of splitTaskIds) {
+        if (results.has(taskId)) continue;
+        results.set(taskId, { score: null, subscores: null, status: "error", latency_ms: budgetMs ?? null, cost: null, writes: [], timed_out: true, error: `rollout_timeout: verifiers eval for split ${split} exceeded ${Math.round((budgetMs ?? 0) / 1000)}s and was killed` });
+      }
+      if (splitTaskIds.length === 0) failures.push(`split ${split}: timed out after ${budgetMs}ms and was killed`);
     }
   }
   if (results.size === 0) {
@@ -1169,11 +1407,15 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
  */
 export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): ArmRunner {
   const armCache = new Map<string, Map<string, RolloutResult> | Error>();
-  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath }) => {
-    const key = `${benchmarkDir}::${model}::${[...selectedTaskIds].sort().join(",")}`;
+  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath, runId, rolloutTimeoutSeconds }) => {
+    const key = `${benchmarkDir}::${runId ?? ""}::${model}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
-        armCache.set(key, runVerifiersArm(benchmarkDir, model, VERIFIERS_MAX_EXAMPLES, parentEnv, selectedTaskIds, journalPath));
+        armCache.set(key, runVerifiersArm(benchmarkDir, model, VERIFIERS_MAX_EXAMPLES, parentEnv, selectedTaskIds, journalPath, {
+          timeoutSeconds: rolloutTimeoutSeconds ?? null,
+          // run_id + arm in the path: structural per-invocation isolation.
+          invocationTag: runId ? `${runId}--${model}` : null,
+        }));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));
       }
