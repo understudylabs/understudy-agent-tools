@@ -46,6 +46,8 @@ export const EVAL_RESULT_SCHEMA = "understudy.eval_result.v1";
 export const SOURCE_DAG_SCHEMA = "understudy.source_dag.v1";
 export const PROMOTION_RECORD_SCHEMA = "understudy.promotion_record.v1";
 export const RUN_EVENT_SCHEMA = "understudy.run_event.v1";
+/** calibration.json sidecar written after a run with an incumbent arm finishes. */
+export const CALIBRATION_SCHEMA = "understudy.calibration.v1";
 export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
 
 /* ------------------------------------------------------------------ */

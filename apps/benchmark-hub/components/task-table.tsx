@@ -29,6 +29,8 @@ export type TaskTableRow = {
   frontier?: boolean;
   /** authored "easy" on a frontier-complex task */
   complexityMismatch?: boolean;
+  /** promoted: the incumbent failed this task on rerun (calibration gate) — treat as suspect. */
+  incumbentFailed?: boolean;
 };
 
 type SortKey = "name" | "rollouts" | "score" | "prompt" | "confidence" | "review" | "context";
@@ -122,6 +124,11 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
                   {r.displayName}
                 </Link>
                 <span className="mono block text-[10px] text-faint">{r.taskId}</span>
+                {stage === "promoted" && r.incumbentFailed && (
+                  <span className="mt-0.5 flex flex-wrap gap-1">
+                    <Badge className="border-bad/40 text-bad">incumbent failed · suspect</Badge>
+                  </span>
+                )}
                 {stage === "proposed" && (
                   <span className="mt-0.5 flex flex-wrap gap-1">
                     {r.authored && <Badge className="text-ok border-ok/50">authored</Badge>}

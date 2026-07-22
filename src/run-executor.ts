@@ -21,7 +21,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, isMutatingTool, scoreState } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
-import { RUN_EVENT_SCHEMA, appendJournalEntry, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
+import { CALIBRATION_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -32,6 +32,12 @@ export const RUN_STATUSES = ["queued", "running", "done", "failed", "cancelled"]
 export type RunStatus = (typeof RUN_STATUSES)[number];
 export const RUN_SPLITS = ["train", "dev", "holdout", "all"] as const;
 export type RunSplit = (typeof RUN_SPLITS)[number];
+
+/** Row arm labels: "incumbent" = the model that produced the source captures, rerun; everything else is a "candidate". */
+export const ARM_KINDS = ["incumbent", "candidate"] as const;
+export type ArmKind = (typeof ARM_KINDS)[number];
+/** Default incumbent-pass threshold on the strict contract score. */
+export const DEFAULT_CALIBRATION_THRESHOLD = 1;
 
 export type RunRequest = {
   schema_version: typeof RUN_REQUEST_SCHEMA;
@@ -50,6 +56,14 @@ export type RunRequest = {
   error?: { class: string; message: string } | null;
   /** While running: the active arm's live journal (path relative to the benchmark dir) + what's executing. */
   live?: { journal: string; model: string; task_id: string | null } | null;
+  /**
+   * Additive (absent on old requests — existing readers ignore it): models in
+   * this run that are the benchmark's recorded incumbent. Their rows are
+   * labeled arm_kind "incumbent" and feed the calibration gate.
+   */
+  incumbent_models?: string[];
+  /** Additive: strict-score pass threshold for the incumbent calibration gate (default 1). */
+  calibration_threshold?: number;
 };
 
 /** Live journals live under <benchmark>/runs/live/ and stay after the run for replay-scrubbing. */
@@ -114,6 +128,10 @@ export type RunRequestInput = {
   split: unknown;
   tasks: unknown;
   rollouts_per_task: unknown;
+  /** Optional (additive): the subset of `models` to label as the incumbent arm. */
+  incumbent_models?: unknown;
+  /** Optional (additive): calibration pass threshold in (0, 1]. */
+  calibration_threshold?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -147,13 +165,25 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (!Number.isInteger(rollouts) || (rollouts as number) <= 0 || (rollouts as number) > MAX_ROLLOUTS_PER_TASK) {
     errors.push(`rollouts_per_task must be an integer between 1 and ${MAX_ROLLOUTS_PER_TASK}`);
   }
+  const incumbents = input.incumbent_models;
+  if (incumbents !== undefined) {
+    if (!Array.isArray(incumbents) || !incumbents.every((m) => typeof m === "string" && m.trim().length > 0)) {
+      errors.push("incumbent_models must be an array of model id strings");
+    } else if (Array.isArray(models) && !incumbents.every((m) => models.includes(m))) {
+      errors.push("incumbent_models must be a subset of models");
+    }
+  }
+  const threshold = input.calibration_threshold;
+  if (threshold !== undefined && (typeof threshold !== "number" || !Number.isFinite(threshold) || threshold <= 0 || threshold > 1)) {
+    errors.push("calibration_threshold must be a number in (0, 1]");
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number },
   now: Date = new Date(),
 ): RunRequest {
   const request: RunRequest = {
@@ -170,6 +200,9 @@ export function createRunRequest(
     started_at: null,
     finished_at: null,
     error: null,
+    // Additive fields stay absent unless requested, so old readers see the exact prior shape.
+    ...(input.incumbent_models && input.incumbent_models.length > 0 ? { incumbent_models: input.incumbent_models } : {}),
+    ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
   };
   writeRunRequest(benchmarkDir, request);
   return request;
@@ -367,6 +400,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             subscores: result.subscores,
             status: result.status,
             model,
+            // Additive arm label: incumbent reruns are distinguishable from
+            // candidate arms everywhere downstream (hub badges, calibration).
+            arm_kind: (request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate",
             route: "gateway",
             latency_ms: result.latency_ms,
             cost: result.cost,
@@ -426,7 +462,105 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
+  // Calibration gate: a finished run with an incumbent arm updates the
+  // benchmark's calibration.json sidecar from its own rows + run events.
+  if ((request.incumbent_models ?? []).length > 0) writeCalibrationSummary(dir, request, selected.map((t) => String(t.task_id)));
   return request;
+}
+
+/* ------------------------------------------------------------------ */
+/* Incumbent calibration gate                                          */
+/* ------------------------------------------------------------------ */
+
+export function calibrationPath(benchmarkDir: string): string {
+  return join(resolve(benchmarkDir), "calibration.json");
+}
+
+export type CalibrationTask = { task_id: string; score: number | null; passed: boolean; rollouts: number };
+
+export type CalibrationSummary = {
+  schema_version: typeof CALIBRATION_SCHEMA;
+  benchmark_id: string;
+  run_id: string;
+  incumbent_models: string[];
+  threshold: number;
+  /** Timestamps come from the run's own events (never a fresh clock read). */
+  started_at: string | null;
+  finished_at: string | null;
+  tasks: CalibrationTask[];
+  passed_count: number;
+  failed_count: number;
+  /** Tasks the incumbent fails on rerun — the hub flags these incumbent_failed (suspect). */
+  failed_task_ids: string[];
+};
+
+/**
+ * Derive the incumbent-pass signal per task from incumbent-arm rows: a task
+ * passes when its BEST scored incumbent rollout reaches the threshold on the
+ * strict contract score. Tasks with no ok row fail (the incumbent could not
+ * reproduce its own outcome). Timestamps are read from the run's events, not
+ * from a wall clock, so the summary is replay-stable.
+ */
+export function deriveCalibrationSummary(args: {
+  benchmarkId: string;
+  runId: string;
+  incumbentModels: string[];
+  threshold?: number;
+  selectedTaskIds: string[];
+  rows: Obj[];
+  events: Obj[];
+}): CalibrationSummary {
+  const threshold = args.threshold ?? DEFAULT_CALIBRATION_THRESHOLD;
+  const incumbents = new Set(args.incumbentModels);
+  const runEvents = args.events.filter((e) => e.run_id === args.runId);
+  const eventTs = (type: string): string | null => {
+    const event = runEvents.find((e) => e.type === type);
+    return typeof event?.ts === "string" ? event.ts : null;
+  };
+  const rows = args.rows.filter((row) => row.run_id === args.runId && incumbents.has(String(row.model ?? "")));
+  const tasks: CalibrationTask[] = args.selectedTaskIds.map((taskId) => {
+    const taskRows = rows.filter((row) => String(row.task_id) === taskId);
+    const scores = taskRows.filter((row) => row.status === "ok" && typeof row.score === "number").map((row) => Number(row.score));
+    const best = scores.length > 0 ? Math.max(...scores) : null;
+    return { task_id: taskId, score: best, passed: best !== null && best >= threshold, rollouts: taskRows.length };
+  });
+  const failed = tasks.filter((task) => !task.passed);
+  return {
+    schema_version: CALIBRATION_SCHEMA,
+    benchmark_id: args.benchmarkId,
+    run_id: args.runId,
+    incumbent_models: [...incumbents].sort(),
+    threshold,
+    started_at: eventTs("run_started"),
+    finished_at: eventTs("run_finished"),
+    tasks,
+    passed_count: tasks.length - failed.length,
+    failed_count: failed.length,
+    failed_task_ids: failed.map((task) => task.task_id),
+  };
+}
+
+/** Rebuild calibration.json from a finished incumbent run's rows + events. Best-effort: never fails the run. */
+function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, selectedTaskIds: string[]): void {
+  try {
+    // Rows/events re-read through the SHARED tolerant codec (never a private parser).
+    const rows = (request.incumbent_models ?? []).flatMap((model) => readJsonlFile<Obj>(rowsFilePath(benchmarkDir, request.run_id, model)).items);
+    const summary = deriveCalibrationSummary({
+      benchmarkId: request.benchmark_id,
+      runId: request.run_id,
+      incumbentModels: request.incumbent_models ?? [],
+      threshold: request.calibration_threshold,
+      selectedTaskIds,
+      rows,
+      events: readJsonlFile<Obj>(runEventsPath(benchmarkDir)).items,
+    });
+    const file = calibrationPath(benchmarkDir);
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
+    renameSync(tmp, file);
+  } catch {
+    // calibration is a derived sidecar — a write failure must not fail the run
+  }
 }
 
 /** Execute every queued request once, oldest first. */

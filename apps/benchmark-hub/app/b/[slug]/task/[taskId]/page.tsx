@@ -113,6 +113,10 @@ export default async function TaskInspector({
           <Badge>{task.category_id}</Badge>
           <Badge>{task.genesis}</Badge>
           <SplitChip split={task.split} />
+          {task.incumbent?.model && <Badge className="border-warn/40 text-warn">incumbent: {task.incumbent.model}</Badge>}
+          {entry.calibration?.failed_task_ids.includes(task.task_id) && (
+            <Badge className="border-bad/40 text-bad">incumbent failed on rerun · suspect</Badge>
+          )}
           <FlagBadge count={openFlags.length} />
         </div>
         <div className="mt-4 flex flex-col gap-2">
