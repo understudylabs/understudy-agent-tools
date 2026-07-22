@@ -374,12 +374,21 @@ export type ReviewPolicy = {
   min_confidence: MachineConfidence;
   /** When false, an incumbent calibration failure no longer blocks auto-accept. */
   require_incumbent_pass: boolean;
+  /**
+   * Effective decision for a task with NO reviews.jsonl line (additive,
+   * default "accept"): "accept" means generated tasks are born accepted —
+   * machine signals render as attention flags, not acceptance blockers;
+   * "pending" preserves the older flow where every task awaits an explicit
+   * (human or applied-auto) accept before it counts as accepted.
+   */
+  default_decision: "accept" | "pending";
 };
 
 export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
   schema_version: REVIEW_POLICY_SCHEMA,
   min_confidence: "high",
   require_incumbent_pass: true,
+  default_decision: "accept",
 };
 
 const CONFIDENCE_RANK: Record<MachineConfidence, number> = { high: 2, medium: 1, low: 0 };
@@ -415,6 +424,9 @@ export function readReviewPolicy(benchmarkDir: string): ReviewPolicy {
       : {}),
     ...(typeof parsed.require_incumbent_pass === "boolean"
       ? { require_incumbent_pass: parsed.require_incumbent_pass }
+      : {}),
+    ...(parsed.default_decision === "accept" || parsed.default_decision === "pending"
+      ? { default_decision: parsed.default_decision }
       : {}),
   };
 }

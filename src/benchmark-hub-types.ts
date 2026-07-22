@@ -490,9 +490,9 @@ export type MachineConfidence = "high" | "medium" | "low";
 
 /**
  * understudy.review_policy.v1 — optional review-policy.json sidecar next to
- * the foundry manifest. Configures the exception-review auto-accept bar;
- * absent file = the defaults (min_confidence "high", require_incumbent_pass
- * true), i.e. exactly the pre-policy behavior.
+ * the foundry manifest. Configures the attention/auto-accept bar and the
+ * default effective decision; absent file = the defaults (min_confidence
+ * "high", require_incumbent_pass true, default_decision "accept").
  */
 export type ReviewPolicy = {
   schema_version: "understudy.review_policy.v1";
@@ -500,4 +500,10 @@ export type ReviewPolicy = {
   min_confidence: MachineConfidence;
   /** When false, an incumbent calibration failure no longer blocks auto-accept. */
   require_incumbent_pass: boolean;
+  /**
+   * Effective decision for a task with no reviews.jsonl line: "accept"
+   * (default — tasks are born accepted, machine signals are attention flags)
+   * or "pending" (the older explicit-accept flow).
+   */
+  default_decision: "accept" | "pending";
 };

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { taskDisplayName, type FoundryContractItem, type ProposedHubEntry } from "@/lib/types";
-import { taskProvenance } from "@/lib/data";
+import { effectiveDecision, taskProvenance } from "@/lib/data";
 import { trivialPassesForTask } from "@/lib/scores";
 import { Badge, ConfidenceChip, DecisionBadge } from "@/components/badges";
 import { TaskViews } from "@/components/trajectory/task-views";
@@ -42,6 +42,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
   const task = entry.tasks.find((t) => t.task_id === taskId);
   if (!task) notFound();
   const review = entry.latestReviewByTask[task.task_id] ?? null;
+  const effective = effectiveDecision(entry, task.task_id);
   const displayName = taskDisplayName(task);
   const provenance = taskProvenance(entry, task);
   const criteria = task.authored?.success_criteria ?? [];
@@ -146,7 +147,16 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         {/* Header id + chip rows cut (design feedback) — the review decision
             still shows, and a frontier-complexity contradiction stays loud. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <DecisionBadge decision={review?.decision ?? null} />
+          {/* Born accepted: an explicit review line renders as the decision;
+              with none, the resting state is a quiet accepted-by-default chip
+              (or pending, when the policy opts into the old flow). */}
+          {review ? (
+            <DecisionBadge decision={review.decision} />
+          ) : effective.decision === "accept" ? (
+            <Badge className="text-ok border-ok/50">accepted · default</Badge>
+          ) : (
+            <DecisionBadge decision={null} />
+          )}
           {review?.source === "auto" && <Badge>auto-accepted · override below</Badge>}
           {/* Suspect signals: incumbent failed its own task, or a trivial
               (null/spam) agent passes it with no real work. */}
@@ -166,14 +176,14 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           <>
             <AuthoredStatementCard task={task} />
             <p className="mt-2">
-              <Link className="mono text-xs" href={`/b/${entry.slug}#narrative`}>full narrative →</Link>
+              <Link className="mono text-xs" href={`/b/${entry.slug}#details`}>full narrative →</Link>
             </p>
           </>
         ) : archetype ? (
           <p className="mt-3 text-xs text-ink-muted" style={{ maxWidth: "70ch" }}>
             <b>{archetype.archetype_title ?? archetype.category_id}</b>
             {archetype.archetype_description ? ` — ${archetype.archetype_description}` : ""}{" "}
-            <Link className="mono" href={`/b/${entry.slug}#narrative`}>
+            <Link className="mono" href={`/b/${entry.slug}#details`}>
               full narrative →
             </Link>
           </p>
@@ -191,20 +201,25 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         </div>
       </section>
 
-      <AuthoredPanel slug={entry.slug} task={task} review={review} readOnly={entry.readOnly} />
-
-      {/* Conversational edit: the user's words become the task-modification
+      {/* PRIMARY tweak path (design feedback: review is editing, not
+          judgment): the user's words become the task-modification
           instruction — recorded to feedback.jsonl, executed by THEIR agent
           via the copyable regenerate-env handoff (the hub never executes). */}
       <section className="u-section" id="feedback">
         <div className="u-sec-head">
-          <span className="u-sec-no">03</span>
-          <h2>Fix this task</h2>
+          <span className="u-sec-no">02</span>
+          <h2>What&apos;s wrong with this task?</h2>
         </div>
+        <p className="exp mt-2">
+          The task is accepted as generated — if something is off, say it here and your agent fixes it in place; use
+          the override verbs below only when the task shouldn&apos;t exist as-is.
+        </p>
         <div className="mt-4">
           <TaskFeedbackBox slug={entry.slug} taskId={task.task_id} readOnly={entry.readOnly} />
         </div>
       </section>
+
+      <AuthoredPanel slug={entry.slug} task={task} review={review} readOnly={entry.readOnly} />
     </div>
   );
 }

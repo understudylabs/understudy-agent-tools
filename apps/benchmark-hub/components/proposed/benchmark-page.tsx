@@ -1,59 +1,59 @@
 import Link from "next/link";
 import { taskDisplayName, type ProposedHubEntry } from "@/lib/types";
-import { deriveAutoReviewProposals } from "@/lib/data";
+import { deriveTaskAttention, effectiveDecision } from "@/lib/data";
+import { trivialPassesForTask } from "@/lib/scores";
 import { complexityLabel } from "@/lib/trajectory-core";
 import { Badge, SourceBadge, StageBadge } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
-import { TaskTable } from "@/components/task-table";
-import { ReviewQueue, type QueueTask } from "@/components/proposed/review-queue";
 import { CalibrationFloors } from "@/components/calibration-floors";
+import { TaskInbox, type InboxRow } from "@/components/proposed/task-inbox";
 
 /**
- * The foundry's promotion blockers for machine-compiled outputs. Mirrored
- * statically here rather than read from the output dir's benchmark.json —
- * that file collides with the promoted understudy.benchmark.v1 schema name
- * (rename tracked upstream) and is never consumed beyond task-id cross-checks.
+ * The proposed /b/<slug> page IS the task inbox (design feedback: "how would
+ * we get this to be JUST the task inbox — too much redundancy").
+ *
+ * Generated tasks are born accepted: no pending state to clear, no
+ * apply-auto-accepts click. One row per task carries the title, split,
+ * attention flags, effective decision, and inline reject / needs-work
+ * actions; flagged tasks sort to the top. Everything that used to stack here
+ * (authored narrative lead, exception-queue section, summary stat cards,
+ * category grid) collapses into the compact header strip or the "workload
+ * details" disclosure below the inbox — the task pages carry the depth.
  */
-const PROMOTION_BLOCKERS = ["human_final_judgment", "sentinel_tests"];
-
 export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
   const name = entry.dir.split("/").pop() ?? entry.slug;
   const total = entry.tasks.length;
-  const decisions = entry.tasks.map((t) => entry.latestReviewByTask[t.task_id]?.decision ?? null);
-  const reviewed = decisions.filter(Boolean).length;
-  const awaiting = total - reviewed;
-  const accepted = decisions.filter((d) => d === "accept").length;
-  const restricted = decisions.filter((d) => d === "restrict").length;
-  const rejected = decisions.filter((d) => d === "reject").length;
-  const needsMore = decisions.filter((d) => d === "needs_more").length;
   const f = entry.foundry;
-  // Generation-time self-check (foundry structural sentinels), stamped on
-  // each task; older builds without the block simply show nothing.
-  const selfCheckFailed = entry.tasks.filter((t) => t.self_check != null && t.self_check.ok === false);
 
-  // Exception-first review: classify pending tasks server-side (pure policy,
-  // nothing written) and project serializable props for the client queue.
-  const proposals = deriveAutoReviewProposals(entry);
-  const toQueueTask = (taskId: string, reasons: string[]): QueueTask => {
-    const task = entry.tasks.find((t) => t.task_id === taskId);
+  const flagsByTask = new Map(deriveTaskAttention(entry).map((a) => [a.task_id, a.flags]));
+  const rows: InboxRow[] = entry.tasks.map((t) => {
+    const eff = effectiveDecision(entry, t.task_id);
+    const line = entry.latestReviewByTask[t.task_id];
     return {
-      taskId,
-      displayName: task ? taskDisplayName(task) : taskId,
-      href: `/b/${entry.slug}/task/${encodeURIComponent(taskId)}`,
-      reasons,
+      taskId: t.task_id,
+      href: `/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`,
+      displayName: taskDisplayName(t),
+      split: t.split,
+      flags: flagsByTask.get(t.task_id) ?? [],
+      trivialPass: trivialPassesForTask(entry.calibration, t.task_id).some((v) => v.exceeded),
+      decision: eff.decision,
+      explicit: eff.explicit,
+      auto: line?.source === "auto",
     };
-  };
-  const autoAccepts = proposals.filter((p) => p.verdict === "auto_accept").map((p) => toQueueTask(p.task_id, []));
-  const exceptions = proposals.filter((p) => p.verdict === "exception");
-  const exceptionsByReason = ["low_confidence", "self_check_failed", "incumbent_failed", "schema_conflict", "anomaly"]
-    .map((reason) => ({
-      reason,
-      tasks: exceptions.filter((p) => p.reasons.includes(reason as (typeof p.reasons)[number])).map((p) => toQueueTask(p.task_id, p.reasons)),
-    }))
-    .filter((g) => g.tasks.length > 0);
+  });
+  const attention = rows.filter((r) => !r.explicit && (r.flags.length > 0 || r.trivialPass)).length;
+  const overridden = rows.filter((r) => r.explicit && r.decision !== "accept").length;
+  const pendingMode = (entry.reviewPolicy?.default_decision ?? "accept") === "pending";
+
+  // Compact calibration status for the header line.
+  const cal = entry.calibration;
+  const calNote = cal
+    ? `incumbent calibration: ${cal.passed_count}/${cal.passed_count + cal.failed_count} passed`
+    : "no incumbent calibration yet";
 
   return (
     <div className="u-page">
+      {/* COMPACT HEADER STRIP: name, chips, one status line. */}
       <header className="u-head">
         <p className="u-eyebrow" style={{ marginBottom: 10 }}>
           <Link href="/">← All benchmarks</Link>
@@ -61,112 +61,141 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
         <div className="u-title-row">
           <h1>{name}</h1>
         </div>
-        {/* Chips on their own line — long titles/ids never fight badges */}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <StageBadge stage="proposed" />
           <SourceBadge entry={entry} />
-          <Badge>machine-compiled · review pending</Badge>
+          <Badge>machine-compiled · accepted by default</Badge>
+          {pendingMode && <Badge className="text-warn border-warn/40">policy: explicit-accept mode</Badge>}
         </div>
-
-        {/* workload-summary-slot */}
-        {entry.overview && (
-          <div className="mt-4">
-                <div className="u-card">
-                  <h3>What we&apos;ve seen in your workload</h3>
-                  {entry.overview.workload_summary ? (
-                    <WorkloadSummary text={entry.overview.workload_summary} />
-                  ) : (
-                    <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
-                  )}
-                  {(entry.overview.system_prompt_clusters ?? []).length > 0 && (
-                    <details className="mt-3">
-                      <summary className="mono cursor-pointer text-[11px] text-ink-muted">
-                        {(entry.overview.system_prompt_clusters ?? []).length === 1
-                          ? "one canonical system prompt"
-                          : `this workload runs ${(entry.overview.system_prompt_clusters ?? []).length} prompt variants`}
-                        {" · deterministic evidence"}
-                      </summary>
-                      <div className="mt-2 flex flex-col gap-2">
-                        {(entry.overview.system_prompt_clusters ?? []).map((c) => (
-                          <div key={c.hash}>
-                            <span className="mono text-[10px] text-faint">
-                              {c.hash} · {c.count} capture{c.count === 1 ? "" : "s"} · {(c.coverage * 100).toFixed(0)}% coverage
-                            </span>
-                            <pre className="u-pre mt-1" style={{ maxHeight: 140 }}>{c.representative_excerpt}</pre>
-                          </div>
-                        ))}
-                        {(entry.overview.tool_usage ?? []).length > 0 && (
-                          <ToolUsageTable rows={entry.overview.tool_usage ?? []} />
-                        )}
-                      </div>
-                    </details>
-                  )}
-                  <p className="mono mt-2 text-[10px] text-faint">
-                    authored by {entry.overview.model ?? "unknown model"}
-                    {entry.overview.authored_at ? ` · ${entry.overview.authored_at.slice(0, 10)}` : ""}
-                  </p>
-                </div>
-          </div>
-        )}
-
-        <div className="u-stats">
-          <div className="u-stat">
-            <span className="lab">Tasks</span>
-            <span className="val">{total}</span>
-            <span className="sub">
-              {entry.tasks.filter((t) => t.close_call).length} close call{entry.tasks.filter((t) => t.close_call).length === 1 ? "" : "s"}
-            </span>
-          </div>
-          <div className="u-stat">
-            <span className="lab">Awaiting review</span>
-            <span className="val" style={awaiting > 0 ? { color: "var(--warn-ink)" } : undefined}>
-              {awaiting}
-            </span>
-            <span className="sub">{reviewed} reviewed</span>
-          </div>
-          <div className="u-stat">
-            <span className="lab">Accepted</span>
-            <span className="val" style={{ color: accepted > 0 ? "var(--live)" : undefined }}>
-              {accepted}
-            </span>
-            <span className="sub">{restricted} restricted · {needsMore} needs more</span>
-          </div>
-          <div className="u-stat">
-            <span className="lab">Rejected</span>
-            <span className="val" style={{ color: rejected > 0 ? "var(--bad)" : undefined }}>
-              {rejected}
-            </span>
-            <span className="sub">never promoted</span>
-          </div>
-          <div className="u-stat">
-            <span className="lab">Captures</span>
-            <span className="val">{f.counts.captures}</span>
-            <span className="sub">newest {f.freshness.newest_capture_utc.slice(0, 10)}</span>
-          </div>
-        </div>
-        {selfCheckFailed.length > 0 && (
-          <span className="u-foot-note" style={{ color: "var(--bad)" }}>
-            {"// generation self-check failed on " +
-              selfCheckFailed.length +
-              " task" +
-              (selfCheckFailed.length === 1 ? "" : "s") +
-              ": " +
-              selfCheckFailed
-                .slice(0, 5)
-                .map((t) => `${t.task_id} (${(t.self_check?.failures ?? []).map((x) => x.check).join(", ")})`)
-                .join("; ") +
-              (selfCheckFailed.length > 5 ? ` … and ${selfCheckFailed.length - 5} more` : "")}
-          </span>
-        )}
-        {/* Trivial-arm floors from a pre-promotion calibration run: red flag +
-            offending-task links when a null/spam agent clears the 5% limit. */}
+        <p className="mono mt-3 text-xs text-ink-muted">
+          {total} task{total === 1 ? "" : "s"}
+          {attention > 0 ? (
+            <span style={{ color: "var(--warn-ink)" }}> · {attention} worth a look</span>
+          ) : (
+            " · nothing flagged"
+          )}
+          {overridden > 0 ? ` · ${overridden} overridden` : ""}
+          {" · "}
+          {calNote}
+          {" · "}
+          {f.counts.captures} capture{f.counts.captures === 1 ? "" : "s"} (newest{" "}
+          {f.freshness.newest_capture_utc.slice(0, 10)})
+        </p>
+        {/* Trivial-arm floors stay loud — a structural red flag, not detail. */}
         {entry.calibration && <CalibrationFloors calibration={entry.calibration} slug={entry.slug} />}
         {entry.crossCheckErrors.length > 0 && (
           <span className="u-foot-note" style={{ color: "var(--warn-ink)" }}>
             {"// tasks.jsonl and benchmark.json disagree on task ids: " + entry.crossCheckErrors.join("; ")}
           </span>
         )}
-        {entry.diagnostics.skippedLines + entry.diagnostics.droppedRows > 0 && (
+      </header>
+
+      {/* THE PAGE IS THE INBOX. */}
+      <section className="u-sec" id="tasks">
+        {total === 0 ? (
+          <EmptyState
+            what="The foundry emitted no tasks for this output — the source captures produced no execution groups."
+            next="understudy traces build-benchmark --source <captures> --output <dir> --max-age-days <n>"
+          />
+        ) : (
+          <TaskInbox slug={entry.slug} readOnly={entry.readOnly} rows={rows} />
+        )}
+      </section>
+
+      {/* Everything else folds behind one disclosure. */}
+      <WorkloadDetails entry={entry} />
+    </div>
+  );
+}
+
+/**
+ * Secondary disclosure: the authored workload narrative, prompt-variant
+ * evidence, category grid, and loader diagnostics — moved off the main scan
+ * path (they used to lead the page).
+ */
+function WorkloadDetails({ entry }: { entry: ProposedHubEntry }) {
+  const overview = entry.overview;
+  const hasDiagnostics = entry.diagnostics.skippedLines + entry.diagnostics.droppedRows > 0;
+  if (!overview && !hasDiagnostics) return null;
+  return (
+    <section className="u-sec" id="details">
+      <details>
+        <summary className="mono cursor-pointer text-[11px] text-ink-muted">workload details — narrative, categories, evidence</summary>
+
+        {overview && (
+          <div className="u-card mt-3">
+            <h3>What we&apos;ve seen in your workload</h3>
+            {overview.workload_summary ? (
+              <p className="mt-2 text-sm">{overview.workload_summary}</p>
+            ) : (
+              <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
+            )}
+            {(overview.system_prompt_clusters ?? []).length > 0 && (
+              <details className="mt-3">
+                <summary className="mono cursor-pointer text-[11px] text-ink-muted">
+                  {(overview.system_prompt_clusters ?? []).length === 1
+                    ? "one canonical system prompt"
+                    : `this workload runs ${(overview.system_prompt_clusters ?? []).length} prompt variants`}
+                  {" · deterministic evidence"}
+                </summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  {(overview.system_prompt_clusters ?? []).map((c) => (
+                    <div key={c.hash}>
+                      <span className="mono text-[10px] text-faint">
+                        {c.hash} · {c.count} capture{c.count === 1 ? "" : "s"} · {(c.coverage * 100).toFixed(0)}% coverage
+                      </span>
+                      <pre className="u-pre mt-1" style={{ maxHeight: 140 }}>{c.representative_excerpt}</pre>
+                    </div>
+                  ))}
+                  {(overview.tool_usage ?? []).length > 0 && <ToolUsageTable rows={overview.tool_usage ?? []} />}
+                </div>
+              </details>
+            )}
+            <p className="mono mt-2 text-[10px] text-faint">
+              authored by {overview.model ?? "unknown model"}
+              {overview.authored_at ? ` · ${overview.authored_at.slice(0, 10)}` : ""}
+            </p>
+          </div>
+        )}
+
+        {overview && overview.categories.length > 0 && (
+          <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {overview.categories.map((c) => {
+              const members = new Set(c.representative_task_ids);
+              const representatives = entry.tasks.filter((t) => members.has(t.task_id));
+              return (
+                <div key={c.category_id} className="u-card">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <span className="text-sm font-bold">{c.archetype_title ?? c.category_id}</span>
+                    <Badge>
+                      {c.task_count ?? c.representative_task_ids.length} task{(c.task_count ?? 1) === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  {c.archetype_description && <p className="mt-2 text-xs text-ink-muted">{c.archetype_description}</p>}
+                  {representatives.length > 0 && (
+                    <ul className="mt-3 flex list-none flex-col gap-1 p-0">
+                      {representatives.map((t) => {
+                        const cx = overview.task_complexity?.[t.task_id];
+                        return (
+                          <li key={t.task_id} className="text-xs">
+                            <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{taskDisplayName(t)}</Link>
+                            {cx?.frontier && (
+                              <span className="mono ml-1 text-[10px]" style={{ color: "var(--warn-ink)" }}>
+                                upper bound: {complexityLabel(cx)}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {hasDiagnostics && (
           <span className="u-foot-note">
             {"// loader diagnostics: " +
               entry.diagnostics.skippedLines +
@@ -175,142 +204,8 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
               " task lines dropped (wrong schema_version)"}
           </span>
         )}
-      </header>
-
-      <div>
-          {/* Exception queue LEADS the page — auto-accepts collapse to one action. */}
-          <ReviewQueue
-            slug={entry.slug}
-            readOnly={entry.readOnly}
-            exceptionsByReason={exceptionsByReason}
-            autoAccepts={autoAccepts}
-            policyNote={
-              entry.reviewPolicy &&
-              (entry.reviewPolicy.min_confidence !== "high" || !entry.reviewPolicy.require_incumbent_pass)
-                ? `min_confidence ${entry.reviewPolicy.min_confidence} · require_incumbent_pass ${entry.reviewPolicy.require_incumbent_pass}`
-                : null
-            }
-          />
-
-          <section className="u-sec" id="tasks">
-            <h2>Task inbox</h2>
-            <p className="exp">
-              Machine-proposed tasks awaiting final judgment. Click a task to inspect its outcome contract, world
-              model, source captures — and record a decision.
-            </p>
-            {total === 0 ? (
-              <EmptyState
-                what="The foundry emitted no tasks for this output — the source captures produced no execution groups."
-                next="understudy traces build-benchmark --source <captures> --output <dir> --max-age-days <n>"
-              />
-            ) : (
-              <>
-                {reviewed === 0 && (
-                  <EmptyState
-                    what="No task has been reviewed yet — this benchmark is pure machine proposal until a human records a first decision."
-                    next={`open a task below → accept | restrict | needs_more | reject  (${total} pending)`}
-                  />
-                )}
-                {awaiting === 0 && total > 0 && (
-                  <EmptyState
-                    done
-                    what={
-                      <>
-                        <b>All {total} tasks reviewed.</b> Next: promotion — this output stays non-executable until
-                        the foundry&apos;s promotion blockers clear: {PROMOTION_BLOCKERS.join(", ")}.
-                      </>
-                    }
-                    next="promotion tooling lands upstream; accepted tasks become the promoted benchmark's manifest"
-                  />
-                )}
-                <TaskTable
-                  stage="proposed"
-                  rows={entry.tasks.map((t) => {
-                    const cx = entry.overview?.task_complexity?.[t.task_id] ?? null;
-                    return {
-                      taskId: t.task_id,
-                      href: `/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`,
-                      displayName: taskDisplayName(t),
-                      rawTitle: t.title,
-                      split: t.split,
-                      confidence: t.machine_confidence,
-                      reviewDecision: entry.latestReviewByTask[t.task_id]?.decision ?? null,
-                      closeCall: t.close_call,
-                      authored: !!t.authored,
-                      selfCheckFailures: t.self_check != null && t.self_check.ok === false ? t.self_check.failures.length : 0,
-                      promptLength: (t.authored?.statement ?? t.title ?? "").length,
-                      contextTokens: cx?.approx_context_tokens ?? null,
-                      frontier: cx?.frontier ?? false,
-                      // Authored "easy" on a frontier-complex task is a mismatch a human should see.
-                      complexityMismatch: cx?.frontier === true && t.authored?.difficulty === "easy",
-                    };
-                  })}
-                />
-              </>
-            )}
-          </section>
-
-        {entry.overview && entry.overview.categories.length > 0 && (
-          <section className="u-sec" id="identified">
-            <h2>The tasks we&apos;ve identified</h2>
-                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                    {entry.overview.categories.map((c) => {
-                      const members = new Set(c.representative_task_ids);
-                      const representatives = entry.tasks.filter((t) => members.has(t.task_id));
-                      return (
-                        <div key={c.category_id} className="u-card">
-                          <div className="flex flex-wrap items-baseline gap-2">
-                            <span className="text-sm font-bold">{c.archetype_title ?? c.category_id}</span>
-                            <Badge>{c.task_count ?? c.representative_task_ids.length} task{(c.task_count ?? 1) === 1 ? "" : "s"}</Badge>
-                          </div>
-                          {c.archetype_description && <p className="mt-2 text-xs text-ink-muted">{c.archetype_description}</p>}
-                          {representatives.length > 0 && (
-                            <ul className="mt-3 flex list-none flex-col gap-1 p-0">
-                              {representatives.map((t) => {
-                                const cx = entry.overview?.task_complexity?.[t.task_id];
-                                return (
-                                  <li key={t.task_id} className="text-xs">
-                                    <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{taskDisplayName(t)}</Link>
-                                    {cx?.frontier && (
-                                      <span className="mono ml-1 text-[10px]" style={{ color: "var(--warn-ink)" }}>
-                                        upper bound: {complexityLabel(cx)}
-                                      </span>
-                                    )}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-          </section>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Authored summaries arrive as one paragraph; render the first two sentences
- * as the lead and fold the rest behind a disclosure so the narrative never
- * reads as a wall of text.
- */
-function WorkloadSummary({ text }: { text: string }) {
-  const sentences = text.match(/[^.!?]+[.!?]+(?:\s|$)/g) ?? [text];
-  const lead = sentences.slice(0, 2).join("").trim();
-  const rest = sentences.slice(2).join("").trim();
-  return (
-    <div className="mt-2">
-      <p className="text-sm">{lead}</p>
-      {rest.length > 0 && (
-        <details className="mt-1">
-          <summary className="mono cursor-pointer text-[11px] text-ink-muted">read the full summary</summary>
-          <p className="mt-1 text-sm text-ink-muted">{rest}</p>
-        </details>
-      )}
-    </div>
+      </details>
+    </section>
   );
 }
 

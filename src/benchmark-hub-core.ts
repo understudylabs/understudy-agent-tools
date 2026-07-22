@@ -794,14 +794,19 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     const taskId = requested[0];
     const task = entry.tasks.find((t) => t.task_id === taskId);
     if (!task) return { ok: false, error: "unknown task_id", status: 404 };
-    const decision = entry.latestReviewByTask[taskId]?.decision ?? null;
-    if (decision !== "accept") {
+    // Effective decision, not raw review lines: under the born-accepted
+    // default an unreviewed task IS accepted (runnability stays gated by
+    // oracle-strict readiness below — correctness, not opinion). An explicit
+    // reject/restrict/needs_more line still blocks; policy default_decision
+    // "pending" restores the old explicit-accept gate.
+    const eff = effectiveDecision(entry, taskId);
+    if (eff.decision !== "accept") {
       return {
         ok: false,
         error:
-          decision === null
-            ? "task not accepted yet (unreviewed)"
-            : `task not accepted yet (latest review: ${decision})`,
+          eff.decision === null
+            ? 'task not accepted yet (unreviewed, review-policy default_decision "pending")'
+            : `task not accepted yet (latest review: ${eff.decision})`,
         status: 403,
       };
     }
@@ -875,11 +880,11 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
 }
 
 /* ------------------------------------------------------------------ */
-/* Exception-based review: auto-accept policy + conversational task    */
-/* feedback. NEW exported functions only — nothing above is rewritten. */
+/* Task-inbox review: born-accepted derivation + attention flags +     */
+/* conversational task feedback.                                       */
 /* ------------------------------------------------------------------ */
 
-/** Machine-readable reasons a pending task needs human judgment. */
+/** Machine-readable signals that a task deserves a human look (attention flags). */
 export const AUTO_REVIEW_REASONS = [
   "low_confidence",
   "self_check_failed",
@@ -888,6 +893,68 @@ export const AUTO_REVIEW_REASONS = [
   "anomaly",
 ] as const;
 export type AutoReviewReason = (typeof AUTO_REVIEW_REASONS)[number];
+
+/** Attention flags share the reason vocabulary (stable machine names). */
+export const ATTENTION_FLAGS = AUTO_REVIEW_REASONS;
+export type AttentionFlag = AutoReviewReason;
+
+/**
+ * The effective review decision for one task under the born-accepted model.
+ * - An explicit reviews.jsonl line (newest per task wins) always decides.
+ * - With no line, the review policy's default_decision applies:
+ *   "accept" (default) → the task is accepted at rest; "pending" → null
+ *   (the older flow where an explicit accept is required).
+ * `explicit` distinguishes a human/auto-written line from the derived default.
+ */
+export type EffectiveDecision = { decision: ReviewDecision | null; explicit: boolean };
+
+export function effectiveDecision(entry: ProposedHubEntry, taskId: string): EffectiveDecision {
+  const line = entry.latestReviewByTask[taskId];
+  if (line) return { decision: line.decision, explicit: true };
+  const policy = entry.reviewPolicy ?? DEFAULT_REVIEW_POLICY;
+  return { decision: policy.default_decision === "pending" ? null : "accept", explicit: false };
+}
+
+/** One task's attention flags — the machine signals, decoupled from acceptance. */
+export type TaskAttention = { task_id: string; flags: AttentionFlag[] };
+
+/**
+ * Pure per-task attention derivation over EVERY task (reviewed or not):
+ * - machine_confidence below policy.min_confidence, or close_call
+ *   → low_confidence
+ * - a stamped, failed foundry self_check → self_check_failed
+ * - policy.require_incumbent_pass and the incumbent failed the task in the
+ *   calibration rerun → incumbent_failed
+ * - tasks.jsonl / benchmark.json disagreement on the id → schema_conflict
+ * - an executor anomaly sentinel on any eval row → anomaly
+ *
+ * These are ATTENTION flags, not acceptance blockers: under
+ * default_decision "accept" a flagged task is still effectively accepted
+ * (and runnable, oracle-strict permitting) until a human rejects/restricts
+ * it. Nothing is written here.
+ */
+export function deriveTaskAttention(entry: ProposedHubEntry): TaskAttention[] {
+  const policy: ReviewPolicy = entry.reviewPolicy ?? DEFAULT_REVIEW_POLICY;
+  const calibrationByTask = new Map<string, boolean>();
+  for (const t of entry.calibration?.tasks ?? []) calibrationByTask.set(t.task_id, t.passed);
+  const failedIds = new Set(entry.calibration?.failed_task_ids ?? []);
+  const anomalousTaskIds = new Set(entry.rows.filter((r) => r.anomaly != null).map((r) => r.task_id));
+
+  return entry.tasks.map((task) => {
+    const flags: AttentionFlag[] = [];
+    if (!meetsConfidenceBar(task.machine_confidence, policy.min_confidence) || task.close_call) {
+      flags.push("low_confidence");
+    }
+    if (task.self_check != null && task.self_check.ok === false) flags.push("self_check_failed");
+    const calibrated = calibrationByTask.get(task.task_id);
+    if (policy.require_incumbent_pass && (calibrated === false || failedIds.has(task.task_id))) {
+      flags.push("incumbent_failed");
+    }
+    if (entry.crossCheckErrors.some((e) => e.includes(task.task_id))) flags.push("schema_conflict");
+    if (anomalousTaskIds.has(task.task_id)) flags.push("anomaly");
+    return { task_id: task.task_id, flags };
+  });
+}
 
 export type AutoReviewProposal = {
   task_id: string;
@@ -908,48 +975,29 @@ export const AUTO_ACCEPT_CONFIDENCE_THRESHOLD: FoundryTask["machine_confidence"]
   DEFAULT_REVIEW_POLICY.min_confidence;
 
 /**
- * Pure classification of every PENDING task (tasks whose newest review line,
- * if any, already decided them are skipped — auto-accept never re-decides).
+ * Classification of every task WITHOUT an explicit review line (tasks whose
+ * newest reviews.jsonl line already decided them are skipped — auto-accept
+ * never re-decides). Built on the same signals as deriveTaskAttention:
+ * verdict "auto_accept" when the task carries no attention flag, "exception"
+ * otherwise, reasons ordered by AUTO_REVIEW_REASONS.
  *
- * The bar comes from the entry's review-policy.json (entry.reviewPolicy,
- * defaults when absent). AUTO_ACCEPT requires ALL of:
- * - machine_confidence ≥ policy.min_confidence and not close_call
- *   (else: low_confidence)
- * - the foundry self_check, when stamped, passed (else: self_check_failed;
- *   pre-self-check builds without the block count as clean)
- * - when policy.require_incumbent_pass: calibration.json absent, or absent
- *   for this task, or the incumbent passed it (else: incumbent_failed)
- * - tasks.jsonl and benchmark.json agree on this task id (else: schema_conflict)
- * - no eval row for the task carries an executor anomaly sentinel (else: anomaly)
+ * Under the born-accepted default (review-policy default_decision "accept")
+ * this classification is informational — flags mark ATTENTION, not blocked
+ * acceptance. It remains the acceptance policy for benchmarks that opt into
+ * default_decision "pending" (via applyAutoAccepts).
  *
  * Classification only — nothing is written here. Writes happen in
  * applyAutoAccepts, and only on an explicit user action.
  */
 export function deriveAutoReviewProposals(entry: ProposedHubEntry): AutoReviewProposal[] {
-  const policy: ReviewPolicy = entry.reviewPolicy ?? DEFAULT_REVIEW_POLICY;
-  const calibrationByTask = new Map<string, boolean>();
-  for (const t of entry.calibration?.tasks ?? []) calibrationByTask.set(t.task_id, t.passed);
-  const failedIds = new Set(entry.calibration?.failed_task_ids ?? []);
-  const anomalousTaskIds = new Set(entry.rows.filter((r) => r.anomaly != null).map((r) => r.task_id));
-
+  const attention = deriveTaskAttention(entry);
   const proposals: AutoReviewProposal[] = [];
-  for (const task of entry.tasks) {
-    if (entry.latestReviewByTask[task.task_id]) continue; // already decided (newest-wins)
-    const reasons: AutoReviewReason[] = [];
-    if (!meetsConfidenceBar(task.machine_confidence, policy.min_confidence) || task.close_call) {
-      reasons.push("low_confidence");
-    }
-    if (task.self_check != null && task.self_check.ok === false) reasons.push("self_check_failed");
-    const calibrated = calibrationByTask.get(task.task_id);
-    if (policy.require_incumbent_pass && (calibrated === false || failedIds.has(task.task_id))) {
-      reasons.push("incumbent_failed");
-    }
-    if (entry.crossCheckErrors.some((e) => e.includes(task.task_id))) reasons.push("schema_conflict");
-    if (anomalousTaskIds.has(task.task_id)) reasons.push("anomaly");
+  for (const { task_id, flags } of attention) {
+    if (entry.latestReviewByTask[task_id]) continue; // already decided (newest-wins)
     proposals.push({
-      task_id: task.task_id,
-      verdict: reasons.length === 0 ? "auto_accept" : "exception",
-      reasons,
+      task_id,
+      verdict: flags.length === 0 ? "auto_accept" : "exception",
+      reasons: flags,
     });
   }
   return proposals;
@@ -962,9 +1010,14 @@ export type ApplyAutoAcceptsResult =
 /**
  * The ONE write path for auto-decisions: recompute the policy against the
  * entry as loaded and append one `accept` line per AUTO_ACCEPT task, stamped
- * `source: "auto"` (additive field). Called only from an explicit user action
- * ("Apply N auto-accepts") — never on page load. Fully reversible: a later
- * human line for the same task supersedes it (append-only, newest-wins).
+ * `source: "auto"` (additive field). Called only from an explicit user
+ * action — never on page load. Fully reversible: a later human line for the
+ * same task supersedes it (append-only, newest-wins).
+ *
+ * Only meaningful for benchmarks running review-policy default_decision
+ * "pending" (the older explicit-accept flow): under the born-accepted
+ * default, unreviewed clean tasks are already effectively accepted, so
+ * writing these lines is a harmless no-op semantically.
  */
 export function applyAutoAccepts(entry: AnyHubEntry | null): ApplyAutoAcceptsResult {
   if (!entry || entry.kind === "invalid") return { ok: false, error: "unknown benchmark", status: 404 };

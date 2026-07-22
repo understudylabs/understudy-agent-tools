@@ -26,7 +26,7 @@ Claude Code registration (`~/.claude.json` → `mcpServers`):
 | `read_rollout` | trajectory from `runs/live/<run>-<model>.jsonl` + per-obligation contract scoring | `dist/benchmark-replay.js` `accumulateReplay` (the Replay tab's scorer) |
 | `diff_rollouts` | side-by-side obligations + first tool-call divergence between two runs | same |
 | `submit_review` | appends `understudy.benchmark_review.v1` to `reviews.jsonl` | `submitReview` — the exact validation behind `POST /api/reviews` |
-| `apply_auto_accepts` | appends `source:"auto"` accept lines per the review policy (`review-policy.json`, defaults when absent) — the tool call **is** the explicit user action | `applyAutoAccepts` — the exact code behind `POST /api/reviews/auto` |
+| `apply_auto_accepts` | appends `source:"auto"` accept lines per the review policy (`review-policy.json`, defaults when absent) — only needed under `default_decision: "pending"`; the default is born-accepted, where machine signals surface as `attention_flags` on `read_benchmark`/`read_task` instead. The tool call **is** the explicit user action | `applyAutoAccepts` — the exact code behind `POST /api/reviews/auto` |
 | `submit_feedback` | appends `understudy.task_feedback.v1` to `feedback.jsonl` and returns the regenerate-env agent handoff | `submitTaskFeedback` — the exact code behind `POST /api/feedback` |
 | `queue_run` | writes `understudy.run_request.v1` into `runs/queue/` — **never executes** | `queueOrCancelRun` — the exact validation behind `POST /api/runs` |
 | `run_status` | request status + row summary as `rows-*.jsonl` land, plus the calibration block (incumbent gate + null/spam trivial-arm floors) | `run-executor` readers |
@@ -78,8 +78,9 @@ The intended improvement cycle, tool by tool:
    `read_rollout`/`diff_rollouts` against the previous run to confirm the
    obligation that used to fail now passes — and nothing else regressed.
 
-Repeat until the review ledger says `accept` and the score summary holds
-across models you care about.
+Repeat until no task carries an unresolved override (`effective_decision`
+accept — an explicit re-accept or the born-accepted default) and the score
+summary holds across models you care about.
 
 ### Current-code regression loop (app replay)
 
@@ -106,10 +107,14 @@ the same frozen tasks (see [`app-harness.md`](app-harness.md)):
 ## Guardrails
 
 - Reviews are append-only; the newest line per `task_id` wins. Decisions:
-  `accept`, `restrict`, `needs_more`, `reject`.
-- `queue_run` on a *proposed* benchmark accepts exactly one **accepted** task
-  with a validated environment (same gating as the hub); full runs require
-  promotion (`understudy traces promote`).
+  `accept`, `restrict`, `needs_more`, `reject`. Tasks with no line are
+  **born accepted** (review-policy `default_decision: "accept"`, the default);
+  `default_decision: "pending"` restores the explicit-accept flow.
+- `queue_run` on a *proposed* benchmark accepts exactly one **effectively
+  accepted** task (born accepted, or explicitly re-accepted; an explicit
+  reject/restrict/needs_more blocks) with a validated environment (same
+  gating as the hub); full runs require promotion
+  (`understudy traces promote`).
 - Read-only sources (demo/fixture) reject writes.
 - Journals and row files are read with line caps; malformed lines are skipped,
   never fatal.

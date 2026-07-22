@@ -260,12 +260,20 @@ describe("queue_run / run_status", () => {
       () => callBenchmarksTool("queue_run", { slug: proposedSlug, models: ["m1"] }),
       /single-task runs only/,
     );
-    // An UNREVIEWED proposal rejects queueing outright.
+    // Born accepted: an UNREVIEWED task queues under the default policy…
     fs.rmSync(path.join(proposedDir, "reviews.jsonl"));
+    const born = callBenchmarksTool("queue_run", { slug: proposedSlug, models: ["m1"], tasks: [proposedTaskId] });
+    assert.ok(born.run_id.startsWith("run-"));
+    // …but review-policy default_decision "pending" restores the explicit-accept gate.
+    fs.writeFileSync(
+      path.join(proposedDir, "review-policy.json"),
+      JSON.stringify({ schema_version: "understudy.review_policy.v1", default_decision: "pending" }),
+    );
     assert.throws(
       () => callBenchmarksTool("queue_run", { slug: proposedSlug, models: ["m1"], tasks: [proposedTaskId] }),
-      /not accepted yet \(unreviewed\)/,
+      /not accepted yet \(unreviewed, review-policy default_decision "pending"\)/,
     );
+    fs.rmSync(path.join(proposedDir, "review-policy.json"));
     // Re-accept: the accepted task + foundry-validated environment queues (still no execution).
     callBenchmarksTool("submit_review", { slug: proposedSlug, task_id: proposedTaskId, decision: "accept", note: "ok" });
     const out = callBenchmarksTool("queue_run", { slug: proposedSlug, models: ["m1"], tasks: [proposedTaskId] });
