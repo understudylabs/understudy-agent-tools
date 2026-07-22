@@ -190,6 +190,9 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <div className="u-id">
           <span>{m.benchmark_id}</span>
           <CopySlug text={m.benchmark_id} />
+          <Link className="mono" style={{ fontSize: 11 }} href={`/b/${entry.slug}/report`}>
+            Report ↗
+          </Link>
         </div>
         <p className="u-desc">{m.description}</p>
 
