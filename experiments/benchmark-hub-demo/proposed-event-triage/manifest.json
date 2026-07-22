@@ -1,0 +1,31 @@
+{
+  "schema_version": "understudy.trace_foundry.v1",
+  "source": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/foundry-demo-captures",
+  "output_dir": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage",
+  "freshness": {
+    "max_age_days": 36500,
+    "cutoff_utc": "1926-08-16T00:04:49.000Z",
+    "newest_capture_utc": "2026-07-18T14:05:00.000Z"
+  },
+  "counts": {
+    "source_files": 1,
+    "captures": 8,
+    "tasks": 3,
+    "edges": 5,
+    "stale_filtered": 0,
+    "invalid_timestamp_filtered": 0
+  },
+  "artifacts": {
+    "normalized": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage/normalized-captures.jsonl",
+    "dag": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage/source-dag.json",
+    "tasks": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage/tasks.jsonl",
+    "benchmark": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage/benchmark.json",
+    "viewer": "/Users/luis/orca/workspaces/understudy-agent-tools/benchmark-viewer/experiments/benchmark-hub-demo/proposed-event-triage/viewer/index.html"
+  },
+  "privacy": {
+    "local_only": true,
+    "contains_customer_payloads": true,
+    "upload_performed": false,
+    "provider_called": false
+  }
+}
