@@ -1,14 +1,20 @@
 import { Command } from "commander";
-import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   DEFAULT_ROLLOUT_TIMEOUT_SECONDS,
   EXECUTOR_VERSION,
+  createRunRequest,
   executeQueuedRuns,
   listRunRequests,
   oracleRunner,
+  selectTasks,
+  validateRunRequestInput,
   verifiersRunner,
   type ArmRunner,
+  type PromptOverride,
   type RunEvent,
+  type RunSplit,
 } from "../run-executor.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -27,6 +33,46 @@ export function registerRunsCommand(program: Command): void {
     .requiredOption("--benchmark <dir>", "Promoted benchmark directory")
     .action((options: { benchmark: string }) => {
       console.log(JSON.stringify(listRunRequests(resolve(options.benchmark)), null, 2));
+    });
+
+  runs
+    .command("queue")
+    .description("Queue a run request (validated by the same shared schema the hub API uses); execute it with `understudy runs execute`")
+    .requiredOption("--benchmark <dir>", "Promoted benchmark directory")
+    .requiredOption("--models <ids>", "Comma-separated model ids")
+    .option("--split <split>", "train | dev | holdout | all", "all")
+    .option("--tasks <ids>", 'Comma-separated task ids (default "all")')
+    .option("--rollouts <count>", "Rollouts per task", "1")
+    .option("--incumbent <ids>", "Comma-separated subset of --models labeled as the incumbent calibration arm")
+    .option("--rollout-timeout <seconds>", "Per-rollout wall-clock budget written onto the request")
+    .option(
+      "--prompt-override <label=model=file...>",
+      "Prompt-override experiment arm: <arm_label>=<model>=<suffix-file>; the file's text is appended to each task's system prompt at rollout time (repeatable)",
+      (value: string, prior: PromptOverride[] = []) => {
+        const match = /^([^=]+)=([^=]+)=(.+)$/.exec(value);
+        if (!match) throw new Error(`--prompt-override must be <arm_label>=<model>=<suffix-file>, got: ${value}`);
+        return [...prior, { arm_label: match[1], model: match[2], system_prompt_suffix: readFileSync(resolve(match[3]), "utf8").trim() }];
+      },
+    )
+    .action((options: { benchmark: string; models: string; split: string; tasks?: string; rollouts: string; incumbent?: string; rolloutTimeout?: string; promptOverride?: PromptOverride[] }) => {
+      const benchmark = resolve(options.benchmark);
+      const manifest = JSON.parse(readFileSync(join(benchmark, "benchmark.json"), "utf8")) as Record<string, unknown>;
+      const knownTaskIds = (Array.isArray(manifest.tasks) ? (manifest.tasks as Record<string, unknown>[]) : []).map((t) => String(t.task_id));
+      const input = {
+        benchmark_id: String(manifest.benchmark_id),
+        models: options.models.split(",").map((m) => m.trim()).filter(Boolean),
+        split: options.split as RunSplit,
+        tasks: options.tasks ? options.tasks.split(",").map((t) => t.trim()).filter(Boolean) : ("all" as const),
+        rollouts_per_task: Number(options.rollouts),
+        incumbent_models: options.incumbent ? options.incumbent.split(",").map((m) => m.trim()).filter(Boolean) : undefined,
+        rollout_timeout_seconds: options.rolloutTimeout !== undefined ? Number(options.rolloutTimeout) : undefined,
+        prompt_overrides: options.promptOverride,
+      };
+      const errors = validateRunRequestInput(input, knownTaskIds);
+      if (errors.length > 0) throw new Error(`invalid run request: ${errors.join("; ")}`);
+      if (selectTasks(manifest, { split: input.split, tasks: input.tasks }).length === 0) throw new Error(`no tasks match split=${input.split}`);
+      const run = createRunRequest(benchmark, input as Parameters<typeof createRunRequest>[1]);
+      console.log(JSON.stringify(run, null, 2));
     });
 
   runs
