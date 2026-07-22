@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.benchmark.v1.schema.json",
+  "title": "understudy.benchmark.v1",
+  "description": "The canonical benchmark manifest: a task taxonomy plus seeded task instances bound to one executable environment form and one verifier contract. Covers benchmarks derived from a user's own traces, benchmarks imported from external formats (verifiers Environments Hub, Harbor task dirs, AutomationBench, inspect_ai, HF datasets), and hand-authored ones — all first-class in the same shape. The manifest is the durable Understudy-owned artifact; the executable form it points at (a verifiers-v1 environment package) is compiled from it and may be re-targeted when the runtime library moves. Results are NOT stored here: each executed root-to-leaf trace branch projects to one understudy.eval_result.v1 row carrying benchmark_id/category_id/trace_ref as extension fields, and the traces.jsonl DAG is retained as drill-down evidence. Most fields are nullable so a manifest can be started thin (e.g. at import time) and enriched. Producers may add extra fields; consumers must ignore fields they do not understand. This manifest is a local artifact — it must carry references, never inline traces, prompts, gold contents, or secrets.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "provenance", "taxonomy", "tasks", "environment", "verifier"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.benchmark.v1",
+      "description": "Version stamp for this manifest shape."
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for this benchmark across runs, viewers, and handoffs."
+    },
+    "name": {
+      "type": ["string", "null"],
+      "description": "Human-readable name shown in the viewer."
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "What the benchmark measures and where it came from."
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "description": "ISO-8601 creation timestamp."
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["origin"],
+      "additionalProperties": true,
+      "properties": {
+        "origin": {
+          "enum": ["derived-from-traces", "imported", "authored"],
+          "description": "How this benchmark came to exist. derived-from-traces = induced from the user's own captured workload; imported = converted from an external benchmark format; authored = written by hand."
+        },
+        "source_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths or ids of the local evidence this benchmark is grounded in (ingest artifacts, workload cards, trace corpus ids). References only — never inline contents."
+        },
+        "imported_from": {
+          "type": ["object", "null"],
+          "required": ["format", "ref"],
+          "additionalProperties": true,
+          "properties": {
+            "format": {
+              "enum": ["verifiers.v1", "verifiers.v0", "harbor", "inspect_ai", "automationbench", "hf-dataset", "other"],
+              "description": "External format the benchmark was converted from."
+            },
+            "ref": {
+              "type": "string",
+              "minLength": 1,
+              "description": "External identifier, e.g. 'terminal-bench@2.1', an Environments Hub slug, or a dataset repo id."
+            },
+            "version": {
+              "type": ["string", "null"],
+              "description": "Pinned upstream version or commit of the imported benchmark."
+            },
+            "license": {
+              "type": ["string", "null"],
+              "description": "Upstream license (SPDX id where known). Null means unverified — the viewer should surface this."
+            }
+          },
+          "description": "Present iff origin is 'imported'. Null for derived/authored benchmarks."
+        }
+      },
+      "description": "Where the benchmark came from, for auditability and for the viewer's evidence warnings."
+    },
+    "taxonomy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["category_id"],
+        "additionalProperties": true,
+        "properties": {
+          "category_id": { "type": "string", "minLength": 1 },
+          "name": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "difficulty": {
+            "enum": ["easy", "medium", "hard", null],
+            "description": "Coarse difficulty tier for the category."
+          },
+          "derived_from": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "tool_signature": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Tool names characterizing the trace cluster this category was induced from."
+              },
+              "intent_summary": { "type": ["string", "null"] },
+              "source_trace_ids": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "References to the traces the cluster was induced from. References only."
+              }
+            },
+            "description": "How the category was induced from traces. Null for imported/authored categories."
+          }
+        }
+      },
+      "description": "Named task categories. Scores are reported per category in the viewer."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "category_id", "genesis", "split"],
+        "additionalProperties": true,
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "category_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Must match a taxonomy entry's category_id."
+          },
+          "seed": {
+            "type": ["integer", "null"],
+            "description": "Seed for the task's initial environment state. Null when the task is not seeded."
+          },
+          "genesis": {
+            "enum": ["replayed", "synthesized", "imported"],
+            "description": "replayed = a captured real task instance; synthesized = generated fresh from a category's generator; imported = converted from the external source."
+          },
+          "generator_ref": {
+            "type": ["string", "null"],
+            "description": "Reference to the prompt/program that synthesized the task. Required in spirit when genesis is 'synthesized' so synthesis is reproducible."
+          },
+          "split": {
+            "enum": ["train", "dev", "holdout", "none"],
+            "description": "Frozen split membership. 'none' means the benchmark has no split contract for this task."
+          },
+          "gold": {
+            "type": ["object", "null"],
+            "required": ["kind", "ref"],
+            "additionalProperties": true,
+            "properties": {
+              "kind": {
+                "enum": ["final-state", "rubric", "reference"],
+                "description": "final-state = assertions over the environment's end state; rubric = judged criteria; reference = a gold answer/artifact."
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Reference to the gold artifact. Never inline gold contents here."
+              }
+            },
+            "description": "What correct looks like for this task. Null means the task is unscored (rows project as status=unscored)."
+          }
+        }
+      },
+      "description": "The task instances. Task inputs, fixtures, and gold contents live in the environment package — this list is the index."
+    },
+    "environment": {
+      "type": "object",
+      "required": ["format", "package_ref"],
+      "additionalProperties": true,
+      "properties": {
+        "format": {
+          "enum": ["verifiers.v1", "verifiers.v0"],
+          "description": "Executable form. verifiers.v1 is the compile target; verifiers.v0 admits envs still on the frozen v0 API of the pinned library (e.g. vf-eval scaffolds) so a manifest never has to misstate its executable form. The enum widens only if the compile target changes."
+        },
+        "package_ref": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path or pip reference to the environment package exposing load_environment()."
+        },
+        "package_sha256": {
+          "type": ["string", "null"],
+          "description": "Content hash of the compiled package, so manifest/package drift is detectable."
+        },
+        "tool_surface": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Tool names the environment exposes to the policy."
+        },
+        "runtime": {
+          "enum": ["subprocess", "docker", "sandbox", null],
+          "description": "Where rollouts execute."
+        },
+        "verifiers_version_pin": {
+          "type": ["string", "null"],
+          "description": "Exact verifiers library pin the package was compiled against, e.g. '==0.2.0'. The single place the upstream pin lives."
+        }
+      },
+      "description": "The one executable form this benchmark compiles to."
+    },
+    "verifier": {
+      "type": "object",
+      "required": ["kind", "strict_metric"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "enum": ["final-state", "reward-fns", "rubric-judge"],
+          "description": "How rollouts are scored."
+        },
+        "strict_metric": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the binary/gate metric (e.g. task_completed_correctly). Projects to the eval row's primary score."
+        },
+        "dense_metric": {
+          "type": ["string", "null"],
+          "description": "Name of the partial-credit metric, if any. Projects into the eval row's subscores."
+        },
+        "replayable": {
+          "type": ["boolean", "null"],
+          "description": "True iff scoring recomputes offline from traces.jsonl alone (trace-only handlers and judges). False means re-scoring requires live environment state. Null means not yet determined."
+        }
+      },
+      "description": "The scoring contract. When kind is final-state and replayable is true, the same verifier doubles as an RL reward."
+    },
+    "splits": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "boundary": {
+          "type": ["string", "null"],
+          "description": "The train/dev/holdout boundary in force (e.g. 'seed-7: train 18 / dev 6 / holdout 6')."
+        },
+        "splits_sha256": {
+          "type": ["string", "null"],
+          "description": "sha256 of the frozen split contract (matches capture-evidence splits_sha256)."
+        },
+        "contamination": {
+          "enum": ["clean", "contaminated", "unknown", null],
+          "description": "Whether any train/RL pool derived from this benchmark has been verified to exclude frozen dev/holdout rows. Imported public benchmarks start 'unknown' and the viewer must surface that."
+        }
+      },
+      "description": "Split and contamination state, same contract as verifier_handoff.v1. Null means no split discipline exists yet — a visible evidence warning, not a default to hide."
+    },
+    "linked_eval": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "eval_id": {
+          "type": ["string", "null"],
+          "description": "The frozen capture-evidence eval that remains production ground truth for the workload this benchmark generalizes."
+        },
+        "splits_sha256": {
+          "type": ["string", "null"],
+          "description": "Split hash of the linked eval, so drift between the pair is detectable."
+        }
+      },
+      "description": "The paired production eval. The benchmark is the generalization/training surface; the linked eval is the regression gate. Null (typical for imported public benchmarks) is a visible evidence warning in the viewer."
+    },
+    "results_contract": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "row_schema": {
+          "const": "understudy.eval_result.v1",
+          "description": "Result rows always project to the shared eval-row shape."
+        },
+        "trace_artifact": {
+          "type": ["string", "null"],
+          "description": "Filename of the retained DAG evidence artifact, e.g. 'traces.jsonl'."
+        },
+        "branch_projection": {
+          "type": ["string", "null"],
+          "description": "Human-readable statement of the projection rule, e.g. 'one row per root-to-leaf branch'."
+        }
+      },
+      "description": "How runs of this benchmark become rows and evidence."
+    }
+  }
+}

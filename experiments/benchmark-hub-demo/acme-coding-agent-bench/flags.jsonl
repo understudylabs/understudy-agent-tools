@@ -1,0 +1,1 @@
+{"schema_version":"understudy.benchmark_flag.v1","benchmark_id":"acme-coding-agent-bench","task_id":"testfix-001","reason":"bad-gold","note":"Task has no gold contract at all; every row projects unscored. Needs a final-state assertion.","created_at":"2026-07-18T22:00:00Z","status":"open"}
