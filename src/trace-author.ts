@@ -42,7 +42,24 @@ export type AuthorTasksOptions = {
   progressTotal?: number;
   /** Concurrent in-flight authoring calls (promise pool); calls are independent. */
   concurrency?: number;
+  /** Strongest available arm: a grounding failure auto-retries once with it (recorded in authoring-events). */
+  escalationModel?: string;
 };
+
+/** Escalation-arm preference order (strongest grounding fidelity first, per the authoring comparison panel). */
+const ESCALATION_PREFERENCE = ["gpt-5.5", "claude-opus-4-8", "claude-sonnet-4-6", "kimi-k2.6", "glm-5.2"];
+
+/** Pick the strongest available escalation arm from the gateway's model list; null when none is listed. */
+export async function resolveEscalationModel(baseUrl: string, apiKey: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  try {
+    const response = await fetchImpl(`${baseUrl}/models`, { headers: { authorization: `Bearer ${apiKey}` } });
+    if (!response.ok) return null;
+    const ids = new Set(((asObject(await response.json()).data ?? []) as Obj[]).map((entry) => String(entry.id)));
+    return ESCALATION_PREFERENCE.find((id) => ids.has(id)) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 async function promisePool<T>(items: T[], limit: number, worker: (item: T, index: number) => Promise<void>): Promise<void> {
   let next = 0;
@@ -418,7 +435,14 @@ export function groundAuthoredTask(task: Obj, authored: Obj, calls: Obj[], evide
     if (!matching.some((call) => semanticArgumentsMatch(asObject(entry.arguments_semantic), asObject(call.arguments)))) violations.push(`required[${index}]: arguments_semantic for "${tool}" do not token-match any observed call arguments`);
     for (const id of Array.isArray(entry.maps_to_observed) ? entry.maps_to_observed : []) if (!callIds.has(String(id))) violations.push(`required[${index}]: maps_to_observed id "${id}" not present in observed evidence`);
   }
-  for (const rule of deterministicRequired) if (!required.some((entry) => entry.tool === rule.tool)) violations.push(`required: authored contract omits deterministically observed effect "${rule.tool}"`);
+  // Coverage applies to deterministically OBSERVED state effects only —
+  // synthesized fallback_minimal entries and merged obligations are not
+  // "observed effects" the author must re-state.
+  for (const rule of deterministicRequired) {
+    if (String(rule.type ?? "state_effect") !== "state_effect") continue;
+    if (rule.provenance === "fallback_minimal") continue;
+    if (!required.some((entry) => entry.tool === rule.tool)) violations.push(`required: authored contract omits deterministically observed effect "${rule.tool}"`);
+  }
   groundObligations(violations, task, contract, calls, evidence);
   for (const [kind, entries] of [["preserved", contract.preserved], ["forbidden", contract.forbidden]] as const) {
     for (const [index, entryValue] of (Array.isArray(entries) ? entries : []).entries()) {
@@ -555,12 +579,35 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       callError = (error as Error).message;
       violations = [`llm_call_failed: ${callError}`];
     }
-    const grounding = authored ? groundAuthoredTask(task, authored, calls, evidence) : { status: "failed" as const, violations };
-    const cost = costEstimate(options.model, usage);
+    let grounding = authored ? groundAuthoredTask(task, authored, calls, evidence) : { status: "failed" as const, violations };
+    let usedModel = options.model;
+    let cost = costEstimate(options.model, usage);
+    // Authoring escalation: grounding failures are largely arm-specific, so a
+    // failed cheap-arm pass auto-retries ONCE with the strongest available arm
+    // before any fallback. The escalation is recorded in authoring-events.
+    if (grounding.status === "failed" && options.escalationModel && options.escalationModel !== options.model) {
+      try {
+        const retry = await client({ model: options.escalationModel, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: `EVIDENCE:\n${JSON.stringify(context)}\nOUTPUT:` }] });
+        cost += costEstimate(options.escalationModel, retry.usage ?? {});
+        const parsedRetry = parseAuthoredJson(retry.content);
+        if (parsedRetry !== null) {
+          const regrounding = groundAuthoredTask(task, parsedRetry, calls, evidence);
+          appendJsonl(eventsPath, [{ schema_version: "understudy.authoring_event.v1", at: new Date().toISOString(), task_id: task.task_id, model: options.escalationModel, escalated_from: options.model, status: "ok", grounding: regrounding.status, violations: regrounding.violations, tokens: { prompt: retry.usage?.prompt_tokens ?? null, completion: retry.usage?.completion_tokens ?? null }, cost_estimate_usd: costEstimate(options.escalationModel, retry.usage ?? {}) }]);
+          if (regrounding.status === "verified") {
+            authored = parsedRetry;
+            grounding = regrounding;
+            usedModel = options.escalationModel;
+            usage = retry.usage ?? {};
+          }
+        }
+      } catch (error) {
+        appendJsonl(eventsPath, [{ schema_version: "understudy.authoring_event.v1", at: new Date().toISOString(), task_id: task.task_id, model: options.escalationModel, escalated_from: options.model, status: "error", error: (error as Error).message }]);
+      }
+    }
     const ms = Date.now() - startedAt;
     const authoredBlock = {
       schema_version: AUTHORING_SCHEMA_VERSION,
-      model: options.model,
+      model: usedModel,
       authored_at: now.toISOString(),
       grounding: grounding.status,
       grounding_violations: grounding.violations,

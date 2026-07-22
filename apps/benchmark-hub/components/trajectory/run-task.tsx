@@ -35,6 +35,7 @@ export function RunTaskControls({
   canRun,
   disabledReason,
   onRunFinished,
+  onActiveRun,
 }: {
   slug: string;
   taskId: string;
@@ -44,6 +45,8 @@ export function RunTaskControls({
   disabledReason: string | null;
   /** Called when a task-scoped run reaches a terminal state (rows landed). */
   onRunFinished: () => void;
+  /** Reports the active (queued/running) task-scoped run for the live watch view; null when idle. */
+  onActiveRun?: (run: { run_id: string; model: string; status: string } | null) => void;
 }) {
   const [models, setModels] = useState<string[]>([]);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -77,6 +80,10 @@ export function RunTaskControls({
 
   // Poll while a task-scoped run is in flight; refetch the replay when it lands.
   const active = runs.some((r) => r.status === "queued" || r.status === "running");
+  useEffect(() => {
+    const current = runs.find((r) => r.status === "running") ?? runs.find((r) => r.status === "queued") ?? null;
+    onActiveRun?.(current ? { run_id: current.run_id, model: current.models[0] ?? "", status: current.status } : null);
+  }, [runs, onActiveRun]);
   useEffect(() => {
     if (!active) return;
     const timer = setInterval(async () => {

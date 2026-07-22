@@ -248,3 +248,40 @@ describe("projectVerifiersTrace (golden fixture from a real pinned-commit eval r
     assert.deepEqual(result.writes.map((w) => w.tool), ["create-automation"]);
   });
 });
+
+describe("live journal wiring", () => {
+  it("passes a per-arm journal path to the runner, advertises live on the request file, and clears it at the end", async () => {
+    const { liveJournalPath } = await import("../dist/run-executor.js");
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["m1"], rollouts_per_task: 1 });
+    const seen = { journalPaths: [], liveSnapshots: [] };
+    const runner = async ({ journalPath }) => {
+      seen.journalPaths.push(journalPath);
+      seen.liveSnapshots.push(readRunRequest(runRequestPath(dir, run.run_id)).live);
+      return { score: 1, subscores: null, status: "ok", latency_ms: 1, cost: 0, writes: [] };
+    };
+    const result = await executeRunRequest(dir, run.run_id, { runner });
+    assert.equal(result.status, "done");
+    assert.equal(result.live, null, "live cleared at terminal state");
+    assert.equal(seen.journalPaths.length, 2);
+    assert.equal(seen.journalPaths[0], liveJournalPath(dir, run.run_id, "m1"));
+    for (const live of seen.liveSnapshots) {
+      assert.equal(live.model, "m1");
+      assert.ok(live.journal.startsWith("runs/live/"), "journal path advertised relative to the benchmark dir");
+      assert.ok(["t1", "t2"].includes(live.task_id));
+    }
+  });
+
+  it("oracle runner journals call+result lines as it executes (zero-cost live proof)", async () => {
+    const dir = makeBenchmarkDir();
+    const run = queueRun(dir, { models: ["oracle-live"], rollouts_per_task: 1 });
+    const result = await executeRunRequest(dir, run.run_id, { runner: oracleRunner() });
+    assert.equal(result.status, "done");
+    const journal = path.join(dir, "runs", "live", `${run.run_id}-oracle-live.jsonl`);
+    assert.ok(fs.existsSync(journal), "journal file written");
+    const lines = fs.readFileSync(journal, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.ok(lines.some((l) => l.kind === "call" && l.write === true));
+    assert.ok(lines.some((l) => l.kind === "result" && l.status === "ok"));
+    assert.equal(lines.length, 4); // 2 tasks × (call + result)
+  });
+});

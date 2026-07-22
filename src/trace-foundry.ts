@@ -370,6 +370,9 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
       task.close_call = true;
       task.claims.push({ kind: "inferred", claim: `workflow may be incomplete; spans workloads ${(task.trace.workloads_spanned as string[]).join(", ")}`, confidence: "medium" });
     }
+    // Judgeability guarantee: an empty contract never leaves the foundry —
+    // synthesize the fallback rubric from the captured final response + prompt.
+    ensureJudgeableContract(task, finalResponseText(asObject(captures.at(-1)?.response)), contentText(first.content ?? ""));
     task.capability_fit = capabilityFit(task, catalog);
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
     return task;
@@ -406,10 +409,120 @@ export function semanticArgumentsMatch(observed: Obj, actual: Obj): boolean {
   return Object.values(observed ?? {}).every((value) => contentTokens(value).every((token) => hay.includes(token)));
 }
 
+/**
+ * ANCHOR fields of an observed-arguments object: the discrete values that
+ * identify WHAT was acted on — numbers, booleans, id-shaped strings (uuid /
+ * long alnum / path-like), and short strings (≤6 canonical tokens). Long free
+ * text (email bodies, document prose) is dropped entirely: requiring token
+ * containment of the incumbent's full prose zeroed every honest candidate
+ * rollout that wrote its own good document. Recurses ONE level into nested
+ * objects; arrays and deeper nesting are dropped with the prose.
+ */
+export function anchorArguments(observed: Obj, depth = 0): Obj {
+  const idShaped = (raw: string): boolean => {
+    const s = raw.trim();
+    if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(s)) return true;
+    if (/\s/.test(s)) return false;
+    return /[A-Za-z0-9_-]{16,}/.test(s) || s.includes("/");
+  };
+  const out: Obj = {};
+  for (const [key, value] of Object.entries(observed ?? {})) {
+    if (typeof value === "number" || typeof value === "boolean") out[key] = value;
+    else if (typeof value === "string") {
+      if (idShaped(value) || contentTokens(value).length <= 6) out[key] = value;
+    } else if (value !== null && typeof value === "object" && !Array.isArray(value) && depth < 1) {
+      const nested = anchorArguments(value as Obj, depth + 1);
+      if (Object.keys(nested).length > 0) out[key] = nested;
+    }
+  }
+  return out;
+}
+
+/**
+ * state_effect met: tool matches AND the rule's discrete argument anchors are
+ * semantically present in the candidate's arguments. Authored
+ * arguments_semantic (merged entries) wins when present; the mechanical
+ * fallback is anchorArguments(observed_arguments). A rule with NO authored
+ * semantics and NO anchors (pure-prose observed args) is satisfied by calling
+ * the tool with any arguments — the tool call itself is the only deterministic
+ * signal left once prose is (rightly) out of bounds.
+ */
+const ANCHOR_VALUE_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9][A-Za-z0-9_-]{15,}/g;
+
+/**
+ * Fallback minimal rubric — the FLOOR of the judgeability guarantee: when
+ * deterministic extraction finds no required entries, synthesize them from
+ * the incumbent's captured final response (json_parses/schema_valid for
+ * structured output; contains_category anchor-value checks otherwise) and
+ * from prompt anchors that propagated into the final response. No LLM. Every
+ * entry carries provenance:"fallback_minimal".
+ */
+export function fallbackRubricEntries(finalText: string, promptText: string): Obj[] {
+  const entries: Obj[] = [];
+  const trimmed = (finalText ?? "").trim();
+  let parsed: unknown;
+  try { parsed = trimmed.startsWith("{") || trimmed.startsWith("[") ? JSON.parse(trimmed) : undefined; } catch { parsed = undefined; }
+  if (parsed !== undefined) {
+    entries.push({ type: "response_obligation", kind: "json_parses", provenance: "fallback_minimal" });
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const keys = Object.keys(parsed as Obj).slice(0, 8);
+      if (keys.length > 0) entries.push({ type: "response_obligation", kind: "schema_valid", expected_keys: keys, provenance: "fallback_minimal" });
+    }
+    return entries;
+  }
+  // Unstructured response: id-shaped anchor values that must appear (same
+  // anchor canonicalization discipline as anchorArguments — discrete, never prose).
+  const idAnchors = [...new Set((trimmed.match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))].slice(0, 3);
+  for (const anchor of idAnchors) entries.push({ type: "response_obligation", kind: "contains_category", expected: anchor, provenance: "fallback_minimal" });
+  // Prompt anchors that propagated into the final response.
+  const promptAnchors = [...new Set(((promptText ?? "").match(ANCHOR_VALUE_RE) ?? []).filter((v) => !/^[A-Za-z]+$/.test(v)))]
+    .filter((v) => !idAnchors.includes(v) && valueTokensPresent(v, trimmed))
+    .slice(0, 3);
+  for (const anchor of promptAnchors) entries.push({ type: "value_propagation", value: anchor, must_reach: { kind: "final_response" }, provenance: "fallback_minimal" });
+  if (entries.length === 0 && trimmed.length > 0) {
+    // Last resort: the response's most distinctive short line as a category check.
+    const line = trimmed.split("\n").map((l) => l.trim()).find((l) => l.length >= 8 && contentTokens(l).length <= 6) ?? trimmed.slice(0, 48);
+    if (contentTokens(line).length > 0) entries.push({ type: "response_obligation", kind: "contains_category", expected: line, provenance: "fallback_minimal" });
+  }
+  return entries;
+}
+
+/**
+ * Judgeability guarantee: no generated task may carry an empty contract.
+ * Fills empty required with the fallback rubric (title as the absolute last
+ * resort), demotes to needs_review, and records a claim so the thinness is
+ * visible in review. Returns true when the task was modified.
+ */
+export function ensureJudgeableContract(task: Obj, finalText: string, promptText: string): boolean {
+  const contract = asObject(task.outcome_contract);
+  if ((Array.isArray(contract.required) ? contract.required : []).length > 0) return false;
+  const entries = fallbackRubricEntries(finalText, promptText);
+  if (entries.length === 0) entries.push({ type: "response_obligation", kind: "contains_category", expected: String(task.title ?? task.task_id), provenance: "fallback_minimal" });
+  contract.required = entries;
+  contract.status = "fallback_minimal";
+  task.outcome_contract = contract;
+  task.status = "needs_review";
+  task.close_call = true;
+  task.claims = [...(Array.isArray(task.claims) ? task.claims : []), { kind: "inferred", claim: "rubric is a minimal oracle-response check — confirm or enrich", confidence: "low", provenance: "fallback_minimal" }];
+  return true;
+}
+
+export function stateEffectMet(rule: Obj, call: Obj): boolean {
+  if (String(call.tool ?? call.name ?? "") !== rule.tool) return false;
+  const semantic = asObject(rule.arguments_semantic);
+  if (Object.keys(semantic).length > 0) {
+    if (semanticArgumentsMatch(anchorArguments(semantic), asObject(call.arguments))) return true;
+  }
+  return semanticArgumentsMatch(anchorArguments(asObject(rule.observed_arguments)), asObject(call.arguments));
+}
+
 export function scoreState(task: Obj, writes: Obj[]): Obj {
   const required = task.outcome_contract?.required ?? [];
-  const matched = required.filter((rule: Obj) => writes.some((write) => write.tool === rule.tool && semanticArgumentsMatch(asObject(rule.observed_arguments), asObject(write.arguments)))).length;
-  const recall = required.length === 0 ? 1 : matched / required.length;
+  // Empty contract = NOT JUDGEABLE: no vacuous 100%s anywhere. (Callers render
+  // a distinct state and eval rows become unscored.)
+  if (required.length === 0) return { judgeable: false, recall: null, precision: null, policy: null, strict: 0, score: null };
+  const matched = required.filter((rule: Obj) => writes.some((write) => stateEffectMet(rule, write))).length;
+  const recall = matched / required.length;
   const precision = writes.length === 0 ? (required.length === 0 ? 1 : 0) : matched / writes.length;
   const forbidden = writes.some((write) => task.outcome_contract?.forbidden?.some((rule: Obj) => rule.tool === write.tool)) ? 0 : 1;
   // Forbidden-effect violations zero the strict score outright.
@@ -474,8 +587,11 @@ export function contractEntryMet(rule: Obj, events: ContractEvents): boolean {
   const type = String(rule.type ?? "state_effect");
   const calls = events.calls ?? [];
   const finalText = String(events.finalResponse ?? "");
-  if (type === "state_effect") return calls.some((call) => toolOf(call) === rule.tool && semanticArgumentsMatch(asObject(rule.observed_arguments), asObject(call.arguments)));
-  if (type === "read_obligation") return calls.some((call) => toolOf(call) === rule.tool && semanticArgumentsMatch(asObject(rule.arguments_semantic), asObject(call.arguments)));
+  // Validation precedes matching: a call the world rejected (status=error)
+  // can never satisfy a state_effect or read_obligation.
+  const validCalls = calls.filter((call) => String(asObject(call).status ?? "") !== "error");
+  if (type === "state_effect") return validCalls.some((call) => stateEffectMet(rule, call));
+  if (type === "read_obligation") return validCalls.some((call) => toolOf(call) === rule.tool && semanticArgumentsMatch(anchorArguments(asObject(rule.arguments_semantic)), asObject(call.arguments)));
   if (type === "value_propagation") {
     const destination = asObject(rule.must_reach);
     if (destination.kind === "final_response") return valueTokensPresent(rule.value, finalText);
@@ -513,6 +629,9 @@ export function forbiddenEntryViolated(rule: Obj, events: ContractEvents): boole
 export function scoreContract(task: Obj, events: ContractEvents): Obj {
   const contract = asObject(task.outcome_contract);
   const required = (Array.isArray(contract.required) ? contract.required : []).map(asObject);
+  // Empty contract = NOT JUDGEABLE — never vacuous 100%s. (The foundry
+  // guarantees a fallback rubric, so this is a defensive state.)
+  if (required.length === 0) return { judgeable: false, recall: null, precision: null, policy: null, strict: 0, score: null, met: [] };
   const met = required.map((rule) => contractEntryMet(rule, events));
   const matched = met.filter(Boolean).length;
   const stateRules = required.filter((rule) => String(rule.type ?? "state_effect") === "state_effect");
@@ -563,7 +682,14 @@ export function oracleEventsFor(task: Obj): ContractEvents {
  */
 export function offlineValidationRow(task: Obj): Obj {
   const oracle = oracleEventsFor(task);
-  const wrongCalls = oracle.calls.map((call) => ({ ...call, arguments: { __wrong__: true } }));
+  // wrong_value corrupts the ANCHOR values (the discrete fields matching now
+  // keys on). A call whose rule has NO anchors is satisfied by any-args by
+  // design, so the sentinel corrupts its TOOL instead — the gate must still
+  // discriminate.
+  const wrongCalls = oracle.calls.map((call) =>
+    Object.keys(anchorArguments(asObject(call.arguments))).length > 0
+      ? { ...call, arguments: { __wrong__: true } }
+      : { ...call, tool: `${call.tool}--wrong-sentinel` });
   return {
     task_id: task.task_id,
     oracle: scoreContract(task, oracle),
@@ -600,6 +726,32 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   for (const task of tasks) for (const rule of task.outcome_contract?.required ?? []) if (typeof rule.tool === "string" && !observedByTool.has(rule.tool)) observedByTool.set(rule.tool, asObject(rule.observed_arguments));
   const schemaByTool = new Map<string, Obj>();
   for (const task of tasks) for (const definitionValue of task.tool_definitions ?? []) { const definition = asObject(definitionValue), fn = asObject(definition.function), name = String(definition.name ?? fn.name ?? ""); if (name && !schemaByTool.has(name)) schemaByTool.set(name, asObject(definition.input_schema ?? fn.parameters)); }
+  // Validation schemas for the world: the DECLARED JSON schema (captured from
+  // the incumbent's tool_definitions) when present; otherwise a minimal one
+  // synthesized from observed calls — required = keys present (non-null) in
+  // EVERY observed call of that tool — marked "inferred". Better than
+  // accepting anything.
+  const observedCallsByTool = new Map<string, Obj[]>();
+  for (const task of tasks) {
+    for (const rule of task.outcome_contract?.required ?? []) if (typeof rule.tool === "string") observedCallsByTool.set(rule.tool, [...(observedCallsByTool.get(rule.tool) ?? []), asObject(rule.observed_arguments)]);
+    for (const obs of task.world_model?.initial_state?.observations ?? []) if (typeof obs.tool === "string") observedCallsByTool.set(obs.tool, [...(observedCallsByTool.get(obs.tool) ?? []), asObject(obs.arguments)]);
+  }
+  const jsonType = (value: unknown): string => typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : Array.isArray(value) ? "array" : value !== null && typeof value === "object" ? "object" : "string";
+  const validationSchemaFor = (name: string): Obj => {
+    const declared = asObject(schemaByTool.get(name));
+    const declaredProperties = asObject(declared.properties);
+    if (Object.keys(declaredProperties).length > 0) {
+      return {
+        inferred: false,
+        required: (Array.isArray(declared.required) ? declared.required : []).map(String),
+        properties: Object.fromEntries(Object.entries(declaredProperties).map(([key, value]) => [key, String(asObject(value).type ?? "")])),
+      };
+    }
+    const observed = observedCallsByTool.get(name) ?? [];
+    const keys = observed.length > 0 ? Object.keys(observed[0]).filter((key) => observed.every((o) => o[key] !== undefined && o[key] !== null)) : [];
+    return { inferred: true, required: keys, properties: Object.fromEntries(keys.map((key) => [key, jsonType(observed[0][key])])) };
+  };
+  writeJson(join(servers, "schemas.json"), Object.fromEntries(toolNames.map((name) => [name, validationSchemaFor(name)])));
   const pyType = (value: unknown): string => typeof value === "boolean" ? "bool" : typeof value === "number" ? "float" : Array.isArray(value) ? "list" : value && typeof value === "object" ? "dict" : "str";
   const schemaType = (schema: Obj, fallback: unknown): string => schema.type === "boolean" ? "bool" : ["number", "integer"].includes(schema.type) ? "float" : schema.type === "array" ? "list" : schema.type === "object" ? "dict" : schema.type === "string" ? "str" : pyType(fallback);
   const methods = toolNames.map((name) => {
@@ -608,7 +760,7 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
     const parameters = keys.map((key) => `${pyName(key)}: ${schemaType(asObject(properties[key]), observed[key])} | None = None`).join(", ");
     const args = keys.map((key) => `${JSON.stringify(key)}: ${pyName(key)}`).join(", ");
     const mutating = mutationPrefixes.some((prefix) => name.toLowerCase().startsWith(prefix));
-    return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute the trace-derived ${name} transition against per-rollout state.\"\"\"\n        event = {\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}\n        self.state.events.append(event)\n${mutating ? "        self.state.writes.append(event)\n" : ""}        return json.dumps({\"ok\": True, **event})`;
+    return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute the trace-derived ${name} transition against per-rollout state.\"\"\"\n        return self._accept({\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}, ${mutating ? "True" : "False"})`;
   }).join("\n\n");
   const fixtures = tasks.flatMap((task) => task.world_model?.initial_state?.observations ?? []).map((result: Obj) => ({ tool: result.tool, arguments: result.arguments ?? {}, status: result.status, content: result.content }));
   // Stateful per-rollout world: fixtures are matched token-normalized (not
@@ -620,11 +772,15 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   // true/false/null (Python spells them True/False/None; a real customer
   // environment died with `NameError: name 'false' is not defined`).
   writeJson(join(servers, "fixtures.json"), fixtures);
-  const worldMethods = `    FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text())\n\n${fixtureReply}\n\n${methods.replaceAll('        return json.dumps({"ok": True, **event})', "        return self._fixture_reply(event)")}`;
+  // _accept: schema validation gates every call (rejects are recorded as
+  // status=error events — never writes — and still journal live, so recovery
+  // after a rejected call is visible in the watch view, AutomationBench-style).
+  const acceptHelper = `    def _accept(self, event: dict, mutating: bool) -> str:\n        error = _validate(event["tool"], event["arguments"] or {})\n        _journal({"at": time.time(), "kind": "call", "tool": event["tool"], "write": bool(mutating and not error), "status": "error" if error else "ok", "arguments": _summary(event["arguments"] or {})})\n        if error:\n            self.state.events.append({**event, "status": "error", "error": error})\n            reply = json.dumps({"ok": False, "error": error})\n        else:\n            self.state.events.append(event)\n            if mutating:\n                self.state.writes.append(event)\n            reply = self._fixture_reply(event)\n        _journal({"at": time.time(), "kind": "result", "tool": event["tool"], "status": "error" if error else "ok", "content": _summary(reply or "")})\n        return reply`;
+  const worldMethods = `    FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text())\n\n${fixtureReply}\n\n${acceptHelper}\n\n${methods}`;
   const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: (()=>{ const msgs = (sourceContext.get(task.task_id)?.messages ?? []) as Obj[]; const firstUser = msgs.find((m) => m.role === "user"); const text = firstUser ? contentText(firstUser.content) : ""; return text.trim() || task.title; })(), system_prompt: (()=>{ const sys = sourceContext.get(task.task_id)?.system; if (sys == null) return null; return typeof sys === "string" ? sys : contentText(sys); })(), source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
   writeJson(join(pkg, "tasks.json"), taskRows);
-  writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport re\nfrom pathlib import Path\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
-  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _arguments_match, _tokens\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\n\ndef _value_present(value, hay: str) -> bool:\n    \"\"\"Token-normalized value containment — the same canonicalization _arguments_match uses.\"\"\"\n    toks = _tokens(value)\n    return bool(toks) and all(t in hay for t in toks)\n\n\ndef _final_text(trace) -> str:\n    \"\"\"Last assistant text of the rollout (the final response the contract's response/value obligations judge).\"\"\"\n    for attr in (\"messages\", \"completion\", \"history\"):\n        msgs = getattr(trace, attr, None)\n        if isinstance(msgs, list) and msgs:\n            texts = []\n            for m in msgs:\n                if isinstance(m, dict) and m.get(\"role\") == \"assistant\":\n                    c = m.get(\"content\")\n                    if isinstance(c, str):\n                        texts.append(c)\n                    elif isinstance(c, list):\n                        texts.extend(str(b.get(\"text\") or \"\") for b in c if isinstance(b, dict) and b.get(\"type\") == \"text\")\n            if texts:\n                return texts[-1]\n    return str(getattr(trace, \"final_response\", \"\") or \"\")\n\n\ndef _parsed_json(text: str):\n    t = (text or \"\").strip()\n    if not t.startswith((\"{\", \"[\")):\n        return None\n    try:\n        return json.loads(t)\n    except Exception:\n        return None\n\n\ndef _entry_met(rule: dict, calls: list, final_text: str) -> bool:\n    \"\"\"Deterministic met/unmet per contract entry kind: state_effect,\n    read_obligation, value_propagation, response_obligation. Mirrors the\n    foundry's contractEntryMet exactly — never an LLM at eval time.\"\"\"\n    kind = rule.get(\"type\") or \"state_effect\"\n    if kind == \"state_effect\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(rule.get(\"observed_arguments\") or {}, c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"read_obligation\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(rule.get(\"arguments_semantic\") or {}, c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"value_propagation\":\n        dest = rule.get(\"must_reach\") or {}\n        if dest.get(\"kind\") == \"final_response\":\n            return _value_present(rule.get(\"value\"), (final_text or \"\").lower())\n        return any((not dest.get(\"tool\") or c.get(\"tool\") == dest.get(\"tool\")) and _value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    if kind == \"response_obligation\":\n        parsed = _parsed_json(final_text)\n        if rule.get(\"kind\") == \"json_parses\":\n            return parsed is not None\n        if rule.get(\"kind\") == \"schema_valid\":\n            return isinstance(parsed, dict) and all(str(k) in parsed for k in (rule.get(\"expected_keys\") or []))\n        if rule.get(\"kind\") == \"contains_category\":\n            return _value_present(rule.get(\"expected\"), (final_text or \"\").lower())\n    return False\n\n\ndef _forbidden_violated(rule: dict, calls: list, final_text: str) -> bool:\n    if (rule.get(\"type\") or \"\") == \"forbidden_value\":\n        hay = (final_text or \"\").lower()\n        return _value_present(rule.get(\"value\"), hay) or any(_value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    return any(c.get(\"tool\") == rule.get(\"tool\") for c in calls)\n\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Full-contract comparison over the per-rollout world state AND the\n        final assistant response: state effects and read obligations match\n        tool events semantically (token-normalized), value propagations and\n        response obligations judge the final response deterministically.\n        Forbidden tools/values are violations.\"\"\"\n        events = list(getattr(trace.state, \"events\", None) or [])\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        final_text = _final_text(trace)\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if _entry_met(rule, events, final_text))\n        violated = any(_forbidden_violated(rule, writes, final_text) for rule in contract.get(\"forbidden\", []))\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        def well_formed(r):\n            kind = r.get(\"type\") or \"state_effect\"\n            if kind == \"state_effect\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict)\n            if kind == \"read_obligation\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"arguments_semantic\"), dict)\n            if kind == \"value_propagation\":\n                return bool(r.get(\"value\")) and (r.get(\"must_reach\") or {}).get(\"kind\") in (\"final_response\", \"tool_args\")\n            if kind == \"response_obligation\":\n                return r.get(\"kind\") in (\"json_parses\", \"schema_valid\", \"contains_category\")\n            return False\n        return bool(required) and all(well_formed(r) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport os\nimport re\nimport time\nfrom pathlib import Path\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\ndef _anchor_arguments(observed: dict, depth: int = 0) -> dict:\n    \"\"\"ANCHOR fields only: numbers, booleans, id-shaped strings (uuid / long alnum / path-like)\n    and short strings (<=6 canonical tokens). Long free text is dropped — requiring token\n    containment of the incumbent's full prose zeroed every honest candidate rollout.\n    Recurses one level into nested dicts; arrays and deeper nesting are dropped too.\"\"\"\n    out = {}\n    for key, value in (observed or {}).items():\n        if isinstance(value, bool) or isinstance(value, (int, float)):\n            out[key] = value\n        elif isinstance(value, str):\n            s = value.strip()\n            no_space = not any(ch.isspace() for ch in s)\n            id_shaped = bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", s, re.I)) or (no_space and (bool(re.search(r"[A-Za-z0-9_-]{16,}", s)) or "/" in s))\n            if id_shaped or len(_tokens(s)) <= 6:\n                out[key] = value\n        elif isinstance(value, dict) and depth < 1:\n            nested = _anchor_arguments(value, depth + 1)\n            if nested:\n                out[key] = nested\n    return out\n\n\n# Live rollout journal: one JSON line per tool call and result, written the\n# moment it happens, gated on UNDERSTUDY_LIVE_JOURNAL (no-op when unset).\n_JOURNAL_PATH = os.environ.get("UNDERSTUDY_LIVE_JOURNAL")\n\n\ndef _journal(entry: dict) -> None:\n    if not _JOURNAL_PATH:\n        return\n    try:\n        fd = os.open(_JOURNAL_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n        with os.fdopen(fd, "a") as fh:\n            fh.write(json.dumps(entry) + "\\\\n")\n    except Exception:\n        pass\n\n\ndef _summary(value, cap: int = 800) -> str:\n    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)\n    return text if len(text) <= cap else text[: cap - 1] + "…"\n\n\n# Declared tool schemas (captured from the incumbent's requests); tools with\n# no declared schema carry one inferred from observed calls (inferred: true).\nSCHEMAS = json.loads((Path(__file__).parent / "schemas.json").read_text())\n_TYPES = {"string": str, "number": (int, float), "integer": (int, float), "boolean": bool, "object": dict, "array": list}\n\n\ndef _validate(tool: str, arguments: dict) -> str | None:\n    \"\"\"AutomationBench-style call validation: required properties present and\n    basic type checks against the declared (or inferred) schema. Unknown tools\n    are unroutable by construction (only defined tools are exposed).\"\"\"\n    schema = SCHEMAS.get(tool)\n    if schema is None:\n        return f"unknown tool '{tool}'"\n    for key in schema.get("required") or []:\n        if arguments.get(key) is None:\n            return f"missing required field '{key}'"\n    for key, declared in (schema.get("properties") or {}).items():\n        value = arguments.get(key)\n        if value is None:\n            continue\n        expected = _TYPES.get(declared)\n        if expected is None:\n            continue\n        if declared in ("number", "integer") and isinstance(value, bool):\n            return f"field '{key}' must be {declared}"\n        if not isinstance(value, expected):\n            return f"field '{key}' must be {declared}"\n    return None\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _anchor_arguments, _arguments_match, _tokens\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\n\ndef _value_present(value, hay: str) -> bool:\n    \"\"\"Token-normalized value containment — the same canonicalization _arguments_match uses.\"\"\"\n    toks = _tokens(value)\n    return bool(toks) and all(t in hay for t in toks)\n\n\ndef _final_text(trace) -> str:\n    \"\"\"Last assistant text of the rollout (the final response the contract's response/value obligations judge).\"\"\"\n    for attr in (\"messages\", \"completion\", \"history\"):\n        msgs = getattr(trace, attr, None)\n        if isinstance(msgs, list) and msgs:\n            texts = []\n            for m in msgs:\n                if isinstance(m, dict) and m.get(\"role\") == \"assistant\":\n                    c = m.get(\"content\")\n                    if isinstance(c, str):\n                        texts.append(c)\n                    elif isinstance(c, list):\n                        texts.extend(str(b.get(\"text\") or \"\") for b in c if isinstance(b, dict) and b.get(\"type\") == \"text\")\n            if texts:\n                return texts[-1]\n    return str(getattr(trace, \"final_response\", \"\") or \"\")\n\n\ndef _parsed_json(text: str):\n    t = (text or \"\").strip()\n    if not t.startswith((\"{\", \"[\")):\n        return None\n    try:\n        return json.loads(t)\n    except Exception:\n        return None\n\n\ndef _entry_met(rule: dict, calls: list, final_text: str) -> bool:\n    \"\"\"Deterministic met/unmet per contract entry kind: state_effect,\n    read_obligation, value_propagation, response_obligation. Mirrors the\n    foundry's contractEntryMet exactly — never an LLM at eval time.\"\"\"\n    kind = rule.get(\"type\") or \"state_effect\"\n    # Validation precedes matching: rejected calls (status=error) never satisfy anything.\n    calls = [c for c in calls if c.get(\"status\") != \"error\"]\n    if kind == \"state_effect\":\n        # Anchor matching: authored arguments_semantic first, then the discrete\n        # anchors of the observed arguments (long prose dropped). Zero anchors +\n        # no semantics => the tool call itself (with any args) satisfies.\n        sem = _anchor_arguments(rule.get(\"arguments_semantic\") or {})\n        anchors = _anchor_arguments(rule.get(\"observed_arguments\") or {})\n        for c in calls:\n            if c.get(\"tool\") != rule.get(\"tool\"):\n                continue\n            if sem and _arguments_match(sem, c.get(\"arguments\") or {}):\n                return True\n            if _arguments_match(anchors, c.get(\"arguments\") or {}):\n                return True\n        return False\n    if kind == \"read_obligation\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(_anchor_arguments(rule.get(\"arguments_semantic\") or {}), c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"value_propagation\":\n        dest = rule.get(\"must_reach\") or {}\n        if dest.get(\"kind\") == \"final_response\":\n            return _value_present(rule.get(\"value\"), (final_text or \"\").lower())\n        return any((not dest.get(\"tool\") or c.get(\"tool\") == dest.get(\"tool\")) and _value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    if kind == \"response_obligation\":\n        parsed = _parsed_json(final_text)\n        if rule.get(\"kind\") == \"json_parses\":\n            return parsed is not None\n        if rule.get(\"kind\") == \"schema_valid\":\n            return isinstance(parsed, dict) and all(str(k) in parsed for k in (rule.get(\"expected_keys\") or []))\n        if rule.get(\"kind\") == \"contains_category\":\n            return _value_present(rule.get(\"expected\"), (final_text or \"\").lower())\n    return False\n\n\ndef _forbidden_violated(rule: dict, calls: list, final_text: str) -> bool:\n    if (rule.get(\"type\") or \"\") == \"forbidden_value\":\n        hay = (final_text or \"\").lower()\n        return _value_present(rule.get(\"value\"), hay) or any(_value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    return any(c.get(\"tool\") == rule.get(\"tool\") for c in calls)\n\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Full-contract comparison over the per-rollout world state AND the\n        final assistant response: state effects and read obligations match\n        tool events semantically (token-normalized), value propagations and\n        response obligations judge the final response deterministically.\n        Forbidden tools/values are violations.\"\"\"\n        events = list(getattr(trace.state, \"events\", None) or [])\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        final_text = _final_text(trace)\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if _entry_met(rule, events, final_text))\n        violated = any(_forbidden_violated(rule, writes, final_text) for rule in contract.get(\"forbidden\", []))\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        def well_formed(r):\n            kind = r.get(\"type\") or \"state_effect\"\n            if kind == \"state_effect\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict)\n            if kind == \"read_obligation\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"arguments_semantic\"), dict)\n            if kind == \"value_propagation\":\n                return bool(r.get(\"value\")) and (r.get(\"must_reach\") or {}).get(\"kind\") in (\"final_response\", \"tool_args\")\n            if kind == \"response_obligation\":\n                return r.get(\"kind\") in (\"json_parses\", \"schema_valid\", \"contains_category\")\n            return False\n        return bool(required) and all(well_formed(r) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "environment.py"), `import verifiers.v1 as vf\nfrom understudy_trace_env.taskset import TraceConfig, TraceTaskset\n\nclass TraceHarnessConfig(vf.HarnessConfig):\n    max_turns: int = 24\n\nclass TraceHarness(vf.Harness[TraceHarnessConfig]):\n    pass\n\ndef load_taskset(config: TraceConfig) -> TraceTaskset:\n    return TraceTaskset(config=config)\n\ndef load_harness(config: TraceHarnessConfig) -> TraceHarness:\n    return TraceHarness(config=config)\n\ndef load_environment(config: vf.EnvConfig) -> vf.Env:\n    return vf.Env(taskset=vf.load_taskset(config.taskset), harness=vf.load_harness(config.harness))\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.environment import load_environment, load_harness, load_taskset\nfrom understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\", \"load_environment\", \"load_harness\", \"load_taskset\"]\n", { mode: 0o600 });
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
@@ -985,7 +1141,23 @@ export function regenerateEnvironment(benchmarkDirInput: string): { path: string
       return [task.task_id, { system: row?.request?.system ?? null, messages: row?.request?.messages ?? [] }] as [string, Obj];
     }),
   );
+  // Judgeability repair for dirs compiled before the guarantee: synthesize
+  // fallback rubrics for any empty-contract task from its group's fullest
+  // capture, and persist the enriched tasks.jsonl.
+  let repaired = 0;
+  for (const task of tasks) {
+    if ((asObject(task.outcome_contract).required ?? []).length > 0) continue;
+    const captureKeys = (asObject(task.source).captures ?? []).map((c: Obj) => c.capture_key);
+    const lastRow = [...captureKeys].reverse().map((key: string) => byKey.get(key)).find(Boolean);
+    const firstUser = (lastRow?.request?.messages ?? []).find((m: Obj) => m.role === "user");
+    const promptText = typeof firstUser?.content === "string" ? firstUser.content : JSON.stringify(firstUser?.content ?? "");
+    if (ensureJudgeableContract(task, finalResponseText(asObject(lastRow?.response)), promptText)) {
+      task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
+      repaired += 1;
+    }
+  }
+  if (repaired > 0) writeJsonl(join(output, "tasks.jsonl"), tasks);
   const environment = writeVerifiersEnvironment(output, tasks, sourceContext, "cb9c84969186f8a0954b1027320f225e6b6b0afb");
   refreshOfflineValidation(output, tasks);
-  return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass) };
+  return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
 }

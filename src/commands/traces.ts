@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { join, resolve } from "node:path";
 import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays, regenerateEnvironment } from "../trace-foundry.js";
 import { serveTraceFoundry } from "../trace-foundry-server.js";
-import { authorOverview, authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveGatewayAuth } from "../trace-author.js";
+import { authorOverview, authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveEscalationModel, resolveGatewayAuth } from "../trace-author.js";
 import { renderTraceViewer } from "../trace-viewer.js";
 
 export function registerTracesCommand(program: Command): void {
@@ -73,7 +73,10 @@ export function registerTracesCommand(program: Command): void {
         else console.log(JSON.stringify(report, null, 2));
         return;
       }
-      const result = await authorTasks(resolve(options.benchmark), { model, client, limit, taskIds, onlyUnauthored: options.onlyUnauthored, concurrency, maxContextTokens, progressStream: process.stderr });
+      // Grounding failures are largely arm-specific: retry once with the
+      // strongest listed arm before falling back to the deterministic contract.
+      const escalationModel = (await resolveEscalationModel(auth.baseUrl, auth.apiKey)) ?? undefined;
+      const result = await authorTasks(resolve(options.benchmark), { model, client, limit, taskIds, onlyUnauthored: options.onlyUnauthored, concurrency, maxContextTokens, escalationModel: escalationModel !== model ? escalationModel : undefined, progressStream: process.stderr });
       console.log(JSON.stringify({ ...result, results: undefined }, null, 2));
     });
   traces.command("import-reviews")

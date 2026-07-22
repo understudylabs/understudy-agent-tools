@@ -17,7 +17,7 @@
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, isMutatingTool, scoreState } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
@@ -47,7 +47,14 @@ export type RunRequest = {
   finished_at?: string | null;
   /** Present when status is failed: the honest error class + message. */
   error?: { class: string; message: string } | null;
+  /** While running: the active arm's live journal (path relative to the benchmark dir) + what's executing. */
+  live?: { journal: string; model: string; task_id: string | null } | null;
 };
+
+/** Live journals live under <benchmark>/runs/live/ and stay after the run for replay-scrubbing. */
+export function liveJournalPath(benchmarkDir: string, runId: string, model: string): string {
+  return join(runsDir(benchmarkDir), "live", `${sanitizeForFile(runId)}-${sanitizeForFile(model)}.jsonl`);
+}
 
 export function runsDir(benchmarkDir: string): string {
   return join(resolve(benchmarkDir), "runs");
@@ -206,6 +213,8 @@ export type ArmRunner = (args: {
   rollout: number;
   /** Every task_id the run request selected — arm-level runners scope their eval to exactly these. */
   selectedTaskIds: string[];
+  /** Live journal file for this arm (runners/worlds append one JSON line per tool call/result); null disables. */
+  journalPath: string | null;
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
@@ -310,6 +319,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
       if (cancelled()) break;
       appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
       const rowsFile = rowsFilePath(dir, runId, model);
+      // Live journal for this arm: the world/runner appends tool events the
+      // moment they happen; the hub's live endpoint tails it. The path is
+      // advertised on the request file so the UI knows what's executing.
+      const journalPath = liveJournalPath(dir, runId, model);
+      mkdirSync(join(runsDir(dir), "live"), { recursive: true });
+      const journalRel = relative(dir, journalPath);
       // Work items for this arm; a bounded pool honors --concurrency while the
       // cancel check between dequeues keeps the flip responsive.
       const queue: { task: Obj; rollout: number }[] = [];
@@ -325,11 +340,22 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           if (!item) return;
           const taskId = String(item.task.task_id);
           const sidecar = sidecarTasks.get(taskId) ?? item.task;
+          // Advertise what's executing (journal + model + task) on the request
+          // file so the hub can attach a live watcher.
+          const current = readRunRequest(file) ?? request;
+          request = { ...current, live: { journal: journalRel, model, task_id: taskId } };
+          writeRunRequest(dir, request);
           let result: RolloutResult;
           try {
-            result = await options.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)) });
+            result = await options.runner({ benchmarkDir: dir, model, task: sidecar, rollout: item.rollout, selectedTaskIds: selected.map((t) => String(t.task_id)), journalPath });
           } catch (err) {
             result = { score: null, subscores: null, status: "error", latency_ms: null, cost: null, writes: [], error: err instanceof Error ? `${err.constructor.name}: ${err.message}` : String(err) };
+          }
+          // Defensive: an empty contract is not judgeable — rows are unscored,
+          // never ok-with-vacuous-numbers. (The foundry now guarantees a
+          // fallback rubric, so this should be unreachable on fresh builds.)
+          if (((asObject(sidecar.outcome_contract).required ?? []) as unknown[]).length === 0 && result.status === "ok") {
+            result = { ...result, score: null, subscores: null, status: "unscored", error: "empty contract — not judgeable; regenerate-env synthesizes a fallback rubric" };
           }
           const row: Obj = {
             schema_version: "understudy.eval_result.v1",
@@ -383,20 +409,20 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
     // surfaced honestly: events carry the message, the request records the class.
     const message = err instanceof Error ? err.message : String(err);
     const errorClass = err instanceof Error ? err.constructor.name : "Error";
-    request = { ...(readRunRequest(file) ?? request), status: "failed", finished_at: now().toISOString(), progress: { completed, total }, error: { class: errorClass, message } };
+    request = { ...(readRunRequest(file) ?? request), status: "failed", finished_at: now().toISOString(), progress: { completed, total }, live: null, error: { class: errorClass, message } };
     writeRunRequest(dir, request);
     appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_failed", error: `${errorClass}: ${message}`, progress: { completed, total } }, options.onEvent);
     return request;
   }
 
   if (cancelled()) {
-    request = { ...(readRunRequest(file) ?? request), progress: { completed, total } };
+    request = { ...(readRunRequest(file) ?? request), progress: { completed, total }, live: null };
     writeRunRequest(dir, request);
     appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_cancelled", progress: { completed, total } }, options.onEvent);
     return request;
   }
 
-  request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total } };
+  request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
   writeRunRequest(dir, request);
   appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
   return request;
@@ -424,9 +450,17 @@ export async function executeQueuedRuns(benchmarkDir: string, options: ExecuteOp
  * spend. Rows are labeled honestly via subscores.runner_oracle = 1.
  */
 export function oracleRunner(): ArmRunner {
-  return async ({ task }) => {
+  const journal = (path: string | null, entry: Obj): void => {
+    if (!path) return;
+    try { appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 }); } catch { /* live journal is best-effort */ }
+  };
+  return async ({ task, journalPath }) => {
     const started = Date.now();
-    const writes = (asObject(task.outcome_contract).required ?? []).map((rule: Obj) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));
+    const writes = (asObject(task.outcome_contract).required ?? []).filter((rule: Obj) => String(rule.type ?? "state_effect") === "state_effect").map((rule: Obj) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));
+    for (const write of writes) {
+      journal(journalPath, { at: Date.now() / 1000, kind: "call", tool: write.tool, write: true, status: "ok", arguments: JSON.stringify(write.arguments).slice(0, 800) });
+      journal(journalPath, { at: Date.now() / 1000, kind: "result", tool: write.tool, status: "ok", content: "{\"ok\": true}" });
+    }
     const scored = asObject(scoreState(asObject(task), writes));
     return {
       score: Number(scored.strict ?? 0),
@@ -545,7 +579,7 @@ export function projectVerifiersTrace(trace: Obj, model: string): { taskId: stri
  * dir's outputs/) is projected onto per-task results. Throws
  * HarnessExecutionError with the subprocess tail on failure.
  */
-export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null): Map<string, RolloutResult> {
+export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv = process.env, taskIds: string[] | null = null, journalPath: string | null = null): Map<string, RolloutResult> {
   const dir = resolve(benchmarkDir);
   const environment = join(dir, "environment");
   // Scope the eval to exactly the requested tasks (a single-task run on a
@@ -559,13 +593,13 @@ export function runVerifiersArm(benchmarkDir: string, model: string, maxExamples
   const splits = filteredRows === null ? ["train", "dev", "holdout"] : [...new Set(filteredRows.map((row) => String(row.split)))];
   if (filteredRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(filteredRows, null, 2)}\n`, { mode: 0o600 });
   try {
-    return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits);
+    return runVerifiersSplits(dir, environment, model, maxExamples, parentEnv, splits, journalPath);
   } finally {
     if (sourceTaskRows !== null) writeFileSync(taskRowsPath, `${JSON.stringify(sourceTaskRows, null, 2)}\n`, { mode: 0o600 });
   }
 }
 
-function runVerifiersSplits(dir: string, environment: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv, splits: string[]): Map<string, RolloutResult> {
+function runVerifiersSplits(dir: string, environment: string, model: string, maxExamples: number, parentEnv: NodeJS.ProcessEnv, splits: string[], journalPath: string | null = null): Map<string, RolloutResult> {
   // Gateway creds resolve the CLI's canonical way (env first, then
   // ~/.understudy/credentials.json) and are handed to buildReplayInvocation
   // through its own env contract — the executor ONLY talks to the Understudy
@@ -579,6 +613,10 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
   const failures: string[] = [];
   for (const split of splits) {
     const invocation = buildReplayInvocation(environment, model, "authentic_history", maxExamples, false, runnerEnv);
+    // Live watching: the generated world server journals every tool call and
+    // result to this file the moment it happens (no-op when unset). The var
+    // rides the eval subprocess env, which the subprocess runtime inherits.
+    if (journalPath !== null) invocation.env.UNDERSTUDY_LIVE_JOURNAL = journalPath;
     invocation.args.push("--env.taskset.split", split);
     const started = Date.now();
     const child = spawnSync("uv", invocation.args, { cwd: dir, encoding: "utf8", env: invocation.env, maxBuffer: 64 * 1024 * 1024 });
@@ -611,11 +649,11 @@ function runVerifiersSplits(dir: string, environment: string, model: string, max
  */
 export function verifiersRunner(parentEnv: NodeJS.ProcessEnv = process.env): ArmRunner {
   const armCache = new Map<string, Map<string, RolloutResult> | Error>();
-  return async ({ benchmarkDir, model, task, selectedTaskIds }) => {
+  return async ({ benchmarkDir, model, task, selectedTaskIds, journalPath }) => {
     const key = `${benchmarkDir}::${model}::${[...selectedTaskIds].sort().join(",")}`;
     if (!armCache.has(key)) {
       try {
-        armCache.set(key, runVerifiersArm(benchmarkDir, model, 1000, parentEnv, selectedTaskIds));
+        armCache.set(key, runVerifiersArm(benchmarkDir, model, 1000, parentEnv, selectedTaskIds, journalPath));
       } catch (err) {
         armCache.set(key, err instanceof Error ? err : new Error(String(err)));
       }

@@ -430,3 +430,91 @@ test("fixtures with bare JSON booleans generate valid Python (fixtures.json side
   const fixtures = JSON.parse(readFileSync(join(output, "environment", "understudy_trace_env", "servers", "fixtures.json"), "utf8"));
   assert.ok(fixtures.some((f) => f.tool === "get-record"));
 });
+
+test("anchorArguments keeps ids/numbers/short values and drops prose", async () => {
+  const { anchorArguments, stateEffectMet } = await import("../dist/trace-foundry.js");
+  const anchors = anchorArguments({
+    conversationId: "1980f239-2073-4231-9d5c-3174fe334214",
+    path: "deals/2026/summary.md",
+    count: 3,
+    enabled: true,
+    stage: "closed won",
+    body: "Hey team, great chatting today! Quick recap of everything we discussed on the call about the renewal and the follow-ups we promised to send over…",
+    nested: { dealId: "d-12345678901234567890", notes: "a very long free text paragraph that should absolutely not be required for a match to succeed here" },
+  });
+  assert.deepEqual(Object.keys(anchors).sort(), ["conversationId", "count", "enabled", "nested", "path", "stage"]);
+  assert.deepEqual(Object.keys(anchors.nested), ["dealId"]);
+
+  // met/unmet under the anchor rule: right tool + right anchors + candidate's OWN prose = met.
+  const rule = { type: "state_effect", tool: "write-document", observed_arguments: { conversationId: "1980f239-2073-4231-9d5c-3174fe334214", content: "the incumbent's entire original document body, hundreds of words long..." } };
+  assert.equal(stateEffectMet(rule, { tool: "write-document", arguments: { conversationId: "1980f239-2073-4231-9d5c-3174fe334214", content: "a DIFFERENT but perfectly good document" } }), true, "candidate prose no longer blocks the match");
+  assert.equal(stateEffectMet(rule, { tool: "write-document", arguments: { conversationId: "wrong-conversation" } }), false, "anchor mismatch still fails");
+  assert.equal(stateEffectMet(rule, { tool: "update-record", arguments: {} }), false, "tool mismatch fails");
+  // Authored arguments_semantic wins when present.
+  const authoredRule = { ...rule, arguments_semantic: { conversationId: "1980f239-2073-4231-9d5c-3174fe334214" } };
+  assert.equal(stateEffectMet(authoredRule, { tool: "write-document", arguments: { conversationId: "1980f239-2073-4231-9d5c-3174fe334214" } }), true);
+  // Zero anchors + no semantics => tool call with any args suffices (documented).
+  const proseOnly = { type: "state_effect", tool: "send-email", observed_arguments: { body: "long free text only, nothing discrete in here at all beyond ordinary words" } };
+  assert.equal(stateEffectMet(proseOnly, { tool: "send-email", arguments: { anything: 1 } }), true);
+});
+
+test("wrong_value sentinel corrupts anchors (or the tool when there are none) — the gate still discriminates", async () => {
+  const { offlineValidationRow } = await import("../dist/trace-foundry.js");
+  const anchored = offlineValidationRow({ task_id: "t-anchored", outcome_contract: { required: [{ type: "state_effect", tool: "update-record", observed_arguments: { id: "record-12345678901234567", note: "long prose here that anchors ignore entirely for the match" } }], forbidden: [], grading: "g" } });
+  assert.equal(anchored.oracle.strict, 1);
+  assert.equal(anchored.sentinels.noop.strict, 0);
+  assert.equal(anchored.sentinels.wrong_value.strict, 0);
+  const proseOnly = offlineValidationRow({ task_id: "t-prose", outcome_contract: { required: [{ type: "state_effect", tool: "send-email", observed_arguments: { body: "only long free text in the observed arguments of this call" } }], forbidden: [], grading: "g" } });
+  assert.equal(proseOnly.oracle.strict, 1);
+  assert.equal(proseOnly.sentinels.wrong_value.strict, 0, "tool corrupted when no anchors exist");
+});
+
+test("rejected calls (status=error) never satisfy contract entries", async () => {
+  const { contractEntryMet } = await import("../dist/trace-foundry.js");
+  const rule = { type: "state_effect", tool: "update-record", observed_arguments: { id: 7 } };
+  assert.equal(contractEntryMet(rule, { calls: [{ tool: "update-record", arguments: { id: 7 }, status: "error" }] }), false);
+  assert.equal(contractEntryMet(rule, { calls: [{ tool: "update-record", arguments: { id: 7 } }] }), true);
+});
+
+test("empty contract is not judgeable: no vacuous 100%s from either scorer entrypoint", async () => {
+  const { scoreState, scoreContract } = await import("../dist/trace-foundry.js");
+  const empty = { task_id: "t", outcome_contract: { required: [], forbidden: [], grading: "g" } };
+  const s1 = scoreState(empty, []);
+  assert.equal(s1.judgeable, false);
+  assert.equal(s1.recall, null);
+  assert.equal(s1.score, null);
+  const s2 = scoreContract(empty, { calls: [], finalResponse: "" });
+  assert.equal(s2.judgeable, false);
+  assert.equal(s2.recall, null);
+});
+
+test("generated world validates calls against declared/inferred schemas and journals live", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-validate-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+  assert.match(world, /def _validate\(/, "schema validation gate exists");
+  assert.match(world, /SCHEMAS = json\.loads/, "schemas load from the sidecar");
+  assert.match(world, /missing required field/, "AutomationBench-style rejection payloads");
+  assert.match(world, /UNDERSTUDY_LIVE_JOURNAL/, "live journal is env-gated");
+  assert.match(world, /def _accept\(/, "every tool routes through the validating, journaling acceptor");
+  assert.match(world, /self\._accept\(/);
+  const schemas = JSON.parse(readFileSync(join(output, "environment", "understudy_trace_env", "servers", "schemas.json"), "utf8"));
+  assert.ok(schemas["update-record"], "contract tool has a schema");
+  assert.equal(schemas["update-record"].inferred, true, "observed-only tools get an inferred schema");
+  assert.ok(schemas["update-record"].required.includes("id"));
+  // taskset filters rejected events before matching
+  const taskset = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  assert.match(taskset, /status.*!= .error./, "invalid calls never satisfy contract entries");
+  assert.match(taskset, /_anchor_arguments/, "python scorer uses the same anchor rule");
+});
+
+test("fallback rubric synthesis: structured and unstructured oracle responses", async () => {
+  const { fallbackRubricEntries } = await import("../dist/trace-foundry.js");
+  const structured = fallbackRubricEntries('{"status": "created", "automation_id": "auto-1"}', "req-1");
+  assert.deepEqual(structured.map((e) => e.kind), ["json_parses", "schema_valid"]);
+  assert.ok(structured.every((e) => e.provenance === "fallback_minimal"));
+  const unstructured = fallbackRubricEntries("Done — created automation auto-33019284756102 for request req-8021847362514908.", "please handle request req-8021847362514908");
+  assert.ok(unstructured.length > 0);
+  assert.ok(unstructured.every((e) => e.provenance === "fallback_minimal"));
+});

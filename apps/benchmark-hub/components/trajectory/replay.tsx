@@ -18,13 +18,25 @@ type ReplayStep = {
   met_count: number;
   partial_credit: number;
 };
-type Verdict = { recall: number; precision: number; policy: number; strict: number; score: number; task_completed_correctly: boolean };
+type Verdict = {
+  judgeable?: boolean;
+  recall: number | null;
+  precision: number | null;
+  policy: number | null;
+  strict: number;
+  score: number | null;
+  task_completed_correctly: boolean;
+};
+type RuleEvaluation = { kind: string; label: string; criterion: string; met: boolean; met_at: number | null; provenance: string | null };
 type Accumulation = {
   required: ReplayRequired[];
   forbidden_tools: string[];
   forbidden_values?: number;
   steps: ReplayStep[];
   verdict: Verdict;
+  rules_evaluated?: RuleEvaluation[];
+  writes_mapped?: { step: number; tool: string; mapped_to: number | null }[];
+  forbidden_evaluated?: { label: string; violated: boolean }[];
 };
 type Arm = Accumulation & {
   key: string;
@@ -141,7 +153,7 @@ function AccumulationView({
               </span>
             </li>
           ))}
-          {data.required.length === 0 && <li className="mono text-xs text-faint">no required effects — trivially satisfied</li>}
+          {data.required.length === 0 && <li className="mono text-xs text-warn">contract has no required entries — not judgeable</li>}
           {data.forbidden_tools.length > 0 && (
             <li className="mono text-xs text-warn">forbidden: {data.forbidden_tools.join(", ")} — any call zeroes the score</li>
           )}
@@ -185,7 +197,21 @@ function AccumulationView({
         </div>
       </div>
 
-      {/* Final verdict + rubric contribution bars */}
+      {/* Final verdict + rubric contribution bars. An empty contract is a
+          DISTINCT state (defensive: the foundry now guarantees a fallback
+          rubric, so this should be unreachable on fresh builds). */}
+      {v.judgeable === false ? (
+        <div className="u-card" style={{ padding: "12px 14px", borderColor: "var(--warn-ink)" }}>
+          <h3>Final verdict</h3>
+          <p className="mono mt-2 text-base font-bold" style={{ color: "var(--warn-ink)" }}>
+            not judgeable — no obligations in this task&apos;s contract
+          </p>
+          <p className="mono mt-1 text-xs text-ink-muted">no rules to evaluate — recall/precision/policy are undefined, not 100%</p>
+          <p className="mono mt-2 text-[11px] text-faint">
+            run `understudy traces regenerate-env` (fallback rubric synthesis) or `understudy traces author-tasks` to give this task a judgeable rubric.
+          </p>
+        </div>
+      ) : (
       <div className="u-card" style={{ padding: "12px 14px", borderColor: v.task_completed_correctly ? "var(--ok)" : "var(--bad)" }}>
         <h3>Final verdict</h3>
         <div className="mt-2 flex flex-wrap items-baseline gap-3">
@@ -198,7 +224,65 @@ function AccumulationView({
           </span>
         </div>
         <RubricBars rewardFunctions={rewardFunctions} values={rubricValues} />
+        {(data.rules_evaluated?.length ?? 0) > 0 && (
+          <details className="mt-3">
+            <summary className="mono cursor-pointer text-[11px] text-ink-muted">
+              rules evaluated — what each number is made of
+            </summary>
+            <div className="mt-2 flex flex-col gap-2">
+              <div>
+                <span className="mono text-[10px] uppercase tracking-wide text-faint">
+                  recall = {data.rules_evaluated!.filter((r) => r.met).length}/{data.rules_evaluated!.length} required rules met
+                </span>
+                <ul className="mt-1 flex list-none flex-col gap-1 p-0">
+                  {data.rules_evaluated!.map((r, i) => (
+                    <li key={i} className="mono flex flex-wrap items-center gap-2 text-[11px]">
+                      <span style={{ color: r.met ? "var(--ok)" : "var(--bad)" }}>{r.met ? "✓" : "✗"}</span>
+                      <Badge className="text-ink-bright">{r.label}</Badge>
+                      <span className="text-faint">{r.kind}</span>
+                      {r.provenance && <Badge className="border-warn/40 text-warn">{r.provenance}</Badge>}
+                      <span className="text-ink-muted">criterion: {r.criterion}</span>
+                      <span className="text-faint">{r.met_at !== null ? `→ satisfied by event #${r.met_at + 1}` : "never met"}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {(data.writes_mapped?.length ?? 0) > 0 && (
+                <div>
+                  <span className="mono text-[10px] uppercase tracking-wide text-faint">
+                    precision = {data.writes_mapped!.filter((w) => w.mapped_to !== null).length}/{data.writes_mapped!.length} candidate writes mapped to required effects
+                  </span>
+                  <ul className="mt-1 flex list-none flex-col gap-0.5 p-0">
+                    {data.writes_mapped!.map((w, i) => (
+                      <li key={i} className="mono text-[11px] text-ink-muted">
+                        event #{w.step + 1} {w.tool} —{" "}
+                        {w.mapped_to !== null ? `maps to required[${w.mapped_to + 1}]` : "unmapped (counts against precision)"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div>
+                <span className="mono text-[10px] uppercase tracking-wide text-faint">
+                  policy — {data.forbidden_evaluated?.length ?? 0} forbidden rule{(data.forbidden_evaluated?.length ?? 0) === 1 ? "" : "s"} checked
+                </span>
+                {(data.forbidden_evaluated?.length ?? 0) > 0 ? (
+                  <ul className="mt-1 flex list-none flex-col gap-0.5 p-0">
+                    {data.forbidden_evaluated!.map((f, i) => (
+                      <li key={i} className="mono text-[11px]" style={{ color: f.violated ? "var(--bad)" : "var(--muted-foreground)" }}>
+                        {f.violated ? "✗ violated" : "✓ clear"} — {f.label}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mono mt-1 text-[11px] text-faint">no forbidden rules in this contract — policy passes by absence</p>
+                )}
+              </div>
+            </div>
+          </details>
+        )}
       </div>
+      )}
     </div>
   );
 }
@@ -209,10 +293,21 @@ function AccumulationView({
  * accumulation replay per model arm — each fed through the environment's own
  * scoring code server-side. No LLM judging anywhere in this view.
  */
+type LiveRun = { run_id: string; model: string; status: string };
+type LivePayload = {
+  status: string;
+  progress: { completed: number; total: number };
+  next: number;
+  accumulation: Accumulation | null;
+};
+
 export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
   const [data, setData] = useState<ReplayPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [armKey, setArmKey] = useState<string>("oracle");
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
+  const [live, setLive] = useState<LivePayload | null>(null);
+  const [lastLiveRunId, setLastLiveRunId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -231,6 +326,42 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
     };
   }, [slug, taskId]);
   useEffect(() => load(), [load]);
+
+  // LIVE watch: while a task-scoped run is queued/running, poll the journal
+  // feed ~1.5s — events land as the world server appends them, required
+  // chips flip met in real time. Tool-call-level only (token streaming is
+  // deferred); the finished run swaps seamlessly to its scored arm.
+  useEffect(() => {
+    if (!liveRun) {
+      setLive(null);
+      return;
+    }
+    setArmKey("live");
+    setLastLiveRunId(liveRun.run_id);
+    let stopped = false;
+    const poll = () => {
+      fetch(`/api/runs/live?slug=${encodeURIComponent(slug)}&run=${encodeURIComponent(liveRun.run_id)}&task=${encodeURIComponent(taskId)}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((body: LivePayload | null) => {
+          if (!stopped && body) setLive(body);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const timer = setInterval(poll, 1_500);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [liveRun, slug, taskId]);
+
+  // Seamless handoff: when the watched run finishes and its rows land, select
+  // that run's scored arm instead of snapping back to the oracle.
+  useEffect(() => {
+    if (liveRun || armKey !== "live" || !data || !lastLiveRunId) return;
+    const finished = data.arms.find((a) => a.run_id === lastLiveRunId);
+    setArmKey(finished ? finished.key : "oracle");
+  }, [liveRun, armKey, data, lastLiveRunId]);
 
   if (error) return <p className="mono text-xs text-warn">{error}</p>;
   if (!data) return <p className="mono text-xs text-ink-muted">computing deterministic replay…</p>;
@@ -261,10 +392,46 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
             {a.model} <span style={{ color: scoreColor(a.mean_score ?? 0) }}>{formatScore(a.mean_score)}</span>
           </button>
         ))}
+        {liveRun && (
+          <button
+            type="button"
+            aria-pressed={armKey === "live"}
+            className={"u-tab mono" + (armKey === "live" ? " on" : "")}
+            style={{ border: "1px solid var(--live)", borderRadius: 6, padding: "3px 8px", fontSize: 11, color: "var(--live)" }}
+            onClick={() => setArmKey("live")}
+          >
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--live)", marginRight: 6, animation: "u-live-pulse 1.2s ease-in-out infinite" }} />
+            LIVE · {liveRun.model} {liveRun.status === "queued" ? "(waiting for executor)" : ""}
+          </button>
+        )}
         <span className="mono text-[10px] text-faint">deterministic — no LLM judging in this view</span>
+        <style>{`@keyframes u-live-pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }`}</style>
       </div>
 
-      {arm === null ? (
+      {armKey === "live" && liveRun ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mono text-xs font-bold" style={{ color: "var(--live)" }}>
+              LIVE — {liveRun.model}
+            </span>
+            <span className="mono text-[10px] text-faint">
+              {live ? `${live.progress.completed}/${live.progress.total} rollouts · ${live.next} journal events · polling 1.5s` : "attaching to the live journal…"}
+            </span>
+          </div>
+          {live?.accumulation ? (
+            <AccumulationView
+              data={live.accumulation}
+              rewardFunctions={data.reward_functions}
+              subscores={null}
+              emptyStepsNote={liveRun.status === "queued" ? "waiting for the executor daemon to pick this run up…" : "no tool events yet — the model is thinking"}
+            />
+          ) : (
+            <p className="mono text-xs text-ink-muted">
+              {liveRun.status === "queued" ? "run queued — start `understudy runs execute --watch` to execute it" : "waiting for the first journal event…"}
+            </p>
+          )}
+        </>
+      ) : arm === null ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="text-ink-bright">{data.label}</Badge>
@@ -334,6 +501,7 @@ export function ReplayView({ slug, taskId }: { slug: string; taskId: string }) {
           <RunTaskControls
             slug={slug}
             taskId={taskId}
+            onActiveRun={setLiveRun}
             canRun={
               data.stage === "promoted" ||
               (data.task_review === "accept" && data.environment.exists && data.environment.oracle_pass === true)

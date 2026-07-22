@@ -280,7 +280,11 @@ test("authoring context exposes the captured final response as the oracle for ob
   const byKey = new Map(captures.map((row) => [row.capture_key, row]));
   const context = buildAuthoringContext(tasks[0], byKey, 20000);
   assert.match(context.final_response, /external_customer/);
-  assert.equal(tasks[0].outcome_contract.required.length, 0, "tool-less task starts with an EMPTY (unjudgeable) contract");
+  // Judgeability guarantee: the tool-less task starts with a FALLBACK rubric
+  // synthesized from the oracle response (never an empty contract).
+  assert.ok(tasks[0].outcome_contract.required.length > 0, "no task leaves the foundry with an empty contract");
+  assert.ok(tasks[0].outcome_contract.required.every((entry) => entry.provenance === "fallback_minimal"));
+  assert.ok(tasks[0].claims.some((c) => String(c.claim).includes("minimal oracle-response check")));
 });
 
 test("tool-less task: grounded obligations merge into the deterministic contract and become judgeable", async () => {
@@ -288,11 +292,16 @@ test("tool-less task: grounded obligations merge into the deterministic contract
   const run = await authorTasks(output, { model: "fake-model", client: fakeClient(toolLessAuthored), now: new Date("2026-07-21T13:00:00Z") });
   assert.deepEqual(run.grounding, { verified: 1, failed: 0 });
   assert.equal(run.contracts.tasks_extended, 1);
-  assert.equal(run.contracts.merged_obligation_entries, 4);
+  // The fallback rubric already carries json_parses + schema_valid; the
+  // grounded merge adds the entries the fallback couldn't know (dedup by
+  // canonical key keeps the rest).
+  assert.ok(run.contracts.merged_obligation_entries > 0);
   const task = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse)[0];
-  const types = task.outcome_contract.required.map((entry) => entry.type).sort();
-  assert.deepEqual(types, ["response_obligation", "response_obligation", "response_obligation", "value_propagation"]);
-  assert.ok(task.outcome_contract.required.every((entry) => entry.provenance?.grounded === true));
+  const grounded = task.outcome_contract.required.filter((entry) => entry.provenance?.grounded === true);
+  const fallback = task.outcome_contract.required.filter((entry) => entry.provenance === "fallback_minimal");
+  assert.ok(grounded.length > 0 && fallback.length > 0, "grounded obligations merge ON TOP of the fallback rubric");
+  assert.ok(grounded.some((entry) => entry.type === "value_propagation"));
+  assert.ok(grounded.some((entry) => entry.type === "response_obligation" && entry.kind === "contains_category"));
   assert.equal(task.outcome_contract.grading, "final_state_and_obligations");
   // task_hash recomputed to reflect the widened contract
   assert.equal(typeof task.task_hash, "string");
@@ -330,7 +339,10 @@ test("ungroundable obligations fail grounding with recorded violations and merge
   assert.ok(violations.some((v) => v.includes('kind "not_a_kind"')));
   assert.ok(violations.some((v) => v.includes("forbidden_values[0]") && v.includes("contradiction")));
   const task = readFileSync(join(output, "tasks.jsonl"), "utf8").split("\n").filter(Boolean).map(JSON.parse)[0];
-  assert.equal(task.outcome_contract.required.length, 0, "failed grounding merges nothing — deterministic contract stays authoritative");
+  // Failed grounding merges nothing: the contract keeps ONLY the synthesized
+  // fallback rubric (deterministic authority), no grounded entries.
+  assert.ok(task.outcome_contract.required.length > 0, "fallback rubric stays — never an empty contract");
+  assert.ok(task.outcome_contract.required.every((entry) => entry.provenance === "fallback_minimal"));
 });
 
 test("grounding unit: read obligations and tool_args value propagation verify against observed evidence", async () => {
