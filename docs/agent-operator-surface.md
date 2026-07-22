@@ -81,6 +81,28 @@ The intended improvement cycle, tool by tool:
 Repeat until the review ledger says `accept` and the score summary holds
 across models you care about.
 
+### Current-code regression loop (app replay)
+
+When the fix in step 4 is an edit to the **user's own application** (prompts,
+routing, agent code), the model arms above only tell you what a model would
+do — the `app_replay` arm tells you what the *app as it now exists* does on
+the same frozen tasks (see [`app-harness.md`](app-harness.md)):
+
+1. Author (or update) `app-harness.json` in the benchmark dir — a coding
+   agent drafts it from the user's repo (`understudy.app_harness.v1`).
+2. Edit the user's code.
+3. Queue an app-replay run: `POST /api/runs` / `queue_run` with
+   `app_replay: true` (the request records `requires: ["app_replay"]`, so an
+   old executor skips it with `run_unsupported` instead of corrupting it).
+4. `understudy runs execute --benchmark <dir> --watch` launches the app per
+   task with gateway-redirect env, kills it at the per-task timeout, and
+   scores observed tool events through the shared contract scorer.
+5. Read the rows: they are labeled `arm_kind: "app_replay"`, never feed
+   calibration, and rows whose tool effects were not observable carry the
+   honest `app_replay_unobserved` anomaly rather than a fabricated score.
+6. Regression verdict = compare the app-replay rows on the frozen task set
+   before vs after the code edit.
+
 ## Guardrails
 
 - Reviews are append-only; the newest line per `task_id` wins. Decisions:

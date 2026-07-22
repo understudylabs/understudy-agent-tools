@@ -188,3 +188,18 @@ per line in a `flags.jsonl` file next to the benchmark's `benchmark.json`
 manifest. `task_id: null` flags the whole benchmark. Viewers (e.g.
 `apps/benchmark-hub`) badge flagged units everywhere they appear and let
 leaderboards exclude open-flagged tasks; only `open` flags affect exclusion.
+
+## `understudy.app_harness.v1`
+
+[`understudy.app_harness.v1.schema.json`](understudy.app_harness.v1.schema.json)
+is the `app-harness.json` sidecar in a benchmark directory: how the run
+executor launches the user's OWN application per frozen task for the
+`app_replay` arm (`src/app-harness.ts`). It carries the launch argv, cwd,
+extra env, input mode (`argv` / `stdin` / `http`), per-task timeout, and the
+declared LLM/tool routes. The executor injects the gateway redirect env vars
+(the `/instrument` pattern) so the app's LLM calls route through the
+Understudy gateway, and scores observed tool events through the shared
+contract scorer. Tier-1 boundary: rollouts whose tool effects are not
+observable are recorded with the `app_replay_unobserved` anomaly — honest
+partial evidence, never fabricated scores. Authoring guide:
+[`docs/app-harness.md`](../docs/app-harness.md).

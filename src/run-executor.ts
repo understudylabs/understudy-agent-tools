@@ -53,7 +53,7 @@ export const EXECUTOR_VERSION: string = (() => {
  * Old executors predate `requires` entirely, hence the belt-and-braces
  * EXECUTOR_VERSION stamps above.
  */
-export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout"] as const;
+export const EXECUTOR_CAPABILITIES = ["trivial_arms", "calibration", "rollout_timeout", "app_replay"] as const;
 
 /** The `requires` entries of a request this executor cannot honor (empty = safe to run). */
 export function unsupportedRequirements(request: Pick<RunRequest, "requires">, capabilities: readonly string[] = EXECUTOR_CAPABILITIES): string[] {
@@ -70,7 +70,7 @@ export type RunSplit = (typeof RUN_SPLITS)[number];
  * deterministic trivial calibration arms (extended additively — old readers
  * only ever see incumbent/candidate on old rows).
  */
-export const ARM_KINDS = ["incumbent", "candidate", "null_agent", "spam_agent"] as const;
+export const ARM_KINDS = ["incumbent", "candidate", "null_agent", "spam_agent", "app_replay"] as const;
 export type ArmKind = (typeof ARM_KINDS)[number];
 /** The trivial calibration arms (agentic-benchmarks floor discipline: a do-nothing agent must score ~0). */
 export const TRIVIAL_ARM_KINDS = ["null_agent", "spam_agent"] as const;
@@ -121,6 +121,14 @@ export type RunRequest = {
   requires?: string[];
   /** Additive: per-rollout wall-clock budget in seconds (default DEFAULT_ROLLOUT_TIMEOUT_SECONDS). */
   rollout_timeout_seconds?: number;
+  /**
+   * Additive (absent when unused): run the user's OWN app per the benchmark's
+   * app-harness.json sidecar (understudy.app_harness.v1) instead of a model
+   * arm. Rows are labeled arm_kind "app_replay" and NEVER feed calibration —
+   * an app replay is a regression check on current code, not an incumbent
+   * claim. Capability-gated via requires: ["app_replay"].
+   */
+  app_replay?: boolean;
   /** Additive: the executor that atomically claimed this request (stale-watcher hijack guard). */
   claimed_by?: RunClaim | null;
   /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
@@ -255,6 +263,8 @@ export type RunRequestInput = {
   trivial_arms?: unknown;
   /** Optional (additive): per-rollout wall-clock budget in seconds. */
   rollout_timeout_seconds?: unknown;
+  /** Optional (additive): replay the user's own app per app-harness.json (arm_kind "app_replay"). */
+  app_replay?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -314,13 +324,20 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
     errors.push("rollout_timeout_seconds must be a positive number of seconds");
   }
+  const appReplay = input.app_replay;
+  if (appReplay !== undefined && typeof appReplay !== "boolean") {
+    errors.push("app_replay must be a boolean");
+  }
+  if (appReplay === true && Array.isArray(incumbents) && incumbents.length > 0) {
+    errors.push("app_replay runs cannot carry incumbent_models — an app replay is not an incumbent claim and never feeds calibration");
+  }
   return errors;
 }
 
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number },
+  input: { benchmark_id: string; models: string[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; app_replay?: boolean },
   now: Date = new Date(),
 ): RunRequest {
   // Writers declare the capabilities their feature use depends on, so an old
@@ -330,6 +347,7 @@ export function createRunRequest(
   if (input.trivial_arms && input.trivial_arms.length > 0) requires.push("trivial_arms");
   if ((input.incumbent_models && input.incumbent_models.length > 0) || input.calibration_threshold !== undefined) requires.push("calibration");
   if (input.rollout_timeout_seconds !== undefined) requires.push("rollout_timeout");
+  if (input.app_replay === true) requires.push("app_replay");
   const request: RunRequest = {
     schema_version: RUN_REQUEST_SCHEMA,
     run_id: `run-${hash({ ...input, at: now.toISOString(), nonce: Math.random() }).slice(0, 16)}`,
@@ -349,6 +367,7 @@ export function createRunRequest(
     ...(input.calibration_threshold !== undefined ? { calibration_threshold: input.calibration_threshold } : {}),
     ...(input.trivial_arms && input.trivial_arms.length > 0 ? { trivial_arms: input.trivial_arms } : {}),
     ...(input.rollout_timeout_seconds !== undefined ? { rollout_timeout_seconds: input.rollout_timeout_seconds } : {}),
+    ...(input.app_replay === true ? { app_replay: true } : {}),
     ...(requires.length > 0 ? { requires } : {}),
   };
   writeRunRequest(benchmarkDir, request);
@@ -397,6 +416,13 @@ export type RolloutResult = {
   oracle?: { missing_gold: string[] } | null;
   /** Additive: true when the rollout was killed by the per-rollout timeout (row gets the rollout_timeout anomaly). */
   timed_out?: boolean;
+  /**
+   * Additive: a structural anomaly the RUNNER itself detected (e.g. the
+   * app-replay arm's "app_replay_unobserved" when the launched app's tool
+   * calls could not be observed). Marked on the row exactly like
+   * executor-detected sentinels — honest partial evidence, never a fake score.
+   */
+  anomaly?: RolloutAnomaly | null;
   error?: string | null;
 };
 
@@ -418,7 +444,8 @@ export type RolloutAnomalyKind =
   | "empty_final_response"
   | "no_journal_events"
   | "zero_score_zero_calls"
-  | "rollout_timeout";
+  | "rollout_timeout"
+  | "app_replay_unobserved";
 
 export type RolloutAnomaly = { kind: RolloutAnomalyKind; detail: string };
 
@@ -556,6 +583,13 @@ export function selectTasks(manifest: Obj, request: Pick<RunRequest, "split" | "
 
 export type ExecuteOptions = {
   runner: ArmRunner;
+  /**
+   * Additive: the runner for app_replay requests (launches the user's own app
+   * per app-harness.json; see src/app-harness.ts). When absent, this executor
+   * simply does not advertise the "app_replay" capability, so such requests
+   * are skipped-with-record — never executed as a model arm by mistake.
+   */
+  appReplayRunner?: ArmRunner;
   /** Rollouts in flight per arm (the concurrency flag). */
   concurrency?: number;
   /** Per-rollout wall-clock budget in seconds; the request's rollout_timeout_seconds wins when present. */
@@ -592,7 +626,10 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // recognize is SKIPPED with a recorded run_unsupported note — never executed
   // with the unknown fields silently dropped (the stale-watcher hijack class).
   // Status stays "queued" so a capable executor can still pick it up.
-  const missing = unsupportedRequirements(initial, options.capabilities ?? EXECUTOR_CAPABILITIES);
+  const baseCapabilities = options.capabilities ?? EXECUTOR_CAPABILITIES;
+  // "app_replay" is only honestly supported when an app-replay runner was wired in.
+  const capabilities = options.appReplayRunner ? baseCapabilities : baseCapabilities.filter((c) => c !== "app_replay");
+  const missing = unsupportedRequirements(initial, capabilities);
   if (missing.length > 0) {
     const note = { executor_version: EXECUTOR_VERSION, missing, at: now().toISOString() };
     // Record once per executor version (a watch daemon polls forever).
@@ -632,10 +669,14 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   // arms are deterministic, so they run exactly ONE rollout per task no matter
   // what rollouts_per_task says (repeats add nothing but identical rows).
   type Arm = { model: string; kind: ArmKind; runner: ArmRunner; rollouts: number };
+  // app_replay requests replay the user's OWN app (labels stay per "model"
+  // entry — typically the app/route name); the capability gate above already
+  // guaranteed options.appReplayRunner is present when app_replay is true.
+  const appReplay = request.app_replay === true && options.appReplayRunner !== undefined;
   const arms: Arm[] = request.models.map((model) => ({
     model,
-    kind: ((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind,
-    runner: options.runner,
+    kind: appReplay ? ("app_replay" as ArmKind) : (((request.incumbent_models ?? []).includes(model) ? "incumbent" : "candidate") as ArmKind),
+    runner: appReplay ? options.appReplayRunner! : options.runner,
     rollouts: request.rollouts_per_task,
   }));
   for (const kind of request.trivial_arms ?? []) {
@@ -753,6 +794,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
           if (result.timed_out === true) {
             anomalies.unshift({ kind: "rollout_timeout", detail: result.error ?? `rollout exceeded ${timeoutSeconds}s` });
           }
+          // Runner-detected structural anomalies (e.g. app_replay_unobserved)
+          // are marked on the row exactly like executor-detected sentinels.
+          if (result.anomaly) anomalies.unshift(result.anomaly);
           const row: Obj = {
             schema_version: EVAL_RESULT_SCHEMA,
             run_id: runId,

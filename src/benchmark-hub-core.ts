@@ -726,6 +726,8 @@ export type QueueRunBody = {
   incumbent_models?: unknown;
   /** Optional (additive): incumbent calibration pass threshold in (0, 1]. */
   calibration_threshold?: unknown;
+  /** Optional (additive): replay the user's own app per app-harness.json (arm_kind "app_replay"; capability-gated). */
+  app_replay?: unknown;
 };
 
 export type QueueRunResult = { ok: true; run: RunRequest; execute_hint?: string } | WriteFailure;
@@ -820,6 +822,9 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     // Additive: the incumbent-baseline arm label + calibration threshold.
     incumbent_models: body.incumbent_models,
     calibration_threshold: body.calibration_threshold,
+    // Additive: current-code app replay (validated as a boolean; the executor
+    // is capability-gated on "app_replay" so old executors skip, never corrupt).
+    app_replay: body.app_replay,
   };
   const errors = validateRunRequestInput(input, knownTaskIds);
   if (errors.length > 0) return { ok: false, error: errors.join("; "), status: 400 };
@@ -841,6 +846,7 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     rollouts_per_task: input.rollouts_per_task as number,
     incumbent_models: input.incumbent_models as string[] | undefined,
     calibration_threshold: input.calibration_threshold as number | undefined,
+    app_replay: input.app_replay as boolean | undefined,
   });
   return { ok: true, run, execute_hint: `understudy runs execute --benchmark ${entry.dir} --watch` };
 }

@@ -55,6 +55,8 @@ export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
 export const TASK_FEEDBACK_SCHEMA = "understudy.task_feedback.v1";
 /** review-policy.json sidecar: configurable exception-review auto-accept bar. */
 export const REVIEW_POLICY_SCHEMA = "understudy.review_policy.v1";
+/** app-harness.json sidecar: how to launch the user's OWN app per task (the app_replay arm). */
+export const APP_HARNESS_SCHEMA = "understudy.app_harness.v1";
 
 /* ------------------------------------------------------------------ */
 /* JSONL codec                                                         */
