@@ -105,3 +105,22 @@ test("reassembles SSE tool deltas and distinguishes an evidenced retry", () => {
   const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8")); assert.equal(dag.edges[0].type, "retry"); assert.equal(dag.edges[0].evidence.prior_error, true);
   const captures = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").trim().split("\n").map(JSON.parse); const streamed = captures.find((row) => row.capture_id === "retry"); assert.equal(streamed.response.encoding, "sse"); assert.equal(streamed.response.tool_calls[0].function.name, "update-record"); assert.equal(streamed.response.tool_calls[0].function.arguments, '{"id":1}');
 });
+
+test("replay subprocess env is allowlisted, strips PRIME_*, and defaults to --no-push", async () => {
+  const { buildReplayInvocation } = await import("../dist/trace-foundry.js");
+  const parentEnv = {
+    PATH: "/usr/bin", HOME: "/home/u", UV_CACHE_DIR: "/tmp/uv", PRIME_API_KEY: "prime-secret",
+    PRIME_TEAM_ID: "team-1", AWS_SECRET_ACCESS_KEY: "aws-secret", GITHUB_TOKEN: "gh-secret",
+    OPENAI_BASE_URL: "https://gateway.example/v1", OPENAI_API_KEY: "gw-key",
+  };
+  const offline = buildReplayInvocation("/bench/environment", "candidate", "authentic_history", 2, false, parentEnv);
+  assert.ok(Object.keys(offline.env).every((key) => !key.startsWith("PRIME_")), "no PRIME_* in spawn env");
+  assert.ok(!("AWS_SECRET_ACCESS_KEY" in offline.env) && !("GITHUB_TOKEN" in offline.env), "non-allowlisted secrets stripped");
+  assert.ok(offline.args.includes("--no-push"), "pinned verifiers offline switch present");
+  assert.equal(offline.env.UV_CACHE_DIR, "/tmp/uv");
+  assert.equal(offline.env.UNDERSTUDY_REPLAY_API_KEY, "gw-key");
+  assert.deepEqual(offline.args.slice(offline.args.indexOf("--client.api-key-var"), offline.args.indexOf("--client.api-key-var") + 4), ["--client.api-key-var", "UNDERSTUDY_REPLAY_API_KEY", "--client.base-url", "https://gateway.example/v1"]);
+  const pushing = buildReplayInvocation("/bench/environment", "candidate", "authentic_history", 2, true, parentEnv);
+  assert.ok(!pushing.args.includes("--no-push"));
+  assert.equal(pushing.env.PRIME_API_KEY, "prime-secret");
+});

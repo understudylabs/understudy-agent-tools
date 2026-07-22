@@ -34,7 +34,8 @@ export function registerTracesCommand(program: Command): void {
     .option("--variant <name...>", "Context variants", ["authentic_history"])
     .option("--max-examples <count>", "Maximum examples per model and variant", "5")
     .option("--yes", "Approve provider calls for this bounded run", false)
-    .action((options: { benchmark: string; model: string[]; variant: string[]; maxExamples: string; yes: boolean }) => console.log(JSON.stringify(runTraceReplays(resolve(options.benchmark), options.model, options.variant, Number(options.maxExamples), options.yes), null, 2)));
+    .option("--push", "Opt in to uploading traces to the Prime Intellect platform (off by default; requires PRIME_API_KEY)", false)
+    .action((options: { benchmark: string; model: string[]; variant: string[]; maxExamples: string; yes: boolean; push: boolean }) => console.log(JSON.stringify(runTraceReplays(resolve(options.benchmark), options.model, options.variant, Number(options.maxExamples), options.yes, options.push), null, 2)));
   traces.command("serve")
     .description("Serve the local DAG, task, contract, and trace viewer")
     .requiredOption("--benchmark <path>", "Benchmark output directory")

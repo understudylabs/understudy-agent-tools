@@ -300,7 +300,40 @@ export function createTraceReplayPlan(outputInput: string, models: string[]): Ob
   writeJson(join(output, "replay-plan.json"), plan); writeJson(join(output, "gepa-plan.json"), { schema_version: "understudy.gepa_plan.v1", requires: ["completed_baseline", "trusted_rewards", "sealed_holdout"], optimize_splits: ["train", "dev"], selection_split: "dev", final_split: "holdout", execute: false }); return plan;
 }
 
-export function runTraceReplays(outputInput: string, models: string[], variants: string[], maxExamples: number, confirmed: boolean): Obj {
+/**
+ * Replay subprocess hygiene (privacy): the pinned verifiers eval pushes every
+ * finished run to the Prime Intellect platform BY DEFAULT (`EvalConfig.push:
+ * bool = True`, uploaded by verifiers/v1/push.py using `$PRIME_API_KEY` or
+ * ~/.prime/config.json). We therefore (a) never inherit the full parent env —
+ * only an explicit allowlist plus explicitly-passed model credentials — and
+ * (b) always pass the pinned commit's `--no-push` switch unless the caller
+ * opts in with `--push`.
+ */
+const REPLAY_ENV_ALLOWLIST = ["PATH", "HOME", "TMPDIR", "TERM", "SHELL", "LANG", "LC_ALL", "USER", "LOGNAME", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "XDG_CACHE_HOME", "XDG_DATA_HOME", "PYTHONUNBUFFERED"];
+const REPLAY_ENV_ALLOWLIST_PREFIXES = ["UV_"];
+const REPLAY_KEY_VAR = "UNDERSTUDY_REPLAY_API_KEY";
+
+export type ReplayInvocation = { args: string[]; env: Record<string, string> };
+
+export function buildReplayInvocation(environment: string, model: string, variant: string, maxExamples: number, push: boolean, parentEnv: NodeJS.ProcessEnv = process.env): ReplayInvocation {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(parentEnv)) {
+    if (value === undefined) continue;
+    if (REPLAY_ENV_ALLOWLIST.includes(key) || REPLAY_ENV_ALLOWLIST_PREFIXES.some((prefix) => key.startsWith(prefix))) env[key] = value;
+  }
+  const args = ["run", "--project", environment, "eval", "understudy-trace-env", "-m", model, "-n", String(maxExamples), "--env.taskset.context-variant", variant, "--env.taskset.tools.runtime.type", "subprocess"];
+  // Model credentials are wired explicitly, never inherited wholesale; without
+  // them the pinned client would default to Prime inference + PRIME_API_KEY.
+  const baseUrl = parentEnv.UNDERSTUDY_GATEWAY_URL ?? parentEnv.OPENAI_BASE_URL ?? null;
+  const apiKey = parentEnv.UNDERSTUDY_API_KEY ?? parentEnv.OPENAI_API_KEY ?? null;
+  if (apiKey !== null) { env[REPLAY_KEY_VAR] = apiKey; args.push("--client.api-key-var", REPLAY_KEY_VAR); }
+  if (baseUrl !== null) args.push("--client.base-url", baseUrl);
+  if (push) { for (const key of ["PRIME_API_KEY", "PRIME_TEAM_ID", "PRIME_INFERENCE_URL"]) { const value = parentEnv[key]; if (value !== undefined) env[key] = value; } }
+  else args.push("--no-push");
+  return { args, env };
+}
+
+export function runTraceReplays(outputInput: string, models: string[], variants: string[], maxExamples: number, confirmed: boolean, push = false): Obj {
   if (!confirmed) throw new Error("Replay execution can call paid model providers; pass --yes to approve the requested models and examples.");
   if (!Number.isInteger(maxExamples) || maxExamples <= 0) throw new Error("--max-examples must be a positive integer");
   const output = resolve(outputInput), environment = join(output, "environment"), allowed = new Set(["minimal_context", "authentic_history", "long_history", "distractors", "errors_and_retries", "saturation"]);
@@ -315,17 +348,25 @@ export function runTraceReplays(outputInput: string, models: string[], variants:
     return `${history}\n`.repeat(8);
   };
   for (const model of models) for (const variant of variants) {
-    const started = new Date(), args = ["run", "--project", environment, "eval", "understudy-trace-env", "-m", model, "-n", String(maxExamples), "--env.taskset.context-variant", variant, "--env.taskset.tools.runtime.type", "subprocess"];
+    const started = new Date(), invocation = buildReplayInvocation(environment, model, variant, maxExamples, push);
     writeJson(taskRowsPath, sourceTaskRows.map((row) => ({ ...row, prompt: promptFor(row, variant) })));
     let child: ReturnType<typeof spawnSync>;
-    try { child = spawnSync("uv", args, { cwd: output, encoding: "utf8", env: process.env, maxBuffer: 16 * 1024 * 1024 }); }
+    try { child = spawnSync("uv", invocation.args, { cwd: output, encoding: "utf8", env: invocation.env, maxBuffer: 16 * 1024 * 1024 }); }
     finally { writeJson(taskRowsPath, sourceTaskRows); }
-    const run = { model, variant, started_at: started.toISOString(), finished_at: new Date().toISOString(), status: child.status === 0 ? "completed" : "error", exit_code: child.status, stdout: child.stdout, stderr: child.stderr };
+    const run = { model, variant, started_at: started.toISOString(), finished_at: new Date().toISOString(), status: child.status === 0 ? "completed" : "error", exit_code: child.status, args: invocation.args, env_keys: Object.keys(invocation.env).sort(), stdout: child.stdout, stderr: child.stderr };
     writeJson(join(runRoot, `${hash({ model, variant }).slice(0, 16)}.json`), run); runs.push(run);
     if (child.error) throw new Error(`Could not start uv/verifiers replay: ${child.error.message}`);
   }
-  const report = { schema_version: "understudy.replay_run.v1", provider_calls_performed: true, max_examples: maxExamples, runs };
-  writeJson(join(output, "replay-results.json"), report); return report;
+  const report = { schema_version: "understudy.replay_run.v1", provider_calls_performed: true, max_examples: maxExamples, push_requested: push, upload_performed: push, runs };
+  writeJson(join(output, "replay-results.json"), report);
+  // Keep the manifest's privacy fields honest when the caller opted into reporting.
+  const manifestPath = join(output, "manifest.json");
+  if (push && existsSync(manifestPath)) {
+    const manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
+    manifest.privacy = { ...asObject(manifest.privacy), local_only: false, upload_performed: true, upload_destination: "app.primeintellect.ai" };
+    writeJson(manifestPath, manifest);
+  }
+  return report;
 }
 
 export function compileTraceFoundry(sourceInput: string, outputInput: string, maxAgeDays = 3, now = new Date(), options: TraceFoundryOptions = {}): FoundryResult {
