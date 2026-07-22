@@ -2,7 +2,8 @@ import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, 
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { semanticArgumentsMatch } from "./trace-foundry.js";
+import { canonMask, semanticArgumentsMatch } from "./trace-foundry.js";
+import { createHash } from "node:crypto";
 
 type Obj = Record<string, any>;
 
@@ -387,6 +388,294 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
     results,
     privacy: { provider_called: options.client === undefined, gateway_only: true },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Benchmark overview pass (--overview): three-level narrative for the hub
+// ---------------------------------------------------------------------------
+
+const OVERVIEW_SCHEMA_VERSION = "understudy.benchmark_overview.v1";
+
+const OVERVIEW_SYSTEM_PROMPT = `You describe a customer's LLM workload for the workload owner, grounded ONLY in the evidence provided: the workload's own system prompt(s) (masked excerpts), a tool-usage table (tools defined vs actually called), and the authored task definitions grouped by category. Respond with ONLY a JSON object (no markdown fences): {"workload_summary": "1-2 short paragraphs, plain language, present tense"}.
+
+The summary must answer three things, in order:
+(a) WHAT this workload does — the system prompt is the workload's self-description; summarize it.
+(b) WHY these tasks are representative — tie the categories to the tool-usage coverage (which tools the observed tasks actually exercise).
+(c) HOW success is judged — the contracts grade state effects (required tool calls that mutate state, matched semantically); note that value-propagation obligations are the coming extension.
+
+If the evidence lists more than one system-prompt cluster, say explicitly "this workload runs N prompt variants" and characterize the variance — prompt-variant drift is signal for the customer, never average it away. Never invent tools, systems, or volumes not present in the evidence.
+
+Example:
+EVIDENCE:
+{"task_count":6,"system_prompt_clusters":[{"coverage":1,"excerpt":"You operate a synthetic CRM for Example Corp. Close won deals and notify owners."}],"tool_usage":[{"tool":"crm_find_records","defined":true,"calls":6},{"tool":"update-opportunity","defined":true,"calls":4},{"tool":"send-email","defined":true,"calls":4},{"tool":"delete-record","defined":true,"calls":0}],"categories":[{"id":"crm-deal-closeout","tasks":4,"samples":["Close a won deal and notify the owning team."]},{"id":"event-triage","tasks":2,"samples":["Triage a billing event into a prioritized follow-up."]}]}
+OUTPUT:
+{"workload_summary": "This workload operates a synthetic CRM: its system prompt instructs the agent to close won deals and notify their owners. The extracted tasks are representative because they exercise the tools the workload actually uses — record lookup on every task, opportunity updates and outbound email on the close-out majority — while defined-but-never-called tools like delete-record stay out of scope. Success is judged on state effects: each task's contract lists the mutating tool calls that must occur, matched semantically rather than byte-exactly; obligations about propagating values between calls are the coming extension."}`;
+
+const ARCHETYPE_SYSTEM_PROMPT = `You name and describe ONE task archetype in a customer's LLM workload, grounded ONLY in the evidence provided (the authored definitions of the tasks in this category plus the tool surface). Respond with ONLY a JSON object (no markdown fences): {"archetype_title": "short human title (3-7 words)", "archetype_description": "2-3 plain-language sentences describing what the agent is asked to do in tasks of this kind and what success requires"}. Never invent tools or behaviors not present in the evidence.
+
+Example:
+EVIDENCE:
+{"category_id":"crm-deal-closeout","tool_surface":["crm_find_records","update-opportunity","send-email"],"tasks":[{"intent":"Close a won deal and notify the owning team.","success_criteria":["The opportunity is moved to the closed-won stage.","A win-notice email naming the deal is sent to the correct team mailbox."]}]}
+OUTPUT:
+{"archetype_title": "CRM deal close-out and routing", "archetype_description": "A deal has just closed and the agent must finish the paperwork: look the opportunity up in the CRM, move it to the closed-won stage, and notify the owning team by email. Success requires both state changes — the stage update and the correctly routed win notice."}`;
+
+/** Deterministic category grouping: authored category_proposal.id wins; unauthored tasks pool under "uncategorized". */
+export function groupTasksByAuthoredCategory(tasks: Obj[]): Map<string, Obj[]> {
+  const groups = new Map<string, Obj[]>();
+  for (const task of tasks) {
+    const id = String(asObject(asObject(task.authored).category_proposal).id ?? "") || "uncategorized";
+    groups.set(id, [...(groups.get(id) ?? []), task]);
+  }
+  return groups;
+}
+
+/* ---- deterministic layer: prompt clusters, tool usage, complexity ---- */
+
+/** Small per-capture digest kept while streaming normalized-captures.jsonl. */
+export type CaptureDigest = {
+  capture_key: string;
+  chars: number;
+  message_count: number;
+  calls: { id: string | null; name: string; arguments: unknown }[];
+  system: string;
+};
+
+export function digestCapture(row: Obj): CaptureDigest {
+  const request = asObject(row.request);
+  return {
+    capture_key: String(row.capture_key ?? ""),
+    chars: JSON.stringify(request).length,
+    message_count: Array.isArray(request.messages) ? request.messages.length : 0,
+    calls: observedCalls([row]).map((c) => ({ id: (c.id as string) ?? null, name: String(c.name), arguments: c.arguments })),
+    system: contentText(request.system ?? ""),
+  };
+}
+
+export type SystemPromptCluster = { hash: string; count: number; coverage: number; representative_excerpt: string };
+
+/**
+ * Canonical-hash clusters over the captures' system prompts (uuids/ids/
+ * emails/numbers masked with the same canonMask the title fix uses). Tight
+ * workloads collapse to ONE cluster; multi-variant workloads keep each
+ * variant with its coverage and one head excerpt.
+ */
+export function systemPromptClusters(digests: Pick<CaptureDigest, "system">[], excerptChars = 600): SystemPromptCluster[] {
+  const byHash = new Map<string, { count: number; excerpt: string }>();
+  let total = 0;
+  for (const d of digests) {
+    const system = d.system.trim();
+    if (!system) continue;
+    total += 1;
+    const hash = createHash("sha256").update(canonMask(system)).digest("hex").slice(0, 16);
+    const cluster = byHash.get(hash);
+    if (cluster) cluster.count += 1;
+    else byHash.set(hash, { count: 1, excerpt: system.slice(0, excerptChars) });
+  }
+  return [...byHash.entries()]
+    .map(([hash, c]) => ({ hash, count: c.count, coverage: total === 0 ? 0 : Number((c.count / total).toFixed(3)), representative_excerpt: c.excerpt }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export type ToolUsageRow = { tool: string; defined: boolean; calls: number };
+
+/** Defined tools (task tool surfaces) vs actually-called frequencies (deduped observed calls). */
+export function toolUsageTable(tasks: Obj[], digests: CaptureDigest[]): ToolUsageRow[] {
+  const defined = new Set<string>(tasks.flatMap((task) => (task.tool_surface ?? []).map(String)));
+  const counts = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const d of digests) {
+    for (const call of d.calls) {
+      const key = call.id ? `${call.name}|${call.id}` : `${call.name}|${JSON.stringify(call.arguments ?? {})}`;
+      if (seen.has(key)) continue; // prefix-growing rounds repeat history
+      seen.add(key);
+      counts.set(call.name, (counts.get(call.name) ?? 0) + 1);
+    }
+  }
+  const tools = [...new Set([...defined, ...counts.keys()])].sort();
+  return tools.map((tool) => ({ tool, defined: defined.has(tool), calls: counts.get(tool) ?? 0 }));
+}
+
+export type TaskComplexity = {
+  approx_context_tokens: number;
+  turn_count: number;
+  tool_call_count: number;
+  distinct_tools: number;
+  error_retry_events: number;
+  frontier: boolean;
+  frontier_axes: string[];
+};
+
+const COMPLEXITY_AXES = ["approx_context_tokens", "turn_count", "tool_call_count", "distinct_tools", "error_retry_events"] as const;
+
+/**
+ * Per-task complexity metrics — all computed from existing data, no LLM:
+ * approx context tokens (chars/4 over the task's fullest round), turn count,
+ * deduped tool-call count, distinct tools, and non-prefix-append lineage
+ * events (retries/branches/mutations).
+ */
+export function taskComplexityMetrics(tasks: Obj[], digestsByKey: Map<string, CaptureDigest>): Map<string, TaskComplexity> {
+  const metrics = new Map<string, TaskComplexity>();
+  for (const task of tasks) {
+    const rounds = ((task.source?.node_ids ?? []) as string[]).map((id) => digestsByKey.get(String(id))).filter(Boolean) as CaptureDigest[];
+    const fullest = rounds.reduce<CaptureDigest | null>((best, d) => (best === null || d.chars > best.chars ? d : best), null);
+    const seen = new Set<string>();
+    const calls = rounds.flatMap((d) => d.calls).filter((call) => {
+      const key = call.id ? `${call.name}|${call.id}` : `${call.name}|${JSON.stringify(call.arguments ?? {})}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    metrics.set(String(task.task_id), {
+      approx_context_tokens: Math.ceil((fullest?.chars ?? 0) / 4),
+      turn_count: fullest?.message_count ?? 0,
+      tool_call_count: calls.length,
+      distinct_tools: new Set(calls.map((c) => c.name)).size,
+      error_retry_events: ((task.source?.edges ?? []) as Obj[]).filter((e) => e.type !== "prefix_append").length,
+      frontier: false,
+      frontier_axes: [],
+    });
+  }
+  return markComplexityFrontier(metrics);
+}
+
+/**
+ * Flag the complexity FRONTIER deterministically: a task is on the frontier
+ * of an axis when its value reaches the top decile AND exceeds the median
+ * (all-equal axes flag nobody). The LLM only ever DESCRIBES frontier tasks —
+ * it never picks them.
+ */
+export function markComplexityFrontier(metrics: Map<string, TaskComplexity>): Map<string, TaskComplexity> {
+  const entries = [...metrics.values()];
+  if (entries.length === 0) return metrics;
+  for (const axis of COMPLEXITY_AXES) {
+    const values = entries.map((m) => m[axis]).sort((a, b) => a - b);
+    const p90 = values[Math.min(values.length - 1, Math.ceil(0.9 * values.length) - 1)];
+    const median = values[Math.floor(values.length / 2)];
+    for (const m of metrics.values()) {
+      if (m[axis] >= p90 && m[axis] > median) {
+        m.frontier = true;
+        m.frontier_axes.push(axis);
+      }
+    }
+  }
+  return metrics;
+}
+
+/** "upper bound: 9 turns · 55 tool calls · ~40k ctx" — the frontier label the hub renders. */
+export function complexityLabel(m: Pick<TaskComplexity, "turn_count" | "tool_call_count" | "approx_context_tokens">): string {
+  const ctx = m.approx_context_tokens >= 1000 ? `~${Math.round(m.approx_context_tokens / 1000)}k ctx` : `~${m.approx_context_tokens} ctx`;
+  return `${m.turn_count} turns · ${m.tool_call_count} tool calls · ${ctx}`;
+}
+
+export type OverviewOptions = {
+  model: string;
+  client?: AuthorClient;
+  now?: Date;
+  /** Cap on representative task ids listed per category. */
+  representativeLimit?: number;
+  progressStream?: { write: (line: string) => unknown } | null;
+};
+
+/**
+ * The `--overview` authoring pass: ONE gateway call per benchmark (workload
+ * summary) plus one per category (task archetype), few-shot and grounded on
+ * the authored task blocks + taxonomy + tool surface. Writes
+ * `understudy.benchmark_overview.v1` to benchmark-overview.json next to the
+ * manifest; representative_task_ids are chosen deterministically (no LLM).
+ */
+export async function authorOverview(benchmarkDirInput: string, options: OverviewOptions): Promise<Obj> {
+  const benchmarkDir = resolve(benchmarkDirInput);
+  const tasks = readJsonl(join(benchmarkDir, "tasks.jsonl"));
+  if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${benchmarkDir}; run build-benchmark first.`);
+  const client = options.client ?? (() => { const auth = resolveGatewayAuth(); return gatewayClient(auth.baseUrl, auth.apiKey); })();
+  const now = options.now ?? new Date();
+  const groups = groupTasksByAuthoredCategory(tasks);
+
+  // Deterministic layer: one cheap streaming pass over normalized-captures
+  // (never read as one string) collecting per-capture digests.
+  const digests: CaptureDigest[] = [];
+  const capturesPath = join(benchmarkDir, "normalized-captures.jsonl");
+  if (existsSync(capturesPath)) {
+    const lines = createInterface({ input: createReadStream(capturesPath, "utf8"), crlfDelay: Number.POSITIVE_INFINITY });
+    for await (const line of lines) {
+      if (!line.trim()) continue;
+      try { digests.push(digestCapture(JSON.parse(line) as Obj)); } catch { /* malformed line — skip */ }
+    }
+  }
+  const digestsByKey = new Map(digests.map((d) => [d.capture_key, d]));
+  const clusters = systemPromptClusters(digests);
+  const toolUsage = toolUsageTable(tasks, digests);
+  const complexity = taskComplexityMetrics(tasks, digestsByKey);
+  const taskEvidence = (task: Obj): Obj => {
+    const authored = asObject(task.authored);
+    return {
+      intent: clipText(String(authored.intent_summary ?? authored.statement ?? task.title ?? ""), 400),
+      success_criteria: (Array.isArray(authored.success_criteria) ? authored.success_criteria : []).map((c: unknown) => clipText(String(c), 300)),
+    };
+  };
+
+  let totalUsage: AuthorUsage = { prompt_tokens: 0, completion_tokens: 0 };
+  const ask = async (system: string, evidence: Obj): Promise<Obj | null> => {
+    const reply = await client({ model: options.model, messages: [{ role: "system", content: system }, { role: "user", content: `EVIDENCE:\n${JSON.stringify(evidence)}\nOUTPUT:` }] });
+    totalUsage = { prompt_tokens: (totalUsage.prompt_tokens ?? 0) + (reply.usage?.prompt_tokens ?? 0), completion_tokens: (totalUsage.completion_tokens ?? 0) + (reply.usage?.completion_tokens ?? 0) };
+    return parseAuthoredJson(reply.content);
+  };
+
+  // Call 1: the workload summary — grounded in the representative system
+  // prompt(s), the tool table, and the category groupings.
+  const summaryEvidence = {
+    task_count: tasks.length,
+    system_prompt_clusters: clusters.slice(0, 5).map((c) => ({ coverage: c.coverage, count: c.count, excerpt: c.representative_excerpt })),
+    prompt_variant_count: clusters.length,
+    tool_usage: toolUsage,
+    categories: [...groups.entries()].map(([id, members]) => ({ id, tasks: members.length, samples: members.slice(0, 3).map((task) => taskEvidence(task).intent) })),
+  };
+  const summary = await ask(OVERVIEW_SYSTEM_PROMPT, summaryEvidence);
+  options.progressStream?.write(`[overview] workload summary ${summary ? "ok" : "unparseable"}\n`);
+
+  // One call per category: the task archetype. Representative ids are picked
+  // deterministically and SPAN the complexity distribution: modal members
+  // first, then every frontier member (labeled upper-bound by the hub).
+  const categories: Obj[] = [];
+  const representativeLimit = options.representativeLimit ?? 5;
+  for (const [id, members] of groups) {
+    const archetype = await ask(ARCHETYPE_SYSTEM_PROMPT, {
+      category_id: id,
+      tool_surface: [...new Set(members.flatMap((task) => (task.tool_surface ?? []).map(String)))].sort(),
+      tasks: members.slice(0, 8).map(taskEvidence),
+    });
+    options.progressStream?.write(`[overview] category ${id} (${members.length} tasks) ${archetype ? "ok" : "unparseable"}\n`);
+    const frontierMembers = members.filter((task) => complexity.get(String(task.task_id))?.frontier);
+    const modalMembers = members.filter((task) => !complexity.get(String(task.task_id))?.frontier);
+    const representatives = [
+      ...modalMembers.slice(0, Math.max(1, representativeLimit - Math.min(frontierMembers.length, 2))),
+      ...frontierMembers,
+    ].slice(0, Math.max(representativeLimit, frontierMembers.length ? 2 : 1));
+    categories.push({
+      category_id: id,
+      archetype_title: String(asObject(archetype).archetype_title ?? "") || null,
+      archetype_description: String(asObject(archetype).archetype_description ?? "") || null,
+      representative_task_ids: representatives.map((task) => String(task.task_id)),
+      task_count: members.length,
+    });
+  }
+
+  const overview = {
+    schema_version: OVERVIEW_SCHEMA_VERSION,
+    model: options.model,
+    authored_at: now.toISOString(),
+    workload_summary: String(asObject(summary).workload_summary ?? "") || null,
+    categories,
+    // Deterministic layer — computed, never authored.
+    system_prompt_clusters: clusters,
+    tool_usage: toolUsage,
+    task_complexity: Object.fromEntries(complexity),
+  };
+  const outPath = join(benchmarkDir, "benchmark-overview.json");
+  writeFileSync(outPath, `${JSON.stringify(overview, null, 2)}\n`, { mode: 0o600 });
+  const cost = costEstimate(options.model, totalUsage);
+  appendJsonl(join(benchmarkDir, "authoring-events.jsonl"), [{ schema_version: "understudy.authoring_event.v1", at: new Date().toISOString(), task_id: null, kind: "overview", model: options.model, status: "ok", calls: 1 + categories.length, tokens: { prompt: totalUsage.prompt_tokens ?? null, completion: totalUsage.completion_tokens ?? null }, cost_estimate_usd: cost }]);
+  return { schema_version: "understudy.benchmark_overview_run.v1", benchmark: benchmarkDir, output: outPath, model: options.model, calls: 1 + categories.length, categories: categories.length, tokens: totalUsage, cost_estimate_usd: Number(cost.toFixed(4)), overview };
 }
 
 // ---------------------------------------------------------------------------

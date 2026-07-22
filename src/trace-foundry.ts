@@ -204,17 +204,25 @@ function capabilityFit(candidate: Obj, catalog: Obj[]): Obj {
  * frequency across all groups' root messages and title each task with its
  * first sufficiently-rare, human-readable line ("Subject:" lines preferred).
  */
+/**
+ * Canonical text mask: uuids, long ids, emails, parenthesized inserts, and
+ * numbers collapse to "#" so template text with embedded unique values
+ * compares equal. Shared by task titling and the overview pass's
+ * system-prompt clustering.
+ */
+export const canonMask = (text: string): string =>
+  text
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "#")
+    .replace(/[A-Za-z0-9+/_-]{16,}/g, "#")
+    .replace(/\S+@\S+/g, "#")
+    .replace(/\(([^)]{0,40})\)/g, "(#)")
+    .replace(/\d[\d:,./-]*/g, "#");
+
 function taskTitles(rootTexts: Map<string, string>): Map<string, string> {
   // Lines canonicalize before frequency counting so a template line with an
   // embedded unique id/name ("your namespace is conversation/<uuid>/") still
   // counts as boilerplate rather than task-distinctive content.
-  const canon = (line: string): string =>
-    line
-      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "#")
-      .replace(/[A-Za-z0-9+/_-]{16,}/g, "#")
-      .replace(/\S+@\S+/g, "#")
-      .replace(/\(([^)]{0,40})\)/g, "(#)")
-      .replace(/\d[\d:,./-]*/g, "#");
+  const canon = canonMask;
   const linesOf = (text: string): string[] =>
     text.split("\n").map((l) => l.trim()).filter((l) => l.length >= 16 && !/^[<{\[]/.test(l) && !/^[-*#|]/.test(l));
   const lineCount = new Map<string, number>();

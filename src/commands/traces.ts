@@ -2,7 +2,7 @@ import { Command } from "commander";
 import { join, resolve } from "node:path";
 import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays } from "../trace-foundry.js";
 import { serveTraceFoundry } from "../trace-foundry-server.js";
-import { authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveGatewayAuth } from "../trace-author.js";
+import { authorOverview, authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveGatewayAuth } from "../trace-author.js";
 import { renderTraceViewer } from "../trace-viewer.js";
 
 export function registerTracesCommand(program: Command): void {
@@ -46,7 +46,8 @@ export function registerTracesCommand(program: Command): void {
     .option("--compare-models <ids>", "Comma-separated model ids: author the same tasks with each and report agreement (no tasks.jsonl writeback; resumable via authoring-results.jsonl)")
     .option("--experiment-out <path>", "Write the comparison report JSON here instead of stdout only")
     .option("--concurrency <count>", "Concurrent in-flight authoring calls", "8")
-    .action(async (options: { benchmark: string; model?: string; limit?: string; onlyUnauthored: boolean; compareModels?: string; experimentOut?: string; concurrency: string }) => {
+    .option("--overview", "Author the benchmark-level narrative instead: ONE call per benchmark plus one per category, written to benchmark-overview.json", false)
+    .action(async (options: { benchmark: string; model?: string; limit?: string; onlyUnauthored: boolean; compareModels?: string; experimentOut?: string; concurrency: string; overview: boolean }) => {
       const auth = resolveGatewayAuth();
       const model = options.model ?? await resolveDefaultModel(auth.baseUrl, auth.apiKey);
       const limit = options.limit === undefined ? undefined : Number(options.limit);
@@ -54,6 +55,12 @@ export function registerTracesCommand(program: Command): void {
       const concurrency = Number(options.concurrency);
       if (!Number.isInteger(concurrency) || concurrency <= 0) throw new Error("--concurrency must be a positive integer");
       const client = gatewayClient(auth.baseUrl, auth.apiKey);
+      if (options.overview) {
+        const result = await authorOverview(resolve(options.benchmark), { model, client, progressStream: process.stderr });
+        console.log(JSON.stringify({ ...result, overview: undefined }, null, 2));
+        console.error(`overview: ${result.output}`);
+        return;
+      }
       if (options.compareModels) {
         const models = options.compareModels.split(",").map((id) => id.trim()).filter(Boolean);
         const report = await compareAuthoringModels(resolve(options.benchmark), models, { limit, client, onlyUnauthored: false, concurrency, progressStream: process.stderr, partialResultsPath: options.experimentOut ? `${resolve(options.experimentOut)}.partial.jsonl` : undefined });

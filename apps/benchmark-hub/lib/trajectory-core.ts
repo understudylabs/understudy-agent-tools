@@ -320,6 +320,20 @@ export function aggregatePromotedTasks(
   });
 }
 
+/**
+ * "9 turns · 55 tool calls · ~40k ctx" — the frontier upper-bound label.
+ * Mirrors dist/trace-author complexityLabel (presentation only).
+ */
+export function complexityLabel(m: {
+  turn_count: number;
+  tool_call_count: number;
+  approx_context_tokens: number;
+}): string {
+  const ctx =
+    m.approx_context_tokens >= 1000 ? `~${Math.round(m.approx_context_tokens / 1000)}k ctx` : `~${m.approx_context_tokens} ctx`;
+  return `${m.turn_count} turns · ${m.tool_call_count} tool calls · ${ctx}`;
+}
+
 /** Score → viz series color class index: high=3 (green slot), mid=2, low=destructive handled by caller. */
 export function scoreColor(score: number | null | undefined): string {
   if (score == null) return "var(--muted-foreground)";

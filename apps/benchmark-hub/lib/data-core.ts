@@ -7,6 +7,7 @@ import type {
   AnyHubEntry,
   BenchmarkFlag,
   BenchmarkManifest,
+  BenchmarkOverview,
   BenchmarkReview,
   BenchmarkVersion,
   CaptureRef,
@@ -138,6 +139,17 @@ export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] 
   return warnings;
 }
 
+/** benchmark-overview.json (--overview pass); null when absent or wrong schema. */
+function loadOverview(dir: string): BenchmarkOverview | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "benchmark-overview.json"), "utf8"));
+    if (parsed?.schema_version !== "understudy.benchmark_overview.v1" || !Array.isArray(parsed.categories)) return null;
+    return parsed as BenchmarkOverview;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * A trace-foundry output dir (stage: proposed): manifest.json stamped
  * understudy.trace_foundry.v1 plus tasks.jsonl. The foundry also writes a
@@ -242,6 +254,7 @@ export function loadProposedEntryFromDir(
     latestReviewByTask,
     diagnostics,
     crossCheckErrors,
+    overview: loadOverview(dir),
   };
 }
 
@@ -310,6 +323,7 @@ export function loadEntryFromDir(
       const reviewsRead = readJsonl<BenchmarkReview>(path.join(dir, "reviews.jsonl"));
       promoted.diagnostics.skippedLines += reviewsRead.skipped;
       promoted.promotionRecord = promotionRecord;
+      promoted.overview = loadOverview(dir);
       promoted.reviews = reviewsRead.items.filter(
         (r) =>
           r?.schema_version === "understudy.benchmark_review.v1" &&

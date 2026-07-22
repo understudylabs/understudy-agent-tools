@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { taskDisplayName, type ProposedHubEntry } from "@/lib/types";
+import { complexityLabel } from "@/lib/trajectory-core";
 import { Badge, SourceBadge, StageBadge } from "@/components/badges";
 import { AnchorRail } from "@/components/anchor-rail";
 import { EmptyState } from "@/components/empty-state";
-import { LineageRail } from "@/components/proposed/lineage";
 import { TaskTable } from "@/components/task-table";
 
 const RAIL = [
+  { id: "narrative", label: "Narrative" },
   { id: "tasks", label: "Tasks" },
-  { id: "lineage", label: "Lineage" },
-  { id: "provenance", label: "Provenance" },
 ];
 
 /**
@@ -109,6 +108,94 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
       <div className="u-layout">
         <AnchorRail sections={RAIL} />
         <div>
+          <section className="u-sec" id="narrative">
+            <h2>How this became a benchmark</h2>
+            {entry.overview ? (
+              <div className="mt-4 flex flex-col gap-4">
+                <div className="u-card">
+                  <h3>What we&apos;ve seen in your workload</h3>
+                  {entry.overview.workload_summary ? (
+                    <p className="mt-2 text-sm" style={{ maxWidth: "70ch" }}>{entry.overview.workload_summary}</p>
+                  ) : (
+                    <p className="mono mt-2 text-xs text-faint">the overview pass produced no workload summary</p>
+                  )}
+                  {(entry.overview.system_prompt_clusters ?? []).length > 0 && (
+                    <details className="mt-3">
+                      <summary className="mono cursor-pointer text-[11px] text-ink-muted">
+                        {(entry.overview.system_prompt_clusters ?? []).length === 1
+                          ? "one canonical system prompt"
+                          : `this workload runs ${(entry.overview.system_prompt_clusters ?? []).length} prompt variants`}
+                        {" · deterministic evidence"}
+                      </summary>
+                      <div className="mt-2 flex flex-col gap-2">
+                        {(entry.overview.system_prompt_clusters ?? []).map((c) => (
+                          <div key={c.hash}>
+                            <span className="mono text-[10px] text-faint">
+                              {c.hash} · {c.count} capture{c.count === 1 ? "" : "s"} · {(c.coverage * 100).toFixed(0)}% coverage
+                            </span>
+                            <pre className="u-pre mt-1" style={{ maxHeight: 140 }}>{c.representative_excerpt}</pre>
+                          </div>
+                        ))}
+                        {(entry.overview.tool_usage ?? []).length > 0 && (
+                          <div className="mono text-[11px] text-ink-muted">
+                            tool usage:{" "}
+                            {(entry.overview.tool_usage ?? [])
+                              .map((r) => `${r.tool} ×${r.calls}${r.defined ? "" : " (undeclared)"}${r.calls === 0 ? " (defined, never called)" : ""}`)
+                              .join(" · ")}
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  )}
+                  <p className="mono mt-2 text-[10px] text-faint">
+                    authored by {entry.overview.model ?? "unknown model"}
+                    {entry.overview.authored_at ? ` · ${entry.overview.authored_at.slice(0, 10)}` : ""}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="mb-2">The tasks we&apos;ve identified</h3>
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {entry.overview.categories.map((c) => {
+                      const members = new Set(c.representative_task_ids);
+                      const representatives = entry.tasks.filter((t) => members.has(t.task_id));
+                      return (
+                        <div key={c.category_id} className="u-card">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="text-sm font-bold">{c.archetype_title ?? c.category_id}</span>
+                            <Badge>{c.task_count ?? c.representative_task_ids.length} task{(c.task_count ?? 1) === 1 ? "" : "s"}</Badge>
+                          </div>
+                          {c.archetype_description && <p className="mt-2 text-xs text-ink-muted">{c.archetype_description}</p>}
+                          {representatives.length > 0 && (
+                            <ul className="mt-3 flex list-none flex-col gap-1 p-0">
+                              {representatives.map((t) => {
+                                const cx = entry.overview?.task_complexity?.[t.task_id];
+                                return (
+                                  <li key={t.task_id} className="text-xs">
+                                    <Link href={`/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`}>{taskDisplayName(t)}</Link>
+                                    {cx?.frontier && (
+                                      <span className="mono ml-1 text-[10px]" style={{ color: "var(--warn-ink)" }}>
+                                        upper bound: {complexityLabel(cx)}
+                                      </span>
+                                    )}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                what="No benchmark narrative yet — the overview pass writes a workload summary and per-category task archetypes grounded on the authored task blocks."
+                next={`understudy traces author-tasks --benchmark ${entry.dir} --overview`}
+              />
+            )}
+          </section>
+
           <section className="u-sec" id="tasks">
             <h2>Task inbox</h2>
             <p className="exp">
@@ -142,102 +229,30 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                 )}
                 <TaskTable
                   stage="proposed"
-                  rows={entry.tasks.map((t) => ({
-                    taskId: t.task_id,
-                    href: `/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`,
-                    displayName: taskDisplayName(t),
-                    rawTitle: t.title,
-                    split: t.split,
-                    confidence: t.machine_confidence,
-                    reviewDecision: entry.latestReviewByTask[t.task_id]?.decision ?? null,
-                    closeCall: t.close_call,
-                    authored: !!t.authored,
-                    promptLength: (t.authored?.statement ?? t.title ?? "").length,
-                  }))}
+                  rows={entry.tasks.map((t) => {
+                    const cx = entry.overview?.task_complexity?.[t.task_id] ?? null;
+                    return {
+                      taskId: t.task_id,
+                      href: `/b/${entry.slug}/task/${encodeURIComponent(t.task_id)}`,
+                      displayName: taskDisplayName(t),
+                      rawTitle: t.title,
+                      split: t.split,
+                      confidence: t.machine_confidence,
+                      reviewDecision: entry.latestReviewByTask[t.task_id]?.decision ?? null,
+                      closeCall: t.close_call,
+                      authored: !!t.authored,
+                      promptLength: (t.authored?.statement ?? t.title ?? "").length,
+                      contextTokens: cx?.approx_context_tokens ?? null,
+                      frontier: cx?.frontier ?? false,
+                      // Authored "easy" on a frontier-complex task is a mismatch a human should see.
+                      complexityMismatch: cx?.frontier === true && t.authored?.difficulty === "easy",
+                    };
+                  })}
                 />
               </>
             )}
           </section>
 
-          <section className="u-sec" id="lineage">
-            <h2>Source lineage</h2>
-            <p className="exp">
-              How the captured rounds relate: each execution group is one traced conversation, ordered by
-              captured_at, with typed edges (retry, prefix_append, branch, destructive_mutation) and the
-              common-prefix evidence behind each classification.
-            </p>
-            {entry.dag && entry.dag.nodes.length > 0 ? (
-              <div className="mt-4">
-                <LineageRail dag={entry.dag} />
-              </div>
-            ) : (
-              <EmptyState
-                what="No source DAG accompanies this output — lineage evidence is unavailable."
-                next="re-run: understudy traces build-benchmark  # emits source-dag.json"
-              />
-            )}
-          </section>
-
-          <section className="u-sec" id="provenance">
-            <h2>Provenance</h2>
-            <p className="exp">
-              What the foundry read, what it filtered, and what it wrote — every capture pinned by sha256 pointer.
-            </p>
-            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="u-card">
-                <h3>Freshness window</h3>
-                <div className="mono mt-2 flex flex-col gap-1 text-xs text-ink-muted">
-                  <span>max age: {f.freshness.max_age_days} days</span>
-                  <span>cutoff: {f.freshness.cutoff_utc}</span>
-                  <span>newest capture: {f.freshness.newest_capture_utc}</span>
-                </div>
-              </div>
-              <div className="u-card">
-                <h3>Counts</h3>
-                <div className="mono mt-2 flex flex-col gap-1 text-xs text-ink-muted">
-                  <span>
-                    {f.counts.source_files} source files → {f.counts.captures} captures · {f.counts.tasks} tasks ·{" "}
-                    {f.counts.edges} edges
-                  </span>
-                  <span>{f.counts.stale_filtered} stale captures filtered</span>
-                  <span>{f.counts.invalid_timestamp_filtered} invalid-timestamp captures filtered</span>
-                </div>
-              </div>
-              <div className="u-card md:col-span-2">
-                <h3>Privacy</h3>
-                <p className="mono mt-2 text-xs text-ink-muted">
-                  {[
-                    f.privacy?.local_only ? "local only" : "NOT local-only",
-                    f.privacy?.contains_customer_payloads ? "contains customer payloads" : "no customer payloads",
-                    f.privacy?.upload_performed ? "upload performed" : "no upload performed",
-                    f.privacy?.provider_called ? "provider called" : "no provider called",
-                  ].join(" · ")}
-                </p>
-              </div>
-            </div>
-            <div className="u-tbl-scroll mt-4" style={{ maxHeight: "40vh" }}>
-              <table className="u-tbl w-full">
-                <thead>
-                  <tr>
-                    {["capture_id", "pointer", "sha256"].map((h) => (
-                      <th key={h} className="l" style={{ cursor: "default" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {entry.captureIndex.map((c) => (
-                    <tr key={c.capture_id}>
-                      <td className="l mono text-xs">{c.capture_id}</td>
-                      <td className="l mono text-xs text-ink-muted">{c.pointer}</td>
-                      <td className="l mono text-[10px] text-faint">{c.sha256}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </div>
       </div>
     </div>

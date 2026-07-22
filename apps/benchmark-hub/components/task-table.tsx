@@ -24,9 +24,14 @@ export type TaskTableRow = {
   authored?: boolean;
   /** shared numeric distributions */
   promptLength: number;
+  /** proposed, from benchmark-overview task_complexity */
+  contextTokens?: number | null;
+  frontier?: boolean;
+  /** authored "easy" on a frontier-complex task */
+  complexityMismatch?: boolean;
 };
 
-type SortKey = "name" | "rollouts" | "score" | "prompt" | "confidence" | "review";
+type SortKey = "name" | "rollouts" | "score" | "prompt" | "confidence" | "review" | "context";
 
 const CONFIDENCE_ORDER: Record<string, number> = { high: 2, medium: 1, low: 0 };
 
@@ -46,6 +51,7 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
       rollouts: binHistogram(rows.map((r) => r.rollouts)),
       prompt: binHistogram(rows.map((r) => r.promptLength)),
       confidence: binHistogram(rows.map((r) => (r.confidence ? CONFIDENCE_ORDER[r.confidence] ?? null : null)), 3),
+      context: binHistogram(rows.map((r) => r.contextTokens)),
     }),
     [rows],
   );
@@ -59,6 +65,8 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
           return r.avgScore ?? -1;
         case "prompt":
           return r.promptLength;
+        case "context":
+          return r.contextTokens ?? -1;
         case "confidence":
           return r.confidence ? CONFIDENCE_ORDER[r.confidence] ?? -1 : -1;
         case "review":
@@ -103,6 +111,7 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
             {stage === "proposed" && header("confidence", "confidence", { h: histograms.confidence, color: "var(--viz-series-5)", title: "machine confidence distribution" })}
             {stage === "proposed" && header("review", "review")}
             {header("prompt", "prompt len", { h: histograms.prompt, color: "var(--viz-series-2)", title: "prompt-length distribution (chars)" })}
+            {stage === "proposed" && histograms.context.count > 0 && header("context", "~ctx tokens", { h: histograms.context, color: "var(--viz-series-4)", title: "approx context-token distribution" })}
           </tr>
         </thead>
         <tbody>
@@ -117,6 +126,8 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
                   <span className="mt-0.5 flex flex-wrap gap-1">
                     {r.authored && <Badge className="text-ok border-ok/50">authored</Badge>}
                     {r.closeCall && <Badge className="border-warn/40 text-warn">close call</Badge>}
+                    {r.frontier && <Badge className="border-warn/40 text-warn">frontier</Badge>}
+                    {r.complexityMismatch && <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>}
                   </span>
                 )}
               </td>
@@ -140,6 +151,9 @@ export function TaskTable({ rows, stage }: { rows: TaskTableRow[]; stage: "propo
                 </td>
               )}
               <td className="l mono text-xs text-ink-muted">{r.promptLength}</td>
+              {stage === "proposed" && rows.some((x) => x.contextTokens != null) && (
+                <td className="l mono text-xs text-ink-muted">{r.contextTokens ?? "—"}</td>
+              )}
             </tr>
           ))}
         </tbody>

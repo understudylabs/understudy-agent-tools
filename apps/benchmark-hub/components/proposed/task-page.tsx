@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { taskDisplayName, type FoundryContractItem, type ProposedHubEntry } from "@/lib/types";
+import { complexityLabel } from "@/lib/trajectory-core";
 import { taskProvenance } from "@/lib/data";
 import { Badge, ConfidenceChip, DecisionBadge, SplitChip, StageBadge } from "@/components/badges";
 import { TrajectoryExplorer } from "@/components/trajectory/explorer";
@@ -43,6 +44,13 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
   const displayName = taskDisplayName(task);
   const provenance = taskProvenance(entry, task);
   const criteria = task.authored?.success_criteria ?? [];
+  // Compact echo of the benchmark narrative: this task's archetype.
+  const archetype =
+    entry.overview?.categories.find(
+      (c) =>
+        c.representative_task_ids.includes(task.task_id) ||
+        (task.authored?.category_proposal?.id != null && c.category_id === task.authored.category_proposal.id),
+    ) ?? null;
 
   const rail = (
     <>
@@ -144,7 +152,28 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           {task.close_call && <Badge className="border-warn/40 text-warn">close call</Badge>}
           <Badge>{task.status}</Badge>
           <DecisionBadge decision={review?.decision ?? null} />
+          {(() => {
+            const cx = entry.overview?.task_complexity?.[task.task_id];
+            if (!cx?.frontier) return null;
+            return (
+              <>
+                <Badge className="border-warn/40 text-warn">frontier · {complexityLabel(cx)}</Badge>
+                {task.authored?.difficulty === "easy" && (
+                  <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>
+                )}
+              </>
+            );
+          })()}
         </div>
+        {archetype && (
+          <p className="mt-3 text-xs text-ink-muted" style={{ maxWidth: "70ch" }}>
+            <b>{archetype.archetype_title ?? archetype.category_id}</b>
+            {archetype.archetype_description ? ` — ${archetype.archetype_description}` : ""}{" "}
+            <Link className="mono" href={`/b/${entry.slug}#narrative`}>
+              full narrative →
+            </Link>
+          </p>
+        )}
       </section>
 
       <section className="u-section">

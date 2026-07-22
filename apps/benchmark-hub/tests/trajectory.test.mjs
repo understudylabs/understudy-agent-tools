@@ -250,6 +250,28 @@ describe("taskProvenance (compact rail disclosure)", () => {
   });
 });
 
+describe("benchmark-overview.json loading", () => {
+  it("loads understudy.benchmark_overview.v1 onto the proposed entry, ignoring wrong schemas", () => {
+    const dir = path.join(tmp, "trajectory-demo");
+    const file = path.join(dir, "benchmark-overview.json");
+    fs.writeFileSync(file, JSON.stringify({ schema_version: "wrong", categories: [] }));
+    assert.equal(getEntry("data--trajectory-demo").overview, null);
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        schema_version: "understudy.benchmark_overview.v1",
+        model: "test-model",
+        workload_summary: "A synthetic workload.",
+        categories: [{ category_id: "alpha", archetype_title: "T", archetype_description: "D", representative_task_ids: [] }],
+      }),
+    );
+    const entry = getEntry("data--trajectory-demo");
+    assert.equal(entry.overview.workload_summary, "A synthetic workload.");
+    assert.equal(entry.overview.categories[0].category_id, "alpha");
+    fs.rmSync(file);
+  });
+});
+
 describe("flattened trajectory (spine + divergence markers)", () => {
   it("picks the LAST round with a body as the spine", () => {
     assert.equal(spineRoundIndex([{ body_missing: false }, { body_missing: false }]), 1);
