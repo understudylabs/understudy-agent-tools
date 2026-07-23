@@ -128,7 +128,10 @@ export function Sidebar({
   return (
     <TooltipProvider delayDuration={300}>
       <aside className="sidebar">
-        <div className="sidebar-brand">Understudy</div>
+        {/* The brand row doubles as the window-drag surface for the strip of
+            title bar the sidebar now owns (the drag-region band starts at the
+            content panel when the rail is open). */}
+        <div className="sidebar-brand" data-tauri-drag-region>Understudy</div>
 
         <button type="button" className="sidebar-new-chat" onClick={onNewChat}>
           <SquarePenIcon className="nav-icon" aria-hidden="true" size={15} strokeWidth={1.8} />
