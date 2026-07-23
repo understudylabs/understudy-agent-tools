@@ -3642,6 +3642,8 @@ select,
   gap: 12px;
   max-height: min(62vh, 640px);
   overflow-y: auto;
+  /* Let the last card scroll clear of the sticky decision bar. */
+  scroll-padding-bottom: 96px;
   /* Keep the scrollbar off the cards' rounded right edge. */
   padding-right: 10px;
   scrollbar-width: thin;
@@ -3664,7 +3666,9 @@ select,
   position: sticky;
   bottom: 0;
   z-index: 2;
-  margin: 0 -24px -24px;
+  /* The opaque backing overlays the scroll content; the timeline's
+     scroll-padding below keeps the last card scrollable clear of it. */
+  margin: 12px -24px -24px;
   padding: 16px 24px 20px;
   border-radius: 0 0 16px 16px;
   background: color-mix(in srgb, var(--c-content) 97%, var(--c-window));

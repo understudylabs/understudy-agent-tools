@@ -83,7 +83,12 @@ export function workloadDropReducer(phase, action) {
     case "compilation_started":
       return phase === "validating" || phase === "compiling" ? "compiling" : phase;
     case "inspection_started":
-      return phase === "compiling" || phase === "ready" || phase === "failed" ? "inspecting" : phase;
+      // "validating" is the thread-restore path: it re-runs inspection with
+      // no compile step in between, so the phase must advance from there too
+      // or the pane wedges on the "Checking this file locally…" skeleton.
+      return phase === "validating" || phase === "compiling" || phase === "ready" || phase === "failed"
+        ? "inspecting"
+        : phase;
     case "inspection_succeeded":
       return phase === "inspecting" ? "ready" : phase;
     case "dataset_started":

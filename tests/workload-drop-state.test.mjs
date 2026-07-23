@@ -56,6 +56,18 @@ test("busy compiler state cannot be replaced by incidental drag events", () => {
   assert.equal(workloadDropReducer("failed", { type: "reset" }), "idle");
 });
 
+test("thread restore advances from validating into inspecting (no compile step)", () => {
+  // Reopening a saved thread dispatches drop_received then inspection_started
+  // directly — there is no compile event in between. The phase must not wedge
+  // on "validating" (the forever-skeleton bug) and must resolve on success.
+  let phase = workloadDropReducer("idle", { type: "drop_received" });
+  assert.equal(phase, "validating");
+  phase = workloadDropReducer(phase, { type: "inspection_started" });
+  assert.equal(phase, "inspecting");
+  phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
+  assert.equal(phase, "ready");
+});
+
 test("explicit CSV inspection is a truthful thinking phase", () => {
   let phase = workloadDropReducer("ready", { type: "inspection_started" });
   assert.equal(phase, "inspecting");
