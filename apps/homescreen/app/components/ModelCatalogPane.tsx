@@ -153,14 +153,6 @@ function Catalog({ models }: { models: CatalogModelRow[] }) {
         </p>
       </div>
 
-      <div className="card">
-        <div className="card-title" style={{ marginBottom: 4 }}>Route a workload instead</div>
-        <div className="card-sub">
-          Keep your code on its current provider and shift a traffic slice to a
-          catalog model from each project&apos;s Routing page. Routing is not
-          ported to Desktop yet — use the web control plane for now.
-        </div>
-      </div>
     </>
   );
 }

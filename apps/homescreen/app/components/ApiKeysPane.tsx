@@ -156,28 +156,6 @@ export function ApiKeysPane({ onOpenAccount }: { onOpenAccount?: () => void }) {
             </Card>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Where a key goes</CardTitle>
-              <CardDescription>
-                The same key works on every Understudy surface.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm leading-6 text-muted-foreground sm:grid-cols-3">
-              <UsageHint
-                title="Proxy traffic"
-                detail="Send it as the bearer token (or x-api-key) on api.understudylabs.com — a drop-in for the Anthropic and OpenAI endpoints."
-              />
-              <UsageHint
-                title="Catalog models"
-                detail="Request any managed model by id with just this key — see the Models page for the call shape."
-              />
-              <UsageHint
-                title="Agent CLI"
-                detail="Set UNDERSTUDY_API_KEY so workload capture, evals, and routing changes run against your org."
-              />
-            </CardContent>
-          </Card>
         </div>
       </div>
     </>
@@ -322,22 +300,6 @@ function KeysList({
   );
 }
 
-function UsageHint({
-  title,
-  detail,
-}: {
-  title: string;
-  detail: string;
-}): ReactNode {
-  return (
-    <div className="rounded-md border bg-muted/20 p-3">
-      <p className="text-[0.68rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-        {title}
-      </p>
-      <p className="mt-2 text-xs leading-5">{detail}</p>
-    </div>
-  );
-}
 
 /** Port of the web control plane's Notice label+body row. */
 function Notice({

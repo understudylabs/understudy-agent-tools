@@ -21,6 +21,24 @@
   border-radius: 999px;
   padding: 2px 8px;
 }
+/* Destructive action chip (revoke): clay hairline, fills on hover. */
+button.sm-chip {
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.sm-chip-danger {
+  color: var(--model-clay);
+  border-color: color-mix(in srgb, var(--model-clay) 40%, transparent);
+}
+.sm-chip-danger:hover {
+  color: var(--model-clay);
+  border-color: color-mix(in srgb, var(--model-clay) 70%, transparent);
+  background: color-mix(in srgb, var(--model-clay) 12%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  button.sm-chip { transition: none; }
+}
 .sm-dot {
   display: inline-block;
   width: 6px;

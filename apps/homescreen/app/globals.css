@@ -44,6 +44,19 @@
   --font-sans: var(--font-plex-sans), "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 
+/* Tailwind v4 defaults the bare `border` utility to currentColor, which
+   renders near-white hairlines on light text. Restore the themed rule
+   color as the default border everywhere. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
 @layer base {
   :root {
     /* dark (default) — deep neutral, the merest cool tilt */

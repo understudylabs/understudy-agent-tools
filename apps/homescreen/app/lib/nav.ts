@@ -8,7 +8,6 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
-  Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
 
@@ -69,7 +68,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Settings folded into the Account view; project settings return with a
   // future release.
   { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: "billing" },
-  { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: "setup" },
+  // Setup removed from the nav (pane "setup" stays deep-linkable).
 ];
 
 /**
