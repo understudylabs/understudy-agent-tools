@@ -6,7 +6,7 @@
 // shared form to the sidebar-selected workload.
 
 import type { Scope } from "../lib/nav";
-import "./cedar-summary.css";
+import "./overview-cards.css";
 import { WorkloadConfigInline } from "./WorkloadConfigInline";
 
 export function WorkloadConfigPane({ scope }: { scope: Scope }) {

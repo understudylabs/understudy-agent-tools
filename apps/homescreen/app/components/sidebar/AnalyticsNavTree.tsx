@@ -3,7 +3,7 @@
 // Analytics parent row + indented metric children (Usage / Caching / Cost),
 // matching Anthropic's console left nav: the parent keeps its chart icon
 // and a disclosure chevron; children are smaller, indented, icon-free rows
-// that navigate to the Cedar analytics destinations. Clicking the parent
+// that navigate to the Overview analytics destinations. Clicking the parent
 // navigates to Usage and expands the subtree. The expanded state persists
 // like the NavGroup / training-History disclosures.
 

@@ -15,7 +15,7 @@ import {
   groupByProvider,
   rateCardFor,
 } from "../lib/model-providers.mjs";
-import "./cedar-summary.css";
+import "./overview-cards.css";
 
 type AdminModelsResponse = {
   signed_in: boolean;

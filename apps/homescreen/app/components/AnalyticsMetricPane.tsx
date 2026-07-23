@@ -1,6 +1,6 @@
 "use client";
 
-// Cedar analytics destinations — Usage / Caching / Cost, the desktop
+// Overview analytics destinations — Usage / Caching / Cost, the desktop
 // counterpart of Anthropic's console metric pages. One component, three
 // left-nav children (the nav is the metric switch; there is no in-pane
 // tab row). Each destination: metric tiles up top, one daily chart with
@@ -15,16 +15,16 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { invoke } from "@tauri-apps/api/core";
 import { RefreshCwIcon } from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import "./cedar-summary.css";
+import "./overview-cards.css";
 import {
-  CedarLegendChips,
-  CedarMetricTile,
-  CedarPanel,
-  CedarRangePicker,
-  CedarRateTrend,
-  CedarStackedBars,
-  cedarSeriesColors,
-} from "./CedarSummary";
+  OverviewLegendChips,
+  OverviewMetricTile,
+  OverviewPanel,
+  OverviewRangePicker,
+  OverviewRateTrend,
+  OverviewStackedBars,
+  overviewSeriesColors,
+} from "./OverviewCards";
 import { Button } from "@/app/components/base-ui/button";
 import {
   cacheLeaders,
@@ -83,7 +83,7 @@ type LoadState =
   | { phase: "error"; detail: string }
   | { phase: "ready"; data: Extract<OrgSummary, { ok: true }> };
 
-export function CedarAnalyticsPane({ metric }: { metric: AnalyticsMetric }) {
+export function AnalyticsMetricPane({ metric }: { metric: AnalyticsMetric }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [refreshNonce, setRefreshNonce] = useState(0);
   const today = startOfDay(new Date());
@@ -194,7 +194,7 @@ function MetricView({
   const daySeries = useMemo(() => usageDaySeries(data.summaries), [data.summaries]);
   const leaders = useMemo(() => cacheLeaders(data.summaries, names), [data.summaries, names]);
   const rangeChip = (
-    <CedarRangePicker
+    <OverviewRangePicker
       range={range}
       onChange={onRangeChange}
       minDate={minDate}
@@ -208,17 +208,17 @@ function MetricView({
     const sliced = sliceStack(stack.rows, range);
     const totals = stackTotals(sliced);
     const leaders = [...totals.byKey.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
-    const colors = cedarSeriesColors(stack.keys);
+    const colors = overviewSeriesColors(stack.keys);
     return (
       <div className="grid gap-4">
         <div className="sm-metrics">
-          <CedarMetricTile
+          <OverviewMetricTile
             label="total cost"
             value={formatUSD(totals.total)}
             detail="estimated cost over the selected range"
           />
           {leaders.map(([name, cost], index) => (
-            <CedarMetricTile
+            <OverviewMetricTile
               key={name}
               label={`#${index + 1} ${name}`}
               value={formatUSD(cost)}
@@ -226,17 +226,17 @@ function MetricView({
             />
           ))}
         </div>
-        <CedarPanel title="daily cost · by workload" action={rangeChip}>
-          <CedarStackedBars
+        <OverviewPanel title="daily cost · by workload" action={rangeChip}>
+          <OverviewStackedBars
             rows={chartRows(sliced)}
             keys={stack.keys}
             format={(value) => formatUSD(value)}
             ariaLabel="estimated daily cost stacked by workload"
           />
-          <CedarLegendChips
+          <OverviewLegendChips
             items={stack.keys.map((key) => ({ name: key, color: colors.get(key)! }))}
           />
-        </CedarPanel>
+        </OverviewPanel>
       </div>
     );
   }
@@ -246,35 +246,35 @@ function MetricView({
     const slicedDays = daySeries.filter((row) => inRange(row.day, range));
     const totals = usageTotals(slicedDays);
     const sliced = sliceStack(stack.rows, range);
-    const colors = cedarSeriesColors(stack.keys);
+    const colors = overviewSeriesColors(stack.keys);
     const hasData = daySeries.length > 0;
     return (
       <div className="grid gap-4">
         <div className="sm-metrics">
-          <CedarMetricTile
+          <OverviewMetricTile
             label="tokens in"
             value={hasData ? formatTokens(totals.inputTokens + totals.cacheReadTokens) : "—"}
             detail="fresh + cache-read input over the selected range"
           />
-          <CedarMetricTile
+          <OverviewMetricTile
             label="tokens out"
             value={hasData ? formatTokens(totals.outputTokens) : "—"}
             detail="generated tokens over the selected range"
           />
-          <CedarMetricTile
+          <OverviewMetricTile
             label="token volume"
             value={hasData ? formatTokens(totals.inputTokens + totals.outputTokens) : "—"}
             detail="fresh input + output over the selected range"
           />
         </div>
-        <CedarPanel title={`daily tokens · by ${stack.dimension}`} action={rangeChip}>
-          <CedarStackedBars
+        <OverviewPanel title={`daily tokens · by ${stack.dimension}`} action={rangeChip}>
+          <OverviewStackedBars
             rows={chartRows(sliced)}
             keys={stack.keys}
             format={(value) => formatTokens(value)}
             ariaLabel={`daily token volume stacked by ${stack.dimension}`}
           />
-          <CedarLegendChips
+          <OverviewLegendChips
             items={stack.keys.map((key) => ({ name: key, color: colors.get(key)! }))}
             note={
               stack.dimension === "project"
@@ -282,7 +282,7 @@ function MetricView({
                 : undefined
             }
           />
-        </CedarPanel>
+        </OverviewPanel>
       </div>
     );
   }
@@ -294,34 +294,34 @@ function MetricView({
   return (
     <div className="grid gap-4">
       <div className="sm-metrics">
-        <CedarMetricTile
+        <OverviewMetricTile
           label="cache rate"
           value={totals.cacheRatePct === null ? "—" : `${totals.cacheRatePct.toFixed(1)}%`}
           detail="prompt input served from cache"
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label="cache reads"
           value={hasData ? formatTokens(totals.cacheReadTokens) : "—"}
           detail="tokens read from cache"
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label="cache writes"
           value={hasData ? formatTokens(totals.cacheWriteTokens) : "—"}
           detail="tokens written into cache"
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label="fresh input"
           value={hasData ? formatTokens(totals.inputTokens) : "—"}
           detail="uncached prompt tokens"
         />
       </div>
-      <CedarPanel title="daily cache-read rate" action={rangeChip}>
-        <CedarRateTrend
+      <OverviewPanel title="daily cache-read rate" action={rangeChip}>
+        <OverviewRateTrend
           rows={slicedDays.map((row) => ({ label: formatDay(row.day), pct: row.cacheRatePct }))}
           ariaLabel="daily cache-read rate as a percent of prompt input"
         />
         {leaders.length > 0 ? (
-          <CedarLegendChips
+          <OverviewLegendChips
             items={[]}
             note={
               "top cached workloads · " +
@@ -332,7 +332,7 @@ function MetricView({
             }
           />
         ) : null}
-      </CedarPanel>
+      </OverviewPanel>
     </div>
   );
 }

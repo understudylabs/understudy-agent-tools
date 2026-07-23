@@ -17,15 +17,15 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import "./cedar-summary.css";
+import "./overview-cards.css";
 import {
-  CedarMetricTile,
-  CedarPanel,
-  CedarRangePicker,
-  CedarSpendTrend,
-  CedarWorkloadCard,
-  type CedarHealth,
-} from "./CedarSummary";
+  OverviewMetricTile,
+  OverviewPanel,
+  OverviewRangePicker,
+  OverviewSpendTrend,
+  OverviewWorkloadCard,
+  type OverviewHealth,
+} from "./OverviewCards";
 import type { PaneId } from "./Sidebar";
 import { Button } from "@/app/components/base-ui/button";
 import {
@@ -194,19 +194,19 @@ function SummaryView({
         </Notice>
       )}
       <div className="sm-metrics">
-        <CedarMetricTile
+        <OverviewMetricTile
           label="7-day spend"
           value={metrics.totalSpendUsd === null ? "—" : formatUSD(metrics.totalSpendUsd)}
           detail="estimated cost from metered traffic"
           onOpen={onNavigate ? () => onNavigate("analytics-cost") : undefined}
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label="token volume"
           value={rangedUsage ? formatTokens(rangedUsage.inputTokens + rangedUsage.outputTokens) : "—"}
           detail="input + output over the selected range"
           onOpen={onNavigate ? () => onNavigate("analytics-usage") : undefined}
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label="cache rate"
           value={
             rangedUsage?.cacheRatePct != null ? `${rangedUsage.cacheRatePct.toFixed(1)}%` : "—"
@@ -214,7 +214,7 @@ function SummaryView({
           detail="prompt input served from cache"
           onOpen={onNavigate ? () => onNavigate("analytics-caching") : undefined}
         />
-        <CedarMetricTile
+        <OverviewMetricTile
           label={balance?.billing_mode === "prepaid" ? "available credit" : "current balance"}
           value={balance ? formatUSD(availableBalance(balance)) : "—"}
           detail={balance ? balanceDetail(balance) : "billing data unavailable"}
@@ -231,7 +231,7 @@ function SummaryView({
         maxDate={today}
       />
 
-      <CedarPanel title="workloads">
+      <OverviewPanel title="workloads">
         {cards.length === 0 ? (
           <div className="sm-empty">
             no workloads yet — create one in a project to give a stable call
@@ -240,12 +240,12 @@ function SummaryView({
         ) : (
           <div className="sm-cards">
             {cards.map((card) => (
-              <CedarWorkloadCard
+              <OverviewWorkloadCard
                 key={card.workload.id}
                 project={card.project.name}
                 name={card.workload.name}
                 isDefault={Boolean(card.workload.is_default)}
-                health={card.healthStatus as CedarHealth}
+                health={card.healthStatus as OverviewHealth}
                 route={deriveOverrideState(card.workload).kind === "primary" ? "primary" : "routed"}
                 cost={card.usage ? formatUSD(card.usage.costUsd) : "—"}
                 requests={card.usage ? formatTokens(card.usage.requests) : "—"}
@@ -255,7 +255,7 @@ function SummaryView({
             ))}
           </div>
         )}
-      </CedarPanel>
+      </OverviewPanel>
     </div>
   );
 }
@@ -316,10 +316,10 @@ function SpendCard({
   }, [rows, range.from, range.to]);
 
   return (
-    <CedarPanel
+    <OverviewPanel
       title="spend"
       action={
-        <CedarRangePicker
+        <OverviewRangePicker
           range={range}
           onChange={onRangeChange}
           minDate={minDate}
@@ -328,13 +328,13 @@ function SpendCard({
         />
       }
     >
-      <CedarSpendTrend
+      <OverviewSpendTrend
         rows={spendTrendPoints(sliced).map(([day, cost]) => ({
           day: formatDay(day),
           cost,
         }))}
       />
-    </CedarPanel>
+    </OverviewPanel>
   );
 }
 

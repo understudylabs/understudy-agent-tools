@@ -1,7 +1,7 @@
 "use client";
 
 // Workloads pane — the single home for everything about a workload. The
-// deep version of the Summary's Cedar workload cards: same anatomy (project
+// deep version of the Summary's Overview workload cards: same anatomy (project
 // cap, mono name, health dot, chips, minis) plus cache rate, tokens in/out,
 // the route summary line, and last-24h status — with the Configuration
 // pane's controls (route + capture, WorkloadConfigInline) folded into each
@@ -12,8 +12,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ChevronDownIcon, RefreshCwIcon } from "lucide-react";
-import "./cedar-summary.css";
-import { CedarHealthDot, CedarPanel, type CedarHealth } from "./CedarSummary";
+import "./overview-cards.css";
+import { OverviewHealthDot, OverviewPanel, type OverviewHealth } from "./OverviewCards";
 import { WorkloadConfigInline } from "./WorkloadConfigInline";
 import { Button } from "@/app/components/base-ui/button";
 import {
@@ -197,12 +197,12 @@ function WorkloadsView({
 
   if (cards.length === 0) {
     return (
-      <CedarPanel title="workloads">
+      <OverviewPanel title="workloads">
         <div className="sm-empty">
           no workloads yet — create one in a project to give a stable call
           site its own configuration
         </div>
-      </CedarPanel>
+      </OverviewPanel>
     );
   }
 
@@ -232,12 +232,12 @@ function WorkloadsView({
       )}
       {groups.length > 1 ? (
         groups.map((group) => (
-          <CedarPanel key={group.name} title={group.name}>
+          <OverviewPanel key={group.name} title={group.name}>
             {renderCards(group.cards)}
-          </CedarPanel>
+          </OverviewPanel>
         ))
       ) : (
-        <CedarPanel title="workloads">{renderCards(cards)}</CedarPanel>
+        <OverviewPanel title="workloads">{renderCards(cards)}</OverviewPanel>
       )}
     </div>
   );
@@ -290,7 +290,7 @@ function WorkloadDeepCard({
         <div className="sm-card-top">
           <span className="sm-cap">{project.name}</span>
           <span className="sm-spacer" />
-          <CedarHealthDot status={healthStatus as CedarHealth} />
+          <OverviewHealthDot status={healthStatus as OverviewHealth} />
         </div>
         <div className="sm-card-top">
           <span className="sm-card-name">{workload.name}</span>

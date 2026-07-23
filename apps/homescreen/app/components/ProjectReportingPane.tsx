@@ -1,7 +1,7 @@
 "use client";
 
 // SUPERSEDED: the "project-reporting" pane id now renders WorkloadsPane (the
-// Cedar workload-card home with inline configuration). This table view is
+// Overview workload-card home with inline configuration). This table view is
 // kept unreferenced for a possible per-project analytics revival.
 
 import { useCallback, useEffect, useRef, useState } from "react";

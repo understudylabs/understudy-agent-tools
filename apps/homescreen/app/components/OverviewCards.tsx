@@ -1,9 +1,9 @@
 "use client";
 
-// Cedar summary components — the app-side port of the design system's
-// cedar/flows/summary door (understudy-design@design/consolidated-home).
+// Overview summary components — the app-side port of the design system's
+// design overview door door (understudy-design@design/consolidated-home).
 // Same anatomy, live data: metric tiles, the spend trend on shadcn charts,
-// workload cards with dot health. Styles in cedar-summary.css (sm-).
+// workload cards with dot health. Styles in overview-cards.css (sm-).
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, XAxis, YAxis } from "recharts";
@@ -35,9 +35,9 @@ function useReducedMotion() {
   return reduced;
 }
 
-export type CedarHealth = "healthy" | "idle" | "degraded" | "unavailable";
+export type OverviewHealth = "healthy" | "idle" | "degraded" | "unavailable";
 
-export function CedarHealthDot({ status }: { status: CedarHealth }) {
+export function OverviewHealthDot({ status }: { status: OverviewHealth }) {
   return (
     <span className={`sm-health ${status}`} title={status}>
       <i className="sm-dot" />
@@ -46,7 +46,7 @@ export function CedarHealthDot({ status }: { status: CedarHealth }) {
   );
 }
 
-export function CedarMetricTile({
+export function OverviewMetricTile({
   label,
   value,
   of,
@@ -89,13 +89,13 @@ export function CedarMetricTile({
 // alphabetical rank of a series name within its key set.
 export const CEDAR_PALETTE = ["#9edbd3", "#d97757", "#a78bfa", "#f2b34c", "#67e8f9"] as const;
 
-export function cedarSeriesColors(keys: string[]): Map<string, string> {
+export function overviewSeriesColors(keys: string[]): Map<string, string> {
   const ranked = [...keys].sort((a, b) => a.localeCompare(b));
   return new Map(ranked.map((key, index) => [key, CEDAR_PALETTE[index % CEDAR_PALETTE.length]]));
 }
 
 /** Chip-row legend: colored sm-dot + series name, under the chart. */
-export function CedarLegendChips({
+export function OverviewLegendChips({
   items,
   note,
 }: {
@@ -160,7 +160,7 @@ const CHART_CLASS =
  * Radius is skipped on stacked bars by design (recharts rounds every
  * segment, not just the crown).
  */
-export function CedarStackedBars({
+export function OverviewStackedBars({
   rows,
   keys,
   format,
@@ -175,7 +175,7 @@ export function CedarStackedBars({
   if (rows.length === 0 || keys.length === 0) {
     return <div className="sm-empty">no metered traffic in this range</div>;
   }
-  const colors = cedarSeriesColors(keys);
+  const colors = overviewSeriesColors(keys);
   const data = rows.map((row) => ({ label: row.label, ...row.values }));
   const chartConfig = Object.fromEntries(
     keys.map((key) => [key, { label: key, color: colors.get(key)! }]),
@@ -216,7 +216,7 @@ export function CedarStackedBars({
 }
 
 /** Single mint percent series on a fixed 0-100 axis (cache-read rate). */
-export function CedarRateTrend({
+export function OverviewRateTrend({
   rows,
   ariaLabel,
 }: {
@@ -279,7 +279,7 @@ export function CedarRateTrend({
  * The hosted API only serves fixed windows, so callers load the widest (30d)
  * daily series once and slice it client-side against this range.
  */
-export function CedarRangePicker({
+export function OverviewRangePicker({
   range,
   onChange,
   minDate,
@@ -328,7 +328,7 @@ export function CedarRangePicker({
 
 const MINT = "#9edbd3";
 
-export function CedarSpendTrend({
+export function OverviewSpendTrend({
   rows,
 }: {
   rows: { day: string; cost: number }[];
@@ -389,7 +389,7 @@ export function CedarSpendTrend({
   );
 }
 
-export function CedarWorkloadCard({
+export function OverviewWorkloadCard({
   project,
   name,
   isDefault,
@@ -403,7 +403,7 @@ export function CedarWorkloadCard({
   project: string;
   name: string;
   isDefault?: boolean;
-  health: CedarHealth;
+  health: OverviewHealth;
   route: string;
   cost: string;
   requests: string;
@@ -420,7 +420,7 @@ export function CedarWorkloadCard({
       <div className="sm-card-top">
         <span className="sm-cap">{project}</span>
         <span className="sm-spacer" />
-        <CedarHealthDot status={health} />
+        <OverviewHealthDot status={health} />
       </div>
       <div className="sm-card-top">
         <span className="sm-card-name">{name}</span>
@@ -447,7 +447,7 @@ export function CedarWorkloadCard({
 }
 
 /** Panel shell shared by the spend + workloads sections. */
-export function CedarPanel({
+export function OverviewPanel({
   title,
   action,
   children,

@@ -107,7 +107,7 @@ export function formatDay(day) {
 }
 
 // ---------------------------------------------------------------------------
-// Analytics series (the Cedar Usage / Caching / Cost destinations).
+// Analytics series (the Overview Usage / Caching / Cost destinations).
 //
 // The admin usage-summary endpoint serves per-project rows; these helpers
 // merge the per-project fan-out into org-wide daily series. Workload is the

@@ -15,7 +15,7 @@ import { AccountPane } from "./components/AccountPane";
 import { ApiKeysPane } from "./components/ApiKeysPane";
 import { UsagePane } from "./components/UsagePane";
 import { ReportingPane } from "./components/ReportingPane";
-import { CedarAnalyticsPane } from "./components/CedarAnalyticsPane";
+import { AnalyticsMetricPane } from "./components/AnalyticsMetricPane";
 import { BillingPane } from "./components/BillingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
@@ -457,9 +457,9 @@ export default function Page() {
         {/* Legacy flat Analytics surface — nav row removed in favor of the
             Usage/Caching/Cost subtree, pane kept for deep links. */}
         {pane === "reporting" && <ReportingPane />}
-        {pane === "analytics-usage" && <CedarAnalyticsPane metric="usage" />}
-        {pane === "analytics-caching" && <CedarAnalyticsPane metric="caching" />}
-        {pane === "analytics-cost" && <CedarAnalyticsPane metric="cost" />}
+        {pane === "analytics-usage" && <AnalyticsMetricPane metric="usage" />}
+        {pane === "analytics-caching" && <AnalyticsMetricPane metric="caching" />}
+        {pane === "analytics-cost" && <AnalyticsMetricPane metric="cost" />}
         {pane === "billing" && <BillingPane />}
         {pane === "traces" && <TracesPane />}
       </main>
