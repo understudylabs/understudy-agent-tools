@@ -10,6 +10,12 @@ import {
   normalizeSupportedModels,
   type CatalogModelRow,
 } from "../lib/model-catalog.mjs";
+import {
+  formatRate,
+  groupByProvider,
+  rateCardFor,
+} from "../lib/model-providers.mjs";
+import "./cedar-summary.css";
 
 type AdminModelsResponse = {
   signed_in: boolean;
@@ -53,7 +59,7 @@ export function ModelCatalogPane() {
       ? "Sign in to browse the model catalog."
       : state.phase === "error"
         ? "The model catalog could not be loaded."
-        : "Models Understudy serves from managed supply. Use them two ways: send the id as body.model on any request, or route a workload to one without changing code.";
+        : "Managed supply, grouped by provider. Send the id as body.model, or route a workload to it.";
 
   return (
     <>
@@ -102,41 +108,32 @@ function Catalog({ models }: { models: CatalogModelRow[] }) {
           <span className="badge-outline">{models.length} active</span>
         </div>
         <div className="card-sub" style={{ marginBottom: 10 }}>
-          Public model ids — no provider accounts, no deployment details.
-          Understudy picks the provider behind each id.
+          Public model ids — Understudy picks the provider behind each id.
         </div>
         {models.length === 0 ? (
           <div className="card-sub" style={{ border: "1px dashed var(--border)", borderRadius: 6, padding: 14 }}>
             No models in the catalog yet.
           </div>
         ) : (
-          <table className="catalog-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <Th>model</Th>
-                <Th>id</Th>
-                <Th align="right">added</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {models.map((model) => (
-                <tr key={model.id} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "8px 10px", fontWeight: 500 }}>{model.display_name}</td>
-                  <td style={{ padding: "8px 10px" }}>
-                    <code
-                      className="cmd"
-                      style={{ display: "inline", padding: "1px 6px", userSelect: "all" }}
-                    >
-                      {model.id}
-                    </code>
-                  </td>
-                  <td className="card-sub" style={{ padding: "8px 10px", textAlign: "right" }}>
-                    {model.added || "—"}
-                  </td>
-                </tr>
+          groupByProvider(models).map(({ provider, models: rows }) => (
+            <div key={provider.key} style={{ marginBottom: 18 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "6px 0 8px",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <ProviderLogo provider={provider} />
+                <span className="sm-cap" style={{ fontSize: 11 }}>{provider.label}</span>
+              </div>
+              {rows.map((model) => (
+                <ModelRow key={model.id} model={model} />
               ))}
-            </tbody>
-          </table>
+            </div>
+          ))
         )}
       </div>
 
@@ -168,20 +165,113 @@ function Catalog({ models }: { models: CatalogModelRow[] }) {
   );
 }
 
-function Th({ children, align }: { children: string; align?: "right" }) {
+/**
+ * Provider logo tile: /brand/providers/<file> on a light-neutral tile so
+ * dark svgs stay legible. Falls back to a monogram tile; the img swaps in
+ * automatically once it loads (and stays hidden if the file isn't there yet).
+ */
+function ProviderLogo({ provider }: { provider: { label: string; logo: string | null } }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const showImg = provider.logo && !failed;
   return (
-    <th
-      className="card-sub"
+    <span
+      aria-hidden="true"
       style={{
-        padding: "6px 10px",
-        textAlign: align ?? "left",
-        fontSize: "0.62rem",
-        fontWeight: 500,
-        textTransform: "uppercase",
-        letterSpacing: "0.16em",
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        borderRadius: 7,
+        background: "#f2f2f0",
+        border: "1px solid var(--border)",
+        flexShrink: 0,
+        overflow: "hidden",
       }}
     >
-      {children}
-    </th>
+      {(!showImg || !loaded) && (
+        <span
+          style={{
+            fontFamily: "var(--mono)",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#1a1a18",
+          }}
+        >
+          {provider.label.slice(0, 1)}
+        </span>
+      )}
+      {showImg && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/brand/providers/${provider.logo}`}
+          alt=""
+          width={18}
+          height={18}
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            margin: "auto",
+            display: loaded ? "block" : "none",
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
+function ModelRow({ model }: { model: CatalogModelRow }) {
+  const rate = rateCardFor(model.id);
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "9px 0",
+        borderBottom: "1px solid var(--border)",
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 8 }}>
+          {model.display_name}
+          {rate.local && <span className="sm-chip">local</span>}
+        </div>
+        <code
+          className="cmd"
+          style={{ display: "inline", padding: "1px 6px", userSelect: "all", fontSize: "0.72rem" }}
+        >
+          {model.id}
+        </code>
+      </div>
+      <div className="sm-spacer" />
+      <div
+        style={{
+          fontFamily: "var(--mono)",
+          fontSize: 11,
+          lineHeight: 1.6,
+          textAlign: "right",
+          color: "var(--text-2)",
+          fontVariantNumeric: "tabular-nums",
+          flexShrink: 0,
+        }}
+      >
+        {rate.local ? (
+          <div style={{ color: "var(--text)" }}>$0/M local</div>
+        ) : (
+          <>
+            <div style={{ color: "var(--text)" }}>
+              {rate.input == null ? "—" : `${formatRate(rate.input)}/M uncached`}
+            </div>
+            <div>{rate.cached == null ? "—" : `${formatRate(rate.cached)}/M cached`}</div>
+            <div>{rate.output == null ? "—" : `${formatRate(rate.output)}/M output`}</div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
