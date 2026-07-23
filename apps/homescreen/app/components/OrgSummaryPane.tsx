@@ -220,12 +220,6 @@ function SummaryView({
           detail={balance ? balanceDetail(balance) : "billing data unavailable"}
           onOpen={onNavigate ? () => onNavigate("billing") : undefined}
         />
-        <CedarMetricTile
-          label="capture enabled"
-          value={String(metrics.captureEnabledCount)}
-          of={String(metrics.workloadCount)}
-          detail="workloads recording gateway traffic"
-        />
       </div>
 
       <SpendCard
