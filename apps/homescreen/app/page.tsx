@@ -298,7 +298,10 @@ export default function Page() {
       >
         <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
       </button>
-      {pane === "chat" && (
+      {/* Codex-style: the sidebar's own New chat button is the entry point
+          while the rail is open; the title-bar icon appears only when the
+          rail is collapsed so there is exactly one visible affordance. */}
+      {!railOpen && (
         <button
           type="button"
           className="titlebar-new-chat"

@@ -22,12 +22,14 @@
           "y": 25
         },
         "acceptFirstMouse": true,
-        "theme": "Dark"
+        "theme": "Dark",
+        "transparent": true
       }
     ],
     "security": {
       "csp": null
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,

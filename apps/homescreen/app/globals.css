@@ -121,7 +121,9 @@
     padding: 0;
   }
   body {
-    background: var(--c-window);
+    /* Transparent so the native macOS Sidebar vibrancy shows through under
+       the rail; every content surface paints its own opaque background. */
+    background: transparent;
     color: var(--c-ink);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -263,10 +265,21 @@ select,
   position: fixed;
   z-index: 30;
   top: 9px;
+  /* Rail closed: sit after the toggle + new-chat icons. Rail open: shift to
+     the content panel's edge and ride the same slide (Codex behavior). */
   left: calc(var(--traffic-left) + 116px);
   height: 30px;
   display: flex;
   align-items: center;
+  transition: left 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rail-open .titlebar-scope {
+  left: calc(var(--sidebar-w) + 14px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .titlebar-scope {
+    transition: none;
+  }
 }
 .titlebar-scope ol {
   display: flex;
@@ -444,7 +457,10 @@ select,
 
 /* ---------- Sidebar ---------- */
 .sidebar {
-  background: var(--surface);
+  /* Slightly translucent over the window vibrancy material — the Codex
+     rail look. Falls back to the opaque surface when vibrancy is absent
+     (non-mac, or the effect failed) because the window bg stays dark. */
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
   flex-direction: column;
   min-height: 0;
   padding: calc(var(--titlebar-h) + 10px) 10px 14px;
