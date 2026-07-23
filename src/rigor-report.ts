@@ -13,8 +13,10 @@
  * (confidence intervals — being built separately) are reported as honest
  * UNKNOWN rows, never silently omitted.
  */
+import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { validateBenchmarkManifest } from "./benchmark.js";
 import { readJsonlFile, readRunEvents } from "./benchmark-artifacts.js";
 import {
   DEFAULT_CALIBRATION_THRESHOLD,
@@ -414,4 +416,220 @@ export function writeRigorReport(benchmarkDir: string, now: Date = new Date()): 
   const path = join(resolve(benchmarkDir), "rigor-report.md");
   writeFileSync(path, renderRigorReport(report), { mode: 0o600 });
   return { path, report };
+}
+
+// ---------------------------------------------------------------------------
+// Rigor as a CI gate (`understudy benchmarks rigor --ci`).
+//
+// Cheap, token-free pass/fail checks derived purely from local artifacts —
+// the machine-readable subset of the ABC card above. Missing evidence is an
+// honest UNKNOWN line (non-fatal by default; --strict makes it fatal), never
+// a silent pass and never a fabricated score.
+// ---------------------------------------------------------------------------
+
+export type RigorCiStatus = "PASS" | "FAIL" | "UNKNOWN";
+
+export type RigorCiCheck = {
+  check: string;
+  status: RigorCiStatus;
+  detail: string;
+};
+
+export type RigorCiReport = {
+  schema_version: "understudy.rigor_ci.v1";
+  benchmark_dir: string;
+  benchmark_id: string;
+  generated_at: string;
+  checks: RigorCiCheck[];
+  /** check names with status FAIL — hard failures, always fatal. */
+  failures: string[];
+  /** check names with status UNKNOWN — missing evidence, fatal only under --strict. */
+  unknowns: string[];
+};
+
+/** Fraction of tasks a trivial arm passes at the threshold, or null when the arm has no rows. */
+function trivialFloor(rows: Obj[], kind: TrivialArmKind, taskIds: string[], threshold: number): { floor: number; passed: string[]; covered: number } | null {
+  const armRows = rows.filter((row) => String(row.arm_kind ?? "") === kind);
+  if (armRows.length === 0) return null;
+  const best = bestScores(armRows, () => true);
+  const universe = taskIds.length > 0 ? taskIds : [...best.keys()];
+  const passed = universe.filter((taskId) => (best.get(taskId) ?? -Infinity) >= threshold);
+  return { floor: universe.length === 0 ? 0 : passed.length / universe.length, passed, covered: universe.length };
+}
+
+/**
+ * Run the cheap CI rigor checks over one benchmark dir. No network, no model
+ * calls: manifest schema validity, oracle score 1.0 where oracle rows are
+ * recorded, null/spam trivial floors <= TRIVIAL_FLOOR_LIMIT where
+ * calibration.json exists, reward-hack sentinel passes ~0 where sentinel
+ * evidence exists, zero verbatim (tier-1) gold-leakage findings, and
+ * contamination != "contaminated". Never throws on missing artifacts — those
+ * become FAIL (schema) or UNKNOWN (evidence) checks.
+ */
+export function runRigorCiChecks(benchmarkDir: string, now: Date = new Date()): RigorCiReport {
+  const dir = resolve(benchmarkDir);
+  const checks: RigorCiCheck[] = [];
+
+  // 1 — manifest schema.
+  let manifest: Obj = {};
+  const manifestPath = join(dir, "benchmark.json");
+  if (!existsSync(manifestPath)) {
+    checks.push({ check: "manifest-schema", status: "FAIL", detail: `no benchmark.json in ${dir}` });
+  } else {
+    try {
+      manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
+      const errors = validateBenchmarkManifest(manifest);
+      checks.push(
+        errors.length === 0
+          ? { check: "manifest-schema", status: "PASS", detail: "benchmark.json validates against understudy.benchmark.v1" }
+          : { check: "manifest-schema", status: "FAIL", detail: `${errors.length} schema error(s): ${errors.slice(0, 5).join("; ")}${errors.length > 5 ? "; …" : ""}` },
+      );
+    } catch (error) {
+      checks.push({ check: "manifest-schema", status: "FAIL", detail: `benchmark.json unreadable: ${error instanceof Error ? error.message : String(error)}` });
+    }
+  }
+  const manifestTasks = (Array.isArray(manifest.tasks) ? manifest.tasks : []).map(asObject);
+  const taskIds = manifestTasks.map((task) => String(task.task_id));
+
+  const rows = readAllRows(dir);
+  const calibration = existsSync(calibrationPath(dir)) ? (asObject(JSON.parse(readFileSync(calibrationPath(dir), "utf8"))) as Partial<CalibrationSummary>) : null;
+  const threshold = typeof calibration?.threshold === "number" ? calibration.threshold : DEFAULT_CALIBRATION_THRESHOLD;
+
+  // 2 — oracle rows present + oracle score 1.0 where recorded.
+  const oracleRows = rows.filter((row) => Number(asObject(row.subscores).runner_oracle) === 1);
+  if (oracleRows.length === 0) {
+    checks.push({ check: "oracle-solvability", status: "UNKNOWN", detail: "no oracle-runner rows recorded — run `understudy runs execute --runner oracle`" });
+  } else {
+    const oracleBest = bestScores(rows, (row) => Number(asObject(row.subscores).runner_oracle) === 1);
+    const covered = [...oracleBest.keys()];
+    const failing = covered.filter((taskId) => (oracleBest.get(taskId) ?? 0) < 1);
+    checks.push(
+      failing.length === 0
+        ? { check: "oracle-solvability", status: "PASS", detail: `oracle score 1.0 on all ${covered.length} task(s) with oracle rows` }
+        : { check: "oracle-solvability", status: "FAIL", detail: `oracle score < 1.0 on ${failing.length}/${covered.length} task(s): ${failing.slice(0, 10).join(", ")}${failing.length > 10 ? ", …" : ""}` },
+    );
+  }
+
+  // 3 — null/spam trivial-agent floors, only where calibration.json exists.
+  if (calibration === null) {
+    checks.push({ check: "trivial-floors", status: "UNKNOWN", detail: "no calibration.json — floors are checked only where a calibration threshold is recorded" });
+  } else {
+    const arms: TrivialArmKind[] = ["null_agent", "spam_agent"];
+    const measured = arms.map((kind) => ({ kind, result: trivialFloor(rows, kind, taskIds, threshold) })).filter((entry) => entry.result !== null);
+    if (measured.length === 0) {
+      checks.push({ check: "trivial-floors", status: "UNKNOWN", detail: "calibration.json exists but no null_agent/spam_agent rows — queue a run with trivial_arms" });
+    } else {
+      const exceeded = measured.filter((entry) => (entry.result as { floor: number }).floor > TRIVIAL_FLOOR_LIMIT);
+      const summary = measured.map((entry) => `${entry.kind}: ${percent((entry.result as { floor: number }).floor)}`).join(", ");
+      checks.push(
+        exceeded.length === 0
+          ? { check: "trivial-floors", status: "PASS", detail: `${summary} — all within ${percent(TRIVIAL_FLOOR_LIMIT)} at threshold ${threshold}` }
+          : { check: "trivial-floors", status: "FAIL", detail: `${summary} — ${exceeded.map((entry) => entry.kind).join(", ")} exceed(s) the ${percent(TRIVIAL_FLOOR_LIMIT)} floor limit` },
+      );
+    }
+  }
+
+  // 4 — reward-hack sentinels ~0 where present: reward_hack arm rows passing
+  // the threshold, plus offline-validation sentinel scores >= 1.
+  const rewardHackRows = rows.filter((row) => String(row.arm_kind ?? "") === "reward_hack");
+  const validationPath = join(dir, "environment", "offline-validation.json");
+  let sentinelTaskFailures: string[] = [];
+  let sentinelTasksChecked = 0;
+  if (existsSync(validationPath)) {
+    try {
+      const validation = asObject(JSON.parse(readFileSync(validationPath, "utf8")));
+      const validationTasks = (Array.isArray(validation.tasks) ? validation.tasks : []).map(asObject);
+      sentinelTasksChecked = validationTasks.length;
+      sentinelTaskFailures = validationTasks
+        .filter((row) => Object.values(asObject(row.sentinels)).some((sentinel) => Number(asObject(sentinel).score) >= 1))
+        .map((row) => String(row.task_id));
+    } catch {
+      // unreadable validation file: fall through to UNKNOWN below.
+    }
+  }
+  if (rewardHackRows.length === 0 && sentinelTasksChecked === 0) {
+    checks.push({ check: "reward-hack-sentinels", status: "UNKNOWN", detail: "no reward_hack arm rows and no environment/offline-validation.json sentinel evidence" });
+  } else {
+    const hackPasses = [...bestScores(rewardHackRows, () => true).entries()].filter(([, score]) => score >= threshold).map(([taskId]) => taskId);
+    const bad = [...new Set([...hackPasses, ...sentinelTaskFailures])];
+    checks.push(
+      bad.length === 0
+        ? { check: "reward-hack-sentinels", status: "PASS", detail: `0 sentinel passes over ${rewardHackRows.length} reward_hack row(s) + ${sentinelTasksChecked} validated task(s)` }
+        : { check: "reward-hack-sentinels", status: "FAIL", detail: `sentinel/reward-hack pass on task(s): ${bad.slice(0, 10).join(", ")}${bad.length > 10 ? ", …" : ""}` },
+    );
+  }
+
+  // 5 — gold leakage: zero verbatim (tier-1) findings in the build-time audit.
+  const foundryManifestPath = join(dir, "manifest.json");
+  const leakageAudit = existsSync(foundryManifestPath) ? asObject(asObject(JSON.parse(readFileSync(foundryManifestPath, "utf8"))).leakage_audit) : {};
+  if (String(leakageAudit.schema_version ?? "").startsWith("understudy.leakage_audit.")) {
+    const findings = (Array.isArray(leakageAudit.findings) ? leakageAudit.findings : []).map(asObject);
+    const verbatim = findings.filter((finding) => String(finding.tier ?? "verbatim") === "verbatim").length;
+    checks.push(
+      verbatim === 0
+        ? { check: "gold-leakage", status: "PASS", detail: `0 verbatim finding(s) over ${Number(leakageAudit.checked_tasks ?? 0)} audited task(s); ${findings.length} advisory` }
+        : { check: "gold-leakage", status: "FAIL", detail: `${verbatim} verbatim (tier-1) leakage finding(s) — contract targets readable in candidate surfaces` },
+    );
+  } else {
+    checks.push({ check: "gold-leakage", status: "UNKNOWN", detail: "no manifest.json leakage_audit — rebuild with `understudy traces build-benchmark`" });
+  }
+
+  // 6 — contamination: newest versions.jsonl line wins, else manifest.splits.
+  const versionLines = readJsonlFile<Obj>(join(dir, "versions.jsonl")).items;
+  const newestVersion = versionLines.length > 0 ? asObject(versionLines[versionLines.length - 1]) : null;
+  const contamination = String(newestVersion?.contamination ?? asObject(manifest.splits).contamination ?? "");
+  if (contamination === "contaminated") {
+    checks.push({ check: "contamination", status: "FAIL", detail: `contamination = "contaminated" (${newestVersion ? "newest versions.jsonl line" : "manifest splits"})` });
+  } else if (contamination === "clean") {
+    checks.push({ check: "contamination", status: "PASS", detail: `contamination = "clean" (${newestVersion ? "newest versions.jsonl line" : "manifest splits"})` });
+  } else {
+    checks.push({ check: "contamination", status: "UNKNOWN", detail: contamination ? `contamination = "${contamination}"` : "no contamination record in versions.jsonl or manifest splits" });
+  }
+
+  return {
+    schema_version: "understudy.rigor_ci.v1",
+    benchmark_dir: dir,
+    benchmark_id: String(manifest.benchmark_id ?? "unknown"),
+    generated_at: now.toISOString(),
+    checks,
+    failures: checks.filter((check) => check.status === "FAIL").map((check) => check.check),
+    unknowns: checks.filter((check) => check.status === "UNKNOWN").map((check) => check.check),
+  };
+}
+
+/** Exit code for a set of CI reports: 1 on any FAIL, or on any UNKNOWN under strict. */
+export function rigorCiExitCode(reports: RigorCiReport[], options: { strict?: boolean } = {}): 0 | 1 {
+  const hardFail = reports.some((report) => report.failures.length > 0);
+  const unknownFail = options.strict === true && reports.some((report) => report.unknowns.length > 0);
+  return hardFail || unknownFail ? 1 : 0;
+}
+
+/** Human-readable lines for one CI report (stderr companion to the JSON). */
+export function renderRigorCiLines(report: RigorCiReport): string[] {
+  const lines = [`rigor --ci ${report.benchmark_dir} (${report.benchmark_id})`];
+  for (const check of report.checks) lines.push(`  [${check.status}] ${check.check}: ${check.detail}`);
+  return lines;
+}
+
+/**
+ * Filter benchmark dirs down to those touched since `baseRef` (for
+ * `--changed-only`). Falls back to "everything changed" when git is
+ * unavailable — honest over-checking beats silent skipping.
+ *
+ * `git diff --name-only` prints paths relative to the REPO ROOT regardless
+ * of cwd, so changed files must be resolved against `git rev-parse
+ * --show-toplevel` — resolving against process.cwd() from any subdirectory
+ * would match nothing and silently skip genuinely changed dirs.
+ */
+export function filterChangedBenchmarkDirs(dirs: string[], baseRef?: string): { dirs: string[]; base: string | null } {
+  let changed: string[];
+  let base: string | null = null;
+  try {
+    base = baseRef ?? execSync("git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1", { encoding: "utf8", shell: "/bin/sh" }).trim();
+    const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
+    changed = execSync(`git diff --name-only ${base} HEAD`, { encoding: "utf8" }).split("\n").filter(Boolean).map((file) => resolve(repoRoot, file));
+  } catch {
+    return { dirs, base: null };
+  }
+  return { dirs: dirs.filter((dir) => changed.some((file) => file.startsWith(`${resolve(dir)}/`) || file === resolve(dir))), base };
 }

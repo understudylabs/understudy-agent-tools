@@ -34,6 +34,40 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
+  rigor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Token-free rigor gate, two passes:
+      #
+      # 1. STRICT over tests/fixtures/rigor-gate-bench — a synthetic benchmark
+      #    carrying COMPLETE evidence (oracle rows, calibration + trivial-arm
+      #    rows, reward-hack sentinels, leakage audit, contamination record).
+      #    Every one of the six checks must be provably PASS here; any
+      #    regression in check logic or missing evidence turns this red
+      #    instead of degrading to a non-fatal UNKNOWN.
+      # 2. Non-strict over the demo fixture benchmarks, whose evidence gaps
+      #    are real (e.g. the AutomationBench import honestly has no frozen
+      #    splits): FAILs gate, missing evidence prints honest UNKNOWN lines.
+      - name: Benchmark rigor gate (strict, full-evidence fixture)
+        run: node scripts/rigor-ci.mjs --strict tests/fixtures/rigor-gate-bench
+
+      - name: Benchmark rigor gate (demo fixtures)
+        run: node scripts/rigor-ci.mjs
+
   rust:
     runs-on: macos-latest
     defaults:
