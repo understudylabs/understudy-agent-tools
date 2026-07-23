@@ -1,0 +1,4 @@
+interface:
+  display_name: "Export Hosted Trace"
+  short_description: "Fetch a hosted trace into private local files"
+  default_prompt: "Use $export-trace to retrieve this hosted trace ID and export its captures privately."

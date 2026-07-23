@@ -542,7 +542,7 @@ live in each skill's `references/` directory:
 | Stage | Skills |
 | --- | --- |
 | **Setup & first run** | install-agent-adapter, compatibility install shims, onboard, ladder (the onboarding "climb") |
-| **Understand & capture** | understand-workload, ingest-traces (incl. the capture-directory profiler), capture-evidence (incl. the public-benchmark on-ramp), design-simulated-environment |
+| **Understand & capture** | understand-workload, export-trace, ingest-traces (incl. the capture-directory profiler), capture-evidence (incl. the public-benchmark on-ramp), design-simulated-environment |
 | **Local models** | manage-local-models, run-local-model-lab, recursive-language-model (incl. RLM pedagogical training) |
 | **Compare & diagnose** | compare-model-sweep, compare-trajectories |
 | **Plan hosted runs** | plan-hosted-run (provider routing + cost estimation) |
@@ -597,6 +597,8 @@ understudy workloads create classify --capture
 understudy gateway probe --provider anthropic --project rehearsal --workload classify
 understudy captures list --project rehearsal --workload classify
 understudy captures export --request-ids-file request-ids.txt --project rehearsal --out .understudy/capture-batch --include-payload --yes
+understudy traces export <trace-id> --project rehearsal --out .understudy/trace-exports --include-payload --yes
+understudy traces export --trace-ids-file trace-ids.txt --project rehearsal --out .understudy/trace-exports --include-payload --yes
 understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
 understudy routes show classify --project rehearsal
 understudy routes clear classify --project rehearsal
@@ -630,8 +632,14 @@ file-only, and requires `--include-payload --yes`. For a customer-owned batch,
 put one request id per line in a file and pass `--request-ids-file`; the CLI
 retries transient failures, resumes from completed files, and writes
 `failed-request-ids.txt`. Redacted batch files use `.summary.json`, keeping
-them distinct from full-payload `.payload.json` files. `models list` shows
-public Understudy model IDs and display names only.
+them distinct from full-payload `.payload.json` files. `traces export` resolves
+one explicit `trace_id` through the customer trace request-ID endpoint, then
+reuses that same bounded request exporter for every returned ID. Use a
+positional trace ID or an explicit `--trace-ids-file`; there is no unbounded
+`--all` trace scan. Each trace writes a private `trace.json` membership manifest,
+per-request summary or payload files, `failed-request-ids.txt`, and a batch-level
+`failed-trace-ids.txt`. `models list` shows public Understudy model IDs and
+display names only.
 
 If the coding agent has an approved native email connector, it may complete the
 email-code prompt by reading the fresh Understudy sign-in email directly. The

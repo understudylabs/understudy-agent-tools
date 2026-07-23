@@ -76,6 +76,11 @@ group it belongs to.
   local sanity check), and hands off to `ingest-traces`/`capture-evidence`
   once traces exist. Per-SDK env-var behavior and fallback paths in its
   [`reference.md`](instrument/reference.md).
+- [`export-trace`](export-trace/SKILL.md) retrieves one supplied hosted
+  `trace_id` (or an explicit private list), resolves its ordered request IDs
+  through the customer trace lookup API, and reuses the request capture batch
+  exporter to write private local files. It never scans project capture history
+  or exposes an unbounded all-traces operation.
 - [`ingest-traces`](ingest-traces/SKILL.md) is the front door for developers
   who arrive with data instead of a harness: it turns existing production
   traces (an object-store bucket, provider log exports, or a gateway capture
