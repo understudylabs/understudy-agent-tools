@@ -40,6 +40,7 @@ understudy gateway probe --provider anthropic --project rehearsal --workload cla
 understudy captures list --project rehearsal --workload classify
 understudy captures get <request-id> --project rehearsal --workload classify
 understudy captures export <request-id> --out .understudy/captures/<request-id>.json
+understudy captures export --request-ids-file request-ids.txt --project rehearsal --out .understudy/capture-batch --include-payload --yes
 understudy routes show classify --project rehearsal
 understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
 understudy routes clear classify --project rehearsal

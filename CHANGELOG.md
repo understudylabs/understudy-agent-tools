@@ -17,6 +17,16 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Resumable customer capture batches.** `understudy captures export` now
+  accepts `--request-ids-file` for one-request-id-per-line exports using the
+  signed-in customer's existing capture access. Batch downloads use bounded
+  concurrency, retry transient failures, skip completed files by default, and
+  write `failed-request-ids.txt` for a clean retry handoff. Payload export
+  remains file-only and requires `--include-payload --yes`. Shared
+  authorization failures stop the batch immediately, and failed forced
+  refreshes quarantine the previous file so a later resume cannot trust it.
+  Summary and payload modes use disjoint filename suffixes. Temporary files are
+  randomized and created exclusively before replacement.
 - **The benchmark lab comes to the Desktop.** Desktop/runtime 0.3.41 and CLI
   0.6.38 bridge the app to the benchmark/experiment spine: experiment lineage
   cards trace every result back to the run, dataset, and prompt that produced
