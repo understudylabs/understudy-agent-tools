@@ -329,6 +329,17 @@ select,
   opacity: 0.5;
 }
 
+/* Shortcut chip inside tooltips ("Toggle sidebar ⌘B"), Codex-style. */
+.tooltip-kbd {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--c-window) 24%, transparent);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
 .titlebar-new-chat {
   position: fixed;
   z-index: 30;
