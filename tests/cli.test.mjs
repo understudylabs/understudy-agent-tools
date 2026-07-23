@@ -235,7 +235,11 @@ async function withHostedFixture(fn) {
         )
         .map((capture) => capture.request_id);
       return requestIds.length > 0
-        ? send(200, { trace_id: traceId, request_ids: requestIds })
+        ? send(200, {
+          trace_id: traceId,
+          request_ids: requestIds,
+          observability_id: "obs_fixture",
+        })
         : send(404, {
           type: "invalid_request_error",
           message: "Synthetic trace not found.",
@@ -3269,26 +3273,41 @@ class ScoreWithFeedback:
         },
       );
       const alphaManifest = JSON.parse(
-        readFileSync(join(payloadDirectory, "trace_alpha", "trace.json"), "utf8"),
+        readFileSync(
+          join(payloadDirectory, "trace-trace_alpha", "trace.json"),
+          "utf8",
+        ),
       );
       assert.deepEqual(alphaManifest.request_ids, ["req_123", "req_456"]);
       assert.equal(alphaManifest.capture_export.complete, false);
       assert.match(
         readFileSync(
-          join(payloadDirectory, "trace_alpha", "req_123.payload.json"),
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "req_123.payload.json",
+          ),
           "utf8",
         ),
         /SECRET_PROMPT/,
       );
       assert.equal(
         existsSync(
-          join(payloadDirectory, "trace_alpha", "req_456.payload.json"),
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "req_456.payload.json",
+          ),
         ),
         false,
       );
       assert.match(
         readFileSync(
-          join(payloadDirectory, "trace_beta", "req_retry.payload.json"),
+          join(
+            payloadDirectory,
+            "trace-trace_beta",
+            "req_retry.payload.json",
+          ),
           "utf8",
         ),
         /SECRET_RETRY_PROMPT/,
@@ -3299,7 +3318,11 @@ class ScoreWithFeedback:
       );
       assert.equal(
         readFileSync(
-          join(payloadDirectory, "trace_alpha", "failed-request-ids.txt"),
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "failed-request-ids.txt",
+          ),
           "utf8",
         ),
         "req_456\n",
@@ -3307,7 +3330,11 @@ class ScoreWithFeedback:
       if (process.platform !== "win32") {
         assert.equal(
           statSync(
-            join(payloadDirectory, "trace_alpha", "req_123.payload.json"),
+            join(
+              payloadDirectory,
+              "trace-trace_alpha",
+              "req_123.payload.json",
+            ),
           ).mode & 0o777,
           0o600,
         );
@@ -3329,6 +3356,39 @@ class ScoreWithFeedback:
         ),
         false,
         "trace exports must never paginate the capture catalog",
+      );
+
+      const retryCapture = state.captures.find(
+        (capture) => capture.request_id === "req_retry",
+      );
+      assert.ok(retryCapture);
+      retryCapture.trace_id = "failed-trace-ids.txt";
+      const reservedTraceIdsPath = join(repo, "reserved-trace-ids.txt");
+      writeFileSync(reservedTraceIdsPath, "failed-trace-ids.txt\n");
+      const reservedDirectory = join(repo, "reserved-trace-export");
+      const reservedExport = await runWithEnvAsync([
+        "--json", "traces", "export",
+        "--trace-ids-file", reservedTraceIdsPath,
+        "--project", "rehearsal",
+        "--out", reservedDirectory,
+      ], env, repo);
+      assert.equal(reservedExport.status, 0, reservedExport.stderr);
+      assert.equal(
+        readFileSync(join(reservedDirectory, "failed-trace-ids.txt"), "utf8"),
+        "",
+      );
+      assert.equal(
+        JSON.parse(
+          readFileSync(
+            join(
+              reservedDirectory,
+              "trace-failed-trace-ids.txt",
+              "trace.json",
+            ),
+            "utf8",
+          ),
+        ).trace_id,
+        "failed-trace-ids.txt",
       );
     });
   });

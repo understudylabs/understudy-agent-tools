@@ -31,7 +31,7 @@ const MAX_TRACE_REQUEST_IDS = 100_000;
 const TraceRequestIdsResponseSchema = z.object({
   trace_id: z.string(),
   request_ids: z.array(z.string()),
-}).strict();
+}).passthrough();
 
 interface TraceExportOpts extends ProjectResolutionOptions {
   workload?: string;
@@ -376,8 +376,10 @@ function validateTraceId(traceId: string): void {
 
 function traceDirectoryName(traceId: string): string {
   const encoded = encodeURIComponent(traceId);
-  if (Buffer.byteLength(encoded, "utf8") <= 180) return encoded;
-  return `${encoded.slice(0, 80)}--${createHash("sha256").update(traceId).digest("hex").slice(0, 20)}`;
+  const safeName = Buffer.byteLength(encoded, "utf8") <= 180
+    ? encoded
+    : `${encoded.slice(0, 80)}--${createHash("sha256").update(traceId).digest("hex").slice(0, 20)}`;
+  return `trace-${safeName}`;
 }
 
 function parseBoundedInteger(
