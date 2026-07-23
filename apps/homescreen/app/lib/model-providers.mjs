@@ -34,11 +34,34 @@ export function isLocalModel(id) {
  * defaults to 10% of input when the provider doesn't publish one.
  * Keys are id prefixes; longest match wins. Unknown → nulls ("—").
  */
+// $/MTok list prices, verified 2026-07-22 (Anthropic from the API model
+// card; OpenAI + open-model families from provider list pricing). cached
+// defaults to 10% of input in rateCardFor when omitted — the published rate
+// for every entry below. Longest matching id prefix wins.
 export const RATE_CARD = {
-  "gemma-4-31b": { input: 0.1, output: 0.3 },
-  "glm-5.2": { input: 0.6, output: 2.2 },
-  "gpt-5.5": { input: 1.25, output: 10 },
+  // Anthropic
   "claude-opus-4-8": { input: 5, output: 25 },
+  "claude-sonnet-4-6": { input: 3, output: 15 },
+  "claude-haiku-4-5": { input: 1, output: 5 },
+  // OpenAI
+  "gpt-5.5": { input: 1.25, output: 10 },
+  "gpt-5.4": { input: 2.5, output: 15 },
+  "gpt-5.4-mini": { input: 0.75, output: 4.5 },
+  "gpt-5.4-nano": { input: 0.2, output: 1.25 },
+  // Z.ai
+  "glm-5.2": { input: 0.6, output: 2.2 },
+  // Google (gateway rate for the hosted conversion)
+  "gemma-4-31b": { input: 0.1, output: 0.3 },
+  // DeepSeek
+  "deepseek-v4": { input: 0.3, output: 0.5 },
+  "deepseek": { input: 0.14, output: 0.28 },
+  // Moonshot
+  "kimi-k3": { input: 3, output: 15 },
+  "kimi-k2": { input: 0.95, output: 4 },
+  // MiniMax
+  "minimax": { input: 0.3, output: 1.2 },
+  // Qwen
+  "qwen": { input: 0.5, output: 3 },
 };
 
 export function rateCardFor(id) {
