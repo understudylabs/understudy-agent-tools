@@ -18,6 +18,7 @@ import {
   type RunSplit,
 } from "../run-executor.js";
 import { appReplayRunner } from "../app-harness.js";
+import { formatRegradeDelta, regradeRuns } from "../regrade.js";
 import { mlxServingRig } from "../local-serving.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -103,6 +104,25 @@ export function registerRunsCommand(program: Command): void {
       if (selectTasks(manifest, { split: input.split, tasks: input.tasks }).length === 0) throw new Error(`no tasks match split=${input.split}`);
       const run = createRunRequest(benchmark, input as Parameters<typeof createRunRequest>[1]);
       console.log(JSON.stringify(run, null, 2));
+    });
+
+  runs
+    .command("regrade")
+    .description("Rescore retained run traces offline against the CURRENT verifier definition (never re-runs the agent); writes new rows under <run>-regrade-<n> with source_run provenance and preserved cost/latency")
+    .requiredOption("--benchmark <dir>", "Promoted benchmark directory")
+    .option("--run <run_id>", "Source run to regrade (default: every run with rows, skipping rows that are themselves regrades)")
+    .option("--task <task_id...>", "Regrade only these task ids (repeatable)")
+    .option("--dry-run", "Print the plan + deltas without writing any rows", false)
+    .action((options: { benchmark: string; run?: string; task?: string[]; dryRun: boolean }) => {
+      const summaries = regradeRuns(resolve(options.benchmark), {
+        runId: options.run ?? null,
+        taskIds: options.task ?? null,
+        dryRun: options.dryRun,
+      });
+      // Delta summary on stderr, parseable JSON on stdout (the file's discipline).
+      if (summaries.length === 0) console.error("nothing to regrade — no matching rows");
+      for (const summary of summaries) console.error(formatRegradeDelta(summary));
+      console.log(JSON.stringify(summaries, null, 2));
     });
 
   runs
