@@ -120,12 +120,24 @@ in `src/benchmark.ts`; full table in `docs/benchmark-rigor.md`):
 
 `version` and `content_hashes` themselves are excluded from hashing.
 Benchmark-level version = max bump across tasks; added tasks count MAJOR,
-removed MINOR. Leaderboard staleness is currently computed from each row's
-`created_at` against the newest breaking (MAJOR/MINOR) bump per task in
-`versions.jsonl` — rows older than the bump are stale (excluded from
-headline aggregates, counted and named, restorable via the include toggle);
-rows missing `created_at` are conservatively stale. Stamping rows with the
-exact task version/content hash they ran against is the planned tightening.
+removed MINOR. Eval rows are now stamped at write time (run executor and
+`runs regrade`) with `provenance.task_version` + `provenance.task_content_hashes`
+— the exact task semver and env/verifier/meta hashes the row ran against.
+Leaderboard staleness prefers that stamp when both the row and the current
+task carry one: an env/verifier hash mismatch is decisively stale (meta-only
+drift never stales); a matching stamp rescues rows missing `created_at` but
+never rows predating a breaking bump (a regrade bumps `versions.jsonl`
+without changing task content — its superseded source rows must stay stale).
+Unstamped rows keep the fallback: `created_at` against the newest breaking
+(MAJOR/MINOR) bump per task in `versions.jsonl`, rows missing `created_at`
+conservatively stale. Stale rows are excluded from headline aggregates,
+counted and named, restorable via the include toggle. `versions.jsonl`
+entries written by `benchmarks upgrade` and `runs regrade` also snapshot
+per-task `tasks: [{task_id, version, content_hashes}]`, so
+`benchmarks upgrade --against-version <version|index>` can diff against the
+ledger itself (legacy snapshot-less lines still need `--against` with the
+archived manifest). Regrades journal first-class `type: "regrade"`
+claimed/completed lines into `runs/events.jsonl`.
 
 ## Executor daemon details
 

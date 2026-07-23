@@ -116,7 +116,33 @@ surface fields (conservatively, unknown => env).
 `understudy runs regrade` participates in the same ledger: writing regraded
 rows appends one MINOR `versions.jsonl` line covering the regraded tasks, so
 the superseded source rows go stale in leaderboard aggregates rather than
-double-counting alongside their regrades.
+double-counting alongside their regrades. Regrades are also first-class in
+the run journal: each written regrade run appends `type: "regrade"`
+claimed/completed lines to `runs/events.jsonl` (additive — readers that
+switch on known event types ignore the new member).
+
+### Row stamps and hash-based staleness
+
+The run executor and `runs regrade` stamp every eval row at write time with
+`provenance.task_version` and `provenance.task_content_hashes` — the exact
+semver and env/verifier/meta hashes of the task the row ran against
+(additive on `understudy.eval_result.v1`; unstamped legacy tasks produce no
+stamp, never an invented one). The leaderboard staleness gate
+(`isRowStale` in `src/benchmark-staleness.ts`) prefers this stamp when both
+the row and the current task carry one: an env or verifier hash mismatch is
+decisively stale regardless of timestamps, meta-only drift never stales, and
+a matching stamp rescues rows missing `created_at`. A matching stamp does
+NOT rescue rows predating a breaking bump — a regrade bumps `versions.jsonl`
+without changing task content, and its superseded source rows must stay
+stale. Rows without stamps keep the created_at-vs-breaking-bump fallback.
+
+`versions.jsonl` entries written by `benchmarks upgrade` and `runs regrade`
+additionally snapshot every task's `{task_id, version, content_hashes}`
+under `tasks` (additive on `understudy.benchmark_version.v1`), which lets
+`benchmarks upgrade --against-version <version|index>` diff the current
+manifest against the ledger itself; legacy snapshot-less lines still require
+`--against` with the archived manifest (a bare entry cannot reproduce old
+content hashes).
 
 ## Current gaps (in progress)
 
