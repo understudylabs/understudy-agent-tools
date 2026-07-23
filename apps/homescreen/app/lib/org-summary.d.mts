@@ -72,6 +72,8 @@ export type OrgSummary =
       projects: Project[];
       summaries: ProjectSummary[];
       reporting: OrganizationReporting | null;
+      /** 30d daily series for the spend range picker (chart only). */
+      reporting30: OrganizationReporting | null;
       balance: BillingBalance | null;
       cards: WorkloadCardData[];
       metrics: {
