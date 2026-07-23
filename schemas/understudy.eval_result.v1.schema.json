@@ -108,6 +108,20 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "Paths or ids of supporting artifacts (fixtures, trace files, packet paths)."
+        },
+        "task_version": {
+          "type": ["string", "null"],
+          "description": "Additive: the task's semantic version (MAJOR.MINOR.PATCH) at the moment this row was written — leaderboard staleness prefers a version/hash mismatch against the current task over created_at-vs-bump inference."
+        },
+        "task_content_hashes": {
+          "type": ["object", "null"],
+          "properties": {
+            "env_sha256": { "type": ["string", "null"] },
+            "verifier_sha256": { "type": ["string", "null"] },
+            "meta_sha256": { "type": ["string", "null"] }
+          },
+          "additionalProperties": true,
+          "description": "Additive: the task's stamped content hashes (env/verifier/meta canonical-JSON sha256) at row-write time. A row whose env or verifier sha no longer matches the current task is stale exactly; meta-only drift never stales."
         }
       },
       "additionalProperties": true

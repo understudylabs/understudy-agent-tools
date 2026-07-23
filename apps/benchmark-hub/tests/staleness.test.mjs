@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 // Compiled by `tsc -p tests/tsconfig.json` (see package.json "test" script).
 // benchmark-core re-exports the staleness math from the repo's dist —
 // this exercises the exact functions the Leaderboard client component uses.
-import { isRowStale, latestBreakingBumps, staleRowSummary } from "./.build/lib/benchmark-core.js";
+import { isRowStale, latestBreakingBumps, staleRowSummary, tasksByIdForStaleness } from "./.build/lib/benchmark-core.js";
 import { computeLeaderboard } from "./.build/lib/scores.js";
 
 const manifest = {
@@ -83,5 +83,65 @@ describe("leaderboard stale-row exclusion math", () => {
   it("no versions.jsonl task bumps => nothing stale", () => {
     const legacyOnly = latestBreakingBumps([versions[0]]);
     assert.equal(staleRowSummary(rows, legacyOnly).staleCount, 0);
+  });
+});
+
+describe("hash/version row stamps (preferred over created_at when both sides carry them)", () => {
+  const hashes = { env_sha256: "a".repeat(64), verifier_sha256: "b".repeat(64), meta_sha256: "c".repeat(64) };
+  // Current task definitions as the leaderboard sees them (manifest tasks
+  // carrying version + content_hashes stamps).
+  const currentTasks = tasksByIdForStaleness([
+    { task_id: "t1", version: "2.0.0", content_hashes: hashes },
+    { task_id: "t2", version: "1.0.1" },
+  ]);
+  const bumps = latestBreakingBumps(versions); // t1 has a major bump at 2026-02-01
+
+  it("env/verifier hash mismatch is decisive stale even for post-bump rows", () => {
+    const mismatch = row({
+      created_at: "2026-03-01T00:00:00Z", // after the bump — timestamp gate would say fresh
+      provenance: { task_content_hashes: { ...hashes, env_sha256: "d".repeat(64) } },
+    });
+    assert.equal(isRowStale(mismatch, bumps, currentTasks), true);
+    const verifierMoved = row({
+      created_at: "2026-03-01T00:00:00Z",
+      provenance: { task_content_hashes: { ...hashes, verifier_sha256: "d".repeat(64) } },
+    });
+    assert.equal(isRowStale(verifierMoved, bumps, currentTasks), true);
+  });
+
+  it("meta-only hash drift never stales a row", () => {
+    const metaOnly = row({
+      created_at: "2026-03-01T00:00:00Z",
+      provenance: { task_content_hashes: { ...hashes, meta_sha256: "d".repeat(64) } },
+    });
+    assert.equal(isRowStale(metaOnly, bumps, currentTasks), false);
+  });
+
+  it("a matching stamp rescues rows without created_at (conservatively stale before stamping)", () => {
+    const undatedStamped = row({ created_at: null, provenance: { task_content_hashes: hashes } });
+    assert.equal(isRowStale(undatedStamped, bumps, currentTasks), false);
+    const undatedUnstamped = row({ created_at: null });
+    assert.equal(isRowStale(undatedUnstamped, bumps, currentTasks), true);
+  });
+
+  it("a matching stamp does NOT rescue rows predating a breaking bump (regrade supersession)", () => {
+    // A regrade appends a MINOR bump without changing task content: the
+    // superseded rows stamp-match the current task but must stay stale.
+    const preBumpMatch = row({ created_at: "2026-01-10T00:00:00Z", provenance: { task_content_hashes: hashes } });
+    assert.equal(isRowStale(preBumpMatch, bumps, currentTasks), true);
+  });
+
+  it("version stamps fall back to major.minor comparison when hashes are absent", () => {
+    const patchOnly = row({ task_id: "t2", created_at: null, provenance: { task_version: "1.0.0" } });
+    assert.equal(isRowStale(patchOnly, bumps, currentTasks), false); // 1.0.x == 1.0.x
+    const minorBehind = row({ task_id: "t2", created_at: "2026-03-01T00:00:00Z", provenance: { task_version: "0.9.0" } });
+    assert.equal(isRowStale(minorBehind, bumps, currentTasks), true);
+  });
+
+  it("staleRowSummary threads currentTasks and reports the current version on chips", () => {
+    const staleRows = [row({ created_at: "2026-03-01T00:00:00Z", provenance: { task_content_hashes: { ...hashes, env_sha256: "d".repeat(64) } } })];
+    const summary = staleRowSummary(staleRows, bumps, currentTasks);
+    assert.equal(summary.staleCount, 1);
+    assert.deepEqual(summary.byTask, [{ task_id: "t1", count: 1, version: "2.0.0" }]);
   });
 });

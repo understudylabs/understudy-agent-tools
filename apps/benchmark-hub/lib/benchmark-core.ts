@@ -16,5 +16,5 @@ export type { Branch, ProjectionOptions, TraceNode } from "../../../dist/benchma
 // Leaderboard staleness gating (versions.jsonl task bumps → stale-row math):
 // same anti-drift pattern, re-exported from the dependency-free dist module
 // so client components can bundle it (no node builtins in its graph).
-export { isRowStale, latestBreakingBumps, staleRowSummary } from "../../../dist/benchmark-staleness.js";
+export { isRowStale, latestBreakingBumps, staleRowSummary, stampStaleness, tasksByIdForStaleness } from "../../../dist/benchmark-staleness.js";
 export type { BreakingBump, StaleRowSummary } from "../../../dist/benchmark-staleness.js";
