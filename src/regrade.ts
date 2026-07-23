@@ -14,13 +14,36 @@
  * regrade re-judges, it never re-spends). Non-replayable or trace-missing
  * rows are skipped with an explicit reason, never silently dropped.
  */
-import { appendFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
-import { EVAL_RESULT_SCHEMA, appendJsonlRows, readJsonlFile } from "./benchmark-artifacts.js";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJsonlRows, readJsonlFile, serializeRunEvent } from "./benchmark-artifacts.js";
 import { accumulateReplay, type ReplayCall } from "./benchmark-replay.js";
 import { bumpVersion } from "./benchmark.js";
-import { serializeVersionEntryLine, type BenchmarkVersionEntry, type VersionTaskBump } from "./benchmark-upgrade.js";
-import { newOutputFiles, rowsFilePath, verifiersWorkDir } from "./run-executor.js";
+import { taskProvenanceStamp } from "./benchmark-staleness.js";
+import { serializeVersionEntryLine, versionTaskSnapshots, type BenchmarkVersionEntry, type VersionTaskBump } from "./benchmark-upgrade.js";
+import { EXECUTOR_VERSION, newOutputFiles, rowsFilePath, runEventsPath, verifiersWorkDir } from "./run-executor.js";
+
+/**
+ * First-class journal presence: writing a regrade run appends a claimed +
+ * completed `type: "regrade"` pair to runs/events.jsonl (same
+ * understudy.run_event.v1 lines the executor writes — old readers that
+ * switch on known types simply ignore the new member). The completed event's
+ * progress counts regraded rows over rows considered.
+ */
+function appendRegradeEvents(
+  benchmarkDir: string,
+  args: { newRunId: string; sourceRunId: string; regraded: number; considered: number; skipped: number; ts: string },
+): void {
+  const file = runEventsPath(benchmarkDir);
+  mkdirSync(dirname(file), { recursive: true });
+  const base = { schema_version: RUN_EVENT_SCHEMA, run_id: args.newRunId, type: "regrade" as const, executor_version: EXECUTOR_VERSION, source_run_id: args.sourceRunId };
+  appendFileSync(file, serializeRunEvent({ ...base, ts: args.ts, status: "claimed", progress: { completed: 0, total: args.regraded } }), { mode: 0o600 });
+  appendFileSync(
+    file,
+    serializeRunEvent({ ...base, ts: args.ts, status: "completed", progress: { completed: args.regraded, total: args.regraded }, rows_considered: args.considered, skipped: args.skipped }),
+    { mode: 0o600 },
+  );
+}
 
 type Obj = Record<string, unknown>;
 const asObject = (value: unknown): Obj =>
@@ -203,6 +226,8 @@ export function regradeVersionEntry(
   taskBumps: VersionTaskBump[],
   createdAt: string,
   note: string,
+  /** Additive: current task definitions (tasks.jsonl) snapshotted onto the entry as tasks[] (version + content hashes). */
+  currentTasks?: Obj[],
 ): BenchmarkVersionEntry {
   const lastLine = priorVersionLines.length > 0 ? asObject(priorVersionLines[priorVersionLines.length - 1]) : null;
   const lastVersion = typeof lastLine?.version === "string" && lastLine.version.trim() ? lastLine.version : null;
@@ -218,6 +243,7 @@ export function regradeVersionEntry(
       contamination === "clean" || contamination === "contaminated" || contamination === "unknown" ? contamination : null,
     note,
     task_bumps: taskBumps,
+    ...(currentTasks ? { tasks: versionTaskSnapshots(currentTasks) } : {}),
   };
 }
 
@@ -313,6 +339,9 @@ export function regradeRuns(benchmarkDir: string, options: RegradeOptions = {}):
         created_at: now().toISOString(),
         provenance: {
           ...asObject(row.provenance),
+          // Additive hash-based staleness stamp: the CURRENT task's semver +
+          // content hashes — the definition this regrade actually judged under.
+          ...(taskProvenanceStamp(task) ?? {}),
           source_run: { action: "regrade", run_id: runId, row_ref: rowRef },
         },
       });
@@ -333,6 +362,7 @@ export function regradeRuns(benchmarkDir: string, options: RegradeOptions = {}):
         byModel.set(model, [...(byModel.get(model) ?? []), row]);
       }
       for (const [model, rows] of byModel) appendJsonlRows(rowsFilePath(dir, newRunId, model), rows);
+      appendRegradeEvents(dir, { newRunId, sourceRunId: runId, regraded: regraded.length, considered: sourceRows.length, skipped: skipped.length, ts: now().toISOString() });
       // Every regraded task gets a MINOR bump on the invocation's single
       // versions.jsonl entry (appended once, below). from is null — the
       // verifier edit that motivated the regrade was not necessarily
@@ -377,6 +407,7 @@ export function regradeRuns(benchmarkDir: string, options: RegradeOptions = {}):
       taskBumps,
       versionStampedAt,
       `runs regrade: rescored ${rescored} row(s) across ${summaries.filter((s) => s.new_run_id !== null).length} run(s) under the current verifier`,
+      [...sidecarTasks.values()],
     );
     appendFileSync(join(dir, "versions.jsonl"), serializeVersionEntryLine(entry), "utf8");
     for (const summary of summaries) summary.version_entry = entry;

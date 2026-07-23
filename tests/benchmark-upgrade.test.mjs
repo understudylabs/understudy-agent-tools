@@ -255,6 +255,69 @@ describe("understudy benchmarks upgrade (CLI)", () => {
     assert.equal(fs.readdirSync(queueDir).length, 1);
   });
 
+  it("snapshots the NEW manifest's per-task version/hash stamps onto the entry", () => {
+    const stamps = { env_sha256: "e".repeat(64), verifier_sha256: "v".repeat(64), meta_sha256: "m".repeat(64) };
+    const oldM = manifest([task("t1", { version: "1.0.0", content_hashes: stamps })]);
+    const newM = manifest([task("t1", { version: "1.1.0", content_hashes: { ...stamps, verifier_sha256: "w".repeat(64) } }), task("t2")]);
+    const plan = planBenchmarkUpgrade(oldM, newM, { previousBenchmarkVersion: "1.0.0" });
+    assert.deepEqual(plan.entry.tasks, [
+      { task_id: "t1", version: "1.1.0", content_hashes: { ...stamps, verifier_sha256: "w".repeat(64) } },
+      { task_id: "t2", version: null, content_hashes: null }, // unstamped: honest nulls
+    ]);
+  });
+
+  it("--against-version diffs against a ledger snapshot (and errors clearly without one)", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "us-upgrade-snap-"));
+    const stamps = { env_sha256: "e".repeat(64), verifier_sha256: "v".repeat(64), meta_sha256: "m".repeat(64) };
+    const v1 = manifest([task("t1", { version: "1.0.0", content_hashes: stamps })]);
+    fs.writeFileSync(path.join(dir, "benchmark.json"), JSON.stringify(v1, null, 2));
+    // First upgrade (identity diff against itself) just records the snapshot line.
+    const againstPath = path.join(dir, "old.json");
+    fs.writeFileSync(againstPath, JSON.stringify(v1, null, 2));
+    execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir, "--against", againstPath], { encoding: "utf8" });
+    const entry1 = JSON.parse(fs.readFileSync(path.join(dir, "versions.jsonl"), "utf8").split("\n").filter(Boolean)[0]);
+    assert.deepEqual(entry1.tasks, [{ task_id: "t1", version: "1.0.0", content_hashes: stamps }]);
+
+    // Verifier edit lands in the manifest; diff against the LEDGER entry by version.
+    const v2 = manifest([task("t1", { version: "1.1.0", content_hashes: { ...stamps, verifier_sha256: "w".repeat(64) } })]);
+    fs.writeFileSync(path.join(dir, "benchmark.json"), JSON.stringify(v2, null, 2));
+    const out = JSON.parse(
+      execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir, "--against-version", entry1.version, "--dry-run"], { encoding: "utf8" }),
+    );
+    assert.deepEqual(out.diff.plan.regrade, ["t1"]);
+    assert.equal(out.benchmark_version.bump, "minor");
+    // Same entry addressable by 0-based index.
+    const byIndex = JSON.parse(
+      execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir, "--against-version", "0", "--dry-run"], { encoding: "utf8" }),
+    );
+    assert.deepEqual(byIndex.diff.plan.regrade, ["t1"]);
+
+    // A legacy line without tasks[] keeps the clear error.
+    const legacyDir = fs.mkdtempSync(path.join(os.tmpdir(), "us-upgrade-legacy-"));
+    fs.writeFileSync(path.join(legacyDir, "benchmark.json"), JSON.stringify(v2, null, 2));
+    fs.writeFileSync(
+      path.join(legacyDir, "versions.jsonl"),
+      JSON.stringify({ schema_version: "understudy.benchmark_version.v1", created_at: "2026-01-01T00:00:00Z", version: "1.0.0", task_bumps: [] }) + "\n",
+    );
+    assert.throws(
+      () => execFileSync(process.execPath, [bin, "benchmarks", "upgrade", legacyDir, "--against-version", "1.0.0"], { encoding: "utf8", stdio: "pipe" }),
+      /no tasks\[\] snapshot/,
+    );
+    // Unknown version, and mutually exclusive flags.
+    assert.throws(
+      () => execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir, "--against-version", "9.9.9"], { encoding: "utf8", stdio: "pipe" }),
+      /matches no versions\.jsonl entry/,
+    );
+    assert.throws(
+      () => execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir], { encoding: "utf8", stdio: "pipe" }),
+      /exactly one of --against/,
+    );
+    assert.throws(
+      () => execFileSync(process.execPath, [bin, "benchmarks", "upgrade", dir, "--against", againstPath, "--against-version", "0"], { encoding: "utf8", stdio: "pipe" }),
+      /exactly one of --against/,
+    );
+  });
+
   it("rejects a versions-entry file as --against (needs the archived manifest)", () => {
     const { dir, againstPath } = setup();
     const entryPath = path.join(dir, "entry.json");

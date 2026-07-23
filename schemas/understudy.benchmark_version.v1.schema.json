@@ -55,6 +55,32 @@
         }
       },
       "description": "Per-task version changes recorded in this line. Absent/empty for legacy split-freeze-only lines."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id"],
+        "additionalProperties": true,
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "version": {
+            "type": ["string", "null"],
+            "description": "The task's semantic version as of this line."
+          },
+          "content_hashes": {
+            "type": ["object", "null"],
+            "properties": {
+              "env_sha256": { "type": ["string", "null"] },
+              "verifier_sha256": { "type": ["string", "null"] },
+              "meta_sha256": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true,
+            "description": "The task's stamped content hashes as of this line; null when the task was unstamped."
+          }
+        }
+      },
+      "description": "Additive, optional: per-task version/hash snapshot as of this entry, enabling `benchmarks upgrade --against-version` to diff against the ledger itself without the archived manifest. Absent on legacy lines (which still require the archived manifest)."
     }
   }
 }

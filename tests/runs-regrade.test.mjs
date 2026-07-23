@@ -39,7 +39,9 @@ function makeFixture({ replayable = true } = {}) {
   writeFileSync(
     join(dir, "tasks.jsonl"),
     jsonl([
-      { task_id: "t1", outcome_contract: { required: [{ type: "response_obligation", kind: "contains_category", expected: "blue" }], forbidden: [] } },
+      // t1 is born-versioned (foundry-stamped): regraded rows must carry its
+      // CURRENT version + content hashes in provenance.
+      { task_id: "t1", version: "1.1.0", content_hashes: { env_sha256: "a".repeat(64), verifier_sha256: "b".repeat(64), meta_sha256: "c".repeat(64) }, outcome_contract: { required: [{ type: "response_obligation", kind: "contains_category", expected: "blue" }], forbidden: [] } },
       { task_id: "t2", outcome_contract: { required: [{ type: "response_obligation", kind: "contains_category", expected: "red" }], forbidden: [] } },
       { task_id: "t3", outcome_contract: { required: [{ type: "response_obligation", kind: "contains_category", expected: "green" }], forbidden: [] } },
     ]),
@@ -232,6 +234,75 @@ describe("regradeRuns", () => {
     const { dir, runId } = makeFixture();
     writeFileSync(join(dir, `rows-${runId}-regrade-1-whatever.jsonl`), "");
     assert.equal(allocateRegradeRunId(dir, runId, new Set([`${runId}-regrade-2`])), `${runId}-regrade-3`);
+  });
+
+  it("stamps regraded rows with the CURRENT task version + content hashes (stamped tasks only)", () => {
+    const { dir, runId, model } = makeFixture();
+    regradeRuns(dir, { now: () => new Date("2026-07-23T00:00:00.000Z") });
+    const rows = readFileSync(rowsFilePath(dir, `${runId}-regrade-1`, model), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const rowT1 = rows.find((r) => r.task_id === "t1");
+    assert.equal(rowT1.provenance.task_version, "1.1.0");
+    assert.deepEqual(rowT1.provenance.task_content_hashes, {
+      env_sha256: "a".repeat(64),
+      verifier_sha256: "b".repeat(64),
+      meta_sha256: "c".repeat(64),
+    });
+    // t2's sidecar task is unstamped — its regraded row carries no stamp
+    // (staleness falls back to created_at for such rows), never a fake one.
+    const rowT2 = rows.find((r) => r.task_id === "t2");
+    assert.equal(rowT2.provenance.task_version, undefined);
+    assert.equal(rowT2.provenance.task_content_hashes, undefined);
+    // A stamped row matching the current task stays fresh through the
+    // hash-preferred gate even though a MINOR bump was just appended.
+    const lines = readFileSync(join(dir, "versions.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const bumps = latestBreakingBumps(lines);
+    const currentTasks = { t1: { version: "1.1.0", content_hashes: rowT1.provenance.task_content_hashes } };
+    assert.equal(isRowStale(rowT1, bumps, currentTasks), false);
+    // A row stamped with DIFFERENT env hashes is stale regardless of created_at.
+    const oldStamped = { task_id: "t1", created_at: "2027-01-01T00:00:00.000Z", provenance: { task_content_hashes: { env_sha256: "d".repeat(64), verifier_sha256: "b".repeat(64), meta_sha256: "c".repeat(64) } } };
+    assert.equal(isRowStale(oldStamped, bumps, currentTasks), true);
+  });
+
+  it("snapshots per-task version/hash stamps onto the appended versions.jsonl entry", () => {
+    const { dir } = makeFixture();
+    const [summary] = regradeRuns(dir, { now: () => new Date("2026-07-23T00:00:00.000Z") });
+    const entry = summary.version_entry;
+    assert.ok(Array.isArray(entry.tasks));
+    assert.deepEqual(entry.tasks.map((t) => t.task_id), ["t1", "t2", "t3"]);
+    const t1 = entry.tasks.find((t) => t.task_id === "t1");
+    assert.equal(t1.version, "1.1.0");
+    assert.equal(t1.content_hashes.env_sha256, "a".repeat(64));
+    // Unstamped tasks snapshot honestly as nulls (no invented hashes).
+    const t2 = entry.tasks.find((t) => t.task_id === "t2");
+    assert.equal(t2.version, null);
+    assert.equal(t2.content_hashes, null);
+  });
+
+  it("appends first-class regrade events to runs/events.jsonl (claimed + completed)", () => {
+    const { dir, runId } = makeFixture();
+    regradeRuns(dir, { now: () => new Date("2026-07-23T00:00:00.000Z") });
+    const eventsFile = join(dir, "runs", "events.jsonl");
+    assert.ok(existsSync(eventsFile));
+    const events = readFileSync(eventsFile, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    assert.equal(events.length, 2);
+    for (const event of events) {
+      assert.equal(event.schema_version, "understudy.run_event.v1");
+      assert.equal(event.type, "regrade");
+      assert.equal(event.run_id, `${runId}-regrade-1`);
+      assert.equal(event.source_run_id, runId);
+      assert.equal(event.ts, "2026-07-23T00:00:00.000Z");
+      assert.equal(typeof event.executor_version, "string");
+    }
+    assert.deepEqual(events[0].progress, { completed: 0, total: 2 });
+    assert.equal(events[0].status, "claimed");
+    assert.equal(events[1].status, "completed");
+    assert.deepEqual(events[1].progress, { completed: 2, total: 2 });
+    assert.equal(events[1].rows_considered, 4);
+    assert.equal(events[1].skipped, 2);
+    // Dry runs journal nothing.
+    const { dir: dryDir } = makeFixture();
+    regradeRuns(dryDir, { dryRun: true });
+    assert.ok(!existsSync(join(dryDir, "runs", "events.jsonl")));
   });
 
   it("loadRetainedTraces is empty for an arm without a structural work dir", () => {

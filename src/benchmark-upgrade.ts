@@ -31,6 +31,18 @@ export type VersionTaskBump = {
   reason: string | null;
 };
 
+/**
+ * One tasks[] element of an understudy.benchmark_version.v1 line: the
+ * per-task snapshot (semver + stamped content hashes) as of the entry, so a
+ * later `benchmarks upgrade --against-version` can diff against the ledger
+ * itself without the archived manifest.
+ */
+export type VersionTaskSnapshot = {
+  task_id: string;
+  version: string | null;
+  content_hashes: { env_sha256: string; verifier_sha256: string; meta_sha256: string } | null;
+};
+
 /** One versions.jsonl line (understudy.benchmark_version.v1; additive). */
 export type BenchmarkVersionEntry = {
   schema_version: "understudy.benchmark_version.v1";
@@ -40,7 +52,27 @@ export type BenchmarkVersionEntry = {
   contamination: "clean" | "contaminated" | "unknown" | null;
   note: string | null;
   task_bumps: VersionTaskBump[];
+  /** Additive, optional: per-task version/hash snapshot as of this entry. Absent on legacy lines. */
+  tasks?: VersionTaskSnapshot[];
 };
+
+/** Snapshot every task's version + stamped content hashes (sorted by task_id). */
+export function versionTaskSnapshots(tasks: unknown[]): VersionTaskSnapshot[] {
+  const out: VersionTaskSnapshot[] = [];
+  for (const raw of tasks) {
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const task = raw as JsonObject;
+    if (typeof task.task_id !== "string") continue;
+    const hashes = task.content_hashes;
+    const h = hashes !== null && typeof hashes === "object" && !Array.isArray(hashes) ? (hashes as JsonObject) : null;
+    const stamped =
+      h && typeof h.env_sha256 === "string" && typeof h.verifier_sha256 === "string" && typeof h.meta_sha256 === "string"
+        ? { env_sha256: h.env_sha256, verifier_sha256: h.verifier_sha256, meta_sha256: h.meta_sha256 }
+        : null;
+    out.push({ task_id: task.task_id, version: taskVersion(task), content_hashes: stamped });
+  }
+  return out.sort((a, b) => a.task_id.localeCompare(b.task_id));
+}
 
 export type UpgradePlanOptions = ComputeTaskContentHashesOptions & {
   /** Benchmark-level semver before the upgrade (default "1.0.0"). */
@@ -166,6 +198,9 @@ export function planBenchmarkUpgrade(
     contamination: splits.contamination,
     note: note ?? null,
     task_bumps,
+    // Additive: snapshot of the NEW manifest's per-task version/hash stamps,
+    // so future upgrades can diff --against-version this ledger line.
+    tasks: versionTaskSnapshots(Array.isArray(newManifest.tasks) ? newManifest.tasks : []),
   };
 
   return { diff, benchmark_version: { from, to, bump: diff.benchmarkBump }, entry, counts, cost_note };
@@ -178,5 +213,5 @@ export function serializeVersionEntryLine(entry: BenchmarkVersionEntry): string 
 
 // Staleness gating lives in ./benchmark-staleness.ts (dependency-free so the
 // hub can bundle it into client components); re-exported here for src users.
-export { latestBreakingBumps, isRowStale, staleRowSummary } from "./benchmark-staleness.js";
-export type { BreakingBump, StaleRowSummary } from "./benchmark-staleness.js";
+export { latestBreakingBumps, isRowStale, staleRowSummary, stampStaleness, taskProvenanceStamp, tasksByIdForStaleness } from "./benchmark-staleness.js";
+export type { BreakingBump, StaleRowSummary, RowTaskStamp, StalenessRow } from "./benchmark-staleness.js";

@@ -196,10 +196,16 @@ export function registerBenchmarksCommand(program: Command): void {
         "run_request files for the rerun set. Queue-only, never executes: `understudy runs execute --watch` " +
         "picks requests up, same trust posture as the hub Run panel",
     )
-    .requiredOption(
+    .option(
       "--against <file>",
-      "The PREVIOUS benchmark manifest (old benchmark.json) to diff against. A bare versions.jsonl entry is not " +
-        "enough to recompute content hashes — pass the archived manifest",
+      "The PREVIOUS benchmark manifest (old benchmark.json) to diff against. A legacy versions.jsonl entry " +
+        "without a tasks[] snapshot is not enough to recompute content hashes — pass the archived manifest",
+    )
+    .option(
+      "--against-version <version|index>",
+      "Diff against a versions.jsonl entry's tasks[] snapshot instead of an archived manifest: a benchmark " +
+        "version string (e.g. 1.2.0) or a 0-based entry index. Only entries written with per-task snapshots " +
+        "(version + content_hashes) qualify; legacy lines still need --against",
     )
     .option("--note <text>", "Note recorded on the appended versions.jsonl line")
     .option("--dry-run", "Print the plan without appending to versions.jsonl (and never queue)", false)
@@ -211,14 +217,52 @@ export function registerBenchmarksCommand(program: Command): void {
       [] as string[],
     )
     .option("--rollouts <n>", "Rollouts per task for the queued rerun", "1")
-    .action(async (dir: string, options: { against: string; note?: string; dryRun: boolean; queue: boolean; model: string[]; rollouts: string }) => {
+    .action(async (dir: string, options: { against?: string; againstVersion?: string; note?: string; dryRun: boolean; queue: boolean; model: string[]; rollouts: string }) => {
       const fs = await import("node:fs");
       const path = await import("node:path");
       const { planBenchmarkUpgrade, serializeVersionEntryLine } = await import("../benchmark-upgrade.js");
       const entry = await loadDirEntry(dir);
       if (entry.kind !== "ok") throw new Error(`upgrade needs a promoted benchmark dir (understudy.benchmark.v1); this dir is stage "${entry.kind}"`);
+      if ((options.against ? 1 : 0) + (options.againstVersion ? 1 : 0) !== 1) {
+        throw new Error("pass exactly one of --against <old-manifest.json> or --against-version <version|index>");
+      }
 
-      const againstRaw = JSON.parse(readFileSync(options.against, "utf8"));
+      let againstRaw: unknown;
+      if (options.againstVersion) {
+        // Ledger-backed baseline: a versions.jsonl entry with a per-task
+        // snapshot (tasks[]: version + content_hashes) stands in for the
+        // archived manifest — classifyTaskChange compares stamped hashes.
+        const wanted = options.againstVersion;
+        const versionLines = entry.versions as Record<string, unknown>[];
+        const byVersion = versionLines.filter((line) => typeof line.version === "string" && line.version === wanted);
+        const line = byVersion.length > 0
+          ? byVersion[byVersion.length - 1]
+          : /^\d+$/.test(wanted) && Number(wanted) < versionLines.length
+            ? versionLines[Number(wanted)]
+            : null;
+        if (!line) {
+          const known = versionLines.map((l, i) => `${i}:${typeof l.version === "string" ? l.version : "(no version)"}`).join(", ");
+          throw new Error(`--against-version ${wanted} matches no versions.jsonl entry (have: ${known || "none"})`);
+        }
+        const snapshots = Array.isArray(line.tasks) ? line.tasks : null;
+        if (!snapshots || snapshots.length === 0) {
+          throw new Error(
+            `versions.jsonl entry ${typeof line.version === "string" ? line.version : wanted} carries no tasks[] snapshot ` +
+              "(written before snapshot support) — a bare entry cannot reproduce the old content hashes; pass the " +
+              "archived manifest with --against instead",
+          );
+        }
+        const unstamped = snapshots.filter((s) => !(s as { content_hashes?: unknown }).content_hashes);
+        if (unstamped.length > 0) {
+          throw new Error(
+            `versions.jsonl snapshot for entry ${typeof line.version === "string" ? line.version : wanted} has ` +
+              `${unstamped.length} task(s) without content_hashes — cannot diff exactly; pass the archived manifest with --against`,
+          );
+        }
+        againstRaw = { version: line.version ?? null, tasks: snapshots };
+      } else {
+        againstRaw = JSON.parse(readFileSync(options.against!, "utf8"));
+      }
       if (againstRaw === null || typeof againstRaw !== "object" || !Array.isArray((againstRaw as { tasks?: unknown }).tasks)) {
         throw new Error(
           "--against must be a previous benchmark manifest (an object with a tasks[] array); a versions.jsonl " +
