@@ -13,7 +13,6 @@ export function AccountPane({
   prioritizeSignIn?: boolean;
 } = {}) {
   const [status, setStatus] = useState<Any | null>(null);
-  const [platforms, setPlatforms] = useState<Any[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -27,9 +26,6 @@ export function AccountPane({
   };
   useEffect(() => {
     refresh();
-    invoke<Any>("account_platforms")
-      .then((v) => setPlatforms(((v.adapters as Any[]) || [])))
-      .catch(() => {});
   }, []);
 
   const signedIn = Boolean(status?.signed_in);
@@ -152,7 +148,7 @@ export function AccountPane({
     <>
       <div className="pane-head">
         <h1 className="pane-title">Account</h1>
-        <p className="pane-sub">Understudy identity, endpoints, and installing into coding agents.</p>
+        <p className="pane-sub">Understudy identity and endpoints.</p>
       </div>
       <div className="pane-body">
         {err && <div className="card err">{err}</div>}
@@ -165,19 +161,6 @@ export function AccountPane({
         ) : null}
         {status ? <EndpointsCard status={status} /> : null}
 
-        <div className="card">
-          <div className="card-title" style={{ marginBottom: 8 }}>Install into coding agents</div>
-          {platforms === null ? <div className="card-sub">Loading platforms…</div> :
-            platforms.map((p) => (
-              <div key={String(p.id)} style={{ padding: "10px 0", borderBottom: "1px solid var(--border)" }}>
-                <div className="card-row">
-                  <div className="svc-name">{String(p.displayName ?? p.id)} <span className="svc-state">{String(p.status ?? "")}</span></div>
-                </div>
-                {((p.install as string[]) || []).map((cmd, i) => <div key={i} className="cmd">{cmd}</div>)}
-                {p.onboarding ? <div className="svc-desc" style={{ marginTop: 6 }}>{String(p.onboarding)}</div> : null}
-              </div>
-            ))}
-        </div>
       </div>
     </>
   );
