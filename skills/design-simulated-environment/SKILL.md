@@ -101,7 +101,14 @@ the generic compiler or viewer.
 
 ## Validator quality gates
 
-Two checks beyond the scripted oracle, before any model score is trusted:
+Checks beyond the scripted oracle, before any model score is trusted:
+
+- **The verifier fixture-test rule.** Before trusting any verifier, it must
+  pass a two-fixture test: one known-valid result must **pass** and one
+  plausible-but-wrong result must **fail**. Both fixtures live next to the
+  verifier and rerun on every verifier change. A verifier that has never
+  rejected a wrong answer has not been tested — do not score, regrade, or
+  calibrate against it.
 
 - **Strict-vs-dense divergence.** Score every run with both the strict
   pass/fail and the partial-credit axes. When strict reads 0 while partial
@@ -217,6 +224,28 @@ never copy it into a new trace-derived environment. Use the helper lifecycle in
 [`../ingest-traces/references/trace-foundry-cli.md`](../ingest-traces/references/trace-foundry-cli.md).
 Re-audit upstream before changing the generator's commit pin, then smoke-install
 and import the generated package against that exact commit.
+
+## Export targets
+
+A finished environment need not stay local-only. `benchmark.v1` already
+records external lineage via `provenance.imported_from`
+(`format: verifiers.v1 | verifiers.v0 | harbor | inspect_ai |
+automationbench | hf-dataset | other`, plus `ref`/`version`/`license`), and
+the same formats work in reverse as export targets:
+
+- **Harbor** (github.com/harbor-framework/harbor) — a task directory per
+  task: `task.toml` carrying the task's **semver version** (the same
+  major/minor/patch contract as our task versioning) and `dataset.toml`
+  pinning inputs by **sha256 digests**. Our per-task `version` +
+  `content_hashes` map onto that shape directly.
+- **verifiers / Prime Intellect Environments Hub** — package the env as a
+  `verifiers` v1 environment (the shape `understudy traces build-benchmark`
+  already generates) and publish to the Environments Hub; record the hub
+  slug and pinned version so a re-import round-trips through
+  `imported_from`.
+
+Manifests carry references and digests, never inline gold, prompts, or
+secrets — that rule holds for exports too.
 
 ## Output Standard
 

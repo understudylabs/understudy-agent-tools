@@ -94,10 +94,27 @@ export function registerTracesCommand(program: Command): void {
     });
 
   traces.command("promote")
-    .description("Promote a reviewed proposal to an executable understudy.benchmark.v1 (accepted tasks only)")
+    .description(
+      "Promote a reviewed proposal to an executable understudy.benchmark.v1 (accepted tasks only). Runs the " +
+        "pre-promote rigor gate (same cheap checks as `benchmarks rigor --ci`) first: hard failures refuse " +
+        "promotion unless --override-rigor records a reason; UNKNOWN evidence warns but never blocks",
+    )
     .requiredOption("--benchmark <path>", "Benchmark output directory")
     .option("--waive-dag <reason>", "Waive remaining source-DAG issues with this recorded rationale")
-    .action((options: { benchmark: string; waiveDag?: string }) => console.log(JSON.stringify(promoteTraceBenchmark(resolve(options.benchmark), { waiveDagReason: options.waiveDag }), null, 2)));
+    .option("--override-rigor <reason>", "Promote despite pre-promote rigor gate FAILURES; the reason and the failures are recorded in promotion-record.json")
+    .action(async (options: { benchmark: string; waiveDag?: string; overrideRigor?: string }) => {
+      const dir = resolve(options.benchmark);
+      const { renderRigorCiLines, runRigorCiChecks } = await import("../rigor-report.js");
+      const rigor = runRigorCiChecks(dir);
+      for (const line of renderRigorCiLines(rigor)) console.error(line);
+      // A proposal's benchmark.json is pre-promotion by definition — promote
+      // itself regenerates and schema-validates the manifest, so the
+      // manifest-schema check is advisory here, not a hard failure.
+      const failures = rigor.failures.filter((check) => check !== "manifest-schema");
+      if (rigor.unknowns.length > 0) console.error(`promote: rigor evidence UNKNOWN for ${rigor.unknowns.join(", ")} — not blocking, but close these gaps before sharing results`);
+      if (failures.length > 0 && options.overrideRigor) console.error(`promote: rigor gate OVERRIDDEN (${failures.join(", ")}) — reason recorded in promotion-record.json`);
+      console.log(JSON.stringify(promoteTraceBenchmark(dir, { waiveDagReason: options.waiveDag, rigorGate: { failures, unknowns: rigor.unknowns, overrideReason: options.overrideRigor } }), null, 2));
+    });
   traces.command("plan-replays")
     .description("Create a no-spend multi-model and context-rot replay plan")
     .requiredOption("--benchmark <path>", "Benchmark output directory")
