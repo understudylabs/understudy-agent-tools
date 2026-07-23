@@ -596,6 +596,7 @@ understudy workloads list
 understudy workloads create classify --capture
 understudy gateway probe --provider anthropic --project rehearsal --workload classify
 understudy captures list --project rehearsal --workload classify
+understudy captures export --request-ids-file request-ids.txt --project rehearsal --out .understudy/capture-batch --include-payload --yes
 understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
 understudy routes show classify --project rehearsal
 understudy routes clear classify --project rehearsal
@@ -625,7 +626,11 @@ call and prints request metadata, not the completion text. If you need BYOK for
 the probe, pass `--byok-env ENV_NAME`; the CLI reads the key from the
 environment and never persists or prints it. `captures list/get` are
 metadata-first and redacted by default. Full capture export is opt-in,
-file-only, and requires `--include-payload --yes`. `models list` shows public
+file-only, and requires `--include-payload --yes`. For a customer-owned batch,
+put one request id per line in a file and pass `--request-ids-file`; the CLI
+retries transient failures, resumes from completed files, and writes
+`failed-request-ids.txt`. Redacted batch files use `.summary.json`, keeping
+them distinct from full-payload `.json` files. `models list` shows public
 Understudy model IDs and display names only.
 
 If the coding agent has an approved native email connector, it may complete the
