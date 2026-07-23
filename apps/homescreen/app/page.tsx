@@ -30,6 +30,12 @@ import { SetupPane } from "./components/SetupPane";
 import { SettingsPane } from "./components/SettingsPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
 import { ScopeBreadcrumb } from "./components/ScopeBreadcrumb";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/app/components/base-ui/tooltip";
 import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
 import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
@@ -278,9 +284,15 @@ export default function Page() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return;
-      if (event.key.toLowerCase() !== "n") return;
-      event.preventDefault();
-      newChat();
+      const key = event.key.toLowerCase();
+      if (key === "n") {
+        event.preventDefault();
+        newChat();
+      } else if (key === "b") {
+        // Cmd+B: toggle the navigation rail (the macOS/Codex convention).
+        event.preventDefault();
+        setRailOpen((open) => !open);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -289,15 +301,24 @@ export default function Page() {
   return (
     <div className={"shell" + (railOpen ? " rail-open" : "")}>
       <div className="window-drag-region" data-tauri-drag-region />
-      <button
-        type="button"
-        className="rail-toggle"
-        aria-label={railOpen ? "Hide navigation" : "Show navigation"}
-        aria-expanded={railOpen}
-        onClick={() => setRailOpen((open) => !open)}
-      >
-        <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
-      </button>
+      <TooltipProvider delayDuration={1000}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="rail-toggle"
+              aria-label={railOpen ? "Hide navigation" : "Show navigation"}
+              aria-expanded={railOpen}
+              onClick={() => setRailOpen((open) => !open)}
+            >
+              <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start">
+            Toggle sidebar <kbd className="tooltip-kbd">⌘B</kbd>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       {/* Codex-style: the sidebar's own New chat button is the entry point
           while the rail is open; the title-bar icon appears only when the
           rail is collapsed so there is exactly one visible affordance. */}

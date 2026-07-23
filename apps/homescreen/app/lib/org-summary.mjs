@@ -128,8 +128,12 @@ export async function loadOrgSummary(adminGet) {
     return { ok: false, error: readableError(error) };
   }
 
-  const [reporting, balance, summaries] = await Promise.all([
+  const [reporting, reporting30, balance, summaries] = await Promise.all([
     adminGet("reporting?window=7d&granularity=day&group_by=workload").catch(() => null),
+    // Chart-only series: the widest window the hosted API supports, so the
+    // range picker can slice arbitrary spans client-side. Metrics stay on
+    // the 7d call above (web parity).
+    adminGet("reporting?window=30d&granularity=day&group_by=workload").catch(() => null),
     adminGet("billing/balance")
       .then((response) => response.balance)
       .catch(() => null),
@@ -173,6 +177,7 @@ export async function loadOrgSummary(adminGet) {
     projects,
     summaries,
     reporting,
+    reporting30,
     balance,
     cards,
     metrics: {

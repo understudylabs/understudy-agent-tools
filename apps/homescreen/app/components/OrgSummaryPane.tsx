@@ -8,14 +8,22 @@
 // the Rust process. Workload cards navigate to the in-app workload
 // Configuration pane instead of a /p/[slug] URL.
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  CalendarIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleMinusIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { Calendar } from "@/app/components/base-ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/base-ui/popover";
 import { Badge } from "@/app/components/base-ui/badge";
 import { Button } from "@/app/components/base-ui/button";
 import {
@@ -178,18 +186,7 @@ function SummaryView({
         />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Spend over the last 7 days</CardTitle>
-          <CardDescription>
-            Estimated daily cost across the organization. This is a reporting
-            view, not a billing action.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <SpendTrend rows={reporting?.series ?? []} />
-        </CardContent>
-      </Card>
+      <SpendCard reporting30={data.reporting30} fallback={reporting} />
 
       <Card>
         <CardHeader>
@@ -353,12 +350,98 @@ function WorkloadHealthBadge({ status }: { status: WorkloadHealth }): ReactNode 
   );
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function rangeLabel(range: DateRange): string {
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (range.from && range.to) return `${fmt(range.from)} – ${fmt(range.to)}`;
+  if (range.from) return fmt(range.from);
+  return "Pick a range";
+}
+
+/**
+ * Spend trend with a dynamic date range. The hosted reporting API only
+ * serves fixed 7d/30d windows, so the widest (30d, daily) series loads once
+ * and the picker slices it client-side — any span within the last 30 days.
+ */
+function SpendCard({
+  reporting30,
+  fallback,
+}: {
+  reporting30: { series?: ReportingSeriesPoint[] } | null;
+  fallback: { series?: ReportingSeriesPoint[] } | null;
+}): ReactNode {
+  const today = startOfDay(new Date());
+  const minDate = new Date(today.getTime() - 29 * DAY_MS);
+  const [range, setRange] = useState<DateRange>({
+    from: new Date(today.getTime() - 6 * DAY_MS),
+    to: today,
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // The 30d series drives the slice; if that call failed, fall back to the
+  // 7d series the metrics already use.
+  const rows = reporting30?.series ?? fallback?.series ?? [];
+  const sliced = useMemo(() => {
+    if (!range.from) return rows;
+    const from = startOfDay(range.from).getTime();
+    const to = startOfDay(range.to ?? range.from).getTime() + DAY_MS - 1;
+    return rows.filter((row) => {
+      const at = Date.parse(row.bucket);
+      return Number.isFinite(at) && at >= from && at <= to;
+    });
+  }, [rows, range.from, range.to]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Spend</CardTitle>
+        <CardDescription>
+          Estimated daily cost across the organization. This is a reporting
+          view, not a billing action.
+        </CardDescription>
+        <CardAction>
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="Spend date range">
+                <CalendarIcon aria-hidden="true" className="size-3.5" />
+                {rangeLabel(range)}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="range"
+                numberOfMonths={2}
+                selected={range}
+                defaultMonth={range.from}
+                disabled={{ before: minDate, after: today }}
+                onSelect={(next) => {
+                  if (!next) return;
+                  setRange(next);
+                  if (next.from && next.to) setPickerOpen(false);
+                }}
+              />
+            </PopoverContent>
+          </Popover>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <SpendTrend rows={sliced} />
+      </CardContent>
+    </Card>
+  );
+}
+
 function SpendTrend({ rows }: { rows: ReportingSeriesPoint[] }): ReactNode {
   const points = spendTrendPoints(rows);
   if (points.length === 0) {
     return (
       <p className="py-12 text-center text-sm text-muted-foreground">
-        No metered traffic in the last 7 days.
+        No metered traffic in this range.
       </p>
     );
   }
@@ -367,7 +450,7 @@ function SpendTrend({ rows }: { rows: ReportingSeriesPoint[] }): ReactNode {
     <div
       className="grid gap-3"
       role="img"
-      aria-label="Estimated daily cost over the last seven days"
+      aria-label="Estimated daily cost over the selected range"
     >
       <div className="flex h-44 items-end gap-2 border-b border-border px-1 pt-4">
         {points.map(([day, cost]) => (
