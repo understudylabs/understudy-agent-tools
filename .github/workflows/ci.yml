@@ -6,7 +6,42 @@ on:
     branches: [main]
 
 jobs:
-  gates:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      desktop_web: ${{ steps.paths.outputs.desktop_web }}
+      rust: ${{ steps.paths.outputs.rust }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect Desktop changes
+        id: paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            changed_files="$(git ls-files)"
+          else
+            changed_files="$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA")"
+          fi
+
+          desktop_web=false
+          rust=false
+          if grep -Eq '^apps/homescreen/' <<<"$changed_files" ||
+             grep -Fxq '.github/workflows/ci.yml' <<<"$changed_files"; then
+            desktop_web=true
+          fi
+          if grep -Eq '^apps/homescreen/src-tauri/' <<<"$changed_files" ||
+             grep -Fxq '.github/workflows/ci.yml' <<<"$changed_files"; then
+            rust=true
+          fi
+
+          echo "desktop_web=$desktop_web" >> "$GITHUB_OUTPUT"
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+
+  static:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -20,13 +55,85 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Node checks
-        run: npm run check
+      - name: Build and typecheck
+        run: |
+          npm run build
+          npm run typecheck
+
+      - name: Validate skills
+        run: npm run skills:validate
+
+      - name: Check package contents
+        run: npm run package:smoke
+
+  test_core:
+    name: test-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run core Node tests
+        # cli.test.mjs launches a fresh Node process for most assertions.
+        # Isolate it below so those subprocesses do not contend with the
+        # rest of the test suite on one small runner.
+        run: |
+          find tests -maxdepth 1 -name '*.test.mjs' ! -name 'cli.test.mjs' -print0 \
+            | sort -z \
+            | xargs -0 node --test
+
+  test_cli:
+    name: test-cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run CLI integration tests
+        run: node --test --test-concurrency=1 tests/cli.test.mjs
+
+  desktop_web:
+    name: desktop-web
+    needs: changes
+    if: needs.changes.outputs.desktop_web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Setup Bun 1.3.14
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.14
+
+      - name: Cache Next.js
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: apps/homescreen/.next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('apps/homescreen/bun.lock') }}-${{ hashFiles('apps/homescreen/app/**', 'apps/homescreen/public/**', 'apps/homescreen/next.config.mjs') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('apps/homescreen/bun.lock') }}-
 
       - name: Desktop web build
         working-directory: apps/homescreen
@@ -34,7 +141,37 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
+  gates:
+    if: always()
+    needs:
+      - changes
+      - static
+      - test_core
+      - test_cli
+      - desktop_web
+      - rust
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require successful Node and Desktop checks
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          STATIC_RESULT: ${{ needs.static.result }}
+          TEST_CORE_RESULT: ${{ needs.test_core.result }}
+          TEST_CLI_RESULT: ${{ needs.test_cli.result }}
+          DESKTOP_WEB_RESULT: ${{ needs.desktop_web.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+        run: |
+          for result in "$CHANGES_RESULT" "$STATIC_RESULT" "$TEST_CORE_RESULT" "$TEST_CLI_RESULT"; do
+            [[ "$result" == "success" ]] || exit 1
+          done
+          [[ "$DESKTOP_WEB_RESULT" == "success" || "$DESKTOP_WEB_RESULT" == "skipped" ]]
+          [[ "$RUST_RESULT" == "success" || "$RUST_RESULT" == "skipped" ]]
+
   rust:
+    needs: changes
+    # Desktop releases require a successful Rust check for the exact main
+    # commit, even when the commit itself did not touch native sources.
+    if: github.event_name == 'push' || needs.changes.outputs.rust == 'true'
     runs-on: macos-latest
     defaults:
       run:
