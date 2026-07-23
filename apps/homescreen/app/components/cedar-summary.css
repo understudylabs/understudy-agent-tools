@@ -1,0 +1,169 @@
+/* Cedar summary components (sm-) — ported from the design system's
+   cedar/flows/summary door (understudy-design, design/consolidated-home).
+   Hairlines, mono numerals, mint = healthy / amber = idle / clay = degraded.
+   Tokens map to the app's: --border, --surface, --text, --text-2, --mono,
+   --mb-mint, --model-amber, --model-clay. */
+
+.sm-cap {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.sm-chip {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.sm-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+.sm-spacer { flex: 1; }
+
+/* --- CedarMetricTile --- */
+.sm-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+.sm-tile {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s ease;
+}
+.sm-tile:hover { border-color: color-mix(in srgb, var(--text) 22%, transparent); }
+.sm-tile-value {
+  font-family: var(--mono);
+  font-size: 27px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.sm-tile-value small { font-size: 15px; color: var(--text-2); font-weight: 400; }
+.sm-tile-detail { font-size: 11px; color: var(--text-2); line-height: 1.45; }
+
+/* --- CedarSpendTrend --- */
+.sm-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  padding: 16px 18px 14px;
+}
+.sm-panel-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.sm-panel-title { font-size: 14.5px; font-weight: 550; color: var(--text); }
+.sm-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.sm-range:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
+.sm-empty {
+  padding: 44px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* --- CedarWorkloadCard --- */
+.sm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.sm-card {
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--text);
+  padding: 14px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.sm-card:hover {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+  transform: translateY(-1px);
+}
+.sm-card-top { display: flex; align-items: baseline; gap: 8px; }
+.sm-card-name {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sm-card-minis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.sm-mini .sm-cap { font-size: 9px; }
+.sm-mini b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 400;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* health dot + states */
+.sm-health {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.sm-health.healthy { color: var(--mb-mint); }
+.sm-health.idle { color: var(--model-amber); }
+.sm-health.degraded { color: var(--model-clay); }
+.sm-health.unavailable { color: var(--text-2); }
+.sm-health.healthy .sm-dot {
+  background: var(--mb-mint);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mb-mint) 14%, transparent);
+}
+.sm-health.idle .sm-dot { background: var(--model-amber); }
+.sm-health.degraded .sm-dot { background: var(--model-clay); }
+.sm-health.unavailable .sm-dot { background: var(--text-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sm-card, .sm-tile, .sm-range { transition: none; }
+  .sm-card:hover { transform: none; }
+}
