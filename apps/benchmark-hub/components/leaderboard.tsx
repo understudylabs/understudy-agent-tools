@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { computeLeaderboard, formatCI, formatCost, formatLatency, formatScore, hasSplits, isAnomalousRow, statisticalTieGroups } from "@/lib/scores";
-import { isRowStale, latestBreakingBumps, staleRowSummary } from "@/lib/benchmark-core";
+import { isRowStale, latestBreakingBumps, staleRowSummary, tasksByIdForStaleness } from "@/lib/benchmark-core";
 import type { BenchmarkManifest, BenchmarkVersion, EvalRow, TaskSplit } from "@/lib/types";
 import { Badge, RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
@@ -34,10 +34,13 @@ export function Leaderboard({
   // silently dropped — counts stay visible as chips below.
   const [includeStale, setIncludeStale] = useState(false);
   const breakingBumps = useMemo(() => latestBreakingBumps(versions), [versions]);
-  const staleSummary = useMemo(() => staleRowSummary(rows, breakingBumps), [rows, breakingBumps]);
+  // Current-task version/hash stamps: rows stamped at write time get an EXACT
+  // staleness verdict against these; unstamped rows keep the timestamp gate.
+  const currentTasks = useMemo(() => tasksByIdForStaleness(manifest.tasks ?? []), [manifest]);
+  const staleSummary = useMemo(() => staleRowSummary(rows, breakingBumps, currentTasks), [rows, breakingBumps, currentTasks]);
   const effectiveRows = useMemo(
-    () => (includeStale || staleSummary.staleCount === 0 ? rows : rows.filter((r) => !isRowStale(r, breakingBumps))),
-    [rows, includeStale, staleSummary, breakingBumps],
+    () => (includeStale || staleSummary.staleCount === 0 ? rows : rows.filter((r) => !isRowStale(r, breakingBumps, currentTasks))),
+    [rows, includeStale, staleSummary, breakingBumps, currentTasks],
   );
   const [localOnly, setLocalOnly] = useState(false);
   const [showRoute, setShowRoute] = useState(true);

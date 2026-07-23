@@ -29,6 +29,10 @@ export type ManifestTask = {
   gold?: { kind: "final-state" | "rubric" | "reference"; ref: string } | null;
   /** Per-task incumbent (additive; null/absent on pre-incumbent builds). */
   incumbent?: IncumbentInfo | null;
+  /** Additive: the task's semantic version (born-versioned foundry builds). */
+  version?: string | null;
+  /** Additive: stamped env/verifier/meta content hashes (drives exact leaderboard staleness). */
+  content_hashes?: { env_sha256?: string | null; verifier_sha256?: string | null; meta_sha256?: string | null } | null;
 };
 
 export type TaxonomyCategory = {

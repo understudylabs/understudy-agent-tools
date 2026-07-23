@@ -551,6 +551,25 @@ describe("from_dataset", () => {
     // The proposed benchmark is immediately visible to the operator surface.
     const listed = callBenchmarksTool("list_benchmarks");
     assert.ok(listed.benchmarks.some((b) => b.slug === "data--spam-intake" && b.stage === "proposed"));
+    // Born-versioned via the MCP path too: every generated task is stamped
+    // 1.0.0 with env/verifier/meta content hashes (same stamping helper the
+    // trace foundry uses), on both the sidecar and the manifest tasks.
+    const sidecarTasks = fs
+      .readFileSync(path.join(out.dir, "tasks.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.ok(sidecarTasks.length > 0);
+    for (const task of sidecarTasks) {
+      assert.equal(task.version, "1.0.0");
+      assert.match(task.content_hashes.env_sha256, /^[0-9a-f]{64}$/);
+      assert.match(task.content_hashes.verifier_sha256, /^[0-9a-f]{64}$/);
+      assert.match(task.content_hashes.meta_sha256, /^[0-9a-f]{64}$/);
+    }
+    for (const task of manifest.tasks) {
+      assert.equal(task.version, "1.0.0");
+      assert.match(task.content_hashes.env_sha256, /^[0-9a-f]{64}$/);
+    }
   });
 
   it("refuses an existing dir, a bad slug, and a missing source", () => {

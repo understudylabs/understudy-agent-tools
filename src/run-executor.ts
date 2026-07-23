@@ -25,6 +25,7 @@ import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
 import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 import { predictLocalFit, resolveLocalArm, type LocalServerHandle, type LocalServingRig, type ResolvedLocalArm } from "./local-serving.js";
 import { readTrustPosture, resolveTrustBoundaries, type TrustPosture } from "./config/trust.js";
+import { taskProvenanceStamp } from "./benchmark-staleness.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -728,7 +729,7 @@ export type RunEvent = {
   schema_version: typeof RUN_EVENT_SCHEMA;
   ts: string;
   run_id: string;
-  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning" | "run_unsupported" | "arm_fallback" | "spend_warning" | "spend_stop";
+  type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed" | "cap_warning" | "run_unsupported" | "arm_fallback" | "spend_warning" | "spend_stop" | "regrade";
   model?: string;
   task_id?: string;
   rollout?: number;
@@ -1123,6 +1124,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             ...(anomalies.length > 0 ? { anomaly: anomalies[0], anomalies } : {}),
             ...(result.error ? { error: result.error } : {}),
           };
+          // Additive provenance stamp: the exact task semver + content hashes
+          // this row ran against (sidecar task first — the foundry stamps the
+          // full tasks.jsonl content — else the manifest task's copy). The
+          // leaderboard staleness gate prefers this over created_at-vs-bump.
+          const taskStamp = taskProvenanceStamp(sidecar) ?? taskProvenanceStamp(manifestTasks.get(taskId));
+          if (taskStamp) row.provenance = { ...asObject(row.provenance), ...taskStamp };
           appendFileSync(rowsFile, serializeJsonlLine(row), { mode: 0o600 });
           recordSpend(result.cost);
           completed += 1;
