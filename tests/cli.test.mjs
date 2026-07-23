@@ -166,6 +166,7 @@ async function withHostedFixture(fn) {
       },
     ],
     transientCaptureFailures: new Map([["req_retry", 1]]),
+    captureAuthorizationFailure: false,
   };
 
   const server = createServer(async (req, res) => {
@@ -217,6 +218,13 @@ async function withHostedFixture(fn) {
     const workloadCapture = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/usp_classify\/captures\/([^/]+)$/);
     const captureMatch = projectCapture ?? workloadCapture;
     if (req.method === "GET" && captureMatch) {
+      if (state.captureAuthorizationFailure) {
+        return send(403, {
+          type: "permission_error",
+          message: "Synthetic capture access denied.",
+          request_id: "req_fixture",
+        });
+      }
       const requestId = decodeURIComponent(captureMatch[1]);
       const transientFailures = state.transientCaptureFailures.get(requestId) ?? 0;
       if (transientFailures > 0) {
@@ -1976,6 +1984,102 @@ class ScoreWithFeedback:
       ], env, repo);
       assert.notEqual(ambiguous.status, 0);
       assert.match(ambiguous.stderr, /exactly one/);
+    });
+  });
+
+  it("aborts a capture batch on shared authorization failures", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "authorization-request-ids.txt");
+      const outputDirectory = join(repo, "authorization-batch");
+      writeFileSync(
+        requestIdsPath,
+        Array.from({ length: 20 }, (_, index) => `req_auth_${index}`).join("\n"),
+      );
+      state.captureAuthorizationFailure = true;
+
+      const requestCountBefore = requests.length;
+      const exported = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--concurrency", "2",
+      ], env, repo);
+
+      assert.equal(exported.status, 1);
+      assert.match(exported.stderr, /Synthetic capture access denied/);
+      const captureRequests = requests.slice(requestCountBefore).filter((entry) =>
+        entry.path.includes("/captures/")
+      );
+      assert.ok(
+        captureRequests.length > 0 && captureRequests.length <= 2,
+        `authorization failure should stop the pool, got ${captureRequests.length} capture requests`,
+      );
+      assert.equal(
+        existsSync(join(outputDirectory, "failed-request-ids.txt")),
+        false,
+        "a shared authorization error should surface directly, not hide behind an item manifest",
+      );
+    });
+  });
+
+  it("keeps a failed forced capture refresh retryable", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "refresh-request-ids.txt");
+      const outputDirectory = join(repo, "refresh-batch");
+      const outputPath = join(outputDirectory, "req_456.json");
+      const previousPath = `${outputPath}.previous`;
+      writeFileSync(requestIdsPath, "req_456\n");
+
+      const initial = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(initial.status, 0, initial.stderr);
+      assert.equal(existsSync(outputPath), true);
+
+      state.transientCaptureFailures.set("req_456", 1);
+      const failedRefresh = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+        "--no-resume",
+        "--retries", "0",
+      ], env, repo);
+      assert.equal(failedRefresh.status, 1, failedRefresh.stderr);
+      assert.equal(existsSync(outputPath), false);
+      assert.equal(
+        existsSync(previousPath),
+        true,
+        "the old file should be quarantined where resume cannot trust it",
+      );
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "req_456\n",
+      );
+
+      const retried = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(retried.status, 0, retried.stderr);
+      assert.equal(JSON.parse(retried.stdout).written, 1);
+      assert.equal(JSON.parse(retried.stdout).skipped, 0);
+      assert.equal(existsSync(outputPath), true);
+      assert.equal(existsSync(previousPath), false);
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "",
+      );
     });
   });
 

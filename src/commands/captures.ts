@@ -235,6 +235,7 @@ async function runBatchExport(
   const { project, workload } = await resolveCaptureContext(opts);
   const results: BatchExportResult[] = new Array(requestIds.length);
   let completed = 0;
+  let fatalError: unknown;
 
   await runWithConcurrency(
     requestIds,
@@ -248,6 +249,9 @@ async function runBatchExport(
         results[index] = { requestId, status: "skipped" };
       } else {
         try {
+          if (!resume) {
+            quarantineExistingExport(outputPath);
+          }
           const capture = await fetchCaptureWithRetry(
             project.auth.orgId,
             project.projectId,
@@ -255,12 +259,18 @@ async function runBatchExport(
             workload?.id,
             retries,
           );
+          if (fatalError) return;
           const value = opts.includePayload
             ? capture
             : summarizeCapture(capture);
           writePrivateText(outputPath, `${JSON.stringify(value, null, 2)}\n`);
+          rmSync(previousExportPath(outputPath), { force: true });
           results[index] = { requestId, status: "written" };
-        } catch {
+        } catch (error) {
+          if (isBatchFatalError(error)) {
+            fatalError ??= error;
+            return;
+          }
           results[index] = { requestId, status: "failed" };
         }
       }
@@ -270,7 +280,10 @@ async function runBatchExport(
         process.stderr.write(`Exported ${completed}/${requestIds.length} captures...\n`);
       }
     },
+    () => fatalError !== undefined,
   );
+
+  if (fatalError) throw fatalError;
 
   const written = results.filter((result) => result.status === "written").length;
   const skipped = results.filter((result) => result.status === "skipped").length;
@@ -466,6 +479,20 @@ function isCompletedExport(path: string): boolean {
   return stat.isFile() && stat.size > 0;
 }
 
+function previousExportPath(path: string): string {
+  return `${path}.previous`;
+}
+
+function quarantineExistingExport(path: string): void {
+  if (!existsSync(path)) return;
+  if (!statSync(path).isFile()) {
+    throw new Error(`Cannot replace non-file capture export: ${path}`);
+  }
+  const previousPath = previousExportPath(path);
+  rmSync(previousPath, { force: true });
+  renameSync(path, previousPath);
+}
+
 function writePrivateText(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const partialPath = `${path}.${process.pid}.partial`;
@@ -493,12 +520,13 @@ async function runWithConcurrency<T>(
   values: T[],
   concurrency: number,
   worker: (value: T, index: number) => Promise<void>,
+  shouldStop: () => boolean = () => false,
 ): Promise<void> {
   let nextIndex = 0;
   const workers = Array.from(
     { length: Math.min(concurrency, values.length) },
     async () => {
-      while (nextIndex < values.length) {
+      while (nextIndex < values.length && !shouldStop()) {
         const index = nextIndex;
         nextIndex += 1;
         await worker(values[index]!, index);
@@ -516,6 +544,11 @@ function isRetryableCaptureError(error: unknown): boolean {
       error.status >= 500;
   }
   return error instanceof TypeError;
+}
+
+function isBatchFatalError(error: unknown): boolean {
+  return error instanceof UnderstudyApiError &&
+    (error.status === 401 || error.status === 403);
 }
 
 function delay(ms: number): Promise<void> {
