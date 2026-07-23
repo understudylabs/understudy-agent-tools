@@ -128,7 +128,45 @@ async function withHostedFixture(fn) {
         upstream_request_body: { messages: [{ role: "user", content: "SECRET_PROMPT" }] },
         response_body: { content: "SECRET_COMPLETION" },
       },
+      {
+        request_id: "req_456",
+        schema_version: "understudy.capture.v1",
+        ts: "2026-06-07T00:01:00Z",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        mode: "gateway",
+        provider: "openai",
+        endpoint: "/v1/chat/completions",
+        requested_model: "synthetic-model",
+        upstream_model: "synthetic-model",
+        status_code: 200,
+        latency_ms: 21,
+        tags: { env: "test" },
+        customer_request_body: { messages: [{ role: "user", content: "SECRET_BATCH_PROMPT" }] },
+        upstream_request_body: { messages: [{ role: "user", content: "SECRET_BATCH_PROMPT" }] },
+        response_body: { content: "SECRET_BATCH_COMPLETION" },
+      },
+      {
+        request_id: "req_retry",
+        schema_version: "understudy.capture.v1",
+        ts: "2026-06-07T00:02:00Z",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        mode: "gateway",
+        provider: "openai",
+        endpoint: "/v1/chat/completions",
+        requested_model: "synthetic-model",
+        upstream_model: "synthetic-model",
+        status_code: 200,
+        latency_ms: 34,
+        tags: { env: "test" },
+        customer_request_body: { messages: [{ role: "user", content: "SECRET_RETRY_PROMPT" }] },
+        upstream_request_body: { messages: [{ role: "user", content: "SECRET_RETRY_PROMPT" }] },
+        response_body: { content: "SECRET_RETRY_COMPLETION" },
+      },
     ],
+    transientCaptureFailures: new Map([["req_retry", 1]]),
+    captureAuthorizationFailure: false,
   };
 
   const server = createServer(async (req, res) => {
@@ -176,8 +214,36 @@ async function withHostedFixture(fn) {
     }
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
-    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures/req_123") return send(200, { capture: state.captures[0] });
-    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures/req_123") return send(200, { capture: state.captures[0] });
+    const projectCapture = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/captures\/([^/]+)$/);
+    const workloadCapture = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/usp_classify\/captures\/([^/]+)$/);
+    const captureMatch = projectCapture ?? workloadCapture;
+    if (req.method === "GET" && captureMatch) {
+      if (state.captureAuthorizationFailure) {
+        return send(403, {
+          type: "permission_error",
+          message: "Synthetic capture access denied.",
+          request_id: "req_fixture",
+        });
+      }
+      const requestId = decodeURIComponent(captureMatch[1]);
+      const transientFailures = state.transientCaptureFailures.get(requestId) ?? 0;
+      if (transientFailures > 0) {
+        state.transientCaptureFailures.set(requestId, transientFailures - 1);
+        return send(503, {
+          type: "server_error",
+          message: "Synthetic transient capture failure.",
+          request_id: "req_fixture",
+        });
+      }
+      const capture = state.captures.find((entry) => entry.request_id === requestId);
+      return capture
+        ? send(200, { capture })
+        : send(404, {
+          type: "invalid_request_error",
+          message: "Synthetic capture not found.",
+          request_id: "req_fixture",
+        });
+    }
     const evalBase = "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify";
     const rawCapture = `${JSON.stringify(state.captures[0])}\n`;
     const rawCaptureSha = createHash("sha256").update(rawCapture).digest("hex");
@@ -1778,6 +1844,293 @@ class ScoreWithFeedback:
       const blockedJson = await runWithEnvAsync(["--json", "captures", "export", "req_123", "--out", join(repo, "full-json.json"), "--include-payload"], env, repo);
       assert.notEqual(blockedJson.status, 0, "json mode must still require --yes for payload export");
       assert.match(blockedJson.stderr, /may contain prompts\/completions/);
+    });
+  });
+
+  it("batch-exports customer captures with retries, resume, and a failure manifest", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "request-ids.txt");
+      const outputDirectory = join(repo, "capture-batch");
+      writeFileSync(
+        requestIdsPath,
+        [
+          "# synthetic capture cohort",
+          "req_123",
+          "req_456",
+          "req_123",
+          "req_retry",
+          "req_missing",
+          "",
+        ].join("\n"),
+      );
+
+      const blocked = await runWithEnvAsync([
+        "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /may contain prompts\/completions/);
+      assert.equal(existsSync(outputDirectory), false);
+
+      const exported = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+        "--concurrency", "2",
+        "--retries", "1",
+      ], env, repo);
+      assert.equal(exported.status, 1, exported.stderr);
+      assert.doesNotMatch(
+        `${exported.stdout}${exported.stderr}`,
+        /SECRET_(?:BATCH_|RETRY_)?(?:PROMPT|COMPLETION)/,
+      );
+      const summary = JSON.parse(exported.stdout);
+      assert.deepEqual(
+        {
+          ok: summary.ok,
+          input_count: summary.input_count,
+          unique_count: summary.unique_count,
+          written: summary.written,
+          skipped: summary.skipped,
+          failed: summary.failed,
+          include_payload: summary.include_payload,
+        },
+        {
+          ok: false,
+          input_count: 5,
+          unique_count: 4,
+          written: 3,
+          skipped: 0,
+          failed: 1,
+          include_payload: true,
+        },
+      );
+      assert.match(readFileSync(join(outputDirectory, "req_123.payload.json"), "utf8"), /SECRET_PROMPT/);
+      assert.match(readFileSync(join(outputDirectory, "req_456.payload.json"), "utf8"), /SECRET_BATCH_PROMPT/);
+      assert.match(readFileSync(join(outputDirectory, "req_retry.payload.json"), "utf8"), /SECRET_RETRY_PROMPT/);
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "req_missing\n",
+      );
+      if (process.platform !== "win32") {
+        assert.equal(statSync(join(outputDirectory, "req_123.payload.json")).mode & 0o777, 0o600);
+        assert.equal(statSync(join(outputDirectory, "failed-request-ids.txt")).mode & 0o777, 0o600);
+      }
+      assert.equal(
+        requests.filter((entry) => entry.path.endsWith("/captures/req_retry")).length,
+        2,
+        "transient capture fetch should retry once",
+      );
+
+      const resumeIdsPath = join(repo, "resume-request-ids.txt");
+      writeFileSync(resumeIdsPath, "req_123\nreq_456\n");
+      const fetchesBeforeResume = requests.filter((entry) =>
+        entry.path.endsWith("/captures/req_123") ||
+        entry.path.endsWith("/captures/req_456")
+      ).length;
+      const resumed = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", resumeIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(resumed.status, 0, resumed.stderr);
+      assert.deepEqual(
+        {
+          written: JSON.parse(resumed.stdout).written,
+          skipped: JSON.parse(resumed.stdout).skipped,
+          failed: JSON.parse(resumed.stdout).failed,
+        },
+        { written: 0, skipped: 2, failed: 0 },
+      );
+      assert.equal(
+        requests.filter((entry) =>
+          entry.path.endsWith("/captures/req_123") ||
+          entry.path.endsWith("/captures/req_456")
+        ).length,
+        fetchesBeforeResume,
+        "resume should not fetch completed capture files",
+      );
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "",
+        "a clean resumed run should clear stale failures",
+      );
+
+      const redacted = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", resumeIdsPath,
+        "--out", outputDirectory,
+      ], env, repo);
+      assert.equal(redacted.status, 0, redacted.stderr);
+      assert.equal(JSON.parse(redacted.stdout).written, 2);
+      assert.equal(JSON.parse(redacted.stdout).output_suffix, ".summary.json");
+      assert.doesNotMatch(
+        readFileSync(join(outputDirectory, "req_123.summary.json"), "utf8"),
+        /SECRET_PROMPT|SECRET_COMPLETION/,
+        "redacted and full-payload resume files must not collide",
+      );
+
+      const ambiguous = await runWithEnvAsync([
+        "captures", "export", "req_123",
+        "--request-ids-file", resumeIdsPath,
+        "--out", outputDirectory,
+      ], env, repo);
+      assert.notEqual(ambiguous.status, 0);
+      assert.match(ambiguous.stderr, /exactly one/);
+    });
+  });
+
+  it("keeps summary and payload batch filenames collision-free", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "collision-request-ids.txt");
+      const outputDirectory = join(repo, "collision-batch");
+      const baseCapture = state.captures[0];
+      state.captures.push(
+        { ...baseCapture, request_id: "abc" },
+        { ...baseCapture, request_id: "abc.summary" },
+      );
+      writeFileSync(requestIdsPath, "abc\nabc.summary\n");
+
+      const payloadExport = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(payloadExport.status, 0, payloadExport.stderr);
+      assert.equal(JSON.parse(payloadExport.stdout).output_suffix, ".payload.json");
+      assert.equal(JSON.parse(payloadExport.stdout).written, 2);
+      assert.equal(JSON.parse(payloadExport.stdout).skipped, 0);
+
+      const summaryExport = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+      ], env, repo);
+      assert.equal(summaryExport.status, 0, summaryExport.stderr);
+      assert.equal(JSON.parse(summaryExport.stdout).output_suffix, ".summary.json");
+      assert.equal(JSON.parse(summaryExport.stdout).written, 2);
+      assert.equal(JSON.parse(summaryExport.stdout).skipped, 0);
+
+      const expected = new Map([
+        ["abc.payload.json", "abc"],
+        ["abc.summary.payload.json", "abc.summary"],
+        ["abc.summary.json", "abc"],
+        ["abc.summary.summary.json", "abc.summary"],
+      ]);
+      for (const [filename, requestId] of expected) {
+        assert.equal(
+          JSON.parse(readFileSync(join(outputDirectory, filename), "utf8")).request_id,
+          requestId,
+          `${filename} should retain its own request id`,
+        );
+      }
+      assert.equal(expected.size, new Set(expected.keys()).size);
+    });
+  });
+
+  it("aborts a capture batch on shared authorization failures", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "authorization-request-ids.txt");
+      const outputDirectory = join(repo, "authorization-batch");
+      writeFileSync(
+        requestIdsPath,
+        Array.from({ length: 20 }, (_, index) => `req_auth_${index}`).join("\n"),
+      );
+      state.captureAuthorizationFailure = true;
+
+      const requestCountBefore = requests.length;
+      const exported = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--concurrency", "2",
+      ], env, repo);
+
+      assert.equal(exported.status, 1);
+      assert.match(exported.stderr, /Synthetic capture access denied/);
+      const captureRequests = requests.slice(requestCountBefore).filter((entry) =>
+        entry.path.includes("/captures/")
+      );
+      assert.ok(
+        captureRequests.length > 0 && captureRequests.length <= 2,
+        `authorization failure should stop the pool, got ${captureRequests.length} capture requests`,
+      );
+      assert.equal(
+        existsSync(join(outputDirectory, "failed-request-ids.txt")),
+        false,
+        "a shared authorization error should surface directly, not hide behind an item manifest",
+      );
+    });
+  });
+
+  it("keeps a failed forced capture refresh retryable", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "refresh-request-ids.txt");
+      const outputDirectory = join(repo, "refresh-batch");
+      const outputPath = join(outputDirectory, "req_456.payload.json");
+      const previousPath = `${outputPath}.previous`;
+      writeFileSync(requestIdsPath, "req_456\n");
+
+      const initial = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(initial.status, 0, initial.stderr);
+      assert.equal(existsSync(outputPath), true);
+
+      state.transientCaptureFailures.set("req_456", 1);
+      const failedRefresh = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+        "--no-resume",
+        "--retries", "0",
+      ], env, repo);
+      assert.equal(failedRefresh.status, 1, failedRefresh.stderr);
+      assert.equal(existsSync(outputPath), false);
+      assert.equal(
+        existsSync(previousPath),
+        true,
+        "the old file should be quarantined where resume cannot trust it",
+      );
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "req_456\n",
+      );
+
+      const retried = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(retried.status, 0, retried.stderr);
+      assert.equal(JSON.parse(retried.stdout).written, 1);
+      assert.equal(JSON.parse(retried.stdout).skipped, 0);
+      assert.equal(existsSync(outputPath), true);
+      assert.equal(existsSync(previousPath), false);
+      assert.equal(
+        readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
+        "",
+      );
     });
   });
 
