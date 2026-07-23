@@ -8,6 +8,8 @@
  * claim packets, sweeps) consumes rows, never DAGs.
  */
 
+import { createHash } from "node:crypto";
+
 type JsonObject = Record<string, unknown>;
 
 function isObject(value: unknown): value is JsonObject {
@@ -324,4 +326,293 @@ export function projectBranchesToEvalRows(
       trace_ref: { branch_leaf: branch.path[branch.path.length - 1], branch_depth: branch.path.length },
     };
   });
+}
+
+/* ------------------------------------------------------------------------- *
+ * Task versioning: content hashes and the rerun/regrade/reuse contract.
+ *
+ * Each task's fields partition into three groups, each hashed separately
+ * over canonical JSON (sorted keys, stable encoding):
+ *   env      — anything the candidate sees or runs in. Change => MAJOR => rerun.
+ *   verifier — gold refs, verifier/contract/rubric/metric config.
+ *              Change => MINOR => regrade existing traces.
+ *   meta     — title, docs, everything else. Change => PATCH => reuse.
+ * Unknown extra fields default to the env group (conservative: forces rerun).
+ * The versioning bookkeeping fields themselves (version, content_hashes) are
+ * excluded from all groups so hashes are not self-referential.
+ * ------------------------------------------------------------------------- */
+
+export type TaskContentHashes = {
+  env_sha256: string;
+  verifier_sha256: string;
+  meta_sha256: string;
+};
+
+export type BumpKind = "major" | "minor" | "patch" | "none";
+
+const ENV_FIELDS = new Set([
+  "instruction",
+  "prompt",
+  "prompt_ref",
+  "system_prompt",
+  "inputs",
+  "input_ref",
+  "fixtures",
+  "fixtures_ref",
+  "environment",
+  "environment_ref",
+  "package_ref",
+  "tool_surface",
+  "tools",
+  "seed",
+  "genesis",
+  "generator_ref",
+]);
+
+const VERIFIER_FIELDS = new Set([
+  "gold",
+  "gold_ref",
+  "verifier",
+  "verifier_ref",
+  "contract",
+  "rubric",
+  "rubric_ref",
+  "metric",
+  "metrics",
+  "metric_config",
+  "checks",
+  "reward",
+  "reward_fns",
+]);
+
+const META_FIELDS = new Set([
+  "task_id",
+  "category_id",
+  "split",
+  "title",
+  "name",
+  "description",
+  "docs",
+  "notes",
+  "tags",
+  "created_at",
+  // Review/provenance bookkeeping on manifest tasks: a review-decision flip
+  // or incumbent re-attribution changes neither what candidates see nor how
+  // they are graded — never a rerun. (task_hash stays in the env default:
+  // it only moves when real content moved, so conservative-major is right.)
+  "status",
+  "incumbent",
+  "capability_fit",
+]);
+
+/** Bookkeeping fields never hashed into any group. */
+const VERSIONING_FIELDS = new Set(["version", "content_hashes"]);
+
+/** Canonical JSON: recursively sorted object keys, JSON string encoding. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (isObject(value)) {
+    const keys = Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+export type ComputeTaskContentHashesOptions = {
+  /** Extra field names to force into the env group. */
+  envFields?: string[];
+  /** Extra field names to force into the verifier group. */
+  verifierFields?: string[];
+  /** Extra field names to force into the meta group. */
+  metaFields?: string[];
+};
+
+/**
+ * Deterministic canonical-JSON sha256 over the three declared field groups.
+ * Options take precedence over the built-in partition; unknown fields not
+ * claimed by any group land in env (conservative: forces rerun).
+ */
+export function computeTaskContentHashes(
+  task: JsonObject,
+  opts: ComputeTaskContentHashesOptions = {},
+): TaskContentHashes {
+  const envExtra = new Set(opts.envFields ?? []);
+  const verifierExtra = new Set(opts.verifierFields ?? []);
+  const metaExtra = new Set(opts.metaFields ?? []);
+
+  const env: JsonObject = {};
+  const verifier: JsonObject = {};
+  const meta: JsonObject = {};
+  for (const [key, value] of Object.entries(task)) {
+    if (value === undefined) continue;
+    if (envExtra.has(key)) env[key] = value;
+    else if (verifierExtra.has(key)) verifier[key] = value;
+    else if (metaExtra.has(key)) meta[key] = value;
+    else if (VERSIONING_FIELDS.has(key)) continue;
+    else if (VERIFIER_FIELDS.has(key)) verifier[key] = value;
+    else if (META_FIELDS.has(key)) meta[key] = value;
+    else env[key] = value; // ENV_FIELDS and unknown extras alike
+  }
+  void ENV_FIELDS; // documented partition; env is also the default bucket
+
+  return {
+    env_sha256: sha256(canonicalJson(env)),
+    verifier_sha256: sha256(canonicalJson(verifier)),
+    meta_sha256: sha256(canonicalJson(meta)),
+  };
+}
+
+export type TaskChange = {
+  bump: BumpKind;
+  /** Which hash groups changed: subset of ["env", "verifier", "meta"]. */
+  changed: string[];
+};
+
+/** The task's STAMPED content_hashes when complete (all three shas), else null. */
+export function stampedTaskContentHashes(task: JsonObject): TaskContentHashes | null {
+  const hashes = task.content_hashes;
+  if (!isObject(hashes)) return null;
+  const env = stringField(hashes, "env_sha256");
+  const verifier = stringField(hashes, "verifier_sha256");
+  const meta = stringField(hashes, "meta_sha256");
+  return env && verifier && meta ? { env_sha256: env, verifier_sha256: verifier, meta_sha256: meta } : null;
+}
+
+/**
+ * Compare two task objects by their three content hashes.
+ *
+ * When BOTH sides carry stamped `content_hashes` (born-versioned tasks — the
+ * foundry stamps them over the FULL tasks.jsonl content), the stamps are
+ * compared directly. This matters for benchmark-manifest tasks: manifest
+ * tasks are references (gold.ref points into tasks.jsonl, instructions and
+ * contracts are not inlined), so rehashing their surface fields cannot see a
+ * gold/instruction edit — only the stamped hashes carry that signal. Only
+ * when either side is unstamped do we fall back to rehashing the surface
+ * fields (legacy manifests; conservative — unknown fields land in env).
+ */
+export function classifyTaskChange(
+  oldTask: JsonObject,
+  newTask: JsonObject,
+  opts: ComputeTaskContentHashesOptions = {},
+): TaskChange {
+  const oldStamped = stampedTaskContentHashes(oldTask);
+  const newStamped = stampedTaskContentHashes(newTask);
+  const before = oldStamped && newStamped ? oldStamped : computeTaskContentHashes(oldTask, opts);
+  const after = oldStamped && newStamped ? newStamped : computeTaskContentHashes(newTask, opts);
+  const changed: string[] = [];
+  if (before.env_sha256 !== after.env_sha256) changed.push("env");
+  if (before.verifier_sha256 !== after.verifier_sha256) changed.push("verifier");
+  if (before.meta_sha256 !== after.meta_sha256) changed.push("meta");
+  const bump: BumpKind = changed.includes("env")
+    ? "major"
+    : changed.includes("verifier")
+      ? "minor"
+      : changed.includes("meta")
+        ? "patch"
+        : "none";
+  return { bump, changed };
+}
+
+/** Bump a MAJOR.MINOR.PATCH string; non-semver input restarts at a base. */
+export function bumpVersion(semver: string, bump: BumpKind): string {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(semver.trim());
+  const [major, minor, patch] = match
+    ? [Number(match[1]), Number(match[2]), Number(match[3])]
+    : [1, 0, 0];
+  if (!match && bump === "none") return "1.0.0";
+  switch (bump) {
+    case "major":
+      return `${major + 1}.0.0`;
+    case "minor":
+      return `${major}.${minor + 1}.0`;
+    case "patch":
+      return `${major}.${minor}.${patch + 1}`;
+    case "none":
+      return `${major}.${minor}.${patch}`;
+  }
+}
+
+export type BenchmarkDiff = {
+  /** task_ids present only in the new manifest (always rerun). */
+  added: string[];
+  /** task_ids present only in the old manifest (noted, not planned). */
+  removed: string[];
+  perTask: { task_id: string; bump: BumpKind }[];
+  plan: {
+    rerun: string[];
+    regrade: string[];
+    reuse: string[];
+  };
+  benchmarkBump: BumpKind;
+};
+
+const BUMP_RANK: Record<BumpKind, number> = { none: 0, patch: 1, minor: 2, major: 3 };
+
+function maxBump(a: BumpKind, b: BumpKind): BumpKind {
+  return BUMP_RANK[a] >= BUMP_RANK[b] ? a : b;
+}
+
+function tasksById(manifest: JsonObject): Map<string, JsonObject> {
+  const map = new Map<string, JsonObject>();
+  if (Array.isArray(manifest.tasks)) {
+    for (const task of manifest.tasks) {
+      if (!isObject(task)) continue;
+      const id = stringField(task, "task_id");
+      if (id && !map.has(id)) map.set(id, task);
+    }
+  }
+  return map;
+}
+
+/**
+ * Diff two benchmark manifests into a rerun/regrade/reuse plan.
+ * Added tasks => rerun and count as a MAJOR benchmark bump; removed tasks
+ * are reported and count as MINOR (existing traces stay valid but the
+ * aggregate changes shape). Benchmark-level bump = max across all changes.
+ */
+export function diffBenchmarkManifests(
+  oldManifest: JsonObject,
+  newManifest: JsonObject,
+  opts: ComputeTaskContentHashesOptions = {},
+): BenchmarkDiff {
+  const oldTasks = tasksById(oldManifest);
+  const newTasks = tasksById(newManifest);
+
+  const added: string[] = [];
+  const removed: string[] = [];
+  const perTask: { task_id: string; bump: BumpKind }[] = [];
+  const plan = { rerun: [] as string[], regrade: [] as string[], reuse: [] as string[] };
+  let benchmarkBump: BumpKind = "none";
+
+  for (const [taskId, newTask] of newTasks) {
+    const oldTask = oldTasks.get(taskId);
+    if (!oldTask) {
+      added.push(taskId);
+      plan.rerun.push(taskId);
+      benchmarkBump = maxBump(benchmarkBump, "major");
+      continue;
+    }
+    const { bump } = classifyTaskChange(oldTask, newTask, opts);
+    perTask.push({ task_id: taskId, bump });
+    benchmarkBump = maxBump(benchmarkBump, bump);
+    if (bump === "major") plan.rerun.push(taskId);
+    else if (bump === "minor") plan.regrade.push(taskId);
+    else plan.reuse.push(taskId); // patch and none both reuse results
+  }
+  for (const taskId of oldTasks.keys()) {
+    if (!newTasks.has(taskId)) {
+      removed.push(taskId);
+      benchmarkBump = maxBump(benchmarkBump, "minor");
+    }
+  }
+
+  return { added, removed, perTask, plan, benchmarkBump };
 }

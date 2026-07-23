@@ -28,14 +28,22 @@
       "type": ["string", "null"],
       "description": "ISO-8601 creation timestamp."
     },
+    "version": {
+      "type": ["string", "null"],
+      "description": "Benchmark-level semantic version (MAJOR.MINOR.PATCH). Derived as the max bump across per-task changes: any task's env change => MAJOR (rerun), verifier change => MINOR (regrade), meta change => PATCH (reuse). Optional and additive — old manifests without it are unversioned."
+    },
+    "versions_log": {
+      "type": ["string", "null"],
+      "description": "Filename of the version-history sidecar next to this manifest, conventionally 'versions.jsonl' (append-only, newest last). Each line conforms to understudy.benchmark_version.v1 (see understudy.benchmark_version.v1.schema.json): created_at, version, splits_sha256, contamination, note, and task_bumps[] recording per-task {task_id, from, to, bump, reason}."
+    },
     "provenance": {
       "type": "object",
       "required": ["origin"],
       "additionalProperties": true,
       "properties": {
         "origin": {
-          "enum": ["derived-from-traces", "imported", "authored"],
-          "description": "How this benchmark came to exist. derived-from-traces = induced from the user's own captured workload; imported = converted from an external benchmark format; authored = written by hand."
+          "enum": ["derived-from-traces", "derived-from-dataset", "imported", "authored"],
+          "description": "How this benchmark came to exist. derived-from-traces = induced from the user's own captured workload; derived-from-dataset = compiled from the user's labeled dataset rows (dataset foundry); imported = converted from an external benchmark format; authored = written by hand."
         },
         "source_refs": {
           "type": "array",
@@ -49,7 +57,7 @@
           "properties": {
             "format": {
               "enum": ["verifiers.v1", "verifiers.v0", "harbor", "inspect_ai", "automationbench", "hf-dataset", "other"],
-              "description": "External format the benchmark was converted from."
+              "description": "External format the benchmark was converted from. Enum values are the declared intake formats; an importer may not ship for every value yet (e.g. 'harbor' is reserved ahead of its importer — Harbor task.toml semver and dataset.toml digests map onto per-task version/content_hashes when it lands)."
             },
             "ref": {
               "type": "string",
@@ -151,6 +159,29 @@
               }
             },
             "description": "What correct looks like for this task. Null means the task is unscored (rows project as status=unscored)."
+          },
+          "version": {
+            "type": ["string", "null"],
+            "description": "Per-task semantic version (MAJOR.MINOR.PATCH). MAJOR bumps on env-group change (candidate-visible surface: rerun required), MINOR on verifier-group change (gold/verifier/metric: regrade existing traces), PATCH on meta-only change (title/docs: reuse results as-is)."
+          },
+          "content_hashes": {
+            "type": ["object", "null"],
+            "additionalProperties": true,
+            "properties": {
+              "env_sha256": {
+                "type": ["string", "null"],
+                "description": "Canonical-JSON sha256 of the env field group — everything the candidate sees or runs in (instruction/prompt fields, fixture refs, environment package refs, tool surface). Change => MAJOR => rerun. Unknown extra task fields hash into this group by default (conservative)."
+              },
+              "verifier_sha256": {
+                "type": ["string", "null"],
+                "description": "Canonical-JSON sha256 of the verifier field group — gold refs, verifier/contract/rubric fields, metric config. Change => MINOR => regrade."
+              },
+              "meta_sha256": {
+                "type": ["string", "null"],
+                "description": "Canonical-JSON sha256 of the meta field group — title, description, docs, everything else. Change => PATCH => reuse."
+              }
+            },
+            "description": "Content hashes that derive the task's semantic version. Null means hashes have not been computed for this task."
           }
         }
       },
