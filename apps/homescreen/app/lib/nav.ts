@@ -6,11 +6,9 @@ import {
   CreditCard,
   Compass,
   FlaskConical,
-  Inbox,
   KeyRound,
   LayoutDashboard,
   Settings2,
-  UserCog,
   Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
@@ -56,7 +54,9 @@ export const NAV_ITEMS: NavItemDef[] = [
     pane: "workload-config",
     requiresWorkload: true,
   },
-  { id: "workload-captures", group: "organization", label: "Captures", icon: Inbox, pane: "captures", requiresWorkload: true },
+  // Captures view removed from the nav for now — the pane is being rebuilt
+  // for a future release (CapturesPane and the "captures" pane id remain so
+  // deep links and the rebuild have a home).
   // Training
   { id: "training-overview", group: "training", label: "Overview", icon: FlaskConical, pane: "training-jobs" },
   // Chats (Explore is an ordinary row; New chat is the sidebar's primary
@@ -68,8 +68,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "manage-models", group: "manage", label: "Models", icon: Boxes, pane: "model-catalog" },
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "api-keys" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
-  // Web: footer Account (/settings) + project settings (/p/:slug/settings).
-  { id: "manage-settings", group: "manage", label: "Settings", icon: UserCog, pane: "settings" },
+  // Settings folded into the Account view; project settings return with a
+  // future release.
   { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: "billing" },
   { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: "setup" },
 ];

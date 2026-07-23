@@ -3607,6 +3607,11 @@ export function ChatPane({
                 </>
               ) : trainingRecipe && droppedWorkload && trainingFlow ? (
                 <>
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
                   <TrainingFlowTimeline
                     flow={trainingFlow}
                     summaries={flowSummaries}
@@ -3883,11 +3888,6 @@ export function ChatPane({
                     </div>
                   )}
                   </TrainingFlowTimeline>
-                  <TrainingFlowStepper
-                    flow={trainingFlow}
-                    summaries={flowSummaries}
-                    onNavigate={navigateTrainingFlowTo}
-                  />
                   {!localTrainingActive && !remoteTrainingView && focusFlowKind !== "data_profile" && (
                     <button
                       type="button"
@@ -3900,6 +3900,11 @@ export function ChatPane({
                 </>
               ) : csvInspection && droppedWorkload && trainingFlow ? (
                 <>
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
                   <TrainingFlowTimeline
                     flow={trainingFlow}
                     summaries={flowSummaries}
@@ -4145,11 +4150,6 @@ export function ChatPane({
                     </div>
                   ) : null}
                   </TrainingFlowTimeline>
-                  <TrainingFlowStepper
-                    flow={trainingFlow}
-                    summaries={flowSummaries}
-                    onNavigate={navigateTrainingFlowTo}
-                  />
                 </>
               ) : droppedWorkload ? (
                 <>

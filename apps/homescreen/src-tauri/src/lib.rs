@@ -130,6 +130,22 @@ pub fn run() {
             let machine_ms = machine_started.elapsed().as_millis();
 
             let db_started = Instant::now();
+            // Native sidebar vibrancy (the Codex-style translucent rail):
+            // the window is transparent and the webview paints an opaque
+            // content panel, so the macOS Sidebar material shows through only
+            // where the CSS leaves the background translucent.
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(e) = window_vibrancy::apply_vibrancy(
+                    &window,
+                    window_vibrancy::NSVisualEffectMaterial::Sidebar,
+                    None,
+                    None,
+                ) {
+                    eprintln!("understudy: sidebar vibrancy unavailable: {e}");
+                }
+            }
+
             let db = db::Db::open(data_dir).expect("understudy database opened");
             let db_ms = db_started.elapsed().as_millis();
             // Abandoned/crashed training flows must not stay "active" forever:

@@ -29,6 +29,7 @@ import { ProjectReportingPane } from "./components/ProjectReportingPane";
 import { SetupPane } from "./components/SetupPane";
 import { SettingsPane } from "./components/SettingsPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
+import { ScopeBreadcrumb } from "./components/ScopeBreadcrumb";
 import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
 import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
@@ -297,7 +298,10 @@ export default function Page() {
       >
         <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
       </button>
-      {pane === "chat" && (
+      {/* Codex-style: the sidebar's own New chat button is the entry point
+          while the rail is open; the title-bar icon appears only when the
+          rail is collapsed so there is exactly one visible affordance. */}
+      {!railOpen && (
         <button
           type="button"
           className="titlebar-new-chat"
@@ -309,6 +313,11 @@ export default function Page() {
         </button>
       )}
       <DownloadQrButton />
+      <ScopeBreadcrumb
+        scope={scope}
+        onScopeChange={handleScopeChange}
+        onWorkloadSelected={() => setPane("workload-config")}
+      />
       <div className="operation-notice-stack">
         <RuntimeRepairPrompt quiet={chatTrainingActive} />
         <ModelDownloadNotice
@@ -324,7 +333,6 @@ export default function Page() {
         }}
         connected={connected}
         scope={scope}
-        onScopeChange={handleScopeChange}
         onNewChat={newChat}
         sessions={chatHistory}
         archivedSessions={archivedChatHistory}

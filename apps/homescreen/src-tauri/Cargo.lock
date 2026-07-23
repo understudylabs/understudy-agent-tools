@@ -4756,6 +4756,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "tokio-util",
+ "window-vibrancy",
  "zip 2.4.2",
 ]
 
