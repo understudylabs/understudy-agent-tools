@@ -1910,15 +1910,15 @@ class ScoreWithFeedback:
           include_payload: true,
         },
       );
-      assert.match(readFileSync(join(outputDirectory, "req_123.json"), "utf8"), /SECRET_PROMPT/);
-      assert.match(readFileSync(join(outputDirectory, "req_456.json"), "utf8"), /SECRET_BATCH_PROMPT/);
-      assert.match(readFileSync(join(outputDirectory, "req_retry.json"), "utf8"), /SECRET_RETRY_PROMPT/);
+      assert.match(readFileSync(join(outputDirectory, "req_123.payload.json"), "utf8"), /SECRET_PROMPT/);
+      assert.match(readFileSync(join(outputDirectory, "req_456.payload.json"), "utf8"), /SECRET_BATCH_PROMPT/);
+      assert.match(readFileSync(join(outputDirectory, "req_retry.payload.json"), "utf8"), /SECRET_RETRY_PROMPT/);
       assert.equal(
         readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
         "req_missing\n",
       );
       if (process.platform !== "win32") {
-        assert.equal(statSync(join(outputDirectory, "req_123.json")).mode & 0o777, 0o600);
+        assert.equal(statSync(join(outputDirectory, "req_123.payload.json")).mode & 0o777, 0o600);
         assert.equal(statSync(join(outputDirectory, "failed-request-ids.txt")).mode & 0o777, 0o600);
       }
       assert.equal(
@@ -1987,6 +1987,57 @@ class ScoreWithFeedback:
     });
   });
 
+  it("keeps summary and payload batch filenames collision-free", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const requestIdsPath = join(repo, "collision-request-ids.txt");
+      const outputDirectory = join(repo, "collision-batch");
+      const baseCapture = state.captures[0];
+      state.captures.push(
+        { ...baseCapture, request_id: "abc" },
+        { ...baseCapture, request_id: "abc.summary" },
+      );
+      writeFileSync(requestIdsPath, "abc\nabc.summary\n");
+
+      const payloadExport = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+        "--include-payload",
+        "--yes",
+      ], env, repo);
+      assert.equal(payloadExport.status, 0, payloadExport.stderr);
+      assert.equal(JSON.parse(payloadExport.stdout).output_suffix, ".payload.json");
+      assert.equal(JSON.parse(payloadExport.stdout).written, 2);
+      assert.equal(JSON.parse(payloadExport.stdout).skipped, 0);
+
+      const summaryExport = await runWithEnvAsync([
+        "--json", "captures", "export",
+        "--request-ids-file", requestIdsPath,
+        "--out", outputDirectory,
+      ], env, repo);
+      assert.equal(summaryExport.status, 0, summaryExport.stderr);
+      assert.equal(JSON.parse(summaryExport.stdout).output_suffix, ".summary.json");
+      assert.equal(JSON.parse(summaryExport.stdout).written, 2);
+      assert.equal(JSON.parse(summaryExport.stdout).skipped, 0);
+
+      const expected = new Map([
+        ["abc.payload.json", "abc"],
+        ["abc.summary.payload.json", "abc.summary"],
+        ["abc.summary.json", "abc"],
+        ["abc.summary.summary.json", "abc.summary"],
+      ]);
+      for (const [filename, requestId] of expected) {
+        assert.equal(
+          JSON.parse(readFileSync(join(outputDirectory, filename), "utf8")).request_id,
+          requestId,
+          `${filename} should retain its own request id`,
+        );
+      }
+      assert.equal(expected.size, new Set(expected.keys()).size);
+    });
+  });
+
   it("aborts a capture batch on shared authorization failures", async () => {
     await withHostedFixture(async ({ home, repo, requests, state }) => {
       const env = { HOME: home, USERPROFILE: home };
@@ -2028,7 +2079,7 @@ class ScoreWithFeedback:
       const env = { HOME: home, USERPROFILE: home };
       const requestIdsPath = join(repo, "refresh-request-ids.txt");
       const outputDirectory = join(repo, "refresh-batch");
-      const outputPath = join(outputDirectory, "req_456.json");
+      const outputPath = join(outputDirectory, "req_456.payload.json");
       const previousPath = `${outputPath}.previous`;
       writeFileSync(requestIdsPath, "req_456\n");
 

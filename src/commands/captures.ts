@@ -307,7 +307,7 @@ async function runBatchExport(
     failed: failedIds.length,
     output_directory: outputDirectory,
     failure_manifest: failureManifest,
-    output_suffix: opts.includePayload ? ".json" : ".summary.json",
+    output_suffix: opts.includePayload ? ".payload.json" : ".summary.json",
     include_payload: Boolean(opts.includePayload),
     warning: opts.includePayload
       ? "files may contain prompts, completions, or tool payloads"
@@ -473,7 +473,7 @@ function batchCaptureFilename(
   requestId: string,
   includePayload: boolean,
 ): string {
-  return `${captureFilename(requestId)}${includePayload ? "" : ".summary"}.json`;
+  return `${captureFilename(requestId)}${includePayload ? ".payload" : ".summary"}.json`;
 }
 
 function isCompletedExport(path: string): boolean {

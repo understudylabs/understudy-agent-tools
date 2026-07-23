@@ -71,8 +71,8 @@ writes redacted metadata by default. Full capture export requires
 completions, or tool payloads to stdout. The same boundary applies to
 `--request-ids-file` batches: request ids are read locally, payloads are written
 only to local files (mode `600` on Unix), redacted `.summary.json` files cannot
-be mistaken for full-payload `.json` files during resume, and stdout contains
-counts and paths rather than capture content.
+be mistaken for full-payload `.payload.json` files during resume, and stdout
+contains counts and paths rather than capture content.
 
 Gateway probes are explicit live calls. BYOK provider keys are read only from an
 environment variable named by `--byok-env`; they are not requested in chat, not

@@ -630,8 +630,8 @@ file-only, and requires `--include-payload --yes`. For a customer-owned batch,
 put one request id per line in a file and pass `--request-ids-file`; the CLI
 retries transient failures, resumes from completed files, and writes
 `failed-request-ids.txt`. Redacted batch files use `.summary.json`, keeping
-them distinct from full-payload `.json` files. `models list` shows public
-Understudy model IDs and display names only.
+them distinct from full-payload `.payload.json` files. `models list` shows
+public Understudy model IDs and display names only.
 
 If the coding agent has an approved native email connector, it may complete the
 email-code prompt by reading the fresh Understudy sign-in email directly. The
