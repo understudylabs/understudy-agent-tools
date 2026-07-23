@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -493,14 +496,15 @@ function quarantineExistingExport(path: string): void {
   renameSync(path, previousPath);
 }
 
-function writePrivateText(path: string, contents: string): void {
+export function writePrivateText(path: string, contents: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const partialPath = `${path}.${process.pid}.partial`;
+  const partialPath = `${path}.${process.pid}.${randomUUID()}.partial`;
+  let descriptor: number | undefined;
   try {
-    writeFileSync(partialPath, contents, {
-      encoding: "utf8",
-      mode: 0o600,
-    });
+    descriptor = openSync(partialPath, "wx", 0o600);
+    writeFileSync(descriptor, contents, { encoding: "utf8" });
+    closeSync(descriptor);
+    descriptor = undefined;
     try {
       renameSync(partialPath, path);
     } catch (error) {
@@ -512,6 +516,7 @@ function writePrivateText(path: string, contents: string): void {
       renameSync(partialPath, path);
     }
   } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
     rmSync(partialPath, { force: true });
   }
 }

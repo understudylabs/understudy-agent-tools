@@ -25,6 +25,7 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   remains file-only and requires `--include-payload --yes`. Shared
   authorization failures stop the batch immediately, and failed forced
   refreshes quarantine the previous file so a later resume cannot trust it.
+  Temporary files are randomized and created exclusively before replacement.
 - **The benchmark lab comes to the Desktop.** Desktop/runtime 0.3.41 and CLI
   0.6.38 bridge the app to the benchmark/experiment spine: experiment lineage
   cards trace every result back to the run, dataset, and prompt that produced
