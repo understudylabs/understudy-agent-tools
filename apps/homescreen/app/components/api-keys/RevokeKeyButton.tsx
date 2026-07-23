@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import "../overview-cards.css";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/app/components/base-ui/button";
 import {
@@ -60,9 +61,9 @@ export function RevokeKeyButton({
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="ghost" size="sm" className="text-muted-foreground">
+        <button type="button" className="sm-chip sm-chip-danger">
           Revoke
-        </Button>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

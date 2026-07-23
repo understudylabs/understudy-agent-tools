@@ -15,6 +15,7 @@ import { AccountPane } from "./components/AccountPane";
 import { ApiKeysPane } from "./components/ApiKeysPane";
 import { UsagePane } from "./components/UsagePane";
 import { ReportingPane } from "./components/ReportingPane";
+import { AnalyticsMetricPane } from "./components/AnalyticsMetricPane";
 import { BillingPane } from "./components/BillingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
@@ -25,7 +26,7 @@ import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
 import { OrgSummaryPane } from "./components/OrgSummaryPane";
 import { ProjectSummaryPane } from "./components/ProjectSummaryPane";
-import { ProjectReportingPane } from "./components/ProjectReportingPane";
+import { WorkloadsPane, type WorkloadFocusRequest } from "./components/WorkloadsPane";
 import { SetupPane } from "./components/SetupPane";
 import { SettingsPane } from "./components/SettingsPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
@@ -59,6 +60,9 @@ export default function Page() {
   const [activeTrainingThreadId, setActiveTrainingThreadId] = useState<string | null>(null);
   const [requestedTrainingThread, setRequestedTrainingThread] = useState<TrainingThreadRequest | null>(null);
   const [starterDownloadRequest, setStarterDownloadRequest] = useState(0);
+  // Deep link into the Workloads pane with one card expanded (the same
+  // request-token pattern as requestedTrainingThread above).
+  const [requestedWorkload, setRequestedWorkload] = useState<WorkloadFocusRequest | null>(null);
   const [signInIntent, setSignInIntent] = useState<{
     returnToChat: boolean;
     downloadAfterSignIn: boolean;
@@ -207,6 +211,18 @@ export default function Page() {
     storeScope(next);
   }, []);
 
+  // Workload deep link: scope to it and open its card on the Workloads pane
+  // (the Configuration pane's controls live inline there now).
+  const openWorkload = useCallback((projectId: string, workloadId: string) => {
+    handleScopeChange({ projectId, workloadId });
+    setPane("project-reporting");
+    setRequestedWorkload((current) => ({
+      projectId,
+      workloadId,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  }, [handleScopeChange]);
+
   const newChat = useCallback(() => {
     setPane("chat");
     setRequestedChatSession(null);
@@ -242,6 +258,9 @@ export default function Page() {
       "api-keys",
       "rlm",
       "reporting",
+      "analytics-usage",
+      "analytics-caching",
+      "analytics-cost",
       "explore",
       "setup",
       "workload-config",
@@ -337,7 +356,7 @@ export default function Page() {
       <ScopeBreadcrumb
         scope={scope}
         onScopeChange={handleScopeChange}
-        onWorkloadSelected={() => setPane("workload-config")}
+        onWorkloadSelected={() => setPane("project-reporting")}
       />
       <div className="operation-notice-stack">
         <RuntimeRepairPrompt quiet={chatTrainingActive} />
@@ -387,10 +406,8 @@ export default function Page() {
         {pane === "status" && <StatusPane status={status} />}
         {pane === "org-summary" && (
           <OrgSummaryPane
-            onOpenWorkload={(projectId, workloadId) => {
-              handleScopeChange({ projectId, workloadId });
-              setPane("workload-config");
-            }}
+            onOpenWorkload={openWorkload}
+            onNavigate={(pane) => setPane(pane)}
           />
         )}
         {pane === "chat" && (
@@ -416,13 +433,12 @@ export default function Page() {
           <ProjectSummaryPane
             scope={scope}
             onScopeChange={handleScopeChange}
-            onOpenWorkload={(projectId, workloadId) => {
-              handleScopeChange({ projectId, workloadId });
-              setPane("workload-config");
-            }}
+            onOpenWorkload={openWorkload}
           />
         )}
-        {pane === "project-reporting" && <ProjectReportingPane scope={scope} />}
+        {pane === "project-reporting" && (
+          <WorkloadsPane requestedWorkload={requestedWorkload} />
+        )}
         {pane === "setup" && <SetupPane onNavigate={setPane} />}
         {pane === "settings" && <SettingsPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
@@ -438,7 +454,12 @@ export default function Page() {
           <ApiKeysPane onOpenAccount={() => setPane("account")} />
         )}
         {pane === "usage" && <UsagePane status={status} />}
+        {/* Legacy flat Analytics surface — nav row removed in favor of the
+            Usage/Caching/Cost subtree, pane kept for deep links. */}
         {pane === "reporting" && <ReportingPane />}
+        {pane === "analytics-usage" && <AnalyticsMetricPane metric="usage" />}
+        {pane === "analytics-caching" && <AnalyticsMetricPane metric="caching" />}
+        {pane === "analytics-cost" && <AnalyticsMetricPane metric="cost" />}
         {pane === "billing" && <BillingPane />}
         {pane === "traces" && <TracesPane />}
       </main>

@@ -44,6 +44,19 @@
   --font-sans: var(--font-plex-sans), "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 
+/* Tailwind v4 defaults the bare `border` utility to currentColor, which
+   renders near-white hairlines on light text. Restore the themed rule
+   color as the default border everywhere. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+}
+
 @layer base {
   :root {
     /* dark (default) — deep neutral, the merest cool tilt */
@@ -8131,6 +8144,48 @@ select,
 }
 .nav-item-disabled-wrap {
   display: block;
+}
+
+/* Analytics subtree (Anthropic-console style parent + indented children). */
+.nav-subtree {
+  display: grid;
+  gap: 2px;
+}
+.nav-subtree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.nav-subtree-chevron:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.nav-subtree-chevron svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.nav-subtree-chevron.open svg {
+  transform: rotate(0deg);
+}
+.nav-subtree-children {
+  display: grid;
+  gap: 2px;
+}
+.nav-item.nav-subitem {
+  min-height: 27px;
+  padding-left: 32px;
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-subtree-chevron svg {
+    transition: none;
+  }
 }
 
 .chat-nav-scroll {

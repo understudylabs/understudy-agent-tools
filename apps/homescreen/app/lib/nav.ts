@@ -8,8 +8,6 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
-  Settings2,
-  Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
 
@@ -38,22 +36,21 @@ export type NavItemDef = {
 export const NAV_ITEMS: NavItemDef[] = [
   // Organization
   { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "org-summary" },
-  { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "reporting" },
+  // The flat "Analytics" row (ReportingPane, pane id "reporting") is
+  // superseded by the Analytics subtree the Sidebar renders here — a
+  // collapsible parent with Usage / Caching / Cost children (see
+  // components/sidebar/AnalyticsNavTree.tsx). The old pane id remains
+  // reachable for deep links, like Captures below.
   // The web's project Summary is folded into org Summary on desktop — the
   // panes were near-duplicates (same metrics/trend/workload cards). The
   // project-summary pane itself remains reachable by pane id.
   // The web's project-scoped Analytics (`/p/[project_slug]` reporting view),
   // presented as the per-workload breakdown.
   { id: "org-project-analytics", group: "organization", label: "Workloads", icon: BarChart3, pane: "project-reporting" },
-  // Former Workload group, folded into Capture (still gated on a selected workload).
-  {
-    id: "workload-config",
-    group: "organization",
-    label: "Configuration",
-    icon: Settings2,
-    pane: "workload-config",
-    requiresWorkload: true,
-  },
+  // The Configuration row is folded into the Workloads pane — each workload
+  // card expands into its route/capture controls (WorkloadConfigInline). The
+  // "workload-config" pane id + WorkloadConfigPane remain reachable for deep
+  // links, like Captures below.
   // Captures view removed from the nav for now — the pane is being rebuilt
   // for a future release (CapturesPane and the "captures" pane id remain so
   // deep links and the rebuild have a home).
@@ -71,7 +68,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Settings folded into the Account view; project settings return with a
   // future release.
   { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: "billing" },
-  { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: "setup" },
+  // Setup removed from the nav (pane "setup" stays deep-linkable).
 ];
 
 /**

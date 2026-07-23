@@ -189,3 +189,199 @@ test("loadOrgSummary caps the fan-out at the overview project limit", async () =
   assert.equal(summary.projects.length, OVERVIEW_PROJECT_LIMIT);
   assert.equal(perProjectCalls.size, OVERVIEW_PROJECT_LIMIT);
 });
+
+// --- Analytics merge helpers (Usage / Caching / Cost destinations) ---
+
+import {
+  cacheLeaders,
+  cacheRatePct,
+  spendStack,
+  stackTotals,
+  tokenStack,
+  usageDaySeries,
+  usageTotals,
+  workloadNameMap,
+  workloadUsageDetails,
+} from "../apps/homescreen/app/lib/org-summary.mjs";
+
+const usageRow = (overrides = {}) => ({
+  workload_id: "w1",
+  workload: "checkout",
+  day: "2026-07-14",
+  requests: 1,
+  input_tokens: 100,
+  output_tokens: 40,
+  cache_read_input_tokens: 300,
+  cache_creation_input_tokens: 20,
+  customer_cost_usd: 0.5,
+  ...overrides,
+});
+
+test("spendStack stacks daily cost by workload name with unattributed rows", () => {
+  const names = new Map([["w1", "checkout"]]);
+  const stack = spendStack(
+    [
+      { bucket: "2026-07-15", workload_id: "w1", requests: 1, customer_cost_usd: 2 },
+      { bucket: "2026-07-14", workload_id: "w1", requests: 1, customer_cost_usd: 1 },
+      { bucket: "2026-07-14", workload_id: null, requests: 1, customer_cost_usd: 4 },
+    ],
+    names,
+  );
+  assert.deepEqual(stack.keys, ["unattributed", "checkout"]);
+  assert.deepEqual(stack.rows, [
+    { day: "2026-07-14", values: { checkout: 1, unattributed: 4 } },
+    { day: "2026-07-15", values: { checkout: 2 } },
+  ]);
+});
+
+test("tokenStack stacks by workload when combined rows exist", () => {
+  const summaries = [
+    {
+      project: { id: "p1", name: "One" },
+      workloads: [],
+      usage: {
+        workloadDay: [
+          usageRow(),
+          usageRow({ workload_id: "w2", workload: "search", input_tokens: 10, output_tokens: 5 }),
+        ],
+        byDay: [usageRow({ workload_id: null, workload: null })],
+      },
+    },
+  ];
+  const stack = tokenStack(summaries, new Map([["w1", "checkout"]]));
+  assert.equal(stack.dimension, "workload");
+  assert.deepEqual(stack.keys, ["checkout", "search"]);
+  assert.deepEqual(stack.rows, [
+    { day: "2026-07-14", values: { checkout: 140, search: 15 } },
+  ]);
+});
+
+test("workloadUsageDetails aggregates per workload and honors sinceDay", () => {
+  const summaries = [
+    {
+      usage: {
+        workloadDay: [
+          usageRow(),
+          usageRow({ day: "2026-07-10", input_tokens: 1000 }),
+          usageRow({ workload_id: "w2", input_tokens: 50, cache_read_input_tokens: 0 }),
+          usageRow({ workload_id: null }),
+        ],
+        byDay: [],
+      },
+    },
+  ];
+  const all = workloadUsageDetails(summaries);
+  assert.deepEqual(all.get("w1"), {
+    requests: 2,
+    inputTokens: 1100,
+    outputTokens: 80,
+    cacheReadTokens: 600,
+    cacheRatePct: (600 / 1700) * 100,
+  });
+  assert.equal(all.has(null), false);
+  // sinceDay drops the older row for w1; w2 has no cache reads -> 0%.
+  const recent = workloadUsageDetails(summaries, "2026-07-14");
+  assert.equal(recent.get("w1").inputTokens, 100);
+  assert.equal(recent.get("w2").cacheRatePct, 0);
+});
+
+test("tokenStack falls back to project stacking without combined rows", () => {
+  const summaries = [
+    {
+      project: { id: "p1", name: "One" },
+      workloads: [],
+      usage: { workloadDay: [], byDay: [usageRow({ workload_id: null })] },
+    },
+  ];
+  const stack = tokenStack(summaries, new Map());
+  assert.equal(stack.dimension, "project");
+  assert.deepEqual(stack.keys, ["One"]);
+  assert.deepEqual(stack.rows, [{ day: "2026-07-14", values: { One: 140 } }]);
+});
+
+test("usageDaySeries merges projects per day and derives the cache rate", () => {
+  const summaries = [
+    { usage: { workloadDay: [], byDay: [usageRow({ workload_id: null })] } },
+    {
+      usage: {
+        workloadDay: [],
+        byDay: [
+          usageRow({ workload_id: null, input_tokens: 100, cache_read_input_tokens: 100 }),
+          usageRow({ workload_id: null, day: "2026-07-15", cache_read_input_tokens: 0 }),
+        ],
+      },
+    },
+  ];
+  const series = usageDaySeries(summaries);
+  assert.equal(series.length, 2);
+  assert.deepEqual(series[0], {
+    day: "2026-07-14",
+    inputTokens: 200,
+    outputTokens: 80,
+    cacheReadTokens: 400,
+    cacheWriteTokens: 40,
+    cacheRatePct: (400 / 600) * 100,
+  });
+  assert.equal(series[1].cacheRatePct, 0);
+  const totals = usageTotals(series);
+  assert.equal(totals.inputTokens, 300);
+  assert.equal(totals.cacheRatePct, (400 / 700) * 100);
+});
+
+test("cacheRatePct is null when there is no prompt input", () => {
+  assert.equal(cacheRatePct(0, 0), null);
+  assert.equal(cacheRatePct(50, 50), 50);
+});
+
+test("stackTotals aggregates sliced rows per key and overall", () => {
+  const { byKey, total } = stackTotals([
+    { day: "a", values: { x: 1, y: 2 } },
+    { day: "b", values: { x: 3 } },
+  ]);
+  assert.equal(byKey.get("x"), 4);
+  assert.equal(byKey.get("y"), 2);
+  assert.equal(total, 6);
+});
+
+test("cacheLeaders ranks workloads by cache reads with resolved names", () => {
+  const summaries = [
+    {
+      usage: {
+        workloadDay: [
+          usageRow(),
+          usageRow({ workload_id: "w2", workload: null, cache_read_input_tokens: 900 }),
+        ],
+        byDay: [],
+      },
+    },
+  ];
+  const leaders = cacheLeaders(summaries, workloadNameMap([
+    { workloads: [{ id: "w2", name: "agent" }] },
+  ]));
+  assert.deepEqual(
+    leaders.map((leader) => leader.name),
+    ["agent", "checkout"],
+  );
+  assert.equal(leaders[0].cacheRatePct, 90);
+});
+
+test("loadOrgSummary merges per-project 30d usage summaries and degrades", async () => {
+  const summary = await loadOrgSummary(async (path) => {
+    if (path === "projects?limit=100") {
+      return { projects: [{ id: "p1", name: "One" }, { id: "p2", name: "Two" }] };
+    }
+    if (path === "projects/p1/usage-summary?window=30d&group_by=workload,day") {
+      return { groups: [usageRow()] };
+    }
+    if (path === "projects/p1/usage-summary?window=30d&group_by=day") {
+      return { groups: [usageRow({ workload_id: null })] };
+    }
+    if (path.startsWith("projects/p2/usage-summary")) throw new Error("summary down");
+    if (path.startsWith("projects/")) return { workloads: [] };
+    return { totals: {}, series: [] };
+  });
+  assert.equal(summary.ok, true);
+  assert.deepEqual(summary.summaries[0].usage.workloadDay, [usageRow()]);
+  // A failed usage summary leaves that project's series empty, not the load broken.
+  assert.deepEqual(summary.summaries[1].usage, { workloadDay: [], byDay: [] });
+});
