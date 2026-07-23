@@ -188,6 +188,88 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("upgrade <dir>")
+    .description(
+      "Diff the benchmark's current manifest against a previous one into the minimal rerun/regrade/reuse work " +
+        "plan (env change => MAJOR => rerun, verifier => MINOR => regrade, meta => PATCH => reuse), append one " +
+        "understudy.benchmark_version.v1 line to <dir>/versions.jsonl (append-only), and with --queue write " +
+        "run_request files for the rerun set. Queue-only, never executes: `understudy runs execute --watch` " +
+        "picks requests up, same trust posture as the hub Run panel",
+    )
+    .requiredOption(
+      "--against <file>",
+      "The PREVIOUS benchmark manifest (old benchmark.json) to diff against. A bare versions.jsonl entry is not " +
+        "enough to recompute content hashes — pass the archived manifest",
+    )
+    .option("--note <text>", "Note recorded on the appended versions.jsonl line")
+    .option("--dry-run", "Print the plan without appending to versions.jsonl (and never queue)", false)
+    .option("--queue", "Also queue understudy.run_request.v1 files for the rerun set (requires --model)", false)
+    .option(
+      "--model <id>",
+      "Model for the queued rerun (repeatable; required with --queue)",
+      (value: string, previous: string[]) => [...previous, value],
+      [] as string[],
+    )
+    .option("--rollouts <n>", "Rollouts per task for the queued rerun", "1")
+    .action(async (dir: string, options: { against: string; note?: string; dryRun: boolean; queue: boolean; model: string[]; rollouts: string }) => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const { planBenchmarkUpgrade, serializeVersionEntryLine } = await import("../benchmark-upgrade.js");
+      const entry = await loadDirEntry(dir);
+      if (entry.kind !== "ok") throw new Error(`upgrade needs a promoted benchmark dir (understudy.benchmark.v1); this dir is stage "${entry.kind}"`);
+
+      const againstRaw = JSON.parse(readFileSync(options.against, "utf8"));
+      if (againstRaw === null || typeof againstRaw !== "object" || !Array.isArray((againstRaw as { tasks?: unknown }).tasks)) {
+        throw new Error(
+          "--against must be a previous benchmark manifest (an object with a tasks[] array); a versions.jsonl " +
+            "entry alone cannot reproduce the old content hashes",
+        );
+      }
+
+      // Benchmark-level baseline version: newest versions.jsonl line wins,
+      // else the old manifest's own version field, else 1.0.0.
+      const lastVersionLine = entry.versions.length > 0 ? entry.versions[entry.versions.length - 1] : null;
+      const previousBenchmarkVersion =
+        (typeof lastVersionLine?.version === "string" ? lastVersionLine.version : null) ??
+        (typeof (againstRaw as { version?: unknown }).version === "string" ? ((againstRaw as { version: string }).version) : null);
+
+      const plan = planBenchmarkUpgrade(againstRaw as Record<string, unknown>, entry.manifest as unknown as Record<string, unknown>, {
+        previousBenchmarkVersion,
+        note: options.note ?? null,
+      });
+      console.error(`upgrade plan: ${plan.cost_note}`);
+      console.error(`benchmark version: ${plan.benchmark_version.from} -> ${plan.benchmark_version.to} (${plan.benchmark_version.bump})`);
+
+      let queued: unknown = null;
+      if (options.dryRun) {
+        console.error("dry run: versions.jsonl untouched, nothing queued");
+      } else {
+        const versionsPath = path.join(entry.dir, "versions.jsonl");
+        fs.appendFileSync(versionsPath, serializeVersionEntryLine(plan.entry), "utf8");
+        console.error(`appended ${versionsPath}`);
+        if (options.queue) {
+          if (options.model.length === 0) throw new Error("--queue requires at least one --model");
+          if (plan.diff.plan.rerun.length === 0) {
+            console.error("queue: rerun set is empty — nothing to queue");
+          } else {
+            const { queueOrCancelRun } = await import("../benchmark-hub-core.js");
+            const result = queueOrCancelRun(entry, {
+              models: options.model,
+              split: "all",
+              tasks: plan.diff.plan.rerun,
+              rollouts_per_task: Number(options.rollouts),
+            });
+            if (!result.ok) throw new Error(`queue failed: ${result.error}`);
+            queued = result.run;
+            console.error(`queued run ${(result.run as { run_id?: string }).run_id ?? ""} for ${plan.diff.plan.rerun.length} rerun task(s)`);
+            if (result.execute_hint) console.error(`execute with: ${result.execute_hint}`);
+          }
+        }
+      }
+      console.log(JSON.stringify({ ...plan, queued_run: queued }, null, 2));
+    });
+
+  benchmarks
     .command("review <dir>")
     .description(
       "Bulk task review over <dir>/reviews.jsonl (append-only, newest per task wins). --accept-all-pending " +
@@ -247,16 +329,47 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
-    .command("rigor <dir>")
+    .command("rigor <dir...>")
     .description(
       "Generate rigor-report.md in the benchmark dir: ABC checklist (oracle solvability, null/spam trivial-agent " +
         "floors, incumbent calibration, per-task contract complexity, anomaly counts, split provenance) derived " +
-        "purely from existing artifacts — no network, no model calls",
+        "purely from existing artifacts — no network, no model calls. --ci switches to the machine-readable " +
+        "pass/fail gate (schema, oracle=1.0, floors <= limit, reward-hack sentinels ~0, zero verbatim leakage, " +
+        "contamination != contaminated); missing evidence prints honest UNKNOWN lines (fatal only with --strict)",
     )
-    .action(async (dir: string) => {
-      const { writeRigorReport } = await import("../rigor-report.js");
-      const { path, report } = writeRigorReport(dir);
-      console.error(`wrote ${path}`);
-      console.log(JSON.stringify(report, null, 2));
+    .option("--ci", "CI gate mode: JSON reports on stdout, exit 1 on any hard FAIL (no report file written)", false)
+    .option("--strict", "With --ci: UNKNOWN (missing evidence) is fatal too", false)
+    .option("--changed-only", "With --ci: only check dirs touched since the merge-base with origin/main (or --base)", false)
+    .option("--base <ref>", "With --changed-only: explicit git base ref to diff against")
+    .action(async (dirs: string[], options: { ci: boolean; strict: boolean; changedOnly: boolean; base?: string }) => {
+      if (!options.ci) {
+        const { writeRigorReport } = await import("../rigor-report.js");
+        const reports = dirs.map((dir) => {
+          const { path, report } = writeRigorReport(dir);
+          console.error(`wrote ${path}`);
+          return report;
+        });
+        console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
+        return;
+      }
+      const { filterChangedBenchmarkDirs, renderRigorCiLines, rigorCiExitCode, runRigorCiChecks } = await import("../rigor-report.js");
+      let targets = dirs;
+      if (options.changedOnly) {
+        const { dirs: changed, base } = filterChangedBenchmarkDirs(dirs, options.base);
+        targets = changed;
+        console.error(base === null ? "rigor --ci: git base unavailable — checking every dir" : `rigor --ci: ${changed.length}/${dirs.length} dir(s) changed since ${base}`);
+        if (targets.length === 0) {
+          console.log(JSON.stringify([], null, 2));
+          return;
+        }
+      }
+      const reports = targets.map((dir) => runRigorCiChecks(dir));
+      for (const report of reports) for (const line of renderRigorCiLines(report)) console.error(line);
+      console.log(JSON.stringify(reports, null, 2));
+      const code = rigorCiExitCode(reports, { strict: options.strict });
+      if (code !== 0) {
+        console.error(`rigor --ci: FAIL${options.strict ? " (strict: UNKNOWN is fatal)" : ""}`);
+        process.exitCode = code;
+      }
     });
 }

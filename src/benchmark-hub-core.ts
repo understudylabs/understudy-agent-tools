@@ -496,8 +496,9 @@ function loadManifestEntry(
     flags.push(f);
   }
 
-  // versions.jsonl (optional, newest last): split-freeze / contamination
-  // history. Viewer-side convention — candidate for benchmark.v1.1.
+  // versions.jsonl (optional, newest last): split-freeze / contamination /
+  // task-version history — understudy.benchmark_version.v1 lines (legacy
+  // split-freeze-only lines stay valid; unknown fields pass through).
   const versionsRead = readJsonl<BenchmarkVersion>(path.join(dir, "versions.jsonl"));
   diagnostics.skippedLines += versionsRead.skipped;
   const versions = versionsRead.items.filter((v) => typeof v?.created_at === "string");
