@@ -70,7 +70,6 @@ export function SettingsPane({ scope }: { scope: Scope }) {
           />
         ) : null}
         {status ? <EndpointsCard status={status} /> : null}
-        {signedIn ? <ProjectSettings scope={scope} /> : null}
       </div>
     </>
   );
@@ -78,7 +77,7 @@ export function SettingsPane({ scope }: { scope: Scope }) {
 
 // ---- org / account (web: (control-plane)/settings/page.tsx) ----
 
-function AccountCard({
+export function AccountCard({
   status,
   signedIn,
   onSignedOut,
@@ -95,8 +94,8 @@ function AccountCard({
       <div className="card">
         <div className="card-title" style={{ marginBottom: 4 }}>Account</div>
         <div className="card-sub">
-          Sign in to view account settings — use the API keys pane to sign in
-          or create an account.
+          Sign in to view account settings — use the sign-in card above to get
+          started.
         </div>
       </div>
     );
@@ -152,7 +151,7 @@ function AccountCard({
   );
 }
 
-function EndpointsCard({ status }: { status: Any }) {
+export function EndpointsCard({ status }: { status: Any }) {
   const gateway =
     typeof status.gateway_url === "string"
       ? status.gateway_url

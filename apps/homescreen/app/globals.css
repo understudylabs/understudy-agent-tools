@@ -217,6 +217,66 @@ select,
   background: var(--surface-2);
   color: var(--text);
 }
+/* Scope breadcrumb in the title bar: project › workload, replacing the old
+   sidebar switcher. Sits in the drag region after the window controls; the
+   crumbs themselves are clickable, everything around them still drags. */
+.titlebar-scope {
+  position: fixed;
+  z-index: 30;
+  top: 9px;
+  left: calc(var(--traffic-left) + 116px);
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+.titlebar-scope ol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.titlebar-scope li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.titlebar-scope-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.titlebar-scope-crumb:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text);
+}
+.titlebar-scope-crumb:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.titlebar-scope-crumb .muted {
+  color: var(--text-2);
+}
+.titlebar-scope [role="presentation"] svg,
+.titlebar-scope-separator {
+  opacity: 0.5;
+}
+
 .titlebar-new-chat {
   position: fixed;
   z-index: 30;
@@ -522,6 +582,38 @@ select,
 }
 .training-thread-item .chat-nav-time {
   text-transform: none;
+}
+/* Disclosure row for finished (dismissed/completed) threads: quiet by
+   default, chevron rotates open; matches the section-toggle voice. */
+.training-history-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-align: left;
+}
+.training-history-toggle:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+}
+.training-history-toggle svg {
+  transition: transform 140ms ease;
+}
+.training-history-toggle.open svg {
+  transform: rotate(90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .training-history-toggle svg {
+    transition: none;
+  }
 }
 @keyframes thread-status-live {
   0%, 100% { opacity: 1; }
@@ -3583,7 +3675,17 @@ select,
 /* Decision-flow stepper: same numbered-dot rail, one column per decision. */
 .training-flow-stepper {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  margin-top: 14px;
+  /* Pinned process header: the stepper renders above the flow timeline and
+     stays stuck to the top of the chat scroller for the whole process, so
+     the user always knows which stage they are in. Opaque backing + a
+     hairline keep scrolled content legible as it slides underneath. */
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin: 0 0 14px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  background: var(--c-window, #0b0c0e);
 }
 /* Per-gap connectors instead of one rail behind the pills: a short segment
    centered in each gap, inset so it never touches the pill borders. */

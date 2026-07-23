@@ -240,8 +240,8 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  // "Chats" is now the nav group label; the heading flips Recent/Archived.
-  assert.match(sidebar, /sessions: "Chats"/);
+  // "Playground" is now the nav group label; the heading flips Recent/Archived.
+  assert.match(sidebar, /sessions: "Playground"/);
   assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : "Recent"\}<\/div>/);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.match(sidebar, /visibleSessions\.map\(\(session\) =>/);

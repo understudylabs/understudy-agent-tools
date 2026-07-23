@@ -7,7 +7,6 @@ import { TooltipProvider } from "@/app/components/base-ui/tooltip";
 import { NAV_ITEMS, paneToNavId, type NavGroupId, type Scope } from "../lib/nav";
 import { NavGroup } from "./sidebar/NavGroup";
 import { NavItem } from "./sidebar/NavItem";
-import { ScopeSwitcher } from "./sidebar/ScopeSwitcher";
 import { TrainingThreadList } from "./sidebar/TrainingThreadList";
 import { ChatSessionList } from "./sidebar/ChatSessionList";
 import type { ChatSessionSummary } from "../lib/chat-history";
@@ -44,7 +43,7 @@ export type PaneId =
 const GROUP_LABELS: Record<NavGroupId, string> = {
   organization: "Capture",
   training: "Training",
-  sessions: "Chats",
+  sessions: "Playground",
   manage: "Manage",
 };
 
@@ -53,7 +52,6 @@ export function Sidebar({
   onSelect,
   connected,
   scope,
-  onScopeChange,
   onNewChat,
   sessions,
   archivedSessions,
@@ -75,7 +73,6 @@ export function Sidebar({
   onSelect: (id: PaneId) => void;
   connected: boolean;
   scope: Scope;
-  onScopeChange: (scope: Scope) => void;
   onNewChat: () => void;
   sessions: ChatSessionSummary[];
   archivedSessions: ChatSessionSummary[];
@@ -132,11 +129,6 @@ export function Sidebar({
     <TooltipProvider delayDuration={300}>
       <aside className="sidebar">
         <div className="sidebar-brand">Understudy</div>
-        <ScopeSwitcher
-          scope={scope}
-          onScopeChange={onScopeChange}
-          onWorkloadSelected={() => onSelect("workload-config")}
-        />
 
         <button type="button" className="sidebar-new-chat" onClick={onNewChat}>
           <SquarePenIcon className="nav-icon" aria-hidden="true" size={15} strokeWidth={1.8} />
