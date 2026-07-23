@@ -40,6 +40,7 @@ import { isAnomalousEvalRow, liveJournalPath, readRunRequest, runRequestPath, RU
 import { accumulateReplay, type OracleReplay, type ReplayCall } from "./benchmark-replay.js";
 import { compileCaptureImport } from "./capture-import.js";
 import { compileDatasetFoundry, type DatasetFoundryOptions } from "./dataset-foundry.js";
+import { formatRegradeDelta, regradeRuns } from "./regrade.js";
 
 type Obj = Record<string, unknown>;
 const asObject = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -583,6 +584,24 @@ function toolRunStatus(args: Obj): unknown {
   };
 }
 
+function toolRegradeRun(args: Obj): unknown {
+  const entry = requireEntry(requireString(args, "slug"));
+  if (entry.kind !== "ok") throw new ToolError(`regrade needs a promoted benchmark dir (understudy.benchmark.v1); this dir is stage "${entry.kind}"`);
+  // Shared offline regrade engine (dist/regrade.js) — the exact code behind
+  // `understudy runs regrade`. NEVER re-runs the agent: rescores retained
+  // trace evidence against the CURRENT verifier definition. dry_run defaults
+  // to TRUE — the write path (new rows under <run>-regrade-<n>) must be
+  // requested explicitly with dry_run:false.
+  const dryRun = args.dry_run !== false;
+  const taskIds = Array.isArray(args.task_ids) ? args.task_ids.map(String) : null;
+  const summaries = regradeRuns(entry.dir, {
+    runId: typeof args.run_id === "string" ? args.run_id : null,
+    taskIds,
+    dryRun,
+  });
+  return { ok: true, dry_run: dryRun, summaries, deltas: summaries.map((s) => formatRegradeDelta(s)) };
+}
+
 /* ---------------- experiment lineage (experiments.jsonl) ---------------- */
 
 function toolCreateExperiment(args: Obj): unknown {
@@ -989,6 +1008,25 @@ export const BENCHMARKS_TOOLS = [
       required: ["slug", "run_id"],
     },
   },
+  {
+    name: "regrade_run",
+    description:
+      "Rescore retained run traces OFFLINE against the CURRENT verifier definition (tasks.jsonl outcome " +
+      "contracts) — never re-runs the agent, never spends. dry_run defaults to true and returns the full " +
+      "plan + score deltas without writing; dry_run:false appends the rescored rows under a new " +
+      "<run>-regrade-<n> run_id with source_run provenance and the original cost/latency preserved. " +
+      "Requires manifest.verifier.replayable; rows without retained traces are skipped with explicit reasons.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        run_id: { type: "string", description: "Source run to regrade; omitted = every run with rows (regrade rows themselves are skipped)." },
+        task_ids: { type: "array", items: { type: "string" }, description: "Regrade only these task ids." },
+        dry_run: { type: "boolean", default: true, description: "true (default) = plan + deltas only, zero writes; false = append regraded rows." },
+      },
+      required: ["slug"],
+    },
+  },
 ] as const;
 
 /** Dispatch one tool call — exported so node:test can exercise tools without a stdio session. */
@@ -1006,6 +1044,7 @@ export function callBenchmarksTool(name: string, args: Obj): unknown {
     case "profile_workload": return toolProfileWorkload(args);
     case "from_dataset": return toolFromDataset(args);
     case "run_status": return toolRunStatus(args);
+    case "regrade_run": return toolRegradeRun(args);
     case "create_experiment": return toolCreateExperiment(args);
     case "update_experiment": return toolUpdateExperiment(args);
     case "list_experiments": return toolListExperiments(args);

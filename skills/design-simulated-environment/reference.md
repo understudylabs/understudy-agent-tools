@@ -34,7 +34,8 @@ skill is meant to catch before a hosted RL run.
 ## Legacy v0 API facts
 
 These details were re-verified against the `verifiers` `0.2.0` source
-(2026-07-14) and should be rechecked when the dependency pin changes. Pin
+(2026-07-14; as of 2026-07-23 PyPI has `0.2.1` — the `0.2.0` pin stands until
+re-audited) and should be rechecked when the dependency pin changes. Pin
 exactly `verifiers==0.2.0` — upstream `main` diverged from the tag within
 days. They describe the **v0 API**, which `0.2.0` still exports unchanged but
 upstream has frozen (deprecated, no new features):

@@ -47,8 +47,24 @@ understudy runs queue --benchmark <dir> --models <ids> \
 understudy runs execute --benchmark <dir> [--watch] [--interval 30] \
   [--concurrency 2] [--rollout-timeout <s>] [--runner verifiers|oracle]
 
+# Versioning (rerun / regrade / reuse)
+understudy runs regrade --benchmark <dir> \
+  [--run <run_id>] [--task <id>...] [--dry-run]  # verifier-only (MINOR) change: re-score retained
+                                                 # trajectories offline, write fresh rows under
+                                                 # <run>-regrade-<n> + one MINOR versions.jsonl line
+                                                 # (source rows go stale); never queues rollouts
+understudy benchmarks upgrade <dir> --against <old-benchmark.json> \
+  [--note <text>] [--dry-run] [--queue --model <id> --rollouts N]
+                                                 # diff current manifest vs the archived previous one;
+                                                 # print the minimal rerun/regrade/reuse plan, append one
+                                                 # versions.jsonl line; --queue writes run_requests for
+                                                 # the rerun set only (queue-only, never executes)
+
 # Rigor + operator surface
-understudy benchmarks rigor <dir>     # writes rigor-report.md in the dir
+understudy benchmarks rigor <dir>...             # writes rigor-report.md in each dir
+understudy benchmarks rigor <dir>... --ci \
+  [--strict] [--changed-only [--base <ref>]]     # gate mode: exit 1 on any hard FAIL (UNKNOWN fatal
+                                                 # only with --strict); run before promote/publish
 understudy benchmarks mcp [--root <dir>...]
 
 # App instrumentation sanity (before capture-based building)
@@ -78,6 +94,7 @@ runner regardless of `--runner`; `incumbent_models` is rejected on them.
 | `rows-*.jsonl` | scored rows (`arm_kind`: model / `null_agent` / `spam_agent` / `prompt_override` label / `app_replay`) |
 | `calibration.json` | incumbent gate + `null_floor`/`spam_floor` (`floor_exceeded` when > 5%, with `passed_task_ids`) |
 | `rigor-report.md` | ABC attestation from `understudy benchmarks rigor` (UNKNOWN rows are honest gaps) |
+| `versions.jsonl` | append-only `understudy.benchmark_version.v1` lines — one per version bump, with per-task `task_bumps` (major/minor/patch + reason), splits hash, contamination status |
 | `app-harness.json` | `understudy.app_harness.v1` sidecar for app-replay runs |
 
 Interpreting calibration: `floor_exceeded: true` means a do-nothing or
@@ -85,6 +102,30 @@ ritual-tool-calling agent clears too many tasks — fix those tasks' contracts
 before any candidate claim. Tasks the incumbent fails on rerun are flagged
 **suspect** (`incumbent_failed`): either the task is wrong or the incumbent
 capture drifted; review them, don't average over them.
+
+## Task semver and content hashes
+
+Each manifest task may carry (additive, optional) `version` (semver string)
+and `content_hashes` — `env_sha256`, `verifier_sha256`, `meta_sha256`:
+canonical-JSON (recursively sorted keys) sha256 over three field groups
+(`computeTaskContentHashes` / `classifyTaskChange` / `diffBenchmarkManifests`
+in `src/benchmark.ts`; full table in `docs/benchmark-rigor.md`):
+
+- **env → MAJOR → rerun**: instruction/prompt, fixture and environment refs,
+  tool surface, seed — plus **all unknown fields** (conservative default:
+  an unrecognized change forces a rerun, never a silent reuse).
+- **verifier → MINOR → regrade**: gold refs, verifier/contract/rubric,
+  metric config.
+- **meta → PATCH → reuse**: title, description, docs, tags.
+
+`version` and `content_hashes` themselves are excluded from hashing.
+Benchmark-level version = max bump across tasks; added tasks count MAJOR,
+removed MINOR. Leaderboard staleness is currently computed from each row's
+`created_at` against the newest breaking (MAJOR/MINOR) bump per task in
+`versions.jsonl` — rows older than the bump are stale (excluded from
+headline aggregates, counted and named, restorable via the include toggle);
+rows missing `created_at` are conservatively stale. Stamping rows with the
+exact task version/content hash they ran against is the planned tightening.
 
 ## Executor daemon details
 

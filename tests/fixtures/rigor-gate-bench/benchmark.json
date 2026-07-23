@@ -1,0 +1,55 @@
+{
+  "schema_version": "understudy.benchmark.v1",
+  "benchmark_id": "rigor-gate-bench",
+  "version": "1.0.0",
+  "name": "Rigor gate fixture",
+  "description": "Synthetic CI fixture with COMPLETE rigor evidence (oracle rows, calibration + trivial-arm rows, reward-hack sentinels, leakage audit, contamination record). Run under `rigor --ci --strict`: every check must be provably PASS, so a regression in any of the six checks turns CI red instead of printing a non-fatal UNKNOWN.",
+  "created_at": "2026-07-23T00:00:00Z",
+  "provenance": { "origin": "authored", "source_refs": [] },
+  "taxonomy": [
+    { "category_id": "cat-gate", "name": "Gate", "description": "Synthetic gate tasks", "difficulty": "medium" }
+  ],
+  "tasks": [
+    {
+      "task_id": "gate-001",
+      "category_id": "cat-gate",
+      "genesis": "synthesized",
+      "split": "train",
+      "gold": { "kind": "final-state", "ref": "tasks.jsonl#gate-001" }
+    },
+    {
+      "task_id": "gate-002",
+      "category_id": "cat-gate",
+      "genesis": "synthesized",
+      "split": "holdout",
+      "gold": { "kind": "final-state", "ref": "tasks.jsonl#gate-002" }
+    }
+  ],
+  "environment": {
+    "format": "verifiers.v1",
+    "package_ref": "environment",
+    "package_sha256": null,
+    "tool_surface": [],
+    "runtime": "subprocess"
+  },
+  "verifier": {
+    "kind": "final-state",
+    "strict_metric": "task_completed_correctly",
+    "dense_metric": "final_state_partial_credit",
+    "replayable": true
+  },
+  "splits": {
+    "boundary": "fixed: train 1 / holdout 1 (synthetic fixture, no real capture data)",
+    "splits_sha256": "3f1d9a0c5b7e2d4f6a8c0e1b3d5f7a9c1e3b5d7f9a0c2e4b6d8f0a1c3e5b7d9f",
+    "contamination": "clean"
+  },
+  "linked_eval": null,
+  "results_contract": {
+    "row_schema": "understudy.eval_result.v1",
+    "trace_artifact": "traces.jsonl",
+    "branch_projection": "one_eval_row_per_root_to_leaf_branch"
+  },
+  "status": "active",
+  "executable": false,
+  "promotion_blockers": []
+}

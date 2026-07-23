@@ -315,6 +315,27 @@ describe("queue_run / run_status", () => {
   });
 });
 
+/* ---------------- regrade_run ---------------- */
+
+describe("regrade_run", () => {
+  it("refuses non-promoted stages", () => {
+    assert.throws(() => callBenchmarksTool("regrade_run", { slug: proposedSlug }), /promoted benchmark dir/);
+  });
+
+  it("dry-runs by default and skips every row of a non-replayable verifier with an explicit reason", () => {
+    const before = fs.readdirSync(promotedDir).filter((f) => f.startsWith("rows-"));
+    const out = callBenchmarksTool("regrade_run", { slug: promotedSlug, run_id: "runa" });
+    assert.equal(out.ok, true);
+    assert.equal(out.dry_run, true); // default: plan only, zero writes
+    assert.equal(out.summaries.length, 1);
+    assert.equal(out.summaries[0].run_id, "runa");
+    assert.equal(out.summaries[0].regraded.length, 0);
+    assert.ok(out.summaries[0].skipped.length > 0);
+    assert.ok(out.summaries[0].skipped.every((s) => s.reason === "verifier_not_replayable"));
+    assert.deepEqual(fs.readdirSync(promotedDir).filter((f) => f.startsWith("rows-")), before);
+  });
+});
+
 /* ---------------- apply_auto_accepts + submit_feedback ---------------- */
 
 // A hand-written foundry dir with deterministic confidences for the policy tools.
@@ -574,6 +595,7 @@ describe("server wiring", () => {
         "read_benchmark",
         "read_rollout",
         "read_task",
+        "regrade_run",
         "run_status",
         "submit_feedback",
         "submit_review",

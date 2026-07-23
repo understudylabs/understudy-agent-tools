@@ -1,0 +1,9 @@
+{
+  "note": "Synthetic calibration for the rigor CI gate fixture: the threshold anchors the trivial-floor and reward-hack checks.",
+  "threshold": 0.5,
+  "incumbent_models": [],
+  "trivial_floors": [
+    { "arm_kind": "null_agent", "floor": 0, "passed_task_ids": [], "floor_exceeded": false },
+    { "arm_kind": "spam_agent", "floor": 0, "passed_task_ids": [], "floor_exceeded": false }
+  ]
+}

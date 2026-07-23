@@ -1,0 +1,7 @@
+{
+  "note": "Synthetic offline validation for the rigor CI gate fixture: oracle solves every task, no sentinel scores at or above 1.",
+  "tasks": [
+    { "task_id": "gate-001", "oracle": { "score": 1 }, "sentinels": { "empty_submission": { "score": 0 }, "keyword_stuffing": { "score": 0 } } },
+    { "task_id": "gate-002", "oracle": { "score": 1 }, "sentinels": { "empty_submission": { "score": 0 }, "keyword_stuffing": { "score": 0 } } }
+  ]
+}

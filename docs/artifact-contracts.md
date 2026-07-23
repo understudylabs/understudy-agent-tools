@@ -35,7 +35,7 @@ portable recorded paths) are documented in that module and enforced by
 | `viewer/data/captures/<hash>.json` (capture bodies) | normalized capture | `src/trace-foundry.ts` (file id via shared `captureFileId`) | hub `data-core.ts` `captureBodyPath`, `trace-viewer-core.ts` (both via shared derivation) | **shared** — hash-derived name, never a recorded/client path |
 | `environment/.../servers/schemas.json` | tool schemas (declared + inferred) | `src/trace-foundry.ts` (`writeVerifiersEnvironment`) | generated `world.py` (same package) | writer+reader ship together in one package — no cross-repo fork |
 | `flags.jsonl` | `understudy.benchmark_flag.v1` | hub `app/api/flags/route.ts` | hub `data-core.ts` | **shared** schema id + JSONL codec (constructor still hub-side: flags have no CLI writer) |
-| `versions.jsonl` | viewer-side convention (`created_at` lines) | external/manual | hub `data-core.ts` | shared JSONL codec; candidate for benchmark.v1.1 |
+| `versions.jsonl` | `understudy.benchmark_version.v1` (per line; `schemas/understudy.benchmark_version.v1.schema.json`) | CLI versioning verbs (`dist/benchmark.js` diff/hash helpers); external/manual lines remain valid | hub `data-core.ts` (readers ignore unknown fields) | **shared** — promoted from viewer convention; append-only ledger |
 | `benchmark-overview.json` | `understudy.benchmark_overview.v1` | `src/trace-author.ts` (`--overview` pass) | hub `data-core.ts` (`loadOverview`) | **shared** schema id |
 | `normalized-captures.jsonl`, `capture-ledger.jsonl`, `goal-state.json`, `goal-events.jsonl`, `authoring-events.jsonl` | foundry/author internals | `src/trace-foundry.ts` / `src/trace-author.ts` | same modules (CLI-only; hub does not read them) | single-writer, no fork possible |
 

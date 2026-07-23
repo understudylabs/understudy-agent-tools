@@ -70,6 +70,54 @@ counts by kind from `tasks.jsonl`), anomaly counts, and split/contamination
 provenance, derived purely from existing artifacts (no network, no model
 calls). Items it cannot check yet appear as honest UNKNOWN rows.
 
+### Rigor as a CI gate
+
+`understudy benchmarks rigor <dir...> --ci` runs the machine-checkable subset
+(`runRigorCiChecks` in `src/rigor-report.ts`: manifest schema, oracle
+solvability, trivial floors, reward-hack sentinels, gold leakage,
+contamination) and exits non-zero on any FAIL — UNKNOWN stays honest and
+non-fatal unless `--strict`. `--changed-only --base <ref>` limits checking to
+benchmark dirs touched since the git base. `scripts/rigor-ci.mjs` is the CI
+entry point (wired as the `rigor` job in `.github/workflows/ci.yml`), and
+`understudy traces promote` runs the same checks first, refusing promotion on
+hard failures unless `--override-rigor <reason>` — the override is recorded
+in `promotion-record.json` under `rigor_gate`.
+
+## Task versioning and the rerun/regrade/reuse contract
+
+Mirrors [Harbor](https://github.com/harbor-framework/harbor)'s
+rerun/regrade/reuse model. Each task's fields partition into
+three groups, each hashed separately (canonical JSON, sorted keys, sha256 —
+`computeTaskContentHashes` in `src/benchmark.ts`):
+
+| Group | Contents | Bump | Consequence |
+|---|---|---|---|
+| env | everything the candidate sees or runs in: instruction/prompt, fixture refs, environment package refs, tool surface, seed | MAJOR | rerun — old traces are invalid |
+| verifier | gold refs, verifier/contract/rubric fields, metric config | MINOR | regrade — traces stand, re-score them |
+| meta | title, description, docs, everything else | PATCH | reuse — results as-is |
+
+Unknown extra fields hash into the env group by default — conservative: a
+field we don't recognize forces a rerun rather than silently reusing stale
+results. The task's semver `{major.minor.patch}` and its `content_hashes`
+live on the manifest task (additive, optional). Benchmark-level `version` is
+the max bump across tasks; added tasks count as MAJOR (rerun), removed tasks
+as MINOR. `diffBenchmarkManifests` computes the full plan; `versions.jsonl`
+(one `understudy.benchmark_version.v1` line per change, append-only) is the
+promoted sidecar recording each bump with its reason.
+
+When both sides of a diff carry stamped `content_hashes`, the stamps are
+compared directly instead of rehashing the manifest surface. Manifest tasks
+are references — `gold.ref` points into `tasks.jsonl`, instructions and
+contracts are not inlined — so only the stamps (computed by the foundry over
+the FULL task content) can see a gold or instruction edit; surface rehashing
+would misfile it as "none => reuse". The unstamped fallback still rehashes
+surface fields (conservatively, unknown => env).
+
+`understudy runs regrade` participates in the same ledger: writing regraded
+rows appends one MINOR `versions.jsonl` line covering the regraded tasks, so
+the superseded source rows go stale in leaderboard aggregates rather than
+double-counting alongside their regrades.
+
 ## Current gaps (in progress)
 
 Honest accounting — these ABC items are specified in the skills but not yet

@@ -2,7 +2,7 @@ import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, 
 import { createInterface } from "node:readline";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { canonMask, finalResponseText, refreshOfflineValidation, semanticArgumentsMatch, valueTokensPresent } from "./trace-foundry.js";
+import { canonMask, finalResponseText, refreshOfflineValidation, semanticArgumentsMatch, stampTaskVersions, valueTokensPresent } from "./trace-foundry.js";
 import { createHash } from "node:crypto";
 
 type Obj = Record<string, any>;
@@ -540,6 +540,9 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
   const tasksPath = join(benchmarkDir, "tasks.jsonl");
   const tasks = readJsonl(tasksPath);
   if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${benchmarkDir}; run build-benchmark first.`);
+  // Snapshot before mutation: authored tasks version-bump against what was
+  // on disk (authored provenance => patch, merged contract entries => minor).
+  const priorTasks: Obj[] = tasks.map((task) => JSON.parse(JSON.stringify(task)));
   const onlyUnauthored = options.onlyUnauthored ?? true;
   const writeback = options.writeback ?? true;
   const client = options.client ?? (() => { const auth = resolveGatewayAuth(); return gatewayClient(auth.baseUrl, auth.apiKey); })();
@@ -635,6 +638,7 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
       }
     }
   });
+  const versionBumps = writeback && results.length > 0 ? stampTaskVersions(tasks, priorTasks, now) : [];
   if (writeback && results.length > 0) writeJsonl(tasksPath, tasks);
   // Contracts changed → the environment's offline oracle/sentinel rows must be recomputed.
   if (writeback && extendedTasks.length > 0) refreshOfflineValidation(benchmarkDir, extendedTasks);
@@ -647,6 +651,7 @@ export async function authorTasks(benchmarkDirInput: string, options: AuthorTask
     skipped: tasks.length - selected.length,
     grounding: { verified, failed: results.length - verified },
     contracts: { merged_obligation_entries: mergedEntries, tasks_extended: extendedTasks.length },
+    versioning: { bumps: versionBumps },
     tokens: { prompt: results.reduce((sum, row) => sum + (row.usage.prompt_tokens ?? 0), 0), completion: results.reduce((sum, row) => sum + (row.usage.completion_tokens ?? 0), 0) },
     cost_estimate_usd: Number(results.reduce((sum, row) => sum + row.cost_estimate_usd, 0).toFixed(4)),
     events: eventsPath,

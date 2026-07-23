@@ -2,7 +2,8 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { computeLeaderboard, formatCI, formatCost, formatLatency, formatScore, hasSplits, isAnomalousRow, statisticalTieGroups } from "@/lib/scores";
-import type { BenchmarkManifest, EvalRow, TaskSplit } from "@/lib/types";
+import { isRowStale, latestBreakingBumps, staleRowSummary } from "@/lib/benchmark-core";
+import type { BenchmarkManifest, BenchmarkVersion, EvalRow, TaskSplit } from "@/lib/types";
 import { Badge, RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 
@@ -18,13 +19,26 @@ export function Leaderboard({
   manifest,
   rows,
   flaggedTaskIds,
+  versions = [],
 }: {
   manifest: BenchmarkManifest;
   rows: EvalRow[];
   flaggedTaskIds: string[];
+  /** versions.jsonl lines (oldest first) — drives stale-row gating. */
+  versions?: BenchmarkVersion[];
 }) {
   const splitsExist = hasSplits(manifest);
   const [excludeFlagged, setExcludeFlagged] = useState(true);
+  // Stale rows: produced before the latest MAJOR/MINOR bump of their task
+  // (versions.jsonl task_bumps). Excluded from default aggregates, never
+  // silently dropped — counts stay visible as chips below.
+  const [includeStale, setIncludeStale] = useState(false);
+  const breakingBumps = useMemo(() => latestBreakingBumps(versions), [versions]);
+  const staleSummary = useMemo(() => staleRowSummary(rows, breakingBumps), [rows, breakingBumps]);
+  const effectiveRows = useMemo(
+    () => (includeStale || staleSummary.staleCount === 0 ? rows : rows.filter((r) => !isRowStale(r, breakingBumps))),
+    [rows, includeStale, staleSummary, breakingBumps],
+  );
   const [localOnly, setLocalOnly] = useState(false);
   const [showRoute, setShowRoute] = useState(true);
   const [search, setSearch] = useState("");
@@ -34,7 +48,7 @@ export function Leaderboard({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const summaries = useMemo(() => {
-    let list = computeLeaderboard(manifest, rows, {
+    let list = computeLeaderboard(manifest, effectiveRows, {
       excludeTaskIds: excludeFlagged ? new Set(flaggedTaskIds) : undefined,
       split,
     });
@@ -57,7 +71,7 @@ export function Leaderboard({
       return sortDesc ? -c : c;
     });
     return list;
-  }, [manifest, rows, flaggedTaskIds, excludeFlagged, localOnly, search, split, sortKey, sortDesc]);
+  }, [manifest, effectiveRows, flaggedTaskIds, excludeFlagged, localOnly, search, split, sortKey, sortDesc]);
 
   // Statistical ties: adjacent arms (in overall order) whose 95% CIs overlap.
   // Rank separations inside a tie group are not statistically supported, so
@@ -139,6 +153,8 @@ export function Leaderboard({
         {chip("Local only", localOnly, () => setLocalOnly((v) => !v))}
         {chip("Show route", showRoute, () => setShowRoute((v) => !v))}
         {chip(`Exclude flagged (${flaggedTaskIds.length})`, excludeFlagged, () => setExcludeFlagged((v) => !v))}
+        {staleSummary.staleCount > 0 &&
+          chip(`Include stale (${staleSummary.staleCount})`, includeStale, () => setIncludeStale((v) => !v))}
         <select
           className="u-org-select"
           value={split}
@@ -152,6 +168,21 @@ export function Leaderboard({
           <option value="none">split: none</option>
         </select>
       </div>
+      {/* Stale-row gate: never silently drop — per-task counts stay visible. */}
+      {staleSummary.staleCount > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="mono text-[10px]" style={{ color: "var(--warn-ink)" }}>
+            {staleSummary.staleCount} row{staleSummary.staleCount === 1 ? "" : "s"} predate a task env/verifier bump —{" "}
+            {includeStale ? "INCLUDED (toggle above)" : "excluded from aggregates"}
+          </span>
+          {staleSummary.byTask.map((t) => (
+            <Badge key={t.task_id} className="border-warn/40">
+              {t.count} row{t.count === 1 ? "" : "s"} stale ({t.task_id.length > 18 ? t.task_id.slice(0, 17) + "…" : t.task_id}
+              {t.version ? ` v${t.version}` : ""})
+            </Badge>
+          ))}
+        </div>
+      )}
       {splitsExist && split !== "holdout" && (
         <div className="u-warn mb-3 text-xs">
           <span className="lab">Non-holdout view</span> — numbers may be optimizer-touched.
