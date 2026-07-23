@@ -8,7 +8,6 @@ import {
   FlaskConical,
   KeyRound,
   LayoutDashboard,
-  Settings2,
   Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
@@ -49,15 +48,10 @@ export const NAV_ITEMS: NavItemDef[] = [
   // The web's project-scoped Analytics (`/p/[project_slug]` reporting view),
   // presented as the per-workload breakdown.
   { id: "org-project-analytics", group: "organization", label: "Workloads", icon: BarChart3, pane: "project-reporting" },
-  // Former Workload group, folded into Capture (still gated on a selected workload).
-  {
-    id: "workload-config",
-    group: "organization",
-    label: "Configuration",
-    icon: Settings2,
-    pane: "workload-config",
-    requiresWorkload: true,
-  },
+  // The Configuration row is folded into the Workloads pane — each workload
+  // card expands into its route/capture controls (WorkloadConfigInline). The
+  // "workload-config" pane id + WorkloadConfigPane remain reachable for deep
+  // links, like Captures below.
   // Captures view removed from the nav for now — the pane is being rebuilt
   // for a future release (CapturesPane and the "captures" pane id remain so
   // deep links and the rebuild have a home).

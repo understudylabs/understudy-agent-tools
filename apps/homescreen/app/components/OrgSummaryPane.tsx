@@ -5,8 +5,8 @@
 // Deliberately TRADITIONAL: same metric row, spend trend, and workload-card
 // grid. Server-side data loading becomes a client-side fan-out through the
 // `admin_get` Tauri command (app/lib/org-summary.mjs); the sk_ key stays in
-// the Rust process. Workload cards navigate to the in-app workload
-// Configuration pane instead of a /p/[slug] URL.
+// the Rust process. Workload cards navigate to the Workloads pane with the
+// target card expanded (its inline configuration) instead of a /p/[slug] URL.
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";

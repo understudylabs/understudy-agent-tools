@@ -238,7 +238,102 @@
 .sm-health.degraded .sm-dot { background: var(--model-clay); }
 .sm-health.unavailable .sm-dot { background: var(--text-2); }
 
+/* --- Workloads pane: deep, expandable cards (sm-cardx) --- */
+.sm-cards-deep {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+.sm-cardx {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--text);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s ease;
+}
+.sm-cardx:hover {
+  border-color: color-mix(in srgb, var(--text) 28%, transparent);
+}
+/* An expanded card takes the full row: the config form needs the width. */
+.sm-cardx.expanded {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--mb-mint) 40%, transparent);
+}
+/* Whole-header-is-a-button: click expands; explicit controls live inside. */
+.sm-cardx-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sm-cardx-chev {
+  color: var(--text-2);
+  transition: transform 0.18s ease;
+}
+.sm-cardx.expanded .sm-cardx-chev { transform: rotate(180deg); }
+.sm-cardx-lines {
+  display: grid;
+  gap: 2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+.sm-cardx-lines code { font-family: var(--mono); color: var(--text); }
+.sm-minis-6 { grid-template-columns: repeat(3, 1fr); row-gap: 10px; }
+/* Expand-in-place via the 0fr -> 1fr grid-row trick (height: auto-safe). */
+.sm-cardx-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+.sm-cardx-body > div { overflow: hidden; min-height: 0; }
+.sm-cardx.expanded .sm-cardx-body { grid-template-rows: 1fr; }
+
+/* --- Inline configuration (WorkloadConfigInline) --- */
+.sm-config {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
+.sm-config-section {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.sm-config-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  align-items: end;
+}
+.sm-config-line {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.sm-config-dim { color: var(--text-2); }
+.sm-config-note {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.sm-config-err { font-size: 12px; color: var(--color-bad, var(--model-clay)); }
+
 @media (prefers-reduced-motion: reduce) {
-  .sm-card, .sm-tile, .sm-range { transition: none; }
+  .sm-card, .sm-tile, .sm-range, .sm-cardx, .sm-cardx-chev, .sm-cardx-body {
+    transition: none;
+  }
   .sm-card:hover { transform: none; }
 }

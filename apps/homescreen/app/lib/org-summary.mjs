@@ -286,6 +286,40 @@ export function cacheLeaders(summaries, names) {
     .sort((a, b) => b.cacheReadTokens - a.cacheReadTokens);
 }
 
+/**
+ * Per-workload usage detail from the merged `group_by=workload,day` rows,
+ * optionally restricted to days >= sinceDay (YYYY-MM-DD, inclusive). Feeds
+ * the deep workload cards: workload_id -> { requests, inputTokens,
+ * outputTokens, cacheReadTokens, cacheRatePct }.
+ */
+export function workloadUsageDetails(summaries, sinceDay = null) {
+  const byWorkload = new Map();
+  for (const summary of summaries) {
+    for (const row of summary.usage?.workloadDay ?? []) {
+      if (!row.workload_id) continue;
+      const day = dayKey(row.day);
+      if (sinceDay && (!day || day < sinceDay)) continue;
+      let entry = byWorkload.get(row.workload_id);
+      if (!entry) {
+        byWorkload.set(
+          row.workload_id,
+          (entry = { requests: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 }),
+        );
+      }
+      entry.requests += row.requests ?? 0;
+      entry.inputTokens += row.input_tokens ?? 0;
+      entry.outputTokens += row.output_tokens ?? 0;
+      entry.cacheReadTokens += row.cache_read_input_tokens ?? 0;
+    }
+  }
+  return new Map(
+    [...byWorkload].map(([id, entry]) => [
+      id,
+      { ...entry, cacheRatePct: cacheRatePct(entry.cacheReadTokens, entry.inputTokens) },
+    ]),
+  );
+}
+
 function readableError(value) {
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;

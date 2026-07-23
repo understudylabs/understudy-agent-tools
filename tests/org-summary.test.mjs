@@ -201,6 +201,7 @@ import {
   usageDaySeries,
   usageTotals,
   workloadNameMap,
+  workloadUsageDetails,
 } from "../apps/homescreen/app/lib/org-summary.mjs";
 
 const usageRow = (overrides = {}) => ({
@@ -253,6 +254,35 @@ test("tokenStack stacks by workload when combined rows exist", () => {
   assert.deepEqual(stack.rows, [
     { day: "2026-07-14", values: { checkout: 140, search: 15 } },
   ]);
+});
+
+test("workloadUsageDetails aggregates per workload and honors sinceDay", () => {
+  const summaries = [
+    {
+      usage: {
+        workloadDay: [
+          usageRow(),
+          usageRow({ day: "2026-07-10", input_tokens: 1000 }),
+          usageRow({ workload_id: "w2", input_tokens: 50, cache_read_input_tokens: 0 }),
+          usageRow({ workload_id: null }),
+        ],
+        byDay: [],
+      },
+    },
+  ];
+  const all = workloadUsageDetails(summaries);
+  assert.deepEqual(all.get("w1"), {
+    requests: 2,
+    inputTokens: 1100,
+    outputTokens: 80,
+    cacheReadTokens: 600,
+    cacheRatePct: (600 / 1700) * 100,
+  });
+  assert.equal(all.has(null), false);
+  // sinceDay drops the older row for w1; w2 has no cache reads -> 0%.
+  const recent = workloadUsageDetails(summaries, "2026-07-14");
+  assert.equal(recent.get("w1").inputTokens, 100);
+  assert.equal(recent.get("w2").cacheRatePct, 0);
 });
 
 test("tokenStack falls back to project stacking without combined rows", () => {

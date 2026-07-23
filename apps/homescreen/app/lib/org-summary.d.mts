@@ -81,7 +81,14 @@ export type ProjectUsage = {
 export type ProjectSummary = {
   project: Project;
   workloads: Workload[];
-  statuses: { workload_id: string; status: "healthy" | "degraded" | "idle" }[];
+  /** Raw 24h workload-status rows — the fields the panes actually read. */
+  statuses: {
+    workload_id: string;
+    status: "healthy" | "degraded" | "idle";
+    requests?: number;
+    error_rate?: number;
+    route_shares?: { primary: number; understudy: number; fallback: number };
+  }[];
   usage: ProjectUsage;
   error: string | null;
 };
@@ -104,6 +111,14 @@ export type UsageTotals = {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  cacheRatePct: number | null;
+};
+
+export type WorkloadUsageDetail = {
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
   cacheRatePct: number | null;
 };
 
@@ -162,6 +177,10 @@ export function stackTotals(rows: StackRow[]): { byKey: Map<string, number>; tot
 export function usageDaySeries(summaries: { usage?: ProjectUsage }[]): UsageDayRow[];
 export function cacheRatePct(cacheReadTokens: number, inputTokens: number): number | null;
 export function usageTotals(rows: UsageDayRow[]): UsageTotals;
+export function workloadUsageDetails(
+  summaries: { usage?: ProjectUsage }[],
+  sinceDay?: string | null,
+): Map<string, WorkloadUsageDetail>;
 export function cacheLeaders(
   summaries: { usage?: ProjectUsage }[],
   names: Map<string, string>,

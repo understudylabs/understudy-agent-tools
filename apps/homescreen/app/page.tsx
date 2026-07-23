@@ -26,7 +26,7 @@ import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
 import { OrgSummaryPane } from "./components/OrgSummaryPane";
 import { ProjectSummaryPane } from "./components/ProjectSummaryPane";
-import { ProjectReportingPane } from "./components/ProjectReportingPane";
+import { WorkloadsPane, type WorkloadFocusRequest } from "./components/WorkloadsPane";
 import { SetupPane } from "./components/SetupPane";
 import { SettingsPane } from "./components/SettingsPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
@@ -60,6 +60,9 @@ export default function Page() {
   const [activeTrainingThreadId, setActiveTrainingThreadId] = useState<string | null>(null);
   const [requestedTrainingThread, setRequestedTrainingThread] = useState<TrainingThreadRequest | null>(null);
   const [starterDownloadRequest, setStarterDownloadRequest] = useState(0);
+  // Deep link into the Workloads pane with one card expanded (the same
+  // request-token pattern as requestedTrainingThread above).
+  const [requestedWorkload, setRequestedWorkload] = useState<WorkloadFocusRequest | null>(null);
   const [signInIntent, setSignInIntent] = useState<{
     returnToChat: boolean;
     downloadAfterSignIn: boolean;
@@ -208,6 +211,18 @@ export default function Page() {
     storeScope(next);
   }, []);
 
+  // Workload deep link: scope to it and open its card on the Workloads pane
+  // (the Configuration pane's controls live inline there now).
+  const openWorkload = useCallback((projectId: string, workloadId: string) => {
+    handleScopeChange({ projectId, workloadId });
+    setPane("project-reporting");
+    setRequestedWorkload((current) => ({
+      projectId,
+      workloadId,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  }, [handleScopeChange]);
+
   const newChat = useCallback(() => {
     setPane("chat");
     setRequestedChatSession(null);
@@ -341,7 +356,7 @@ export default function Page() {
       <ScopeBreadcrumb
         scope={scope}
         onScopeChange={handleScopeChange}
-        onWorkloadSelected={() => setPane("workload-config")}
+        onWorkloadSelected={() => setPane("project-reporting")}
       />
       <div className="operation-notice-stack">
         <RuntimeRepairPrompt quiet={chatTrainingActive} />
@@ -391,10 +406,7 @@ export default function Page() {
         {pane === "status" && <StatusPane status={status} />}
         {pane === "org-summary" && (
           <OrgSummaryPane
-            onOpenWorkload={(projectId, workloadId) => {
-              handleScopeChange({ projectId, workloadId });
-              setPane("workload-config");
-            }}
+            onOpenWorkload={openWorkload}
             onNavigate={(pane) => setPane(pane)}
           />
         )}
@@ -421,13 +433,12 @@ export default function Page() {
           <ProjectSummaryPane
             scope={scope}
             onScopeChange={handleScopeChange}
-            onOpenWorkload={(projectId, workloadId) => {
-              handleScopeChange({ projectId, workloadId });
-              setPane("workload-config");
-            }}
+            onOpenWorkload={openWorkload}
           />
         )}
-        {pane === "project-reporting" && <ProjectReportingPane scope={scope} />}
+        {pane === "project-reporting" && (
+          <WorkloadsPane requestedWorkload={requestedWorkload} />
+        )}
         {pane === "setup" && <SetupPane onNavigate={setPane} />}
         {pane === "settings" && <SettingsPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
