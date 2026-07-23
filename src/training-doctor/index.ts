@@ -46,6 +46,7 @@ export type TrainingDoctorReport = {
   healthy: boolean;
   first_failure: string | null;
   checks: DoctorCheck[];
+  plan_root: string | null;
 };
 
 export type TrainingDoctorOptions = {
@@ -192,6 +193,68 @@ async function fetchJson(
   }
   return { status: response.status, body: body as Record<string, unknown> };
 }
+
+/**
+ * States known to mean "still going" — keep polling.
+ * Anything outside this set is terminal.
+ */
+const ACTIVE_WORKFLOW_STATUSES = new Set(["queued", "running"]);
+
+/**
+ * Terminal states that count as failure. A terminal status is ok (success)
+ * unless it appears here. This avoids hardcoding a success string — the
+ * remote service's actual value isn't verifiable from this codebase.
+ */
+const FAILED_WORKFLOW_STATUSES = new Set(["failed", "cancelled"]);
+
+export type RunStatusResult = {
+  workflow_status: string;
+  duration_ms: number;
+};
+
+/**
+ * Poll the live run status exactly once. Extracted from the main chain so
+ * watch mode can call it repeatedly without re-verifying the full chain.
+ *
+ * Privacy: never surfaces the API key, run token, or full status URL.
+ */
+export async function pollRunStatus(context: {
+  run: { run_id: string; status_url: string; run_token: string };
+  base: URL;
+  apiKey: string;
+  fetchImpl: typeof fetch;
+}): Promise<RunStatusResult> {
+  assertControlPlaneUrl(context.run.status_url, context.base);
+  const start = Date.now();
+  const { status, body } = await fetchJson(context.fetchImpl, context.run.status_url, {
+    authorization: `Bearer ${context.apiKey}`,
+    "x-understudy-train-run-token": context.run.run_token,
+  });
+  const duration_ms = Date.now() - start;
+  if (status < 200 || status >= 300) {
+    throw new Error(`the training service rejected the run status request (HTTP ${status})`);
+  }
+  const workflow_status = typeof body.workflow_status === "string"
+    ? body.workflow_status
+    : "unknown";
+  return { workflow_status, duration_ms };
+}
+
+export type WatchEvent =
+  | { event: "waiting_for_run"; elapsed_ms: number }
+  | { event: "status_change"; elapsed_ms: number; workflow_status: string }
+  | { event: "timeout"; elapsed_ms: number }
+  | { event: "lost_contact"; elapsed_ms: number }
+  | { event: "done"; workflow_status: string; ok: boolean; elapsed_ms: number; poll_count: number };
+
+export type TrainingDoctorWatchOptions = {
+  report: TrainingDoctorReport;
+  planRoot: string;
+  intervalMs: number;
+  maxWaitSeconds?: number;
+  fetchImpl?: typeof fetch;
+  onEvent: (event: WatchEvent) => void;
+};
 
 type ChainState = {
   checks: DoctorCheck[];
@@ -508,7 +571,7 @@ export async function runTrainingDoctor(
   if (broken()) {
     skip(state, "server_capabilities", "training service capabilities", "blocked by earlier failure");
     skip(state, "run_status", "live run status", "blocked by earlier failure");
-    return finish(state, mode);
+    return finish(state, mode, planRoot);
   }
 
   let base: URL;
@@ -523,7 +586,7 @@ export async function runTrainingDoctor(
       next: "Fix UNDERSTUDY_TRAIN_API_BASE (or unset it to use the default endpoint).",
     });
     skip(state, "run_status", "live run status", "blocked by earlier failure");
-    return finish(state, mode);
+    return finish(state, mode, planRoot);
   }
 
   const apiKey = resolveApiKey();
@@ -536,7 +599,7 @@ export async function runTrainingDoctor(
       next: "Run `understudy login` to create ~/.understudy/credentials.json.",
     });
     skip(state, "run_status", "live run status", "blocked by earlier failure");
-    return finish(state, mode);
+    return finish(state, mode, planRoot);
   }
 
   try {
@@ -575,32 +638,22 @@ export async function runTrainingDoctor(
       next: "Check network access and credentials, then retry (`understudy login` refreshes the key).",
     });
     skip(state, "run_status", "live run status", "blocked by earlier failure");
-    return finish(state, mode);
+    return finish(state, mode, planRoot);
   }
 
   // 8. live run status
   if (!run) {
     skip(state, "run_status", "live run status", "no run started yet");
-    return finish(state, mode);
+    return finish(state, mode, planRoot);
   }
   try {
-    assertControlPlaneUrl(run.status_url, base);
-    const { status, body } = await fetchJson(fetchImpl, run.status_url, {
-      authorization: `Bearer ${apiKey}`,
-      "x-understudy-train-run-token": run.run_token,
-    });
-    if (status < 200 || status >= 300) {
-      throw new Error(`the training service rejected the run status request (HTTP ${status})`);
-    }
-    const workflowStatus = typeof body.workflow_status === "string"
-      ? body.workflow_status
-      : "unknown";
-    if (workflowStatus === "failed" || workflowStatus === "cancelled") {
+    const result = await pollRunStatus({ run, base, apiKey, fetchImpl });
+    if (FAILED_WORKFLOW_STATUSES.has(result.workflow_status)) {
       record(state, {
         id: "run_status",
         label: "live run status",
         status: "fail",
-        detail: `run ${run.run_id} is ${workflowStatus}`,
+        detail: `run ${run.run_id} is ${result.workflow_status}`,
         next: "Inspect the run result in Understudy Desktop and start a fresh run.",
       });
     } else {
@@ -608,7 +661,7 @@ export async function runTrainingDoctor(
         id: "run_status",
         label: "live run status",
         status: "pass",
-        detail: `run ${run.run_id} is ${workflowStatus}`,
+        detail: `run ${run.run_id} is ${result.workflow_status}`,
       });
     }
   } catch (error) {
@@ -621,16 +674,21 @@ export async function runTrainingDoctor(
     });
   }
 
-  return finish(state, mode);
+  return finish(state, mode, planRoot);
 }
 
-function finish(state: ChainState, mode: TrainingDoctorReport["mode"]): TrainingDoctorReport {
+function finish(
+  state: ChainState,
+  mode: TrainingDoctorReport["mode"],
+  planRoot: string | null,
+): TrainingDoctorReport {
   return {
     schema_version: TRAINING_DOCTOR_SCHEMA,
     mode,
     healthy: state.firstFailure === null,
     first_failure: state.firstFailure,
     checks: state.checks,
+    plan_root: planRoot,
   };
 }
 
@@ -655,4 +713,164 @@ export function renderTrainingDoctorReport(report: TrainingDoctorReport): string
       : `training chain: broken at ${report.first_failure}`,
   );
   return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Watch a remote training run to completion. Emits WatchEvent objects via
+ * onEvent as the run progresses. Returns the final event (done/timeout/
+ * lost_contact) so the caller can set process.exitCode.
+ *
+ * Never throws for expected failure modes (timeout, lost contact, run
+ * failed/cancelled) — those are all normal returns via WatchEvent.
+ */
+export async function runTrainingDoctorWatch(
+  options: TrainingDoctorWatchOptions,
+): Promise<WatchEvent> {
+  const { report, planRoot, intervalMs, maxWaitSeconds, onEvent } = options;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const watchStart = Date.now();
+
+  const elapsed = (): number => Date.now() - watchStart;
+  const maxWaitMs = maxWaitSeconds !== undefined ? maxWaitSeconds * 1000 : Infinity;
+  const timedOut = (): boolean => elapsed() >= maxWaitMs;
+
+  // Determine which chain checks exist and where the failure is.
+  // The chain order for the run-relevant checks.
+  const RUN_CHECK_IDS = new Set(["run_manifest", "run_status"]);
+  if (report.first_failure !== null) {
+    // If the chain is broken at or before the run checks, don't watch.
+    // Check if the failure is a run check itself, or an earlier check.
+    const failureIndex = report.checks.findIndex(
+      (check) => check.id === report.first_failure,
+    );
+    const firstRunIndex = report.checks.findIndex(
+      (check) => RUN_CHECK_IDS.has(check.id),
+    );
+    if (failureIndex <= firstRunIndex || firstRunIndex === -1) {
+      // Broken chain before or at the run checks — nothing to watch.
+      const done: WatchEvent = {
+        event: "done",
+        workflow_status: "unknown",
+        ok: false,
+        elapsed_ms: elapsed(),
+        poll_count: 0,
+      };
+      return done;
+    }
+  }
+
+  // Find the run_manifest check to see if we need to wait for run.json.
+  const runManifestCheck = report.checks.find(
+    (check) => check.id === "run_manifest",
+  );
+  const needsRunJson = runManifestCheck?.status === "pending";
+
+  // Wait for run.json to appear if it doesn't exist yet.
+  const runPath = join(planRoot, "run.json");
+  if (needsRunJson) {
+    while (!existsSync(runPath)) {
+      if (timedOut()) {
+        const ev: WatchEvent = { event: "timeout", elapsed_ms: elapsed() };
+        onEvent(ev);
+        return ev;
+      }
+      const ev: WatchEvent = { event: "waiting_for_run", elapsed_ms: elapsed() };
+      onEvent(ev);
+      await sleep(intervalMs);
+    }
+  }
+
+  // Read and validate run.json — same logic as section 6.
+  const RUN_SCHEMA_LOCAL = "understudy.remote_training.run.v1";
+  let run: { run_id: string; status_url: string; run_token: string };
+  try {
+    const manifest = readJson(runPath);
+    if (
+      manifest.schema_version !== RUN_SCHEMA_LOCAL
+      || typeof manifest.run_id !== "string"
+      || typeof manifest.status_url !== "string"
+      || typeof manifest.run_token !== "string"
+    ) {
+      throw new Error("run receipt is missing required fields");
+    }
+    run = {
+      run_id: manifest.run_id as string,
+      status_url: manifest.status_url as string,
+      run_token: manifest.run_token as string,
+    };
+  } catch {
+    // run.json appeared but is corrupt — treat as lost contact.
+    const ev: WatchEvent = { event: "lost_contact", elapsed_ms: elapsed() };
+    onEvent(ev);
+    return ev;
+  }
+
+  // Resolve credentials and base URL.
+  let base: URL;
+  let apiKey: string;
+  try {
+    base = trainApiBase();
+    const resolved = resolveApiKey();
+    if (!resolved) throw new Error("no credentials");
+    apiKey = resolved;
+  } catch {
+    const ev: WatchEvent = { event: "lost_contact", elapsed_ms: elapsed() };
+    onEvent(ev);
+    return ev;
+  }
+
+  // Poll loop.
+  let previousStatus: string | null = null;
+  let consecutiveErrors = 0;
+  let pollCount = 0;
+
+  while (!timedOut()) {
+    pollCount++;
+    try {
+      const result = await pollRunStatus({ run, base, apiKey, fetchImpl });
+      consecutiveErrors = 0;
+
+      if (result.workflow_status !== previousStatus) {
+        const ev: WatchEvent = {
+          event: "status_change",
+          elapsed_ms: elapsed(),
+          workflow_status: result.workflow_status,
+        };
+        onEvent(ev);
+        previousStatus = result.workflow_status;
+      }
+
+      // Terminal?
+      if (!ACTIVE_WORKFLOW_STATUSES.has(result.workflow_status)) {
+        const ok = !FAILED_WORKFLOW_STATUSES.has(result.workflow_status);
+        const done: WatchEvent = {
+          event: "done",
+          workflow_status: result.workflow_status,
+          ok,
+          elapsed_ms: elapsed(),
+          poll_count: pollCount,
+        };
+        onEvent(done);
+        return done;
+      }
+    } catch {
+      consecutiveErrors++;
+      if (consecutiveErrors >= 3) {
+        const ev: WatchEvent = { event: "lost_contact", elapsed_ms: elapsed() };
+        onEvent(ev);
+        return ev;
+      }
+    }
+
+    await sleep(intervalMs);
+  }
+
+  // max-wait exceeded without reaching a terminal status.
+  const ev: WatchEvent = { event: "timeout", elapsed_ms: elapsed() };
+  onEvent(ev);
+  return ev;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

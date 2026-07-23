@@ -20,7 +20,9 @@ import {
 import {
   renderTrainingDoctorReport,
   runTrainingDoctor,
+  runTrainingDoctorWatch,
 } from "../training-doctor/index.js";
+import type { WatchEvent } from "../training-doctor/index.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 
 type LocalSftOptions = {
@@ -66,15 +68,39 @@ export function registerTrainingCommand(program: Command): void {
     .option("--workload <path>", "Capture-import artifact root (workload-card.json lives here).")
     .option("--plan <path>", "Start mid-chain at a remote-training plan.json.")
     .option("--expect-run", "Treat a missing run.json as a broken link.")
+    .option("--watch", "Follow the remote training run to completion.")
+    .option("--interval <ms>", "Poll interval in milliseconds (requires --watch).")
+    .option("--max-wait <seconds>", "Maximum wait time in seconds (requires --watch).")
     .action(async function (this: Command, options: {
       workload?: string;
       plan?: string;
       expectRun?: boolean;
+      watch?: boolean;
+      interval?: string;
+      maxWait?: string;
     }) {
       await runAction(this, async () => {
         if (Boolean(options.workload) === Boolean(options.plan)) {
           throw new Error("Pass exactly one of --workload <artifact_root> or --plan <plan.json>.");
         }
+        if (!options.watch && (options.interval !== undefined || options.maxWait !== undefined)) {
+          throw new Error("--interval and --max-wait are only valid with --watch.");
+        }
+        let intervalMs = 5000;
+        let maxWaitSeconds: number | undefined;
+        if (options.watch) {
+          intervalMs = parseInt(options.interval ?? "5000", 10);
+          if (!Number.isInteger(intervalMs) || intervalMs < 250) {
+            throw new Error("--interval must be an integer >= 250.");
+          }
+          if (options.maxWait !== undefined) {
+            maxWaitSeconds = parseInt(options.maxWait, 10);
+            if (!Number.isInteger(maxWaitSeconds) || maxWaitSeconds <= 0) {
+              throw new Error("--max-wait must be a positive integer.");
+            }
+          }
+        }
+
         const report = await runTrainingDoctor({
           workloadRoot: options.workload,
           planPath: options.plan,
@@ -86,6 +112,74 @@ export function registerTrainingCommand(program: Command): void {
           process.stdout.write(renderTrainingDoctorReport(report));
         }
         if (!report.healthy) process.exitCode = 1;
+
+        if (!options.watch) return;
+
+        if (!report.plan_root) {
+          // No plan root resolved — nothing to watch.
+          return;
+        }
+
+        const json = isJsonMode(this);
+
+        const formatElapsed = (ms: number): string => {
+          const seconds = Math.floor(ms / 1000);
+          const minutes = Math.floor(seconds / 60);
+          const remainingSeconds = seconds % 60;
+          if (minutes > 0) return `${minutes}m${remainingSeconds}s`;
+          return `${seconds}s`;
+        };
+
+        const emitWatch = (event: WatchEvent): void => {
+          if (json) {
+            process.stdout.write(`${JSON.stringify(event)}\n`);
+            return;
+          }
+          switch (event.event) {
+            case "waiting_for_run":
+              process.stdout.write(
+                `waiting for run.json ... (${formatElapsed(event.elapsed_ms)} elapsed)\n`,
+              );
+              break;
+            case "status_change":
+              process.stdout.write(
+                `run is ${event.workflow_status} (${formatElapsed(event.elapsed_ms)} elapsed)\n`,
+              );
+              break;
+            case "timeout":
+              process.stdout.write(
+                `gave up waiting after ${formatElapsed(event.elapsed_ms)}\n`,
+              );
+              break;
+            case "lost_contact":
+              process.stdout.write(
+                "lost contact with the training service\n",
+              );
+              break;
+            case "done":
+              process.stdout.write(
+                `run ${event.workflow_status} after ${formatElapsed(event.elapsed_ms)} (${event.poll_count} polls)\n`,
+              );
+              break;
+          }
+        };
+
+        const finalEvent = await runTrainingDoctorWatch({
+          report,
+          planRoot: report.plan_root,
+          intervalMs,
+          maxWaitSeconds,
+          onEvent: emitWatch,
+        });
+
+        // Set exit code from the final event.
+        if (finalEvent.event === "done") {
+          process.exitCode = finalEvent.ok ? 0 : 1;
+        } else if (finalEvent.event === "timeout") {
+          process.exitCode = 2;
+        } else if (finalEvent.event === "lost_contact") {
+          process.exitCode = 1;
+        }
       });
     });
 

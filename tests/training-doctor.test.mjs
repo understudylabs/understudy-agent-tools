@@ -412,3 +412,453 @@ describe("understudy training doctor", () => {
     assert.equal(both.status, 1);
   });
 });
+
+describe("understudy training doctor --watch", () => {
+  // Helper: parse stdout into JSON Lines (one object per line, skip blanks).
+  function parseJsonLines(stdout) {
+    return stdout
+      .split("\n")
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line));
+  }
+
+  // Helper: write a run.json pointing at the fake server.
+  function writeRunJson(planRoot, planPath, base, runId = "run-w1") {
+    writeFileSync(join(planRoot, "run.json"), JSON.stringify({
+      schema_version: "understudy.remote_training.run.v1",
+      run_id: runId,
+      plan_path: planPath,
+      status_url: `${base}/runs/${runId}`,
+      events_url: `${base}/runs/${runId}/events`,
+      run_token: "run-token-secret",
+      next_after: -1,
+      run_manifest_path: join(planRoot, "run.json"),
+    }));
+  }
+
+  // Privacy pattern reused across all tests.
+  const PRIVACY_RE = /sk_test_fixture|run-token-secret|run-token-|runs\/run-w/;
+
+  it("rejects --interval without --watch", async () => {
+    const fixture = writeWorkloadFixture();
+    const result = await runDoctorAsync(["--workload", fixture.root, "--interval", "5000"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--interval and --max-wait are only valid with --watch/);
+  });
+
+  it("rejects --max-wait without --watch", async () => {
+    const fixture = writeWorkloadFixture();
+    const result = await runDoctorAsync(["--workload", fixture.root, "--max-wait", "10"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--interval and --max-wait are only valid with --watch/);
+  });
+
+  it("rejects --watch --interval below 250", async () => {
+    const fixture = writeWorkloadFixture();
+    const result = await runDoctorAsync(["--workload", fixture.root, "--watch", "--interval", "100"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--interval must be an integer >= 250/);
+  });
+
+  it("rejects --watch --max-wait with a non-positive value", async () => {
+    const fixture = writeWorkloadFixture();
+    const result = await runDoctorAsync(["--workload", fixture.root, "--watch", "--max-wait", "-5"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--max-wait must be a positive integer/);
+  });
+
+  it("does not enter watch mode on a broken chain", async () => {
+    const fixture = writeWorkloadFixture();
+    // Break the chain by removing the dataset manifest.
+    rmSync(join(fixture.datasetRoot, "dataset-manifest.json"));
+    const result = await runDoctorAsync([
+      "--workload", fixture.root,
+      "--watch", "--interval", "250",
+    ]);
+    assert.equal(result.status, 1);
+    // The initial report is emitted as a pretty-printed JSON object (--json is
+    // always appended by runDoctorAsync). Parse it as a single object.
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.first_failure, "dataset_manifest");
+    // No watch events should appear — stdout is ONLY the initial report.
+    assert.doesNotMatch(result.stdout, /waiting_for_run|status_change|timeout|lost_contact/);
+    assert.doesNotMatch(result.stdout, PRIVACY_RE);
+  });
+
+  it("emits waiting_for_run heartbeats then timeout when run.json never appears", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+    });
+    try {
+      const result = await runDoctorAsync([
+        "--workload", fixture.root,
+        "--watch", "--interval", "250", "--max-wait", "1",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 2, `expected exit 2, got ${result.status}: ${result.stderr}`);
+      // stdout is: initial pretty-printed JSON report, then JSON Lines for watch events.
+      // The initial report ends with "}\n", watch events follow as single-line JSON.
+      // Split by finding lines that parse as objects with an "event" key.
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of the pretty-printed initial report — skip.
+        }
+      }
+      assert.ok(watchEvents.length >= 2, `expected at least 2 watch events, got ${watchEvents.length}`);
+      const waitingEvents = watchEvents.filter((e) => e.event === "waiting_for_run");
+      assert.ok(waitingEvents.length >= 1, "expected at least one waiting_for_run event");
+      for (const ev of waitingEvents) {
+        assert.equal(typeof ev.elapsed_ms, "number");
+      }
+      const last = watchEvents[watchEvents.length - 1];
+      assert.equal(last.event, "timeout");
+      assert.equal(typeof last.elapsed_ms, "number");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("watches running -> completed and reports ok: true (exit 0)", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        const status = statusCallCount <= 2 ? "running" : "completed";
+        return { body: { workflow_status: status } };
+      },
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "5",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      const statusChanges = watchEvents.filter((e) => e.event === "status_change");
+      assert.ok(statusChanges.some((e) => e.workflow_status === "running"), "expected a running status_change");
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].ok, true);
+      assert.equal(doneEvents[0].workflow_status, "completed");
+      assert.ok(doneEvents[0].poll_count >= 2);
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("watches running -> succeeded and reports ok: true (proves no hardcoded success string)", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        const status = statusCallCount <= 2 ? "running" : "succeeded";
+        return { body: { workflow_status: status } };
+      },
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "5",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].ok, true);
+      assert.equal(doneEvents[0].workflow_status, "succeeded");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("run.json appears mid-watch, then run completes", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        const status = statusCallCount <= 2 ? "running" : "completed";
+        return { body: { workflow_status: status } };
+      },
+    });
+    try {
+      // Start watch BEFORE run.json exists. We spawn directly to stream stdout
+      // and wait for the precise 'waiting_for_run' signal instead of guessing a delay.
+      const resultPromise = new Promise((resolveRun) => {
+        const child = spawn("node", [resolve("dist/bin.js"), "training", "doctor", "--workload", fixture.root, "--watch", "--interval", "250", "--max-wait", "5", "--json"], {
+          encoding: "utf8",
+          env: { ...baseEnv, UNDERSTUDY_TELEMETRY: "0", HOME: home, USERPROFILE: home, UNDERSTUDY_TRAIN_API_BASE: base },
+        });
+        let stdout = "";
+        let stderr = "";
+        let runJsonWritten = false;
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        
+        child.stdout.on("data", (chunk) => { 
+          stdout += chunk; 
+          // If we haven't written the file yet, check if waiting_for_run was emitted.
+          if (!runJsonWritten && stdout.includes('"event":"waiting_for_run"')) {
+            writeRunJson(fixture.planRoot, fixture.planPath, base);
+            runJsonWritten = true;
+          }
+        });
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("close", (status) => resolveRun({ status, stdout, stderr }));
+      });
+      
+      const result = await resultPromise;
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      // Should have at least one waiting_for_run heartbeat.
+      assert.ok(
+        watchEvents.some((e) => e.event === "waiting_for_run"),
+        "expected at least one waiting_for_run event",
+      );
+      assert.ok(
+        watchEvents.some((e) => e.event === "status_change" && e.workflow_status === "running"),
+        "expected a running status_change",
+      );
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].ok, true);
+      assert.equal(doneEvents[0].workflow_status, "completed");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("watches running -> failed and reports ok: false (exit 1)", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        const status = statusCallCount <= 2 ? "running" : "failed";
+        return { body: { workflow_status: status } };
+      },
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "5",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 1, `expected exit 1, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].ok, false);
+      assert.equal(doneEvents[0].workflow_status, "failed");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("watches running -> cancelled and reports ok: false (exit 1)", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        const status = statusCallCount <= 2 ? "running" : "cancelled";
+        return { body: { workflow_status: status } };
+      },
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "5",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 1, `expected exit 1, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].ok, false);
+      assert.equal(doneEvents[0].workflow_status, "cancelled");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("reports lost_contact after 3 consecutive poll errors (exit 1)", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => ({
+        status: 500,
+        body: { error: "internal server error" },
+      }),
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "10",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 1, `expected exit 1, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {
+          // Part of pretty-printed initial report.
+        }
+      }
+      const lostEvents = watchEvents.filter((e) => e.event === "lost_contact");
+      assert.equal(lostEvents.length, 1, "expected exactly one lost_contact event");
+      assert.equal(typeof lostEvents[0].elapsed_ms, "number");
+      assert.doesNotMatch(result.stdout, PRIVACY_RE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it("resets the 3-consecutive-errors counter after a successful poll", async () => {
+    const fixture = writeWorkloadFixture();
+    const home = fakeHome();
+    let statusCallCount = 0;
+    const { server, base } = await startTrainServer({
+      "/api/train/v1/capabilities": () => ({ body: capabilitiesBody }),
+      "/api/train/v1/runs/run-w1": () => {
+        statusCallCount++;
+        // The first call is from the initial chain verification.
+        // Watch loop polls start at statusCallCount = 2.
+        // We want: fail twice, succeed once, then complete.
+        if (statusCallCount === 2 || statusCallCount === 3) {
+          return { status: 500, body: { error: "internal error" } };
+        }
+        if (statusCallCount === 4) {
+          return { body: { workflow_status: "running" } };
+        }
+        return { body: { workflow_status: "completed" } };
+      },
+    });
+    try {
+      writeRunJson(fixture.planRoot, fixture.planPath, base);
+      const result = await runDoctorAsync([
+        "--plan", fixture.planPath,
+        "--watch", "--interval", "250", "--max-wait", "10",
+      ], {
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TRAIN_API_BASE: base,
+      });
+      assert.equal(result.status, 0, `expected exit 0, got ${result.status}: ${result.stderr}\n${result.stdout}`);
+      const lines = result.stdout.split("\n").filter((l) => l.trim().length > 0);
+      const watchEvents = [];
+      for (const line of lines) {
+        try {
+          const obj = JSON.parse(line);
+          if (obj.event) watchEvents.push(obj);
+        } catch {}
+      }
+      const lostEvents = watchEvents.filter((e) => e.event === "lost_contact");
+      assert.equal(lostEvents.length, 0, "expected NO lost_contact event since counter should reset");
+      const doneEvents = watchEvents.filter((e) => e.event === "done");
+      assert.equal(doneEvents.length, 1);
+      assert.equal(doneEvents[0].workflow_status, "completed");
+    } finally {
+      server.close();
+    }
+  });
+});
