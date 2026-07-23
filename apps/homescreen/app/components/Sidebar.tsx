@@ -5,6 +5,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { SquarePenIcon, UserRoundIcon } from "lucide-react";
 import { TooltipProvider } from "@/app/components/base-ui/tooltip";
 import { NAV_ITEMS, paneToNavId, type NavGroupId, type Scope } from "../lib/nav";
+import { AnalyticsNavTree } from "./sidebar/AnalyticsNavTree";
 import { NavGroup } from "./sidebar/NavGroup";
 import { NavItem } from "./sidebar/NavItem";
 import { TrainingThreadList } from "./sidebar/TrainingThreadList";
@@ -24,6 +25,9 @@ export type PaneId =
   | "api-keys"
   | "usage"
   | "reporting"
+  | "analytics-usage"
+  | "analytics-caching"
+  | "analytics-cost"
   | "billing"
   | "traces"
   | "rlm"
@@ -108,9 +112,12 @@ export function Sidebar({
       .catch(() => {});
   }, [connected]);
 
-  const itemsFor = (group: NavGroupId) =>
+  const itemsFor = (group: NavGroupId, ids?: string[]) =>
     NAV_ITEMS.filter(
-      (item) => item.group === group && (!item.requiresWorkload || scope.workloadId),
+      (item) =>
+        item.group === group &&
+        (!item.requiresWorkload || scope.workloadId) &&
+        (!ids || ids.includes(item.id)),
     ).map((item) => (
       <NavItem
         key={item.id}
@@ -140,7 +147,16 @@ export function Sidebar({
 
         <div className="sidebar-nav">
           <NavGroup group="organization" label={GROUP_LABELS.organization}>
-            {itemsFor("organization")}
+            {itemsFor("organization", ["org-summary"])}
+            {/* Analytics is a collapsible parent with indented metric
+                children (Usage / Caching / Cost) — console-nav parity. */}
+            <AnalyticsNavTree active={active} onSelect={onSelect} />
+            {itemsFor(
+              "organization",
+              NAV_ITEMS.filter(
+                (item) => item.group === "organization" && item.id !== "org-summary",
+              ).map((item) => item.id),
+            )}
           </NavGroup>
 
           <NavGroup group="training" label={GROUP_LABELS.training}>

@@ -11,27 +11,22 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  CalendarIcon,
   CircleAlertIcon,
   CircleCheckIcon,
   CircleMinusIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
-import { Calendar } from "@/app/components/base-ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/app/components/base-ui/popover";
 import "./cedar-summary.css";
 import {
   CedarMetricTile,
   CedarPanel,
+  CedarRangePicker,
   CedarSpendTrend,
   CedarWorkloadCard,
   type CedarHealth,
 } from "./CedarSummary";
+import type { PaneId } from "./Sidebar";
 import { Button } from "@/app/components/base-ui/button";
 import {
   Card,
@@ -58,6 +53,8 @@ import {
   loadOrgSummary,
   routeSummary,
   spendTrendPoints,
+  usageDaySeries,
+  usageTotals,
   type OrgSummary,
   type ReportingSeriesPoint,
   type WorkloadCardData,
@@ -76,8 +73,11 @@ type LoadState =
 
 export function OrgSummaryPane({
   onOpenWorkload,
+  onNavigate,
 }: {
   onOpenWorkload: (projectId: string, workloadId: string) => void;
+  /** Hot-link tiles: spend → Cost, tokens → Usage, cache → Caching, credit → Billing. */
+  onNavigate?: (pane: PaneId) => void;
 }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -148,7 +148,7 @@ export function OrgSummaryPane({
           </Notice>
         )}
         {state.phase === "ready" && (
-          <SummaryView data={state.data} onOpenWorkload={onOpenWorkload} />
+          <SummaryView data={state.data} onOpenWorkload={onOpenWorkload} onNavigate={onNavigate} />
         )}
       </div>
     </>
@@ -158,11 +158,34 @@ export function OrgSummaryPane({
 function SummaryView({
   data,
   onOpenWorkload,
+  onNavigate,
 }: {
   data: Extract<OrgSummary, { ok: true }>;
   onOpenWorkload: (projectId: string, workloadId: string) => void;
+  onNavigate?: (pane: PaneId) => void;
 }): ReactNode {
   const { reporting, balance, cards, metrics, partialErrors } = data;
+
+  // The range chip on the spend panel also scopes the token/cache tiles, so
+  // its state lives here rather than inside the panel.
+  const today = startOfDay(new Date());
+  const [range, setRange] = useState<DateRange>({
+    from: new Date(today.getTime() - 6 * DAY_MS),
+    to: today,
+  });
+
+  const daySeries = useMemo(() => usageDaySeries(data.summaries), [data.summaries]);
+  const rangedUsage = useMemo(() => {
+    const rows = daySeries.filter((row) => {
+      if (!range.from) return true;
+      const at = Date.parse(row.day);
+      const from = startOfDay(range.from).getTime();
+      const to = startOfDay(range.to ?? range.from).getTime() + DAY_MS - 1;
+      return Number.isFinite(at) && at >= from && at <= to;
+    });
+    return rows.length > 0 ? usageTotals(rows) : null;
+  }, [daySeries, range.from, range.to]);
+
   return (
     <div className="grid gap-4">
       {partialErrors.length > 0 && (
@@ -175,16 +198,27 @@ function SummaryView({
           label="7-day spend"
           value={metrics.totalSpendUsd === null ? "—" : formatUSD(metrics.totalSpendUsd)}
           detail="estimated cost from metered traffic"
+          onOpen={onNavigate ? () => onNavigate("analytics-cost") : undefined}
+        />
+        <CedarMetricTile
+          label="token volume"
+          value={rangedUsage ? formatTokens(rangedUsage.inputTokens + rangedUsage.outputTokens) : "—"}
+          detail="input + output over the selected range"
+          onOpen={onNavigate ? () => onNavigate("analytics-usage") : undefined}
+        />
+        <CedarMetricTile
+          label="cache rate"
+          value={
+            rangedUsage?.cacheRatePct != null ? `${rangedUsage.cacheRatePct.toFixed(1)}%` : "—"
+          }
+          detail="prompt input served from cache"
+          onOpen={onNavigate ? () => onNavigate("analytics-caching") : undefined}
         />
         <CedarMetricTile
           label={balance?.billing_mode === "prepaid" ? "available credit" : "current balance"}
           value={balance ? formatUSD(availableBalance(balance)) : "—"}
           detail={balance ? balanceDetail(balance) : "billing data unavailable"}
-        />
-        <CedarMetricTile
-          label="active workloads"
-          value={metrics.activeWorkloads === null ? "—" : String(metrics.activeWorkloads)}
-          detail="served traffic in the last 7 days"
+          onOpen={onNavigate ? () => onNavigate("billing") : undefined}
         />
         <CedarMetricTile
           label="capture enabled"
@@ -194,7 +228,14 @@ function SummaryView({
         />
       </div>
 
-      <SpendCard reporting30={data.reporting30} fallback={reporting} />
+      <SpendCard
+        reporting30={data.reporting30}
+        fallback={reporting}
+        range={range}
+        onRangeChange={setRange}
+        minDate={new Date(today.getTime() - 29 * DAY_MS)}
+        maxDate={today}
+      />
 
       <CedarPanel title="workloads">
         {cards.length === 0 ? (
@@ -245,33 +286,28 @@ function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function rangeLabel(range: DateRange): string {
-  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  if (range.from && range.to) return `${fmt(range.from)} – ${fmt(range.to)}`;
-  if (range.from) return fmt(range.from);
-  return "Pick a range";
-}
-
 /**
- * Spend trend with a dynamic date range. The hosted reporting API only
- * serves fixed 7d/30d windows, so the widest (30d, daily) series loads once
- * and the picker slices it client-side — any span within the last 30 days.
+ * Compact spend trend with a dynamic date range (the deep stacked charts
+ * live in the Usage/Caching/Cost destinations). The hosted reporting API
+ * only serves fixed 7d/30d windows, so the widest (30d, daily) series loads
+ * once and the picker slices it client-side — any span within the last 30
+ * days. Range state is owned by SummaryView (it also scopes the tiles).
  */
 function SpendCard({
   reporting30,
   fallback,
+  range,
+  onRangeChange,
+  minDate,
+  maxDate,
 }: {
   reporting30: { series?: ReportingSeriesPoint[] } | null;
   fallback: { series?: ReportingSeriesPoint[] } | null;
+  range: DateRange;
+  onRangeChange: (next: DateRange) => void;
+  minDate: Date;
+  maxDate: Date;
 }): ReactNode {
-  const today = startOfDay(new Date());
-  const minDate = new Date(today.getTime() - 29 * DAY_MS);
-  const [range, setRange] = useState<DateRange>({
-    from: new Date(today.getTime() - 6 * DAY_MS),
-    to: today,
-  });
-  const [pickerOpen, setPickerOpen] = useState(false);
-
   // The 30d series drives the slice; if that call failed, fall back to the
   // 7d series the metrics already use.
   const rows = reporting30?.series ?? fallback?.series ?? [];
@@ -289,28 +325,13 @@ function SpendCard({
     <CedarPanel
       title="spend"
       action={
-        <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-            <PopoverTrigger asChild>
-              <button type="button" className="sm-range" aria-label="Spend date range">
-                <CalendarIcon aria-hidden="true" size={12} strokeWidth={1.8} />
-                {rangeLabel(range)}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="end">
-              <Calendar
-                mode="range"
-                numberOfMonths={2}
-                selected={range}
-                defaultMonth={range.from}
-                disabled={{ before: minDate, after: today }}
-                onSelect={(next) => {
-                  if (!next) return;
-                  setRange(next);
-                  if (next.from && next.to) setPickerOpen(false);
-                }}
-              />
-            </PopoverContent>
-          </Popover>
+        <CedarRangePicker
+          range={range}
+          onChange={onRangeChange}
+          minDate={minDate}
+          maxDate={maxDate}
+          label="Spend date range"
+        />
       }
     >
       <CedarSpendTrend

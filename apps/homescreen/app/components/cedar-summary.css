@@ -46,6 +46,23 @@
   transition: border-color 0.15s ease;
 }
 .sm-tile:hover { border-color: color-mix(in srgb, var(--text) 22%, transparent); }
+/* Hot-link tiles: entry points into the Usage/Caching/Cost destinations. */
+.sm-tile-link {
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.sm-tile-link:hover {
+  border-color: color-mix(in srgb, var(--mb-mint) 55%, transparent);
+}
+.sm-tile-go {
+  margin-left: 6px;
+  font-size: 10px;
+  color: var(--text-2);
+  transition: color 0.15s ease;
+}
+.sm-tile-link:hover .sm-tile-go { color: var(--mb-mint); }
 .sm-tile-value {
   font-family: var(--mono);
   font-size: 27px;
@@ -83,6 +100,64 @@
   transition: border-color 0.15s ease;
 }
 .sm-range:hover { border-color: color-mix(in srgb, var(--text) 30%, transparent); }
+/* chip-row legend under the stacked charts */
+.sm-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sm-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+.sm-note {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  opacity: 0.75;
+}
+
+/* house tooltip for stacked segments */
+.sm-tip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #000;
+  padding: 8px 10px;
+  min-width: 168px;
+  display: grid;
+  gap: 5px;
+}
+.sm-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #f2f2f0;
+}
+.sm-tip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+.sm-tip-value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.sm-tip-total {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 5px;
+  color: var(--text-2);
+}
+
 .sm-empty {
   padding: 44px 0;
   text-align: center;

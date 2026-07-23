@@ -6,7 +6,15 @@
 // workload cards with dot health. Styles in cedar-summary.css (sm-).
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Bar, BarChart, CartesianGrid, Cell, XAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, XAxis, YAxis } from "recharts";
+import { CalendarIcon } from "lucide-react";
+import type { DateRange } from "react-day-picker";
+import { Calendar } from "@/app/components/base-ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/app/components/base-ui/popover";
 import {
   ChartContainer,
   ChartTooltip,
@@ -43,21 +51,278 @@ export function CedarMetricTile({
   value,
   of,
   detail,
+  onOpen,
 }: {
   label: string;
   value: string;
   of?: string;
   detail: string;
+  /** When set the tile is a hot-link: pointer cursor, mint hairline on hover, ↗. */
+  onOpen?: () => void;
 }) {
-  return (
-    <div className="sm-tile">
-      <span className="sm-cap">{label}</span>
+  const body = (
+    <>
+      <span className="sm-cap">
+        {label}
+        {onOpen ? (
+          <span className="sm-tile-go" aria-hidden="true">
+            ↗
+          </span>
+        ) : null}
+      </span>
       <span className="sm-tile-value">
         {value}
         {of ? <small> / {of}</small> : null}
       </span>
       <span className="sm-tile-detail">{detail}</span>
+    </>
+  );
+  if (!onOpen) return <div className="sm-tile">{body}</div>;
+  return (
+    <button type="button" className="sm-tile sm-tile-link" onClick={onOpen} aria-label={`open ${label}`}>
+      {body}
+    </button>
+  );
+}
+
+// Model palette (design system v2.0), cycled deterministically over the
+// alphabetical rank of a series name within its key set.
+export const CEDAR_PALETTE = ["#9edbd3", "#d97757", "#a78bfa", "#f2b34c", "#67e8f9"] as const;
+
+export function cedarSeriesColors(keys: string[]): Map<string, string> {
+  const ranked = [...keys].sort((a, b) => a.localeCompare(b));
+  return new Map(ranked.map((key, index) => [key, CEDAR_PALETTE[index % CEDAR_PALETTE.length]]));
+}
+
+/** Chip-row legend: colored sm-dot + series name, under the chart. */
+export function CedarLegendChips({
+  items,
+  note,
+}: {
+  items: { name: string; color: string }[];
+  note?: string;
+}) {
+  return (
+    <div className="sm-legend">
+      {items.map((item) => (
+        <span key={item.name} className="sm-chip sm-legend-chip">
+          <i className="sm-dot" style={{ background: item.color }} />
+          {item.name}
+        </span>
+      ))}
+      {note ? <span className="sm-note">{note}</span> : null}
     </div>
+  );
+}
+
+/** House tooltip for stacked bars: each segment + total, mono tabular. */
+function StackTooltip({
+  active,
+  payload,
+  label,
+  format,
+}: {
+  active?: boolean;
+  payload?: { dataKey?: string | number; value?: number | string; color?: string }[];
+  label?: string;
+  format: (value: number) => string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const rows = payload.filter((entry) => Number(entry.value) > 0);
+  const total = rows.reduce((sum, entry) => sum + Number(entry.value ?? 0), 0);
+  return (
+    <div className="sm-tip">
+      <div className="sm-cap">{label}</div>
+      {[...rows].reverse().map((entry) => (
+        <div key={String(entry.dataKey)} className="sm-tip-row">
+          <i className="sm-dot" style={{ background: entry.color }} />
+          <span className="sm-tip-name">{String(entry.dataKey)}</span>
+          <span className="sm-tip-value">{format(Number(entry.value))}</span>
+        </div>
+      ))}
+      {rows.length > 1 ? (
+        <div className="sm-tip-row sm-tip-total">
+          <span className="sm-tip-name">total</span>
+          <span className="sm-tip-value">{format(total)}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const AXIS_TICK = { fill: "rgba(242,242,240,0.45)" };
+const CHART_CLASS =
+  "mt-4 h-[280px] w-full [&_.recharts-cartesian-axis-tick_text]:font-mono [&_.recharts-cartesian-axis-tick_text]:text-[9.5px] [&_.recharts-cartesian-axis-tick_text]:uppercase [&_.recharts-cartesian-axis-tick_text]:tracking-[0.08em]";
+
+/**
+ * Daily bars with stacked per-group segments (the Anthropic-console shape).
+ * `rows` come from org-summary's stack helpers; `keys` order bottom-to-top.
+ * Radius is skipped on stacked bars by design (recharts rounds every
+ * segment, not just the crown).
+ */
+export function CedarStackedBars({
+  rows,
+  keys,
+  format,
+  ariaLabel,
+}: {
+  rows: { day: string; label: string; values: Record<string, number> }[];
+  keys: string[];
+  format: (value: number) => string;
+  ariaLabel: string;
+}) {
+  const reducedMotion = useReducedMotion();
+  if (rows.length === 0 || keys.length === 0) {
+    return <div className="sm-empty">no metered traffic in this range</div>;
+  }
+  const colors = cedarSeriesColors(keys);
+  const data = rows.map((row) => ({ label: row.label, ...row.values }));
+  const chartConfig = Object.fromEntries(
+    keys.map((key) => [key, { label: key, color: colors.get(key)! }]),
+  ) satisfies ChartConfig;
+  return (
+    <ChartContainer config={chartConfig} className={CHART_CLASS} role="img" aria-label={ariaLabel}>
+      <BarChart data={data} margin={{ top: 6, right: 4, bottom: 0, left: 4 }} barCategoryGap="28%">
+        <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+        <XAxis
+          dataKey="label"
+          axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+          tickLine={false}
+          tickMargin={8}
+          tick={AXIS_TICK}
+        />
+        <ChartTooltip
+          cursor={{ fill: "rgba(255,255,255,0.04)" }}
+          isAnimationActive={false}
+          content={<StackTooltip format={format} />}
+        />
+        {keys.map((key) => (
+          <Bar
+            key={key}
+            dataKey={key}
+            stackId="day"
+            maxBarSize={72}
+            fill={colors.get(key)}
+            fillOpacity={0.75}
+            stroke={colors.get(key)}
+            strokeWidth={0.5}
+            isAnimationActive={!reducedMotion}
+            animationDuration={500}
+          />
+        ))}
+      </BarChart>
+    </ChartContainer>
+  );
+}
+
+/** Single mint percent series on a fixed 0-100 axis (cache-read rate). */
+export function CedarRateTrend({
+  rows,
+  ariaLabel,
+}: {
+  rows: { label: string; pct: number | null }[];
+  ariaLabel: string;
+}) {
+  const reducedMotion = useReducedMotion();
+  if (rows.length === 0) {
+    return <div className="sm-empty">no metered traffic in this range</div>;
+  }
+  const chartConfig = { pct: { label: "cache rate", color: MINT } } satisfies ChartConfig;
+  return (
+    <ChartContainer config={chartConfig} className={CHART_CLASS} role="img" aria-label={ariaLabel}>
+      <LineChart data={rows} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
+        <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+        <XAxis
+          dataKey="label"
+          axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
+          tickLine={false}
+          tickMargin={8}
+          tick={AXIS_TICK}
+        />
+        <YAxis
+          domain={[0, 100]}
+          width={34}
+          axisLine={false}
+          tickLine={false}
+          tick={AXIS_TICK}
+          tickFormatter={(value) => `${value}%`}
+        />
+        <ChartTooltip
+          cursor={{ stroke: "rgba(255,255,255,0.12)" }}
+          isAnimationActive={false}
+          content={
+            <ChartTooltipContent
+              className="rounded-lg border-white/10 bg-black font-mono text-[11px] text-[#f2f2f0]"
+              formatter={(value) => (
+                <span className="font-mono tabular-nums">{Number(value).toFixed(1)}%</span>
+              )}
+            />
+          }
+        />
+        <Line
+          dataKey="pct"
+          type="monotone"
+          stroke={MINT}
+          strokeWidth={1.5}
+          dot={false}
+          connectNulls
+          isAnimationActive={!reducedMotion}
+          animationDuration={500}
+        />
+      </LineChart>
+    </ChartContainer>
+  );
+}
+
+/**
+ * Range chip + calendar popover shared by the summary and analytics panes.
+ * The hosted API only serves fixed windows, so callers load the widest (30d)
+ * daily series once and slice it client-side against this range.
+ */
+export function CedarRangePicker({
+  range,
+  onChange,
+  minDate,
+  maxDate,
+  label,
+}: {
+  range: DateRange;
+  onChange: (next: DateRange) => void;
+  minDate: Date;
+  maxDate: Date;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const fmt = (d: Date) => d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const text =
+    range.from && range.to
+      ? `${fmt(range.from)} – ${fmt(range.to)}`
+      : range.from
+        ? fmt(range.from)
+        : "Pick a range";
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className="sm-range" aria-label={label}>
+          <CalendarIcon aria-hidden="true" size={12} strokeWidth={1.8} />
+          {text}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="end">
+        <Calendar
+          mode="range"
+          numberOfMonths={2}
+          selected={range}
+          defaultMonth={range.from}
+          disabled={{ before: minDate, after: maxDate }}
+          onSelect={(next) => {
+            if (!next) return;
+            onChange(next);
+            if (next.from && next.to) setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -8133,6 +8133,48 @@ select,
   display: block;
 }
 
+/* Analytics subtree (Anthropic-console style parent + indented children). */
+.nav-subtree {
+  display: grid;
+  gap: 2px;
+}
+.nav-subtree-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.nav-subtree-chevron:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.nav-subtree-chevron svg {
+  transition: transform 0.15s ease;
+  transform: rotate(-90deg);
+}
+.nav-subtree-chevron.open svg {
+  transform: rotate(0deg);
+}
+.nav-subtree-children {
+  display: grid;
+  gap: 2px;
+}
+.nav-item.nav-subitem {
+  min-height: 27px;
+  padding-left: 32px;
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nav-subtree-chevron svg {
+    transition: none;
+  }
+}
+
 .chat-nav-scroll {
   min-height: 0;
   max-height: 40vh;

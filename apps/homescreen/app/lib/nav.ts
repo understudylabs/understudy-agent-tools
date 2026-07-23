@@ -38,7 +38,11 @@ export type NavItemDef = {
 export const NAV_ITEMS: NavItemDef[] = [
   // Organization
   { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "org-summary" },
-  { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "reporting" },
+  // The flat "Analytics" row (ReportingPane, pane id "reporting") is
+  // superseded by the Analytics subtree the Sidebar renders here — a
+  // collapsible parent with Usage / Caching / Cost children (see
+  // components/sidebar/AnalyticsNavTree.tsx). The old pane id remains
+  // reachable for deep links, like Captures below.
   // The web's project Summary is folded into org Summary on desktop — the
   // panes were near-duplicates (same metrics/trend/workload cards). The
   // project-summary pane itself remains reachable by pane id.

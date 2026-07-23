@@ -58,11 +58,60 @@ export type WorkloadCardData = {
   healthStatus: WorkloadHealth;
 };
 
+/** One row of the admin usage-summary `groups` payload. */
+export type UsageGroupRow = {
+  workload_id?: string | null;
+  workload?: string | null;
+  day?: string | null;
+  requests?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  customer_cost_usd?: number;
+};
+
+export type ProjectUsage = {
+  /** 30d `group_by=workload,day` rows ([] when the call failed). */
+  workloadDay: UsageGroupRow[];
+  /** 30d `group_by=day` rows ([] when the call failed). */
+  byDay: UsageGroupRow[];
+};
+
 export type ProjectSummary = {
   project: Project;
   workloads: Workload[];
   statuses: { workload_id: string; status: "healthy" | "degraded" | "idle" }[];
+  usage: ProjectUsage;
   error: string | null;
+};
+
+export type StackRow = { day: string; values: Record<string, number> };
+export type Stack = { keys: string[]; rows: StackRow[] };
+export type TokenStack = Stack & { dimension: "workload" | "project" };
+
+export type UsageDayRow = {
+  day: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cacheRatePct: number | null;
+};
+
+export type UsageTotals = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cacheRatePct: number | null;
+};
+
+export type CacheLeader = {
+  name: string;
+  cacheReadTokens: number;
+  inputTokens: number;
+  cacheRatePct: number;
 };
 
 export type OrgSummary =
@@ -100,6 +149,23 @@ export function balanceDetail(balance: BillingBalance): string;
 export function formatUSD(usd: number): string;
 export function formatTokens(n: number): string;
 export function formatDay(day: string): string;
+export function workloadNameMap(summaries: { workloads: Workload[] }[]): Map<string, string>;
+export function spendStack(
+  series: ReportingSeriesPoint[] | null | undefined,
+  names: Map<string, string>,
+): Stack;
+export function tokenStack(
+  summaries: { project: Project; usage?: ProjectUsage }[],
+  names: Map<string, string>,
+): TokenStack;
+export function stackTotals(rows: StackRow[]): { byKey: Map<string, number>; total: number };
+export function usageDaySeries(summaries: { usage?: ProjectUsage }[]): UsageDayRow[];
+export function cacheRatePct(cacheReadTokens: number, inputTokens: number): number | null;
+export function usageTotals(rows: UsageDayRow[]): UsageTotals;
+export function cacheLeaders(
+  summaries: { usage?: ProjectUsage }[],
+  names: Map<string, string>,
+): CacheLeader[];
 export function loadOrgSummary(
   adminGet: (path: string) => Promise<any>,
 ): Promise<OrgSummary>;
