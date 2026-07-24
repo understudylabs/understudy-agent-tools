@@ -1,22 +1,25 @@
 ---
 name: optimize-agentic-workload
-description: Use when a developer's agent — a multi-turn tool-calling loop — should get cheaper, faster, or better without retraining. "My agent is too slow", "this workflow costs too much", "test a cheaper model in my tool-calling loop", "A/B the policy model". Covers read-only search loops and state-mutating API workflows alike.
+description: Use when a developer's agent — a multi-turn tool-calling loop — should get cheaper, faster, or better. "My agent is too slow", "this workflow costs too much", "test a cheaper model in my tool-calling loop", "A/B the policy model". Covers read-only search loops and state-mutating API workflows alike.
 metadata:
   understudy:
     mode: interactive
     safety: approval-required
-    cli_required: true
+    cli_required: false
 ---
 
 # Optimize Agentic Workload
 
 Use this worker when the workload is an **agentic loop**: an LLM that plans over
 multiple turns and calls tools (web search, retrieval, REST/SDK calls, code
-execution) before finishing. The model's policy is the variable; the tools are
-held fixed. The goal is to pick the policy model you would ship on a
+execution) before finishing. Freeze every non-target variable within each
+experiment; model/route comparisons hold the tools fixed, while a named
+implementation arm may isolate one deployable tool, app, or harness change. The
+goal is to pick the route and implementation you would ship on a
 **multi-objective** basis — quality and latency and cost (and, for workflows
-that write, side-effect safety) — using only skills and the public CLI, with no
-new product code.
+that write, side-effect safety). The route is backend-agnostic: use the existing
+harness, provider-native evaluation or training, the public CLI, or a small
+versioned app/harness change when the measured failure calls for it.
 
 **The one discriminator that changes the playbook** is whether the loop
 *mutates state*:
@@ -32,14 +35,16 @@ new product code.
   Harness specifics:
   [`references/state-mutating-workflows.md`](references/state-mutating-workflows.md).
 
-Everything else — the artifact contract, the baseline gate, model A/B as the
-primary lever, prompt optimization as the secondary one, and the three-gate RL
-escalation — is shared.
+Everything else — the artifact contract, measured baseline, workload-specific
+decision contract, evidence-driven intervention choice, and stronger RL gates —
+is shared.
 
-This is not the handoff skill. Reach for
+This is not the RL handoff skill. Reach for
 [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md)
-only after model A/B and prompt optimization are exhausted and the evidence
-shows the agent must *learn stateful behavior*.
+only when the evidence shows the residual requires reinforcement learning of
+stateful behavior and its reward and renderer gates pass. Supervised
+fine-tuning or distillation is a separate intervention and can be selected
+earlier when correction labels or deterministic verifier targets support it.
 
 ## Safety Gates
 
@@ -62,7 +67,7 @@ secrets. Do not print or commit `sk_*` values; let
 [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
 inject them into the child process only.
 
-## Resolve CLI
+## Resolve CLI When Using An Understudy Route
 
 Prefer the installed `understudy` binary. If it is unavailable inside a
 checkout:
@@ -79,7 +84,8 @@ Use this skill when **all** of these hold:
 - the workload runs a tool-calling loop, not a single prompt-in/answer-out call;
 - success depends on *how the agent acts* (turn count, which tools, in what
   order, what it writes), not just the final string;
-- the tools are fixed and available to every candidate model;
+- the tool contract can be frozen for model comparisons, and any implementation
+  change can be isolated as its own named arm;
 - the developer wants to compare candidate policy models, or shrink a frontier
   model down to a cheaper one without losing quality.
 
@@ -91,18 +97,23 @@ single-output optimization does not need a tool environment.
 ## Flow
 
 1. **Confirm it is agentic and pick the lens.** Inspect the workload for a
-   multi-turn loop and tool calls. State the fixed tool set and the policy
-   model that varies. Then classify: do any tools **mutate state**? Read-only →
+   multi-turn loop and tool calls. State the fixed tool set and policy model for
+   route comparisons, plus any separately isolated implementation variable.
+   Then classify: do any tools **mutate state**? Read-only →
    [`references/read-only-search.md`](references/read-only-search.md);
    state-mutating →
    [`references/state-mutating-workflows.md`](references/state-mutating-workflows.md).
    If it is single-output, hand back to `capture-evidence`.
 
 2. **Adopt a runnable harness.** Read-only loops use a verifiers environment
-   (`vf.Environment` + `Rubric`; the `vf-eval` command is the harness).
-   State-mutating workflows use the existing benchmark/sandbox runner with a
+   (`vf.Environment` + `Rubric`; the `vf-eval` command is one supported
+   harness) or another replayable provider-native/application runner.
+   State-mutating workflows use an existing benchmark/sandbox runner with a
    deterministic reset (seeded state, fixed API schemas, fixed policy docs,
-   final-state validator). Either way, capture it into the
+   final-state validator). A small deployable app or harness change is allowed
+   when it directly addresses a measured failure; version it and evaluate it as
+   a distinct arm instead of silently changing the comparison. Either way,
+   capture the runnable contract into the
    `.understudy/capture-evidence/` artifact contract — each reference documents
    the env → artifact bridge for its shape.
 
@@ -126,7 +137,10 @@ single-output optimization does not need a tool environment.
    (turn counts, tool/API call counts, timing, token usage) — read those
    instead of inventing a meter. State-mutating workflows add a
    **side-effect-safety** axis (forbidden writes, invalid requests, retries).
-   Record the axes and an acceptable-regression band in `metric.json`.
+   Record the axes, workload-specific acceptable-regression/non-inferiority
+   bands, and any hard constraints in `metric.json`. Contract requirements and
+   safety requirements marked hard by the developer remain zero-tolerance;
+   statistical or multi-objective tradeoffs cannot waive them.
 
 4. **Freeze determinism.** Read-only: live tool calls are non-deterministic, so
    freeze the query set and **snapshot/cache the tool outputs** so the harness
@@ -157,12 +171,16 @@ single-output optimization does not need a tool environment.
    the running environment. Let the attribution pick the **highest-leverage rung
    likely to close the gap**: output-contract repair (prefill / format / parser /
    schema), tool-access or endpoint-catalog repair, model A/B, prompt / GEPA
-   (automatic prompt evolution), distillation, or RL. Use the cheaper rung first
-   only when evidence says it can solve the attributed failure; skip directly to
-   a stronger model or broader intervention when weak iterations would only
-   delay the answer.
+   (automatic prompt evolution), supervised fine-tuning/distillation, or RL.
+   Rank the eligible rungs by expected objective gain, confidence, time, spend,
+   and reversibility; start with the highest expected value rather than a fixed
+   sequence. Use a cheaper rung first only when evidence says it can solve the
+   attributed failure.
 
-7. **PRIMARY intervention — model A/B via the CLI.** This is the main move:
+7. **Candidate intervention — compare models and routes.** When attribution
+   points to model capability or provider/runtime behavior, compare deployable
+   candidates through any backend that can honor the frozen contract. The
+   Understudy CLI is one route:
 
    ```sh
    understudy models list --json
@@ -172,22 +190,29 @@ single-output optimization does not need a tool environment.
    ```
 
    List public model options, route the project workload to a chosen model,
-   then run the frozen harness through the gateway with `understudy run`.
+   then run the frozen harness through the gateway with `understudy run`; a
+   provider-native or existing application runner is equally valid when it
+   preserves the same rows, prompt, tools, metric, seed/reset, and data
+   boundary.
    Compare quality vs latency vs cost (vs side-effect safety) across candidates
-   and pick the model you would ship. For keyless accounts, prefer a
-   managed-catalog sweep on a cleared/no-route workload before traffic-split
-   A/B. Prerequisite for a traffic split: the non-routed passthrough share
-   needs a configured managed provider credential or BYO key so untouched
-   traffic still completes. Clear a route with `--clear`. Routing detail lives in
+   under the decision contract and pick the route you would ship. For keyless
+   accounts, prefer a managed-catalog sweep on a cleared/no-route workload
+   before traffic-split A/B. Prerequisite for a traffic split: the non-routed
+   passthrough share needs a configured managed provider credential or BYO key
+   so untouched traffic still completes. Clear a route with `--clear`. Routing
+   detail lives in
    [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
    For state-mutating workflows, A/B is often simpler: run the same harness
    rows twice with only the model changed (see the reference).
 
-8. **SECONDARY intervention — optimize the cheap model's prompt.** If a cheaper
-   model wins on latency and cost but trails on quality, close the gap with a
-   train/dev-only GEPA pass against the feedback-rich rubric, keeping the
-   latency/cost win. When the workload already lives in a promoted benchmark
-   dir with frozen splits, run the automatic loop directly:
+8. **Candidate intervention — repair prompt, tools, contract, or harness.** When
+   the attributed gap is instructional or structural, test the smallest
+   deployable correction: prompt/GEPA, output parser or schema, tool
+   descriptions/retrieval, retry policy, or a versioned app/harness change.
+   If a cheaper model wins on latency and cost but trails on quality, a
+   train/dev-only GEPA pass against the feedback-rich rubric may close the gap
+   while keeping the latency/cost win. When the workload already lives in a
+   promoted benchmark dir with frozen splits, run the automatic loop directly:
 
    ```sh
    # terminal 1 — the only thing that executes models
@@ -206,10 +231,12 @@ single-output optimization does not need a tool environment.
    loop and budget guidance. **Claim rules** mirror
    [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md): it evolves
    on train, selects the champion on dev, touches the sealed holdout exactly
-   once for the final champion-vs-bare run, and reports a win only when that
-   holdout run's paired 95% CI excludes zero — a `no_win`/`unverified`/
-   `inconclusive` verdict must never be presented as an improvement. For
-   single-output workloads, hand off to
+   once for the final champion-vs-bare run, and reports quality improvement only
+   when that holdout run's paired 95% CI clears the prespecified superiority
+   threshold. A route may still be selected after demonstrated quality
+   non-inferiority or by a prespecified multi-objective rule, but a `no_win`/
+   `unverified`/`inconclusive` superiority verdict must never be presented as an
+   improvement. For single-output workloads, hand off to
    [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) instead;
    never tune on holdout.
 
@@ -226,12 +253,23 @@ single-output optimization does not need a tool environment.
    one run, same scorer, per-arm rows. Operating detail in
    [`../operate-benchmark-lab/SKILL.md`](../operate-benchmark-lab/SKILL.md).
 
-9. **Escalate to RL only as a true handoff, behind three gates.** If model swap
-   and prompt/distillation stall while real headroom remains and the residual
-   is genuinely *stateful* multi-step behavior, route to
+9. **Candidate intervention — supervised fine-tuning or distillation.** Select
+   this early when the failure evidence supplies learnable correction pairs,
+   teacher trajectories, or deterministic verifier labels and a trained
+   candidate can be evaluated in the same end-to-end harness. Do not require
+   model A/B or prompt optimization to fail first. Freeze the dataset lineage,
+   keep holdout sealed, declare provider/data/retention/spend bounds, and compare
+   the trained route against the incumbent under the same hard safety and
+   contract constraints. Treat next-action imitation as diagnostic unless the
+   end-to-end rollout also validates result propagation, recovery, termination,
+   and final state.
+
+10. **Escalate to RL only as a true handoff, behind three gates.** When the
+   residual is genuinely *stateful* multi-step behavior, route to
    [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
    First confirm: (a) the attribution in step 6 shows **cross-turn reasoning**
-   is the residual, not format/argument-value (which are cheaper to fix); (b)
+   is the residual, not format/argument-value (which supervised or deterministic
+   repairs can address); (b)
    the reward is **dense, not strict** — a binary/strict reward can be constant
    within a group, giving zero advantage and no gradient (paid-for, wasted
    steps); and (c) the model has a first-class multi-turn GRPO **trainer and
@@ -248,22 +286,25 @@ must rest on a measured baseline, and any savings statement needs the
 End with:
 
 - whether the workload was confirmed agentic, which lens applied (read-only vs
-  state-mutating), and the fixed tool set named;
+  state-mutating), and the fixed tool set plus any isolated implementation
+  variable named;
 - the harness id/command used (verifiers env or workflow runner);
 - the objective axes (quality / latency / cost / side-effect safety where
-  applicable) and the baseline numbers;
+  applicable), hard constraints, acceptable-regression/non-inferiority bands,
+  and the baseline numbers;
 - whether determinism was frozen (tool snapshot or seeded reset) and the
   holdout stayed clean;
-- the model A/B result and the model you would ship;
+- the interventions considered, the evidence-driven first choice, its result,
+  and the route you would ship;
 - result type: evidence-capture, evaluation, optimization-lead, heldout, or
   handoff;
 - one recommended next command or local action.
 
 ## References
 
-- [`references/read-only-search.md`](references/read-only-search.md) — verifiers
-  ToolEnv harness, tool-output snapshotting, the env → artifact bridge, and the
-  CLI A/B procedure for read-only loops.
+- [`references/read-only-search.md`](references/read-only-search.md) — replayable
+  agent harnesses, tool-output snapshotting, the env → artifact bridge, and
+  backend-agnostic model/route comparison for read-only loops.
 - [`references/state-mutating-workflows.md`](references/state-mutating-workflows.md)
   — resettable sandbox harness, final-state/policy rubric, tool-access
   reporting, failure-mode table, and the GEPA bridge for multi-step rollouts.

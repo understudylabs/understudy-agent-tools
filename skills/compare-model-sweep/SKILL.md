@@ -122,21 +122,43 @@ comparison.
    free-text wording, scorer/rubric errors, labels, and harness/parser failures.
    Scope conclusions to represented coverage strata.
 
-6. **Quantify uncertainty before ranking.** Point estimates on a small N are
-   not a ranking. For each candidate, compute a bootstrap confidence interval
-   over per-task scores: resample the task rows with replacement (≥1,000
-   resamples), recompute the aggregate, take the 2.5/97.5 percentiles. Report
-   N, the CI, and per-task variance in `summary.csv` alongside the pass rate.
-   **Refuse to declare a winner when the top candidates' CIs overlap** — call
-   it a statistical tie and either expand the frozen row set or pick on the
-   secondary axes (cost, latency) while saying quality is tied. This is the
-   Agentic Benchmark Checklist's reporting bar
+6. **Quantify uncertainty against a prespecified decision rule.** Point
+   estimates on a small N are not a ranking. For each candidate, report N,
+   per-task variance, and a bootstrap confidence interval over its aggregate
+   score. When candidates ran on the same rows, make the decision from the
+   paired per-row deltas: bootstrap the row-aligned deltas (≥1,000 resamples)
+   and report their 2.5/97.5 percentiles. Marginal candidate intervals remain
+   descriptive; their overlap or non-overlap is not a hypothesis test of the
+   difference.
+
+   Prespecify the decision that matches the workload:
+
+   - **superiority:** the paired-delta interval clears the superiority threshold;
+   - **non-inferiority:** its lower bound clears the workload's maximum
+     acceptable quality regression;
+   - **equivalence:** the full interval lies inside the prespecified equivalence
+     band;
+   - **multi-objective route decision:** the candidate satisfies every hard
+     contract/safety constraint and maximizes the prespecified utility or
+     lexicographic objective across quality, cost, latency, and reliability.
+
+   If rows are not pairable, state that limitation and use an appropriate
+   independent-sample interval/test or gather paired rows. Never relabel an
+   inconclusive superiority result as quality improvement. A route may still be
+   selected on cost/latency after demonstrated quality non-inferiority, or by a
+   prespecified multi-objective utility rule, with that basis stated explicitly.
+   This follows the Agentic Benchmark Checklist's reporting bar
    ([uiuc-kang-lab/agentic-benchmarks](https://github.com/uiuc-kang-lab/agentic-benchmarks));
    see [`../../docs/benchmark-rigor.md`](../../docs/benchmark-rigor.md).
 
-7. **Compute the frontier.** A candidate is dominated when another candidate has
-   equal or better quality and equal or lower cost and latency, with no worse
-   error rate or safety result. Write `pareto.json` with dominated reasons.
+7. **Compute the decision frontier.** Record workload-specific
+   acceptable-regression/non-inferiority bands and mark developer-specified
+   contract and safety requirements as hard constraints. Exclude candidates
+   that violate a hard constraint. Among eligible candidates, a route is
+   dominated when another has decision-supported equal or better quality and
+   equal or lower cost and latency, with no worse error rate or safety result.
+   Write `pareto.json` with bands, hard-constraint outcomes, decision rule, and
+   dominated reasons.
 
 8. **Report the decision.** Write `report.md` with the top frontier candidates,
    the best route for the agreed objective and constraints, and the next action:
@@ -183,8 +205,9 @@ When the sweep informs a real route decision, also write the report as a
 **decision memo** the developer can paste to their team unedited:
 
 - a results table: candidate, pass rate against the production validator
-  (with its bootstrap CI and N — a "winner" whose CI overlaps the runner-up
-  is reported as a tie),
+  (with its bootstrap CI and N), paired quality delta against the decision
+  baseline with its interval, and the prespecified superiority,
+  non-inferiority, equivalence, or utility verdict,
   total cost, cost per unit of work the business counts (per deal, per ticket,
   per call — not per token), and the cost ratio vs the incumbent;
 - caching basis per row (see step 5) and any other comparability caveats;
