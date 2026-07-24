@@ -38,6 +38,38 @@ test("decision skills enforce the shared evaluation evidence gates", () => {
   }
 });
 
+test("agentic optimization is backend-agnostic and evidence-driven", () => {
+  const skill = read("skills/optimize-agentic-workload/SKILL.md");
+  const references = [
+    "skills/optimize-agentic-workload/references/read-only-search.md",
+    "skills/optimize-agentic-workload/references/state-mutating-workflows.md",
+  ].map(read).join("\n");
+
+  assert.match(skill, /route is backend-agnostic/i);
+  assert.match(skill, /cli_required: false/i);
+  assert.match(skill, /start with the highest expected value rather than a fixed\s+sequence/i);
+  assert.match(skill, /Supervised fine-tuning or distillation/i);
+  assert.match(skill, /Do not require\s+model A\/B or prompt optimization to fail first/i);
+  assert.match(skill, /Contract requirements and\s+safety requirements marked hard.*zero-tolerance/is);
+  assert.doesNotMatch(skill, /using only skills and the public CLI/i);
+  assert.doesNotMatch(skill, /PRIMARY intervention|SECONDARY intervention/);
+
+  assert.match(references, /provider-native/i);
+  assert.match(references, /Supervised fine-tuning or distillation/i);
+  assert.match(references, /compatible first-class multi-turn trainer and renderer/i);
+});
+
+test("model sweeps use paired uncertainty and prespecified decision rules", () => {
+  const skill = read("skills/compare-model-sweep/SKILL.md");
+
+  assert.match(skill, /paired per-row deltas/i);
+  assert.match(skill, /superiority:[\s\S]*non-inferiority:[\s\S]*equivalence:/i);
+  assert.match(skill, /multi-objective route decision/i);
+  assert.match(skill, /Never relabel an\s+inconclusive superiority result as quality improvement/i);
+  assert.match(skill, /contract and safety requirements as hard constraints/i);
+  assert.doesNotMatch(skill, /Refuse to declare a winner when the top candidates' CIs overlap/i);
+});
+
 test("cost audits prioritize concentration and keep value classification human-guided", () => {
   const skill = read("skills/lower-anthropic-bill/SKILL.md");
 
