@@ -43,7 +43,7 @@ import { compileDatasetFoundry, type DatasetFoundryOptions } from "./dataset-fou
 import { inspectPrimeBenchmark } from "./prime-benchmark-import.js";
 import { comparePrimeModels } from "./prime-benchmark-compare.js";
 import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "./prime-benchmark-lifecycle.js";
-import { planPrimeRun } from "./prime-benchmark-runner.js";
+import { planPrimeRun, planProviderAwarePrimeRun, primeExecutionCoverage } from "./prime-benchmark-runner.js";
 import { formatRegradeDelta, regradeRuns } from "./regrade.js";
 
 type Obj = Record<string, unknown>;
@@ -768,6 +768,30 @@ export const BENCHMARKS_TOOLS = [
     },
   },
   {
+    name: "plan_provider_prime_run",
+    description:
+      "Plan an idempotent provider-aware Prime run, resolve provider/deployment policy, normalize sampling, and list only missing tasks. Never executes models.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        execution_config: { type: "string", description: "Absolute path to understudy.prime_execution.v1 config." },
+      },
+      required: ["execution_config"],
+    },
+  },
+  {
+    name: "provider_prime_status",
+    description:
+      "Validate provider-aware native Prime rows and report accepted, rejected, and missing task coverage for safe resume/import.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        execution_config: { type: "string", description: "Absolute path to understudy.prime_execution.v1 config." },
+      },
+      required: ["execution_config"],
+    },
+  },
+  {
     name: "prime_status",
     description:
       "Inspect a reviewed Prime benchmark config and report discovered native trace files, models, tasks, " +
@@ -1104,6 +1128,8 @@ export const BENCHMARKS_TOOLS = [
 export function callBenchmarksTool(name: string, args: Obj): unknown {
   switch (name) {
     case "plan_prime_run": return planPrimeRun(requireString(args, "eval_config"), typeof args.prime_bin === "string" ? args.prime_bin : "prime");
+    case "plan_provider_prime_run": return planProviderAwarePrimeRun(requireString(args, "execution_config"));
+    case "provider_prime_status": return primeExecutionCoverage(requireString(args, "execution_config"));
     case "prime_status": return inspectPrimeBenchmark(requireString(args, "config"));
     case "compare_prime_models": return comparePrimeModels(requireString(args, "dir"), requireString(args, "baseline"), requireString(args, "candidate"));
     case "review_prime_benchmark": return appendPrimeBenchmarkReview(requireString(args, "dir"), {

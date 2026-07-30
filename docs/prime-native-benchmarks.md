@@ -119,6 +119,40 @@ The command responsibilities are intentionally separated:
 - `serve-gallery` supports repeated live review.
 - `review-prime` and `freeze-prime` govern methodology state.
 
+## Provider-aware recurring runs
+
+Use `understudy.prime_execution.v1` for repeatable model arms. It keeps one
+canonical sampling field (`sampling.max_tokens`) while the runner emits the
+provider-correct request field. Current OpenAI GPT/reasoning deployments receive
+`max_completion_tokens`; Anthropic and OpenAI-compatible deployments retain
+`max_tokens`.
+
+```sh
+understudy benchmarks plan-prime-run execution.json
+understudy benchmarks run-prime-workflow execution.json --dry-run \
+  --allow-provider-data-transfer
+understudy benchmarks run-prime-workflow execution.json \
+  --allow-provider-data-transfer
+understudy benchmarks validate-prime-run execution.json
+understudy benchmarks resume-prime execution.json \
+  --allow-provider-data-transfer
+understudy benchmarks import-prime import.json
+understudy benchmarks build-scorecard import.json
+```
+
+The execution identity is immutable across benchmark version, environment hash,
+Prime verifier version, model, run, and task. Resume runs only missing or invalid
+tasks. Provider and deployment must be resolved in advance and included in the
+approved allowlist; required ZDR must be explicitly confirmed.
+
+Every provider attempt writes to a private staging directory. Only rows with
+`is_completed=true`, `stop_condition=agent_completed`, no errors, the pinned
+verifier, matching task/model identity, native nodes and calls, usage and timing,
+outcome contract, reward, and partial credit enter `source_dir`. Failed or
+incomplete attempts move append-only to `rejected_dir` with provider/request
+metadata. A nonempty `traces.jsonl` is therefore never treated as completion.
+Only 429/503-style transient failures receive exponential backoff.
+
 ## Production replication contract
 
 Production storage should preserve the same split:

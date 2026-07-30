@@ -9,7 +9,14 @@ import { importPrimeBenchmark, inspectPrimeBenchmark } from "../dist/prime-bench
 import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "../dist/prime-benchmark-lifecycle.js";
 import { comparePrimeModels } from "../dist/prime-benchmark-compare.js";
 import { discoverPrimeScorecards, renderScorecardGallery } from "../dist/prime-scorecard-server.js";
-import { planPrimeRun, runPrimeEvaluation, watchPrimeBenchmark } from "../dist/prime-benchmark-runner.js";
+import {
+  normalizePrimeSampling,
+  planPrimeRun,
+  primeExecutionCoverage,
+  renderProviderAwarePrimeConfig,
+  runPrimeEvaluation,
+  watchPrimeBenchmark,
+} from "../dist/prime-benchmark-runner.js";
 
 function syntheticTrace(model, score = 1) {
   return {
@@ -212,4 +219,93 @@ test("plans native Prime runs, gates provider transfer, and watches an already-r
   const ready = await watchPrimeBenchmark(importConfig, { intervalMs: 100, timeoutMs: 500, onSnapshot: (value) => snapshots.push(value) });
   assert.equal(ready.ready_to_import, true);
   assert.equal(snapshots.length, 1);
+});
+
+test("normalizes canonical max_tokens for current OpenAI GPT models only", () => {
+  assert.deepEqual(
+    normalizePrimeSampling({ max_tokens: 8192, temperature: 0.2 }, "openai", "gpt-5.5"),
+    { max_completion_tokens: 8192, temperature: 0.2 },
+  );
+  assert.deepEqual(
+    normalizePrimeSampling({ max_tokens: 8192 }, "anthropic", "claude-sonnet-5"),
+    { max_tokens: 8192 },
+  );
+  assert.deepEqual(
+    normalizePrimeSampling({ max_tokens: 8192 }, "openai-compatible", "glm-5.2"),
+    { max_tokens: 8192 },
+  );
+  const rendered = renderProviderAwarePrimeConfig(
+    'model = "gpt-5.5"\nnum_tasks = 1\nmax_concurrent = 1\noutput_dir = "old"\n[taskset]\ntask_ids = ["task-old"]\n[sampling]\nmax_tokens = 4096\ntemperature = 1\n',
+    { max_completion_tokens: 8192 },
+    ["task-new"],
+    8,
+    "/private/staging/attempt",
+  );
+  assert.match(rendered, /\[sampling\]\nmax_completion_tokens = 8192/);
+  assert.doesNotMatch(rendered, /^max_tokens\s*=/m);
+  assert.match(rendered, /^max_concurrent = 8$/m);
+  assert.match(rendered, /^output_dir = "\/private\/staging\/attempt"$/m);
+  assert.match(rendered, /"task-new"/);
+});
+
+test("a nonempty all-error traces.jsonl is rejected and remains resumable", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-prime-all-error-"));
+  const source = join(root, "source", "gpt-5.5", "failed-attempt");
+  mkdirSync(source, { recursive: true });
+  const errored = syntheticTrace("gpt-5.5");
+  errored.is_completed = true;
+  errored.stop_condition = "error";
+  errored.errors = [{ message: "Unsupported parameter: max_tokens. Use max_completion_tokens instead." }];
+  errored.nodes = [];
+  errored.calls = [{ error: { status: 400, message: "Unsupported parameter: max_tokens" } }];
+  delete errored.rewards;
+  delete errored.metrics;
+  writeFileSync(join(source, "traces.jsonl"), `${JSON.stringify(errored)}\n`);
+  const importPath = join(root, "import.json");
+  writeFileSync(importPath, JSON.stringify({
+    tasks: { "task-synthetic-1": { label: "Task", category_id: "provider-contract" } },
+  }));
+  writeFileSync(join(root, "eval.toml"), [
+    'model = "gpt-5.5"',
+    "num_tasks = 1",
+    "max_concurrent = 1",
+    'output_dir = "old"',
+    "[taskset]",
+    'task_ids = ["task-synthetic-1"]',
+    "[sampling]",
+    "max_tokens = 8192",
+    "",
+  ].join("\n"));
+  const executionPath = join(root, "execution.json");
+  writeFileSync(executionPath, JSON.stringify({
+    schema_version: "understudy.prime_execution.v1",
+    eval_config: "eval.toml",
+    import_config: "import.json",
+    source_dir: "source",
+    rejected_dir: "rejected-runs",
+    identity: {
+      benchmark_version: "cedar-v1",
+      environment_sha256: "abc123",
+      verifier_version: "0.2.1",
+      model: "gpt-5.5",
+      run_id: "gpt-5.5-cedar-v1",
+    },
+    provider_policy: {
+      provider: "openai",
+      deployment: "openai:gpt-5.5",
+      allowed_providers: ["openai"],
+      zdr_required: true,
+      zdr_confirmed: true,
+    },
+    sampling: { max_tokens: 8192 },
+  }));
+  const coverage = primeExecutionCoverage(executionPath);
+  assert.equal(coverage.accepted, 0);
+  assert.equal(coverage.rejected, 1);
+  assert.equal(coverage.missing, 1);
+  assert.equal(coverage.complete, false);
+  assert.deepEqual(coverage.missing_task_ids, ["task-synthetic-1"]);
+  assert.ok(coverage.rejected_rows[0].reasons.includes("stop_condition_not_agent_completed"));
+  assert.ok(coverage.rejected_rows[0].reasons.includes("provider_call_error"));
+  assert.ok(coverage.rejected_rows[0].reasons.includes("missing_final_reward"));
 });

@@ -103,6 +103,53 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("plan-prime-run <execution-config>")
+    .description("Plan an idempotent provider-aware Prime run and list only missing/invalid tasks")
+    .action(async (config: string) => {
+      const { planProviderAwarePrimeRun } = await import("../prime-benchmark-runner.js");
+      console.log(JSON.stringify(planProviderAwarePrimeRun(config), null, 2));
+    });
+
+  benchmarks
+    .command("run-prime-workflow <execution-config>")
+    .description("Run missing Prime tasks through a provider policy, quarantine invalid attempts, and publish accepted rows")
+    .requiredOption("--allow-provider-data-transfer", "Confirm private benchmark prompts may be sent to the approved provider")
+    .option("--prime-bin <path>", "Prime CLI executable", "prime")
+    .option("--dry-run", "Plan and validate without provider execution")
+    .action(async (
+      config: string,
+      options: { allowProviderDataTransfer: boolean; primeBin: string; dryRun?: boolean },
+    ) => {
+      const { runProviderAwarePrimeEvaluation } = await import("../prime-benchmark-runner.js");
+      console.log(JSON.stringify(runProviderAwarePrimeEvaluation(config, options), null, 2));
+    });
+
+  benchmarks
+    .command("validate-prime-run <execution-config>")
+    .alias("status-prime-run")
+    .description("Validate native rows and report accepted, rejected, and missing task coverage")
+    .action(async (config: string) => {
+      const { primeExecutionCoverage } = await import("../prime-benchmark-runner.js");
+      const coverage = primeExecutionCoverage(config);
+      console.log(JSON.stringify(coverage, null, 2));
+      if (!coverage.complete) process.exitCode = 1;
+    });
+
+  benchmarks
+    .command("resume-prime <execution-config>")
+    .description("Resume only missing/invalid tasks using the immutable provider-aware execution identity")
+    .requiredOption("--allow-provider-data-transfer", "Confirm private benchmark prompts may be sent to the approved provider")
+    .option("--prime-bin <path>", "Prime CLI executable", "prime")
+    .option("--dry-run", "Plan the resume without provider execution")
+    .action(async (
+      config: string,
+      options: { allowProviderDataTransfer: boolean; primeBin: string; dryRun?: boolean },
+    ) => {
+      const { runProviderAwarePrimeEvaluation } = await import("../prime-benchmark-runner.js");
+      console.log(JSON.stringify(runProviderAwarePrimeEvaluation(config, options), null, 2));
+    });
+
+  benchmarks
     .command("watch-prime <config>")
     .description("Watch native Prime trace files until the reviewed import corpus is complete and error-free")
     .option("--interval-ms <n>", "Polling interval in milliseconds", "1000")
