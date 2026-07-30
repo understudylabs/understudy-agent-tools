@@ -58,7 +58,8 @@ export { DATASET_FOUNDRY_SCHEMA } from "./benchmark-artifacts.js";
 export const DATASET_CURATION_SCHEMA = "understudy.dataset_curation.v1";
 
 /** Verifiers commit the generated environment pins (same as the trace foundry). */
-const AUDITED_VERIFIERS_COMMIT = "cb9c84969186f8a0954b1027320f225e6b6b0afb";
+// Prime Intellect verifiers 0.2.1 stable release provenance commit.
+const AUDITED_VERIFIERS_COMMIT = "ab65b6e8d34b03d162408d4bcb854430a86809e6";
 
 /* ------------------------------------------------------------------ */
 /* Normalization (the und-289 dedupe key)                              */

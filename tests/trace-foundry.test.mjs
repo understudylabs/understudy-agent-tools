@@ -14,7 +14,7 @@ const capture = (id, ts, messages, response) => ({
   response_body: JSON.stringify(response), status_code: 200,
 });
 
-test("builds a fresh generic DAG, benchmark, lazy viewer, and raw/parsed inspector", () => {
+test("builds a fresh generic DAG, self-contained viewer, and raw/parsed inspector", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-"));
   const source = join(root, ".understudy", "captures"), output = join(root, ".understudy", "benchmarks", "latest");
   mkdirSync(source, { recursive: true });
@@ -31,6 +31,20 @@ test("builds a fresh generic DAG, benchmark, lazy viewer, and raw/parsed inspect
   assert.match(tasks, /semantic_outcome_not_exact_trajectory/); assert.doesNotMatch(tasks, /Example Customer/);
   const viewer = readFileSync(join(output, "viewer", "index.html"), "utf8");
   assert.match(viewer, /benchmark orchard/); assert.match(viewer, /Parsed JSON/); assert.match(viewer, />Raw</); assert.doesNotMatch(viewer, /data\/captures\/round-1.json/);
+  assert.match(viewer, /capture\?\.data/);
+  assert.match(viewer, /"capture_id":"round-1"/, "file:// viewer embeds its capture data");
+  const normalizedRows = readFileSync(join(output, "normalized-captures.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.match(viewer, new RegExp(`"${normalizedRows[0].capture_key}":\\{"path"`), "capture map is keyed by DAG capture_key");
+  const viewerScript = viewer.slice(viewer.indexOf("<script>") + 8, viewer.lastIndexOf("</script>"));
+  assert.doesNotThrow(() => new Function(viewerScript), "generated viewer script parses");
+  const tasksetModule = readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8");
+  const environmentModule = readFileSync(join(output, "environment", "understudy_trace_env", "environment.py"), "utf8");
+  const packageModule = readFileSync(join(output, "environment", "understudy_trace_env", "__init__.py"), "utf8");
+  assert.match(tasksetModule, /__all__ = \["TraceTaskset"\]/);
+  assert.match(tasksetModule, /id: str = "understudy_trace_env"/);
+  assert.match(environmentModule, /vf\.Environment\(config\)/);
+  assert.match(environmentModule, /values\["harness"\] = \{"id": "null"\}/);
+  assert.match(packageModule, /__all__ = \["TraceTaskset"\]/);
   const captures = readdirSync(join(output, "viewer", "data", "captures"));
   assert.ok(captures.every((name) => /^[a-f0-9]{40}\.json$/.test(name)));
   const first = captures.map((name) => JSON.parse(readFileSync(join(output, "viewer", "data", "captures", name), "utf8"))).find((row) => row.capture_id === "round-1");
@@ -63,7 +77,7 @@ test("scopes workloads, preserves upstream requests, emits a resumable v1 enviro
   const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "automation", batchSize: 10 });
   assert.equal(result.counts.captures, 1); assert.ok(existsSync(join(output, "capture-ledger.jsonl"))); assert.ok(existsSync(join(output, "goal-state.json")));
   const normalized = JSON.parse(readFileSync(join(output, "normalized-captures.jsonl"), "utf8")); assert.equal(normalized.upstream_request.model, "upstream"); assert.notEqual(normalized.capture_key, normalized.capture_id);
-  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")); assert.equal(benchmark.schema_version, "understudy.benchmark_proposal.v1"); assert.equal(benchmark.executable, false); assert.equal(benchmark.status, "machine_compiled_review_pending"); assert.equal(benchmark.environment.format, "verifiers.v1"); assert.equal(benchmark.environment.verifiers_version_pin, "cb9c84969186f8a0954b1027320f225e6b6b0afb");
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")); assert.equal(benchmark.schema_version, "understudy.benchmark_proposal.v1"); assert.equal(benchmark.executable, false); assert.equal(benchmark.status, "machine_compiled_review_pending"); assert.equal(benchmark.environment.format, "verifiers.v1"); assert.equal(benchmark.environment.verifiers_version_pin, "ab65b6e8d34b03d162408d4bcb854430a86809e6");
   const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8")); assert.equal(validation.tasks[0].oracle.score, 1); assert.ok(validation.tasks[0].sentinels.noop.score < 1);
   assert.match(readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8"), /verifiers\.v1/);
   assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /capability_fit/); assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /upstream_request/);
