@@ -68,7 +68,7 @@ export function registerBenchmarksCommand(program: Command): void {
   benchmarks
     .command("import-prime <config>")
     .description(
-      "Compile completed Prime Verifiers traces into an anonymized understudy.benchmark.v1 package for Benchmark Hub",
+      "Compile completed Prime Verifiers traces into an anonymized understudy.benchmark.v1 registry package",
     )
     .action(async (config: string) => {
       const { importPrimeBenchmark } = await import("../prime-benchmark-import.js");
