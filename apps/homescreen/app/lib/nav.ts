@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   BarChart3,
   Beaker,
   Boxes,
@@ -47,6 +48,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   // The web's project-scoped Analytics (`/p/[project_slug]` reporting view),
   // presented as the per-workload breakdown.
   { id: "org-project-analytics", group: "organization", label: "Workloads", icon: BarChart3, pane: "project-reporting" },
+  { id: "org-production-health", group: "organization", label: "Production health", icon: Activity, pane: "production-monitor" },
   // The Configuration row is folded into the Workloads pane — each workload
   // card expands into its route/capture controls (WorkloadConfigInline). The
   // "workload-config" pane id + WorkloadConfigPane remain reachable for deep
