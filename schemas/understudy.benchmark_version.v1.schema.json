@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.benchmark_version.v1.schema.json",
+  "title": "understudy.benchmark_version.v1",
+  "description": "One line of the versions.jsonl sidecar next to a benchmark.json manifest (append-only, newest last). Promotes the viewer convention (created_at / splits_sha256 / contamination / note lines) into the documented schema family, additively extended with a benchmark-level semantic version and per-task bump records that drive the rerun/regrade/reuse contract: a task's env change => major => rerun, verifier change => minor => regrade, meta change => patch => reuse. Producers may add extra fields; consumers must ignore fields they do not understand. References only — never inline gold, prompts, or secrets.",
+  "type": "object",
+  "required": ["created_at"],
+  "additionalProperties": true,
+  "properties": {
+    "created_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp of when this version line was appended."
+    },
+    "version": {
+      "type": ["string", "null"],
+      "description": "Benchmark-level semantic version (MAJOR.MINOR.PATCH) in force as of this line — the max bump across task_bumps since the previous line."
+    },
+    "splits_sha256": {
+      "type": ["string", "null"],
+      "description": "sha256 of the frozen split contract at this version (matches manifest splits.splits_sha256)."
+    },
+    "contamination": {
+      "enum": ["clean", "contaminated", "unknown", null],
+      "description": "Contamination verdict at this version, same enum as manifest splits.contamination."
+    },
+    "note": {
+      "type": ["string", "null"],
+      "description": "Human-readable note for this version line."
+    },
+    "task_bumps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "bump"],
+        "additionalProperties": true,
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "from": {
+            "type": ["string", "null"],
+            "description": "Task semver before the change; null when the task is new."
+          },
+          "to": {
+            "type": ["string", "null"],
+            "description": "Task semver after the change; null when the task was removed."
+          },
+          "bump": {
+            "enum": ["major", "minor", "patch"],
+            "description": "major = env group changed (rerun), minor = verifier group changed (regrade), patch = meta only (reuse)."
+          },
+          "reason": {
+            "type": ["string", "null"],
+            "description": "Which field group(s) or lifecycle event (added/removed) caused the bump."
+          }
+        }
+      },
+      "description": "Per-task version changes recorded in this line. Absent/empty for legacy split-freeze-only lines."
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id"],
+        "additionalProperties": true,
+        "properties": {
+          "task_id": { "type": "string", "minLength": 1 },
+          "version": {
+            "type": ["string", "null"],
+            "description": "The task's semantic version as of this line."
+          },
+          "content_hashes": {
+            "type": ["object", "null"],
+            "properties": {
+              "env_sha256": { "type": ["string", "null"] },
+              "verifier_sha256": { "type": ["string", "null"] },
+              "meta_sha256": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true,
+            "description": "The task's stamped content hashes as of this line; null when the task was unstamped."
+          }
+        }
+      },
+      "description": "Additive, optional: per-task version/hash snapshot as of this entry, enabling `benchmarks upgrade --against-version` to diff against the ledger itself without the archived manifest. Absent on legacy lines (which still require the archived manifest)."
+    }
+  }
+}

@@ -189,6 +189,23 @@ have no promoted manifest yet. Viewers (e.g. `apps/benchmark-hub`) render
 the latest decision everywhere the task appears and count review progress
 from it.
 
+## `understudy.benchmark_version.v1`
+
+[`understudy.benchmark_version.v1.schema.json`](understudy.benchmark_version.v1.schema.json)
+is one line of the `versions.jsonl` sidecar next to a promoted benchmark's
+`benchmark.json` — the append-only version-history ledger (newest last)
+behind the rerun/regrade/reuse contract. Required: `created_at`. Optional:
+`version` (benchmark-level semver in force as of the line), `splits_sha256`,
+`contamination` (`clean`/`contaminated`/`unknown`/null), `note`, and
+`task_bumps[]` recording per-task `{task_id, bump (major|minor|patch), from,
+to, reason}` — env changes bump MAJOR (rerun), verifier changes MINOR
+(regrade), meta changes PATCH (reuse). Legacy split-freeze-only lines (no
+`version`/`task_bumps`) stay valid; consumers ignore unknown fields.
+Producers: first promote stamps the initial line (`src/trace-foundry.ts`);
+`understudy benchmarks upgrade` appends one line per version bump
+(`src/benchmark-upgrade.ts`). Consumers: the hub's leaderboard staleness
+(`src/benchmark-staleness.ts`) and the rigor CI contamination check.
+
 ## `understudy.benchmark_flag.v1`
 
 [`understudy.benchmark_flag.v1.schema.json`](understudy.benchmark_flag.v1.schema.json)

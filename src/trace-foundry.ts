@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statS
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
-import { validateBenchmarkManifest } from "./benchmark.js";
+import { bumpVersion, classifyTaskChange, computeTaskContentHashes, validateBenchmarkManifest } from "./benchmark.js";
 import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 import { buildRejectionGuidance, loadGuidanceFile } from "./rejection-guidance.js";
 
@@ -32,6 +32,8 @@ export type FoundryResult = {
   leakage_audit?: Record<string, unknown>;
   /** Candidate/scorer surface split (additive): fixtures.json = pre-state only; expected post-state lives in environment/gold.json. */
   fixtures_split?: Record<string, unknown>;
+  /** Born-versioned tasks (additive): bumps applied this compile against the prior tasks.jsonl. */
+  versioning?: { bumps: TaskVersionBump[] };
 };
 
 export type TraceFoundryOptions = {
@@ -1679,7 +1681,7 @@ export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceCo
 }
 
 export type ManifestOptions = {
-  schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[];
+  schemaVersion: string; benchmarkId: string; name: string; description: string; createdAt: string; sourceRefs: string[]; packageSha256: string | null; auditedCommit: string; heldoutNovel: boolean; status: string; executable: boolean; promotionBlockers: string[]; version?: string;
   /** Additive: provenance origin (default "derived-from-traces"; the dataset foundry passes "derived-from-dataset"). */
   origin?: string;
   /** Additive: per-task genesis (default "replayed"; dataset rows are "imported"). */
@@ -1692,7 +1694,7 @@ export type ManifestOptions = {
 export function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
   const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
   const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
-  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: options.origin ?? "derived-from-traces", source_refs: options.sourceRefs }, incumbent: manifestIncumbent(tasks), taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: options.genesis ?? "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit, incumbent: task.incumbent ?? null })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: options.splitsBoundary ?? "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
+  return { schema_version: options.schemaVersion, benchmark_id: options.benchmarkId, version: options.version ?? "1.0.0", name: options.name, description: options.description, created_at: options.createdAt, provenance: { origin: options.origin ?? "derived-from-traces", source_refs: options.sourceRefs }, incumbent: manifestIncumbent(tasks), taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: options.genesis ?? "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && options.heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit, incumbent: task.incumbent ?? null, ...(typeof task.version === "string" ? { version: task.version } : {}), ...(task.content_hashes ? { content_hashes: task.content_hashes } : {}) })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: options.packageSha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: options.auditedCommit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: options.splitsBoundary ?? "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: options.heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: options.status, executable: options.executable, promotion_blockers: options.promotionBlockers };
 }
 
 const ACCEPTING_DECISIONS = ["accept", "restrict"];
@@ -1709,8 +1711,31 @@ const REVIEW_DECISION_VALUES: readonly string[] = REVIEW_DECISIONS;
  * promotion-record.json. Only then is the executable understudy.benchmark.v1
  * written — and it must validate against validateBenchmarkManifest.
  */
-export function promoteTraceBenchmark(outputInput: string, options: { waiveDagReason?: string; promotedBy?: string; now?: Date } = {}): Obj {
+export function promoteTraceBenchmark(
+  outputInput: string,
+  options: {
+    waiveDagReason?: string;
+    promotedBy?: string;
+    now?: Date;
+    /**
+     * Pre-promote rigor gate result, computed by the caller with
+     * runRigorCiChecks (rigor-report.js) — computed upstream so trace-foundry
+     * never imports the rigor module (run-executor already imports this file).
+     * Hard failures refuse promotion unless overrideReason is given; either
+     * way the gate outcome is recorded in promotion-record.json.
+     */
+    rigorGate?: { failures: string[]; unknowns: string[]; overrideReason?: string };
+  } = {},
+): Obj {
   const output = resolve(outputInput), now = options.now ?? new Date();
+  // Gate 0 — pre-promote rigor CI checks (when the caller ran them).
+  const rigorGate = options.rigorGate;
+  if (rigorGate !== undefined && rigorGate.failures.length > 0 && !rigorGate.overrideReason) {
+    throw new Error(
+      `Pre-promote rigor gate FAILED (${rigorGate.failures.join(", ")}); refusing to promote. ` +
+        "Fix the benchmark artifacts, or re-run with --override-rigor <reason> to promote anyway with the override recorded in promotion-record.json.",
+    );
+  }
   const tasks = readJsonl(join(output, "tasks.jsonl"));
   if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${output}; run build-benchmark first.`);
   // Newest decision per task wins; hub reviews.jsonl supersedes import-reviews output.
@@ -1767,6 +1792,7 @@ export function promoteTraceBenchmark(outputInput: string, options: { waiveDagRe
     status: "promoted",
     executable: true,
     promotionBlockers: [],
+    version: typeof proposal.version === "string" ? proposal.version : "1.0.0",
   });
   const errors = validateBenchmarkManifest(benchmark);
   if (errors.length > 0) throw new Error(`Promoted benchmark manifest is invalid; refusing to write benchmark.json:\n${errors.join("\n")}`);
@@ -1788,10 +1814,22 @@ export function promoteTraceBenchmark(outputInput: string, options: { waiveDagRe
       source_dag_invalid: waivers.length > 0 ? "waived with recorded evidence" : "no issues",
     },
     waivers,
+    // Honest record of the pre-promote rigor gate: failures/unknowns as
+    // measured, plus the override reason when a human forced promotion past
+    // hard failures. "not_run" means the caller skipped the gate entirely.
+    rigor_gate:
+      rigorGate === undefined
+        ? { status: "not_run" }
+        : rigorGate.failures.length > 0
+          ? { status: "overridden", failures: rigorGate.failures, unknowns: rigorGate.unknowns, override_reason: rigorGate.overrideReason }
+          : { status: "passed", failures: [], unknowns: rigorGate.unknowns },
   };
   writeJson(join(output, "promotion-record.json"), record);
   writeJson(proposalPath, benchmark);
-  return { schema_version: "understudy.promotion_result.v1", benchmark_id: benchmark.benchmark_id, promoted: accepted.length, excluded: excluded.length, total: tasks.length, waivers: waivers.length, benchmark: proposalPath, promotion_record: join(output, "promotion-record.json") };
+  // Initial versions.jsonl entry (understudy.benchmark_version.v1) — stamped
+  // exactly once, at first promote; later entries are appended by upgrades.
+  const versionsStamped = stampInitialVersionsLog(output, benchmark, now);
+  return { schema_version: "understudy.promotion_result.v1", benchmark_id: benchmark.benchmark_id, promoted: accepted.length, excluded: excluded.length, total: tasks.length, waivers: waivers.length, benchmark: proposalPath, promotion_record: join(output, "promotion-record.json"), versions_log: join(output, "versions.jsonl"), versions_log_initialized: versionsStamped };
 }
 
 export function importTraceReviews(outputInput: string, reviewsInput: string): Obj {
@@ -1986,6 +2024,84 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   return writeFoundryArtifacts({ source, output, files, cutoff, maxAgeDays, now, options, rows, dag, tasks, staleFiltered: all.length - fresh.length, filteredReasons });
 }
 
+/* ------------------------------------------------------------------------- *
+ * Born-versioned tasks: every generated/authored/regenerated task carries
+ * `version` (semver) + `content_hashes` (env/verifier/meta sha256 — the
+ * rerun/regrade/reuse contract from src/benchmark.ts). Foundry bookkeeping
+ * fields (diagnostics that churn without content change) are excluded from
+ * hashing entirely; `outcome_contract`/claims/sentinels are the verifier
+ * group (regrade), `authored` provenance is meta (reuse), everything else —
+ * prompt sources, tool surface/definitions, world model, environment_ref —
+ * is env (rerun).
+ * ------------------------------------------------------------------------- */
+
+const FOUNDRY_BOOKKEEPING_FIELDS = ["version_history", "self_check", "task_hash", "status", "machine_confidence", "close_call", "capability_fit", "review"];
+
+export const FOUNDRY_HASH_OPTS = { verifierFields: ["outcome_contract", "sentinels", "claims"], metaFields: ["authored"] };
+
+function hashableTask(task: Obj): Obj {
+  const copy: Obj = { ...task };
+  for (const field of FOUNDRY_BOOKKEEPING_FIELDS) delete copy[field];
+  return copy;
+}
+
+export type TaskVersionBump = { task_id: string; bump: "major" | "minor" | "patch"; from: string; to: string; reason: string };
+
+/**
+ * Stamp `version` + `content_hashes` on a task. With no prior (or an
+ * unversioned prior) the task is born at 1.0.0. With a versioned prior the
+ * change is classified (env => major, verifier => minor, meta => patch) and
+ * the bump recorded on the task's `version_history` (the versions.jsonl
+ * task_bumps line shape). Returns the bump, or null when nothing changed.
+ */
+export function stampTaskVersion(task: Obj, prior: Obj | null | undefined, now: Date = new Date()): TaskVersionBump | null {
+  const hashes = computeTaskContentHashes(hashableTask(task), FOUNDRY_HASH_OPTS);
+  const priorVersion = typeof prior?.version === "string" ? prior.version : null;
+  const history = Array.isArray(prior?.version_history) ? [...prior!.version_history] : [];
+  task.content_hashes = hashes;
+  if (!prior || priorVersion === null || typeof asObject(prior.content_hashes).env_sha256 !== "string") {
+    task.version = "1.0.0";
+    task.version_history = history;
+    return null;
+  }
+  const { bump, changed } = classifyTaskChange(hashableTask(prior), hashableTask(task), FOUNDRY_HASH_OPTS);
+  if (bump === "none") {
+    task.version = priorVersion;
+    task.version_history = history;
+    return null;
+  }
+  const to = bumpVersion(priorVersion, bump);
+  const reason = `content change in ${changed.join("+")}`;
+  task.version = to;
+  task.version_history = [...history, { task_id: String(task.task_id), at: now.toISOString(), bump, from: priorVersion, to, reason }];
+  return { task_id: String(task.task_id), bump, from: priorVersion, to, reason };
+}
+
+/** Stamp every task against its prior (matched by task_id); returns the bumps. */
+export function stampTaskVersions(tasks: Obj[], priorTasks: Obj[] = [], now: Date = new Date()): TaskVersionBump[] {
+  const byId = new Map(priorTasks.map((task) => [String(task.task_id), task]));
+  return tasks.map((task) => stampTaskVersion(task, byId.get(String(task.task_id)) ?? null, now)).filter((bump): bump is TaskVersionBump => bump !== null);
+}
+
+/** Benchmark-level bump = max bump across tasks (major > minor > patch). */
+export function maxBump(bumps: { bump: string }[]): "major" | "minor" | "patch" | "none" {
+  const order = ["none", "patch", "minor", "major"];
+  return bumps.reduce<"major" | "minor" | "patch" | "none">((acc, row) => (order.indexOf(row.bump) > order.indexOf(acc) ? (row.bump as "major" | "minor" | "patch") : acc), "none");
+}
+
+/**
+ * Initial versions.jsonl entry (understudy.benchmark_version.v1 lines) at
+ * promote time — only when the sidecar is absent; the ledger is append-only.
+ */
+export function stampInitialVersionsLog(output: string, benchmark: Obj, now: Date): boolean {
+  const path = join(output, "versions.jsonl");
+  if (existsSync(path)) return false;
+  const splits = asObject(benchmark.splits);
+  appendJsonl(path, [{ schema_version: "understudy.benchmark_version.v1", created_at: now.toISOString(), version: typeof benchmark.version === "string" ? benchmark.version : "1.0.0", splits_sha256: splits.splits_sha256 ?? null, contamination: splits.contamination ?? null, note: "initial promoted version", task_bumps: [] }]);
+  return true;
+}
+
+
 function writeFoundryArtifacts(ctx: { source: string; output: string; files: string[]; cutoff: Date; maxAgeDays: number; now: Date; options: TraceFoundryOptions; rows: Obj[]; dag: Obj; tasks: Obj[]; staleFiltered: number; filteredReasons: { missing_timestamp: number; malformed_timestamp: number } }): FoundryResult {
   const { source, output, files, cutoff, now, options, rows, dag, tasks, staleFiltered, filteredReasons } = ctx;
   const notNormalizableFiltered = filteredReasons.missing_timestamp + filteredReasons.malformed_timestamp;
@@ -2009,12 +2125,21 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   }
   // Ledger + per-batch goal audit were appended by the batch loop; only the
   // bulk artifacts are written here, exactly once per invocation.
+  // Prior tasks.jsonl (if any) snapshotted first so rebuilt tasks
+  // version-bump against what was on disk instead of being reborn at 1.0.0.
+  const priorTasks = readJsonl(join(output, "tasks.jsonl"));
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
   const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: requestSystemPrompt(asObject(row?.request)), messages: row?.request.messages ?? [] }]; })), "ab65b6e8d34b03d162408d4bcb854430a86809e6", rows);
   // Generation-time self-check: structural sentinels over every generated
   // task + the environment package; stamps task.self_check and rewrites
   // tasks.jsonl, and the summary lands on the manifest below.
   const selfCheck = runFoundrySelfCheck(output, tasks);
+  // Born-versioned: every task leaves the foundry with version +
+  // content_hashes; the environment package sha participates in the env hash
+  // (environment_ref) so a regenerated environment is a MAJOR (rerun) change.
+  for (const task of tasks) task.environment_ref = environment.package_sha256 ?? null;
+  const versionBumps = stampTaskVersions(tasks, priorTasks, now);
+  writeJsonl(join(output, "tasks.jsonl"), tasks);
   const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
   const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
   // Pre-promotion output is a PROPOSAL, stamped honestly: the schema name
@@ -2034,7 +2159,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
@@ -2049,6 +2174,9 @@ export function regenerateEnvironment(benchmarkDirInput: string, options: { guid
   const output = resolve(benchmarkDirInput);
   const tasks = readJsonl(join(output, "tasks.jsonl"));
   if (tasks.length === 0) throw new Error(`No tasks.jsonl found in ${output}; run traces build-benchmark first.`);
+  // Snapshot BEFORE any in-place mutation: regenerated tasks version-bump
+  // against exactly what was on disk when regeneration started.
+  const priorTasks: Obj[] = tasks.map((task) => JSON.parse(JSON.stringify(task)));
   const rows = readJsonl(join(output, "normalized-captures.jsonl"));
   const byKey = new Map(rows.map((row) => [row.capture_key, row]));
   const sourceContext = new Map(
@@ -2078,13 +2206,20 @@ export function regenerateEnvironment(benchmarkDirInput: string, options: { guid
   // Re-run the generation self-check over the regenerated environment and
   // keep the manifest's summary honest (older dirs simply gain the block).
   const selfCheck = runFoundrySelfCheck(output, tasks);
+  // Recompute content hashes and bump versions: the regenerated package sha
+  // lands in each task's env group (environment_ref), so a changed
+  // environment is a MAJOR (rerun) bump; contract repairs alone are MINOR.
+  for (const task of tasks) task.environment_ref = environment.package_sha256 ?? null;
+  const versionBumps = stampTaskVersions(tasks, priorTasks, new Date());
+  writeJsonl(join(output, "tasks.jsonl"), tasks);
   const manifestPath = join(output, "manifest.json");
   if (existsSync(manifestPath)) {
     const manifest = asObject(JSON.parse(readFileSync(manifestPath, "utf8")));
     manifest.self_check = selfCheck;
     manifest.leakage_audit = environment.leakage_audit;
     manifest.fixtures_split = environment.fixtures_split;
+    manifest.versioning = { bumps: versionBumps };
     writeJson(manifestPath, manifest);
   }
-  return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired } as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
+  return { path: String(environment.path), oracle_pass: Boolean(environment.oracle_pass), sentinel_pass: Boolean(environment.sentinel_pass), repaired_empty_contracts: repaired, version_bumps: versionBumps } as unknown as { path: string; oracle_pass: boolean; sentinel_pass: boolean };
 }

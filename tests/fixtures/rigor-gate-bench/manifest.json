@@ -1,0 +1,8 @@
+{
+  "note": "Foundry-manifest stand-in for the rigor CI gate fixture. Carries ONLY the build-time gold-leakage audit the gold-leakage check reads; deliberately no trace_foundry schema_version so the hub never mistakes this dir for a proposed foundry output.",
+  "leakage_audit": {
+    "schema_version": "understudy.leakage_audit.v1",
+    "checked_tasks": 2,
+    "findings": []
+  }
+}

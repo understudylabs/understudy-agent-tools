@@ -43,7 +43,7 @@ import { createHash } from "node:crypto";
 import { basename, extname, join, resolve } from "node:path";
 import { readCaptureDelimitedTable, inferTableMapping } from "./capture-import.js";
 import { DATASET_FOUNDRY_SCHEMA, parseJsonlText, toPortablePath } from "./benchmark-artifacts.js";
-import { benchmarkManifestFrom, runFoundrySelfCheck, writeVerifiersEnvironment } from "./trace-foundry.js";
+import { benchmarkManifestFrom, runFoundrySelfCheck, stampTaskVersions, writeVerifiersEnvironment } from "./trace-foundry.js";
 import { validateBenchmarkManifest } from "./benchmark.js";
 
 type Obj = Record<string, any>;
@@ -414,10 +414,19 @@ export function compileDatasetFoundry(sourceInput: string, outputInput: string, 
   // the SAME oracle runner + offline validation verify response obligations
   // against real gold — score 1.0 by construction).
   mkdirSync(output, { recursive: true });
+  // Snapshot the prior tasks.jsonl (if re-compiling into the same dir) so
+  // regenerated tasks version-bump instead of being reborn at 1.0.0.
+  const priorTasksPath = join(output, "tasks.jsonl");
+  const priorTasks: Obj[] = existsSync(priorTasksPath) ? parseJsonlText<Obj>(readFileSync(priorTasksPath, "utf8")).items : [];
   writeJsonl(join(output, "normalized-captures.jsonl"), captures);
   writeJsonl(join(output, "tasks.jsonl"), tasks);
   const environment = writeVerifiersEnvironment(output, tasks, sourceContext, AUDITED_VERIFIERS_COMMIT, captures);
   const selfCheck = runFoundrySelfCheck(output, tasks);
+  // Born-versioned: version + content_hashes on every generated task; the
+  // environment package sha participates in the env hash (rerun on change).
+  for (const task of tasks) task.environment_ref = environment.package_sha256 ?? null;
+  const versionBumps = stampTaskVersions(tasks, priorTasks, now);
+  writeJsonl(join(output, "tasks.jsonl"), tasks);
 
   const splitCounts = { train: 0, dev: 0, holdout: 0 };
   for (const example of curation.kept) splitCounts[splitName(example)] += 1;
@@ -527,6 +536,7 @@ export function compileDatasetFoundry(sourceInput: string, outputInput: string, 
     },
     privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false },
     self_check: selfCheck,
+    versioning: { bumps: versionBumps },
     leakage_audit: environment.leakage_audit,
     oracle_pass: environment.oracle_pass,
     sentinel_pass: environment.sentinel_pass,

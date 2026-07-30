@@ -60,7 +60,7 @@ describe("understudy.benchmark.v1 manifest", () => {
     const schemaEnum = (path) =>
       path.reduce((node, key) => node[key], benchmarkSchema.properties).filter((v) => v !== null);
     assert.deepEqual(
-      ["derived-from-traces", "imported", "authored"],
+      ["derived-from-traces", "derived-from-dataset", "imported", "authored"],
       schemaEnum(["provenance", "properties", "origin", "enum"]),
     );
     assert.deepEqual(

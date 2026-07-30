@@ -333,10 +333,13 @@ workflow semantics before registering or routing it:
 Keep `baseline.model` factual. If the incumbent is unknown, write
 `"unknown-pending-baseline"` and do not claim an optimization result.
 
-## Model A/B Procedure
+## Candidate Model/Route Procedure
 
-For API workflows, A/B is simpler than live traffic routing: run the same
-harness rows twice with only the candidate route changed.
+Use this intervention when the attributed gap is model capability or
+provider/runtime behavior. For API workflows, the comparison is simpler than
+live traffic routing: run the same harness rows twice with only the candidate
+route changed. Understudy, provider-native, and existing application runners
+are all eligible when they preserve the frozen comparison and data contract.
 
 ```sh
 understudy run -- "$HARNESS_CMD" \
@@ -360,10 +363,12 @@ Compare:
 - API call count and retry count
 
 Pick the model with the best expected outcome under the approved regression,
-latency, spend, and safety constraints. Show the tradeoff rather than silently
-optimizing for the lowest price. If both models fail the same invariant, the
-next intervention is prompt/tool-description repair, not another blind model
-swap.
+latency, spend, and safety constraints. Make acceptable-regression or
+non-inferiority bands workload-specific, and keep developer-marked contract and
+safety requirements hard. Show the tradeoff rather than silently optimizing for
+the lowest price. If both models fail the same invariant, use attribution to
+select a prompt/tool-description repair, supervised fine-tuning, or another
+supported intervention instead of another blind model swap.
 
 ## GEPA Bridge For Multi-Step Rollouts
 
@@ -431,9 +436,16 @@ an equivalent per-suite override.
 | Bad recovery | transient error causes abandoned task | retry policy and error-specific feedback |
 | State drift | same row yields different result after reset | fix reset/seed harness before optimizing |
 
-Only escalate to verifier handoff when model A/B and train/dev prompt/tool
-optimization stall with real headroom on stateful decisions that cannot be fixed
-by clearer instructions, schemas, routing, or retry policy.
+Supervised fine-tuning or distillation may be selected before model/prompt
+experiments when correction pairs, teacher trajectories, or deterministic
+verifier labels directly cover the failure. Keep training lineage, holdout,
+provider/data/retention/spend bounds, and end-to-end rollout validation intact.
+
+Escalate to the RL verifier handoff only when the residual requires stateful
+cross-turn learning, the reward has enough within-group variation, and the
+target has a compatible first-class multi-turn trainer and renderer. Do not use
+RL to repair format, schema, or argument-value failures that supervised or
+deterministic interventions can address.
 
 ## Claim Discipline
 

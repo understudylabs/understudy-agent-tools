@@ -45,6 +45,9 @@ function makeBenchmarkDir() {
     {
       schema_version: "understudy.benchmark_task.v1",
       task_id: "t1",
+      // Born-versioned task: rows must carry the version/hash provenance stamp.
+      version: "1.2.0",
+      content_hashes: { env_sha256: "e".repeat(64), verifier_sha256: "v".repeat(64), meta_sha256: "m".repeat(64) },
       outcome_contract: { required: [{ tool: "update-record", observed_arguments: { id: "r1" } }], preserved: [], forbidden: [], grading: "final_state_and_obligations" },
     },
     {
@@ -126,6 +129,16 @@ describe("executeRunRequest state machine", () => {
       assert.equal(row.run_id, run.run_id);
       assert.equal(row.category_id, "cat-a");
       assert.ok(Array.isArray(row.writes));
+      // Hash-based staleness stamp: stamped sidecar tasks (t1) put their
+      // version + content hashes on row provenance; unstamped tasks (t2)
+      // write no stamp — never an invented one.
+      if (row.task_id === "t1") {
+        assert.equal(row.provenance.task_version, "1.2.0");
+        assert.equal(row.provenance.task_content_hashes.env_sha256, "e".repeat(64));
+        assert.equal(row.provenance.task_content_hashes.verifier_sha256, "v".repeat(64));
+      } else {
+        assert.equal(row.provenance?.task_version, undefined);
+      }
     }
     // Per-model rows files (the hub's rows-*.jsonl glob).
     const files = fs.readdirSync(dir).filter((f) => /^rows-.*\.jsonl$/.test(f));

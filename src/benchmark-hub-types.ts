@@ -29,6 +29,10 @@ export type ManifestTask = {
   gold?: { kind: "final-state" | "rubric" | "reference"; ref: string } | null;
   /** Per-task incumbent (additive; null/absent on pre-incumbent builds). */
   incumbent?: IncumbentInfo | null;
+  /** Additive: the task's semantic version (born-versioned foundry builds). */
+  version?: string | null;
+  /** Additive: stamped env/verifier/meta content hashes (drives exact leaderboard staleness). */
+  content_hashes?: { env_sha256?: string | null; verifier_sha256?: string | null; meta_sha256?: string | null } | null;
 };
 
 export type TaxonomyCategory = {
@@ -130,13 +134,25 @@ export type BenchmarkFlag = {
 
 /**
  * One line of an optional versions.jsonl next to benchmark.json (newest last).
- * Viewer-side convention for now — candidate for benchmark.v1.1.
+ * Promoted into the documented schema family as
+ * understudy.benchmark_version.v1 — legacy split-freeze-only lines (no
+ * version/task_bumps) remain valid; consumers ignore fields they don't know.
  */
 export type BenchmarkVersion = {
   created_at: string;
   splits_sha256: string | null;
   contamination: "clean" | "contaminated" | "unknown" | null;
   note?: string | null;
+  /** Additive: benchmark-level semver in force as of this line. */
+  version?: string | null;
+  /** Additive: per-task version changes recorded in this line (major = env => rerun, minor = verifier => regrade, patch = meta => reuse). */
+  task_bumps?: {
+    task_id: string;
+    bump: "major" | "minor" | "patch";
+    from?: string | null;
+    to?: string | null;
+    reason?: string | null;
+  }[];
 };
 
 export type EvidenceWarning = {

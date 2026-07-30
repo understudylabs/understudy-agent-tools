@@ -323,7 +323,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             scope={(hasSplits(m) ? "holdout" : "all splits") + " · flagged excluded (defaults; filters below)"}
             explainer="Every arm with eval rows against this benchmark, scored on the frozen split in force. Expand a row for per-category strict/dense detail and run quality."
           >
-            <Leaderboard manifest={m} rows={entry.rows} flaggedTaskIds={flaggedTaskIds} />
+            <Leaderboard manifest={m} rows={entry.rows} flaggedTaskIds={flaggedTaskIds} versions={entry.versions} />
           </Section>
 
           <Section

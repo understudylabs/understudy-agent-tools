@@ -315,6 +315,27 @@ describe("queue_run / run_status", () => {
   });
 });
 
+/* ---------------- regrade_run ---------------- */
+
+describe("regrade_run", () => {
+  it("refuses non-promoted stages", () => {
+    assert.throws(() => callBenchmarksTool("regrade_run", { slug: proposedSlug }), /promoted benchmark dir/);
+  });
+
+  it("dry-runs by default and skips every row of a non-replayable verifier with an explicit reason", () => {
+    const before = fs.readdirSync(promotedDir).filter((f) => f.startsWith("rows-"));
+    const out = callBenchmarksTool("regrade_run", { slug: promotedSlug, run_id: "runa" });
+    assert.equal(out.ok, true);
+    assert.equal(out.dry_run, true); // default: plan only, zero writes
+    assert.equal(out.summaries.length, 1);
+    assert.equal(out.summaries[0].run_id, "runa");
+    assert.equal(out.summaries[0].regraded.length, 0);
+    assert.ok(out.summaries[0].skipped.length > 0);
+    assert.ok(out.summaries[0].skipped.every((s) => s.reason === "verifier_not_replayable"));
+    assert.deepEqual(fs.readdirSync(promotedDir).filter((f) => f.startsWith("rows-")), before);
+  });
+});
+
 /* ---------------- apply_auto_accepts + submit_feedback ---------------- */
 
 // A hand-written foundry dir with deterministic confidences for the policy tools.
@@ -530,6 +551,25 @@ describe("from_dataset", () => {
     // The proposed benchmark is immediately visible to the operator surface.
     const listed = callBenchmarksTool("list_benchmarks");
     assert.ok(listed.benchmarks.some((b) => b.slug === "data--spam-intake" && b.stage === "proposed"));
+    // Born-versioned via the MCP path too: every generated task is stamped
+    // 1.0.0 with env/verifier/meta content hashes (same stamping helper the
+    // trace foundry uses), on both the sidecar and the manifest tasks.
+    const sidecarTasks = fs
+      .readFileSync(path.join(out.dir, "tasks.jsonl"), "utf8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    assert.ok(sidecarTasks.length > 0);
+    for (const task of sidecarTasks) {
+      assert.equal(task.version, "1.0.0");
+      assert.match(task.content_hashes.env_sha256, /^[0-9a-f]{64}$/);
+      assert.match(task.content_hashes.verifier_sha256, /^[0-9a-f]{64}$/);
+      assert.match(task.content_hashes.meta_sha256, /^[0-9a-f]{64}$/);
+    }
+    for (const task of manifest.tasks) {
+      assert.equal(task.version, "1.0.0");
+      assert.match(task.content_hashes.env_sha256, /^[0-9a-f]{64}$/);
+    }
   });
 
   it("refuses an existing dir, a bad slug, and a missing source", () => {
@@ -579,6 +619,7 @@ describe("server wiring", () => {
         "read_rollout",
         "read_task",
         "review_prime_benchmark",
+        "regrade_run",
         "run_status",
         "submit_feedback",
         "submit_review",

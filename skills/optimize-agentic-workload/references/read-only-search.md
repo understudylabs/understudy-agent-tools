@@ -29,13 +29,15 @@ again, and eventually answers. Three consequences shape the whole playbook:
   minute to minute. That fights the hash-stable artifact contract unless you
   snapshot tool outputs (see Determinism, below).
 
-## Harness: A Verifiers Environment
+## Harness: A Replayable Agent Environment
 
-Use a Prime Intellect `verifiers` environment as the eval harness. The
-environment is a `vf.Environment` (for tool loops, a `ToolEnv`) plus a `Rubric`.
-The runnable command — conceptually `vf-eval <env-id> --model <model> -n <N>` —
-is what the agent executes; the environment supplies the dataset, the fixed
-tools, and the scoring rubric.
+Use an existing replayable agent runner that supplies the dataset, fixed tools,
+and scoring rubric. A Prime Intellect `verifiers` environment is one supported
+option: the environment is a `vf.Environment` (for tool loops, a `ToolEnv`) plus
+a `Rubric`, and the runnable command is conceptually
+`vf-eval <env-id> --model <model> -n <N>`. An existing application harness or
+provider-native evaluator is equally valid when it emits equivalent per-rollout
+evidence and honors the same snapshot, split, metric, and data boundary.
 
 Public docs:
 
@@ -99,9 +101,13 @@ shape:
     "latency": { "source": "toolenv", "fields": ["num_turns", "wall_clock_s"] },
     "cost":    { "source": "toolenv", "fields": ["prompt_tokens", "completion_tokens", "tool_calls"], "price_assumption": "synthetic" }
   },
-  "acceptable_regression": { "quality": -0.0, "latency_s": 0.5, "cost_pct": 0 }
+  "acceptable_regression": { "quality": -0.02, "latency_s": 0.5, "cost_pct": 5 }
 }
 ```
+
+The numeric bands above are synthetic examples, not universal promotion gates;
+derive them from the workload's utility and risk. Mark any developer-required
+contract or safety criterion as hard instead of averaging it into the tradeoff.
 
 Debias the LLM-judge with a swapped two-pass score; never single-pass. Bare
 pass/fail feedback wastes a later GEPA pass — see
@@ -184,9 +190,12 @@ deliberately (and re-baseline) rather than letting live drift in. Treat the
 cache as local artifact data subject to the same public boundary — do not commit
 scraped third-party content or anything proprietary.
 
-## Primary Intervention: Model A/B
+## Candidate Intervention: Model And Route Comparison
 
-The main lever is swapping the policy model with tools held fixed. Procedure:
+Use this intervention when the attributed gap is model capability or
+provider/runtime behavior. Swap the policy model with tools held fixed; a
+provider-native or application runner may replace the Understudy commands below
+when it preserves the same comparison contract. Procedure:
 
 1. `understudy models list --json` — enumerate public model options.
 2. For each candidate, route the workload to it and run the frozen harness
@@ -201,9 +210,11 @@ The main lever is swapping the policy model with tools held fixed. Procedure:
 3. Read quality from the rubric and latency/cost from the `ToolEnv` rollout
    metadata. Tabulate quality vs latency vs cost across candidates.
 4. Pick the model you would ship for the named objective under the
-   `acceptable_regression` band. Compare expected quality, latency, spend, and
-   confidence explicitly; do not make the lowest-cost model the default when a
-   stronger or faster model would materially improve the outcome.
+   workload-specific acceptable-regression/non-inferiority bands and hard
+   constraints. Compare expected quality, latency, spend, and confidence
+   explicitly; do not make the lowest-cost model the default when a stronger or
+   faster model would materially improve the outcome. Contract and safety
+   requirements marked hard remain zero-tolerance.
 5. Clear routes you are done with:
 
    ```sh
@@ -219,15 +230,18 @@ during the experiment. Configure it through the normal gateway/project setup in
 [`../../use-understudy-gateway/SKILL.md`](../../use-understudy-gateway/SKILL.md);
 this skill does not describe the internal plumbing.
 
-Inference defaults to Understudy within the activated workflow via
-`understudy login --email <developer-email>`; BYO provider keys are a fallback if
-the developer prefers. Keep provider, model, budget, and data class in the run
-artifact.
+The selected backend is part of the activated workflow. Understudy managed
+routing, provider-native runs, and BYO provider routes are all eligible when
+they fit the declared destination, spend, retention, and data-class envelope.
+Keep provider, model, budget, and data class in the run artifact.
 
-## Secondary Intervention: GEPA a Promising Model's Prompt
+## Candidate Intervention: Prompt Or Implementation Repair
 
-If a cheaper model wins latency/cost but trails on quality, optimize its prompt
-to close the gap while keeping the win. GEPA is train/dev-only and feeds on the
+Use prompt/GEPA when the attributed gap is instructional. If a cheaper model
+wins latency/cost but trails on quality, optimizing its prompt can close the gap
+while keeping the win. A small versioned app/harness change is also eligible
+when the measured cause is a parser, schema, tool-access, or retry-policy
+defect; evaluate it as a separate arm. GEPA is train/dev-only and feeds on the
 rubric's natural-language feedback, so a feedback-rich `metric.json` is the
 precondition. Hand the actual run to
 [`../../optimize-workload/SKILL.md`](../../optimize-workload/SKILL.md):
@@ -242,18 +256,28 @@ For an agentic loop, useful prompt targets are: when to stop searching (turn
 budget), how to phrase tool queries, and how to cite retrieved sources. Each maps
 to a rubric criterion, so the feedback is actionable.
 
-## When To Escalate To The Handoff
+## Candidate Intervention: Supervised Fine-Tuning Or Distillation
 
-Escalate to
+Select supervised training early when correction pairs, teacher trajectories,
+or deterministic verifier labels directly cover the attributed failures. It
+does not require model A/B or GEPA to fail first. Keep dataset lineage explicit,
+holdout sealed, and provider/data/retention/spend bounds declared. Evaluate the
+trained candidate in the same full loop; next-action imitation alone does not
+establish result propagation, recovery, termination, or replacement readiness.
+
+## When To Escalate To The RL Handoff
+
+Use
 [`../../prepare-verifier-handoff/SKILL.md`](../../prepare-verifier-handoff/SKILL.md)
-only when **all** of these hold:
+only for reinforcement learning and only when **all** of these hold:
 
-- model A/B found no shippable model within the regression band;
-- train/dev GEPA stalled with real headroom remaining;
-- the failure is *stateful* — the agent must learn multi-step behavior (when to
-  branch, backtrack, or re-plan) that a single-output reward cannot teach.
+- the failure is *stateful* — the agent must learn multi-step behavior such as
+  branching, backtracking, or re-planning;
+- the reward has enough within-group variation to train the behavior rather
+  than collapsing to a constant strict/binary signal;
+- the target model has a compatible first-class multi-turn trainer and renderer.
 
-That is the RL / policy-training rung. This OSS repo never runs it; the handoff
+That is the RL rung. This OSS repo never runs it; the handoff
 skill prepares the evidence packet and refers to Prime Intellect Verifiers.
 
 ## Capture-Evidence And Claim Discipline

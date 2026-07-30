@@ -68,6 +68,15 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
 - Honest reporting only: anomaly rows (`rollout_timeout`,
   `app_replay_unobserved`, structural sentinels) are excluded from aggregates
   but reported, never fabricated as scores. Overlapping CIs are a tie.
+- **Verifier-only changes regrade, never rerun.** When only the verifier
+  group changed (gold, contract, rubric, metric config — a MINOR bump),
+  re-score the existing trajectories; queueing fresh rollouts for a verifier
+  fix wastes gateway money and destroys comparability. Rerun is reserved for
+  env-group (MAJOR) changes.
+- **Fixture-test every verifier before trusting it.** One known-valid result
+  must pass and one plausible-but-wrong result must fail. A verifier that has
+  never rejected a wrong answer has not been tested; do not regrade or
+  calibrate against it.
 
 ## The lifecycle
 
@@ -79,6 +88,20 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
    `from_dataset` compiles it into a PROPOSED benchmark (review-pending,
    `executable: false`) whose tasks land in the review inbox. Never queue a
    run from an intake — the user reviews the proposal first (step 2).
+0.5. **Interview before bulk authoring.** Never batch-author tasks straight
+   from an intake or trace corpus. First, from the trace clusters, propose
+   **2–3 capability directions**, each as a card: **Name** (the capability
+   being measured), **Example** (one concrete task drawn from the traces),
+   **Tests** (what the verifier would check), **Needs** (dependencies —
+   services, fixtures, tools the environment must supply). The user picks a
+   direction, then approves a posture **per dependency**: `live` (real
+   service; usually wrong for a benchmark), `frozen` (recorded responses), or
+   `simulated` (seeded synthetic implementation). Then build **one task
+   first**: run it end to end and audit *both* trajectories — the agent's
+   (did the environment answer sensibly, did the task make sense) and the
+   verifier's (did scoring reflect what actually happened). Fixture-test the
+   verifier (one valid pass, one plausible-wrong fail — see Safety Gates).
+   Only after that pilot task survives audit do you batch-author the rest.
 1. **Build.** Captured traces → `understudy traces build-benchmark`, then
    `understudy traces author-tasks` (gateway) for legible task definitions.
    The generated environment already ships the fixtures pre/post split
@@ -97,7 +120,9 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
    (the old explicit-accept flow).
    Task or environment wrong? `submit_feedback` appends the ledger entry and
    returns the regenerate-env handoff (`understudy traces regenerate-env`).
-3. **Promote and calibrate.** `understudy traces promote` unlocks full runs.
+3. **Promote and calibrate.** Gate promotion on
+   `understudy benchmarks rigor <dir> --ci` (nonzero exit = findings to fix
+   first), then `understudy traces promote` unlocks full runs.
    Queue the incumbent (`--incumbent` / `incumbent_models`) plus
    `trivial_arms: ["null_agent", "spam_agent"]`. Read `calibration.json`:
    `null_floor`/`spam_floor` with `floor_exceeded: true` (> 5%) names the
@@ -122,6 +147,58 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
    the `app_replay` arm via [`../replay-app-harness/SKILL.md`](../replay-app-harness/SKILL.md)
    — same frozen tasks, current code, rows never feed calibration.
 
+## Versioning lifecycle (rerun / regrade / reuse)
+
+Every task carries an optional semver `version` plus `content_hashes`
+(`env_sha256`, `verifier_sha256`, `meta_sha256`) — three canonical-JSON
+sha256 hashes over the field groups defined in `docs/benchmark-rigor.md`.
+The contract (mirrors Harbor's model):
+
+| Changed group | Bump | Consequence |
+| --- | --- | --- |
+| env (instruction, fixtures, tool surface, seed, unknown fields) | MAJOR | **rerun** — old trajectories are invalid |
+| verifier (gold refs, contract/rubric, metric config) | MINOR | **regrade** — trajectories stand, re-score them |
+| meta (title, docs, tags) | PATCH | **reuse** — existing rows as-is |
+
+Benchmark-level `version` is the max bump across tasks (added tasks = MAJOR,
+removed = MINOR). Every bump appends one
+`understudy.benchmark_version.v1` line to `versions.jsonl` (append-only
+sidecar; records the bump, per-task reasons, splits hash, contamination
+status).
+
+Operate it with three verbs:
+
+- **`understudy runs regrade --benchmark <dir> [--run <id>] [--task <id>...]
+  [--dry-run]`** — verifier-only change: re-scores retained trajectory
+  evidence offline against the CURRENT verifier and writes fresh rows under
+  `<run>-regrade-<n>` (source-run provenance, original cost/latency
+  preserved), then appends one MINOR `versions.jsonl` line for the regraded
+  tasks so the superseded source rows go stale instead of double-counting
+  next to their regrades. Never queues rollouts, never spends gateway
+  money. If you're about to rerun after a gold/rubric fix, stop — regrade
+  instead.
+- **`understudy benchmarks upgrade <dir> --against <old-benchmark.json>`** —
+  diffs the current manifest against the archived previous one and prints
+  the minimal plan first: which task ids **rerun**, which **regrade**, which
+  **reuse**, and the resulting version bump; then appends one
+  `versions.jsonl` line (`--dry-run` skips the append). Nothing executes;
+  `--queue --model <id>` writes run requests for the rerun set only.
+- **`understudy benchmarks rigor <dir>... --ci`** — the gate before
+  `understudy traces promote` and before publishing any new version: exits
+  nonzero on hard findings (floors exceeded, oracle unsolved, verbatim
+  leakage, contamination) instead of just writing the report; UNKNOWN is
+  fatal only with `--strict`. Run it in the upgrade path too — a version
+  bump that fails rigor does not promote (`traces promote` enforces this;
+  `--override-rigor <reason>` is recorded in the promotion record).
+
+**Leaderboard staleness.** A row is stale when it predates the newest
+breaking bump for its task (MAJOR or MINOR line in `versions.jsonl`; rows
+without `created_at` are conservatively stale). MAJOR means **stale —
+rerun** (the trajectory itself is invalid); MINOR means **stale — regrade**
+(trajectory reusable, score not); PATCH-only changes leave rows current.
+Report stale rows the honest-reporting way: excluded from headline
+aggregates, counted and named, never silently dropped or silently included.
+
 ## Daemon lifecycle (executor + desktop)
 
 - **Check first**: `ps`/events for a live `runs execute` watcher; the first
@@ -139,9 +216,12 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
 
 ## Output Standard
 
-End with: benchmark dir and stage (proposed/promoted); ledger state (reviews,
-auto-accepts, feedback); calibration verdict (incumbent gate, null/spam floors,
-suspects); runs queued/executed and by which executor version; result type
-(validation, oracle, live, app-replay); artifact paths written
-(`calibration.json`, `rigor-report.md`, `rows-*.jsonl`); and one recommended
-next command.
+End with: benchmark dir and stage (proposed/promoted); **current benchmark
+version** (semver, from the manifest / last `versions.jsonl` line) and
+**stale-row status** (rows counted by current / stale-regrade / stale-rerun,
+and whether any stale rows sit in a headline aggregate); ledger state
+(reviews, auto-accepts, feedback); calibration verdict (incumbent gate,
+null/spam floors, suspects); runs queued/executed and by which executor
+version; result type (validation, oracle, live, app-replay); artifact paths
+written (`calibration.json`, `rigor-report.md`, `rows-*.jsonl`,
+`versions.jsonl`); and one recommended next command.
