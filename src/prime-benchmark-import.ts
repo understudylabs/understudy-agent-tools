@@ -71,7 +71,7 @@ function listTraceFiles(sourceDir: string): string[] {
 }
 
 function loadPrimeTraces(sourceDir: string): PrimeTrace[] {
-  return listTraceFiles(sourceDir).flatMap((path) =>
+  const traces = listTraceFiles(sourceDir).flatMap((path) =>
     readFileSync(path, "utf8")
       .split(/\r?\n/)
       .filter(Boolean)
@@ -83,6 +83,18 @@ function loadPrimeTraces(sourceDir: string): PrimeTrace[] {
         }
       }),
   );
+  const byId = new Map<string, { canonical: string; trace: PrimeTrace }>();
+  for (const trace of traces) {
+    const id = String(trace.id ?? "");
+    if (!id) throw new Error("Prime trace is missing its stable id");
+    const canonical = JSON.stringify(trace);
+    const prior = byId.get(id);
+    if (prior && prior.canonical !== canonical) {
+      throw new Error(`conflicting Prime traces share id ${id}`);
+    }
+    if (!prior) byId.set(id, { canonical, trace });
+  }
+  return [...byId.values()].map(({ trace }) => trace);
 }
 
 function nonHarnessCalls(trace: PrimeTrace): any[] {
@@ -94,19 +106,24 @@ function sha256(value: string): string {
 }
 
 function costFor(trace: PrimeTrace, price: Price): number {
-  return nonHarnessCalls(trace).reduce((sum, call) => {
+  return (trace.calls ?? []).reduce((sum: number, call: any) => {
     const usage = call.usage ?? {};
     return (
       sum +
       ((usage.prompt_tokens ?? 0) * price.input +
         (usage.cached_input_tokens ?? 0) * price.cache_read +
-        ((usage.completion_tokens ?? 0) + (usage.reasoning_tokens ?? 0)) * price.output) /
+        (usage.completion_tokens ?? 0) * price.output) /
         1_000_000
     );
   }, 0);
 }
 
 function latencyFor(trace: PrimeTrace): number {
+  const generationStart = Number(trace.timing?.generation?.start);
+  const generationEnd = Number(trace.timing?.generation?.end);
+  if (Number.isFinite(generationStart) && Number.isFinite(generationEnd)) {
+    return Math.max(0, Math.round((generationEnd - generationStart) * 1000));
+  }
   const calls = nonHarnessCalls(trace);
   if (calls.length === 0) return 0;
   const started = Math.min(...calls.map((call) => Number(call.time?.start ?? 0)));
@@ -115,8 +132,11 @@ function latencyFor(trace: PrimeTrace): number {
 }
 
 function tokensFor(trace: PrimeTrace): { prompt: number; cached_input: number; completion: number; reasoning: number } {
-  return nonHarnessCalls(trace).reduce(
-    (sum, call) => {
+  return (trace.calls ?? []).reduce(
+    (
+      sum: { prompt: number; cached_input: number; completion: number; reasoning: number },
+      call: any,
+    ) => {
       const usage = call.usage ?? {};
       sum.prompt += usage.prompt_tokens ?? 0;
       sum.cached_input += usage.cached_input_tokens ?? 0;

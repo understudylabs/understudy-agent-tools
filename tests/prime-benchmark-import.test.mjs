@@ -66,13 +66,16 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   const root = mkdtempSync(join(tmpdir(), "understudy-prime-benchmark-"));
   const source = join(root, "prime-runs");
   const modelDir = join(source, "synthetic-model");
+  const duplicateDir = join(source, "synthetic-model-replacement");
   const aggregateOutput = join(root, "gallery", "synthetic-benchmark");
   const scorecardOutput = join(root, "private-scorecards", "synthetic-benchmark");
   mkdirSync(modelDir, { recursive: true });
+  mkdirSync(duplicateDir, { recursive: true });
   writeFileSync(
     join(modelDir, "traces.jsonl"),
     `${JSON.stringify(syntheticTrace("synthetic-model"))}\n${JSON.stringify(syntheticTrace("synthetic-candidate", 0.75))}\n`,
   );
+  writeFileSync(join(duplicateDir, "traces.jsonl"), `${JSON.stringify(syntheticTrace("synthetic-model"))}\n`);
   const config = {
     schema_version: "understudy.prime_benchmark_import.v1",
     benchmark_id: "synthetic-prime-benchmark-v1",
@@ -118,7 +121,7 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   assert.equal(manifest.benchmark_id, "synthetic-prime-benchmark-v1");
   const aggregateText = readFileSync(join(aggregateOutput, "rows-prime.jsonl"), "utf8");
   assert.doesNotMatch(aggregateText, /Synthetic private prompt/);
-  assert.match(aggregateText, /"usd":0\.001675/);
+  assert.match(aggregateText, /"usd":0\.00155/);
   const comparison = comparePrimeModels(aggregateOutput, "synthetic-model", "synthetic-candidate");
   assert.equal(comparison.comparable_task_count, 1);
   assert.equal(comparison.task_outcomes[0].outcome, "regressed");

@@ -22,12 +22,24 @@ const modelIds = readdirSync(primeRuns)
       readFileSync(`${path}/traces.jsonl`, "utf8").trim().length > 0;
   })
   .sort();
-const primeTraces = modelIds.flatMap((model) =>
+const discoveredPrimeTraces = modelIds.flatMap((model) =>
   readFileSync(`${primeRuns}/${model}/traces.jsonl`, "utf8")
     .split(/\r?\n/)
     .filter(Boolean)
     .map(JSON.parse),
 );
+const tracesById = new Map();
+for (const trace of discoveredPrimeTraces) {
+  const id = String(trace.id ?? "");
+  if (!id) throw new Error("Prime trace is missing its stable id");
+  const canonical = JSON.stringify(trace);
+  const prior = tracesById.get(id);
+  if (prior && prior.canonical !== canonical) {
+    throw new Error(`conflicting Prime traces share id ${id}`);
+  }
+  if (!prior) tracesById.set(id, { canonical, trace });
+}
+const primeTraces = [...tracesById.values()].map(({ trace }) => trace);
 if (
   primeTraces.length === 0 ||
   primeTraces.some(
@@ -127,7 +139,7 @@ const rollouts = primeTraces.map((prime) => {
     const model = prime.agent.model;
     const taskId = prime.task.data.task_id;
     const calls = prime.calls.filter((call) => !isHarnessTitleCall(call));
-    const usage = calls.map((call) => call.usage ?? {});
+    const usage = prime.calls.map((call) => call.usage ?? {});
     const rate = pricing[model];
     if (!rate) throw new Error(`Missing Understudy customer rate card for ${model}`);
     const cost = usage.reduce(
@@ -135,7 +147,7 @@ const rollouts = primeTraces.map((prime) => {
         sum +
         ((row.prompt_tokens ?? 0) * rate.input +
           (row.cached_input_tokens ?? 0) * rate.cache_read +
-          ((row.completion_tokens ?? 0) + (row.reasoning_tokens ?? 0)) * rate.output) /
+          (row.completion_tokens ?? 0) * rate.output) /
           1_000_000,
       0,
     );
@@ -150,6 +162,11 @@ const rollouts = primeTraces.map((prime) => {
     const expected = expectedToolPath(prime);
     const started = Math.min(...calls.map((call) => call.time.start));
     const ended = Math.max(...calls.map((call) => call.time.end));
+    const generationStarted = Number(prime.timing?.generation?.start);
+    const generationEnded = Number(prime.timing?.generation?.end);
+    const latencyMs = Number.isFinite(generationStarted) && Number.isFinite(generationEnded)
+      ? Math.round((generationEnded - generationStarted) * 1000)
+      : Math.round((ended - started) * 1000);
     return {
       id: prime.id,
       model,
@@ -160,7 +177,7 @@ const rollouts = primeTraces.map((prime) => {
       reward: prime.rewards.final_state,
       partial_credit: prime.metrics.final_state_partial_credit,
       turns: calls.length,
-      latency_ms: Math.round((ended - started) * 1000),
+      latency_ms: latencyMs,
       tokens: usage.reduce((sum, row) => sum + (row.prompt_tokens ?? 0) + (row.cached_input_tokens ?? 0) + (row.completion_tokens ?? 0), 0),
       cost_usd: cost,
       terminal_reason: prime.stop_condition,
