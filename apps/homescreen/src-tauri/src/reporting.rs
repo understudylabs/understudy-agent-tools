@@ -192,9 +192,7 @@ pub async fn reporting_snapshot(
     project_id: String,
     window: Option<String>,
 ) -> Result<Value, String> {
-    if let Err(reason) = crate::admin::validate_path_segment(&project_id) {
-        return Err(reason);
-    }
+    crate::admin::validate_path_segment(&project_id)?;
     let window = window.unwrap_or_else(|| "12h".to_string());
     let minutes = monitoring_window_minutes(&window)
         .ok_or_else(|| "Choose a monitoring window between 30 minutes and 24 hours.".to_string())?;

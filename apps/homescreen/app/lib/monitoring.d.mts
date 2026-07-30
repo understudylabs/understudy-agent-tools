@@ -66,6 +66,6 @@ export function displayModelName(value?: unknown): string;
 
 export function snapshotForSelection<T extends { project_id?: string; window?: string }>(
   snapshot: T | null | undefined,
-  projectId: string,
+  projectId: string | null,
   window: string,
 ): T | null;
