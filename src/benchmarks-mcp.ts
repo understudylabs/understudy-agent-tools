@@ -43,6 +43,7 @@ import { compileDatasetFoundry, type DatasetFoundryOptions } from "./dataset-fou
 import { inspectPrimeBenchmark } from "./prime-benchmark-import.js";
 import { comparePrimeModels } from "./prime-benchmark-compare.js";
 import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "./prime-benchmark-lifecycle.js";
+import { planPrimeRun } from "./prime-benchmark-runner.js";
 
 type Obj = Record<string, unknown>;
 const asObject = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
@@ -735,6 +736,19 @@ function toolFromDataset(args: Obj): unknown {
 
 export const BENCHMARKS_TOOLS = [
   {
+    name: "plan_prime_run",
+    description:
+      "Validate a native Prime TOML evaluation config and return the exact command plan without executing models or transferring data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        eval_config: { type: "string", description: "Absolute path to the reviewed Prime eval TOML." },
+        prime_bin: { type: "string", description: "Optional Prime CLI executable path." },
+      },
+      required: ["eval_config"],
+    },
+  },
+  {
     name: "prime_status",
     description:
       "Inspect a reviewed Prime benchmark config and report discovered native trace files, models, tasks, " +
@@ -1051,6 +1065,7 @@ export const BENCHMARKS_TOOLS = [
 /** Dispatch one tool call — exported so node:test can exercise tools without a stdio session. */
 export function callBenchmarksTool(name: string, args: Obj): unknown {
   switch (name) {
+    case "plan_prime_run": return planPrimeRun(requireString(args, "eval_config"), typeof args.prime_bin === "string" ? args.prime_bin : "prime");
     case "prime_status": return inspectPrimeBenchmark(requireString(args, "config"));
     case "compare_prime_models": return comparePrimeModels(requireString(args, "dir"), requireString(args, "baseline"), requireString(args, "candidate"));
     case "review_prime_benchmark": return appendPrimeBenchmarkReview(requireString(args, "dir"), {

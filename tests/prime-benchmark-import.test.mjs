@@ -9,6 +9,7 @@ import { importPrimeBenchmark, inspectPrimeBenchmark } from "../dist/prime-bench
 import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "../dist/prime-benchmark-lifecycle.js";
 import { comparePrimeModels } from "../dist/prime-benchmark-compare.js";
 import { discoverPrimeScorecards, renderScorecardGallery } from "../dist/prime-scorecard-server.js";
+import { planPrimeRun, runPrimeEvaluation, watchPrimeBenchmark } from "../dist/prime-benchmark-runner.js";
 
 function syntheticTrace(model, score = 1) {
   return {
@@ -168,4 +169,42 @@ test("fails closed when durable task metadata is not explicitly anonymized", () 
     pricing: {},
   }));
   assert.throws(() => importPrimeBenchmark(configPath), /anonymized must be true/);
+});
+
+test("plans native Prime runs, gates provider transfer, and watches an already-ready corpus", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-prime-runner-"));
+  const evalConfig = join(root, "model.toml");
+  writeFileSync(evalConfig, 'model = "synthetic-model"\n');
+  const plan = planPrimeRun(evalConfig);
+  assert.deepEqual(plan.argv, ["eval", "--plain", "run", evalConfig]);
+  assert.equal(plan.provider_data_transfer_required, true);
+  assert.throws(
+    () => runPrimeEvaluation(evalConfig, { allowProviderDataTransfer: false, dryRun: true }),
+    /allow-provider-data-transfer/,
+  );
+  const dryRun = runPrimeEvaluation(evalConfig, { allowProviderDataTransfer: true, dryRun: true });
+  assert.equal(dryRun.executed, false);
+  assert.throws(() => planPrimeRun(join(root, "model.json")), /not found|must be a .toml/);
+
+  const source = join(root, "source", "model");
+  mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "traces.jsonl"), `${JSON.stringify(syntheticTrace("synthetic-model"))}\n`);
+  const importConfig = join(root, "import.json");
+  writeFileSync(importConfig, JSON.stringify({
+    schema_version: "understudy.prime_benchmark_import.v1",
+    benchmark_id: "synthetic-watch-v1",
+    name: "Synthetic watch",
+    source_dir: join(root, "source"),
+    output_dir: join(root, "aggregate"),
+    verifier_version: "0.2.1",
+    incumbent_model: "synthetic-model",
+    anonymized: true,
+    environment: { package_ref: "synthetic:environment" },
+    tasks: { "task-synthetic-1": { label: "Task", category_id: "category" } },
+    pricing: { "synthetic-model": { input: 1, cache_read: 0, output: 1, source: "synthetic" } },
+  }));
+  const snapshots = [];
+  const ready = await watchPrimeBenchmark(importConfig, { intervalMs: 100, timeoutMs: 500, onSnapshot: (value) => snapshots.push(value) });
+  assert.equal(ready.ready_to_import, true);
+  assert.equal(snapshots.length, 1);
 });

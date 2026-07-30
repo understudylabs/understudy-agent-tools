@@ -1,17 +1,20 @@
 import { chmodSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 const configPath = process.argv[2];
 if (!configPath) throw new Error("usage: build-scorecard.mjs <understudy.prime_scorecard.v1 config.json>");
-const config = JSON.parse(readFileSync(resolve(configPath), "utf8"));
+const resolvedConfigPath = resolve(configPath);
+const config = JSON.parse(readFileSync(resolvedConfigPath, "utf8"));
 if (!["understudy.prime_scorecard.v1", "understudy.prime_benchmark_import.v1"].includes(config.schema_version)) {
   throw new Error("config.schema_version must be understudy.prime_scorecard.v1 or understudy.prime_benchmark_import.v1");
 }
 if (config.anonymized !== true) {
   throw new Error("config.anonymized must be true before building a durable scorecard");
 }
-const primeRuns = resolve(config.source_dir);
-const benchmark = resolve(config.scorecard_output_dir ?? config.output_dir);
+const configDir = dirname(resolvedConfigPath);
+const fromConfig = (value) => isAbsolute(value) ? value : resolve(configDir, value);
+const primeRuns = fromConfig(config.source_dir);
+const benchmark = fromConfig(config.scorecard_output_dir ?? config.output_dir);
 const modelIds = readdirSync(primeRuns)
   .filter((name) => {
     const path = `${primeRuns}/${name}`;

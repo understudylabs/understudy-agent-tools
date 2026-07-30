@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 
 type Price = { input: number; cache_read: number; output: number; source: string };
 type TaskMetadata = {
@@ -139,8 +139,10 @@ export function importPrimeBenchmark(configPath: string): {
   const configValue = readJson(configFile);
   assertConfig(configValue);
   const config = configValue;
-  const sourceDir = resolve(config.source_dir);
-  const outputDir = resolve(config.output_dir);
+  const configDir = dirname(configFile);
+  const fromConfig = (value: string) => isAbsolute(value) ? value : resolve(configDir, value);
+  const sourceDir = fromConfig(config.source_dir);
+  const outputDir = fromConfig(config.output_dir);
   const traces = loadPrimeTraces(sourceDir);
   if (traces.length === 0) throw new Error(`no Prime traces found under ${sourceDir}`);
 
@@ -271,7 +273,9 @@ export function inspectPrimeBenchmark(configPath: string): Record<string, unknow
   const configValue = readJson(configFile);
   assertConfig(configValue);
   const config = configValue;
-  const sourceDir = resolve(config.source_dir);
+  const sourceDir = isAbsolute(config.source_dir)
+    ? config.source_dir
+    : resolve(dirname(configFile), config.source_dir);
   const files = listTraceFiles(sourceDir);
   const traces = files.length ? loadPrimeTraces(sourceDir) : [];
   const invalid = traces.filter(

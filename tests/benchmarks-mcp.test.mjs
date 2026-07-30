@@ -571,6 +571,7 @@ describe("server wiring", () => {
         "from_dataset",
         "list_benchmarks",
         "list_experiments",
+        "plan_prime_run",
         "prime_status",
         "profile_workload",
         "queue_run",

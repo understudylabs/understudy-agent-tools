@@ -86,6 +86,40 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("run-prime <eval-config>")
+    .description("Run a native Prime evaluation from a reviewed TOML config; requires explicit provider-data authorization")
+    .requiredOption(
+      "--allow-provider-data-transfer",
+      "Confirm private benchmark prompts may be sent to the provider configured by the Prime TOML",
+    )
+    .option("--prime-bin <path>", "Prime CLI executable", "prime")
+    .option("--dry-run", "Validate and print the exact native Prime invocation without executing it")
+    .action(async (
+      evalConfig: string,
+      options: { allowProviderDataTransfer: boolean; primeBin: string; dryRun?: boolean },
+    ) => {
+      const { runPrimeEvaluation } = await import("../prime-benchmark-runner.js");
+      console.log(JSON.stringify(runPrimeEvaluation(evalConfig, options), null, 2));
+    });
+
+  benchmarks
+    .command("watch-prime <config>")
+    .description("Watch native Prime trace files until the reviewed import corpus is complete and error-free")
+    .option("--interval-ms <n>", "Polling interval in milliseconds", "1000")
+    .option("--timeout-ms <n>", "Stop waiting after this many milliseconds; 0 waits indefinitely", "0")
+    .action(async (config: string, options: { intervalMs: string; timeoutMs: string }) => {
+      const intervalMs = Number(options.intervalMs);
+      const timeoutMs = Number(options.timeoutMs);
+      const { watchPrimeBenchmark } = await import("../prime-benchmark-runner.js");
+      const result = await watchPrimeBenchmark(config, {
+        intervalMs,
+        timeoutMs,
+        onSnapshot: (snapshot) => process.stdout.write(`${JSON.stringify(snapshot)}\n`),
+      });
+      console.error(`watch-prime: ready to import (${result.traces} completed trace(s))`);
+    });
+
+  benchmarks
     .command("compare-prime <dir>")
     .description("Compare one candidate with the incumbent on the exact same imported Prime task ids")
     .requiredOption("--baseline <model>", "Incumbent or baseline model id")
@@ -120,6 +154,34 @@ export function registerBenchmarksCommand(program: Command): void {
       if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("--port must be an integer from 1 to 65535");
       const result = await startPrimeScorecardServer(options.root, port, options.host);
       console.error(`Prime benchmark gallery: ${result.url} (${result.entries.length} scorecard(s))`);
+    });
+
+  benchmarks
+    .command("reopen-prime <config>")
+    .description("Reopen the private native scorecard for one benchmark through the local gallery server")
+    .option("--port <n>", "Local port", "4317")
+    .option("--host <host>", "Bind host (loopback by default)", "127.0.0.1")
+    .action(async (configPath: string, options: { port: string; host: string }) => {
+      const path = await import("node:path");
+      const { readPrimeImportConfig } = await import("../prime-benchmark-runner.js");
+      const { startPrimeScorecardServer } = await import("../prime-scorecard-server.js");
+      const config = readPrimeImportConfig(configPath);
+      if (typeof config.scorecard_output_dir !== "string") throw new Error("config.scorecard_output_dir is required");
+      if (typeof config.benchmark_id !== "string") throw new Error("config.benchmark_id is required");
+      const port = Number(options.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("--port must be an integer from 1 to 65535");
+      const configFile = path.resolve(configPath);
+      const output = path.isAbsolute(config.scorecard_output_dir)
+        ? config.scorecard_output_dir
+        : path.resolve(path.dirname(configFile), config.scorecard_output_dir);
+      const root = path.dirname(output);
+      const result = await startPrimeScorecardServer(root, port, options.host);
+      const slug = config.benchmark_id.replace(/-v\d+$/, "");
+      if (!result.entries.some((entry) => entry.slug === slug)) {
+        result.server.close();
+        throw new Error(`scorecard not found for ${config.benchmark_id}; run build-scorecard first`);
+      }
+      console.error(`Prime benchmark scorecard: ${result.url}b/${encodeURIComponent(slug)}/`);
     });
 
   benchmarks

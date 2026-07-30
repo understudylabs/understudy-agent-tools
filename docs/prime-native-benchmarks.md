@@ -54,6 +54,31 @@ understudy benchmarks serve-gallery --root .understudy/benchmarks --port 4317
 `<root>/<directory>/viewer/index.html`, reads only the embedded benchmark
 metadata, and links to each native scorecard.
 
+## Run, watch, and reopen
+
+Use Prime's own evaluator for authoritative traces. The run command requires an
+explicit private-data transfer acknowledgement and delegates directly to
+`prime eval --plain run`:
+
+```bash
+understudy benchmarks run-prime model-eval.toml \
+  --allow-provider-data-transfer
+understudy benchmarks watch-prime config.json
+understudy benchmarks import-prime config.json
+understudy benchmarks build-scorecard config.json
+understudy benchmarks reopen-prime config.json
+```
+
+`run-prime --dry-run` validates and prints the exact invocation without provider
+execution. `watch-prime` exits only when every discovered native trace is
+complete, error-free, stopped with `agent_completed`, and pinned to the
+configured verifier version. `reopen-prime` serves the scorecard through the
+loopback gallery instead of relying on `file://`.
+
+Agents can call the MCP `plan_prime_run` tool to inspect the exact native command
+without spend or data transfer, then use `prime_status` while execution proceeds.
+Provider execution remains a CLI boundary with explicit operator authorization.
+
 ## Review and freeze
 
 Review is append-only:
