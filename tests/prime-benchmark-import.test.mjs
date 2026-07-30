@@ -132,6 +132,8 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   assert.match(viewer, /Prime Verifiers 0\.2\.1/);
   assert.match(viewer, /MODEL LEADERBOARD/i);
   assert.match(viewer, /Conversation history/);
+  assert.match(viewer, /production incumbent/);
+  assert.match(viewer, /% vs incumbent/);
   const entries = discoverPrimeScorecards(join(root, "private-scorecards"));
   assert.equal(entries.length, 1);
   assert.equal(entries[0].benchmark_id, "synthetic-prime-benchmark-v1");
