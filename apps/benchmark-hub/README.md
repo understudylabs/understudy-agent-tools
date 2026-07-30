@@ -1,5 +1,12 @@
 # Understudy Benchmark Hub
 
+> **Architecture note (2026-07-30):** for new Prime Verifiers multi-turn
+> workloads, the Prime-native scorecard in
+> [`docs/prime-native-benchmarks.md`](../../docs/prime-native-benchmarks.md) is
+> the incumbent detail and live-review surface. This Hub remains prior art and
+> a compatible aggregate-data explorer; do not project away native Prime turns
+> merely to fit this older trace model.
+
 A local, single-user "Environments Hub + leaderboard" viewer over the whole
 benchmark lifecycle: **proposed** trace-foundry outputs awaiting human review
 and **promoted** `understudy.benchmark.v1` manifests with
