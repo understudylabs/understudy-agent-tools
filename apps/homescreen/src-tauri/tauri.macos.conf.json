@@ -1,8 +1,5 @@
 {
   "bundle": {
-    "externalBin": [
-      "binaries/understudy-node"
-    ],
     "macOS": {
       "entitlements": "Entitlements.plist"
     },
@@ -11,3 +8,4 @@
     }
   }
 }
+

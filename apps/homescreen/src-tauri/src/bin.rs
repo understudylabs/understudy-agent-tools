@@ -144,6 +144,11 @@ pub fn bundled_understudy() -> Option<PathBuf> {
     canonical_candidate(&package_root.join("bundle").join("understudy.js"))
 }
 
+pub fn on_demand_node_dir() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    Some(PathBuf::from(home).join(".understudy").join("runtimes").join("node"))
+}
+
 pub fn bundled_node() -> Option<PathBuf> {
     if let Some(candidate) = std::env::var_os("UNDERSTUDY_BUNDLED_NODE") {
         if let Some(candidate) = canonical_candidate(Path::new(&candidate)) {
@@ -154,7 +159,12 @@ pub fn bundled_node() -> Option<PathBuf> {
     if let Ok(executable) = std::env::current_exe() {
         if let Some(directory) = executable.parent() {
             candidates.push(directory.join(BUNDLED_NODE_NAME));
+            candidates.push(directory.join(format!("{BUNDLED_NODE_NAME}.exe")));
         }
+    }
+    if let Some(on_demand_dir) = on_demand_node_dir() {
+        candidates.push(on_demand_dir.join(BUNDLED_NODE_NAME));
+        candidates.push(on_demand_dir.join(format!("{BUNDLED_NODE_NAME}.exe")));
     }
     let target = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some("aarch64-apple-darwin"),
@@ -169,6 +179,11 @@ pub fn bundled_node() -> Option<PathBuf> {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("binaries")
                 .join(format!("{BUNDLED_NODE_NAME}-{target}")),
+        );
+        candidates.push(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(format!("{BUNDLED_NODE_NAME}-{target}.exe")),
         );
     }
     candidates

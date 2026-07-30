@@ -143,10 +143,10 @@ export function inspectDesktopVersions(root = repositoryRoot) {
     );
   }
   if (
-    !Array.isArray(macTauriConfig.bundle?.externalBin) ||
-    !macTauriConfig.bundle.externalBin.includes("binaries/understudy-node")
+    Array.isArray(macTauriConfig.bundle?.externalBin) &&
+    macTauriConfig.bundle.externalBin.includes("binaries/understudy-node")
   ) {
-    errors.push("Desktop bundle must include its pinned Node runtime");
+    errors.push("Desktop bundle must not statically include the Node sidecar (on-demand runtime)");
   }
   if (
     macTauriConfig.bundle?.resources?.["resources/understudy-cli/"] !==
@@ -602,10 +602,10 @@ export async function inspectDesktopRelease({
               versionState.compatibility.cli_package,
             );
           }
-          if (manifest.node_version !== artifactState.cli.node_version) {
+          if (manifest.node_version !== versionState.compatibility.node_version) {
             errors.push(
-              `bundled Node ${artifactState.cli.node_version ?? "missing"} does not match ` +
-                `manifest ${manifest.node_version ?? "missing"}`,
+              `manifest Node ${manifest.node_version ?? "missing"} does not match ` +
+                `pinned ${versionState.compatibility.node_version ?? "missing"}`,
             );
           }
           if (!/^[a-f0-9]{64}$/.test(String(manifest.node_sha256 ?? ""))) {

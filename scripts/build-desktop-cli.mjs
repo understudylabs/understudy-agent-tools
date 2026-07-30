@@ -159,10 +159,13 @@ export function buildDesktopCli({ root = repositoryRoot, target = desktopTargetT
 
   execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
   stageResources(root, paths.resourceRoot);
-  mkdirSync(dirname(paths.nodeBinary), { recursive: true });
   mkdirSync(dirname(paths.entry), { recursive: true });
-  cpSync(nodeSource, paths.nodeBinary);
-  chmodSync(paths.nodeBinary, 0o755);
+  const embedNode = process.env.UNDERSTUDY_DESKTOP_EMBED_NODE === "true";
+  if (embedNode) {
+    mkdirSync(dirname(paths.nodeBinary), { recursive: true });
+    cpSync(nodeSource, paths.nodeBinary);
+    chmodSync(paths.nodeBinary, 0o755);
+  }
   execFileSync(
     "bun",
     [
@@ -193,7 +196,7 @@ export function buildDesktopCli({ root = repositoryRoot, target = desktopTargetT
     target,
     bun_revision: bunRevision,
     node_version: nodeVersion,
-    node_sha256: sha256(paths.nodeBinary),
+    node_sha256: sha256(nodeSource),
     cli_bundle_sha256: sha256(paths.entry),
     external_modules: externalModules,
   };

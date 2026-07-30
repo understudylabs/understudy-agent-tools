@@ -216,6 +216,7 @@ pub fn install_understudy_agent_tools(app: &AppHandle) -> Result<String, String>
         2,
         4,
     );
+    let _ = ensure_node_runtime(app);
     let installed = bin::command("understudy")
         .arg("--version")
         .output()
@@ -241,6 +242,118 @@ pub fn install_understudy_agent_tools(app: &AppHandle) -> Result<String, String>
         binary.display(),
         package_root.display()
     ))
+}
+
+fn ensure_node_runtime(app: &AppHandle) -> Result<(), String> {
+    if bin::bundled_node().is_some() {
+        return Ok(());
+    }
+    if let Ok(out) = Command::new("node").arg("--version").output() {
+        if out.status.success() {
+            let ver = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if parse_version(&ver)
+                .zip(parse_version(MIN_UNDERSTUDY_CLI_VERSION))
+                .is_some_and(|(installed, required)| installed >= required)
+            {
+                return Ok(());
+            }
+        }
+    }
+    emit_runtime_repair_progress(
+        app,
+        "node-download",
+        "Downloading Node runtime on-demand…",
+        2,
+        4,
+    );
+    let on_demand_dir = bin::on_demand_node_dir()
+        .ok_or_else(|| "Could not determine home directory for node runtime".to_string())?;
+    std::fs::create_dir_all(&on_demand_dir)
+        .map_err(|e| format!("Failed to create node runtime directory: {e}"))?;
+    let node_bin = if cfg!(windows) {
+        on_demand_dir.join("understudy-node.exe")
+    } else {
+        on_demand_dir.join("understudy-node")
+    };
+    if node_bin.is_file() {
+        return Ok(());
+    }
+    let (target_os, target_arch) = (std::env::consts::OS, std::env::consts::ARCH);
+    let node_version = "v22.23.0";
+    let (url, is_tar_gz) = match (target_os, target_arch) {
+        ("macos", "aarch64") => (
+            format!("https://nodejs.org/dist/{node_version}/node-{node_version}-darwin-arm64.tar.gz"),
+            true,
+        ),
+        ("macos", "x86_64") => (
+            format!("https://nodejs.org/dist/{node_version}/node-{node_version}-darwin-x64.tar.gz"),
+            true,
+        ),
+        ("linux", "x86_64") => (
+            format!("https://nodejs.org/dist/{node_version}/node-{node_version}-linux-x64.tar.gz"),
+            true,
+        ),
+        ("linux", "aarch64") => (
+            format!("https://nodejs.org/dist/{node_version}/node-{node_version}-linux-arm64.tar.gz"),
+            true,
+        ),
+        ("windows", "x86_64") => (
+            format!("https://nodejs.org/dist/{node_version}/win-x64/node.exe"),
+            false,
+        ),
+        _ => return Err(format!("Unsupported platform for Node download: {target_os}/{target_arch}")),
+    };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    rt.block_on(async {
+        let client = download_client()?;
+        let resp = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("Node download failed: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("Node download HTTP error: {e}"))?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read Node response: {e}"))?;
+        if is_tar_gz {
+            let temp_archive = on_demand_dir.join("node-download.tar.gz");
+            tokio::fs::write(&temp_archive, &bytes).await.map_err(|e| e.to_string())?;
+            let status = Command::new("tar")
+                .args([
+                    "-xzf",
+                    temp_archive.to_str().unwrap(),
+                    "-C",
+                    on_demand_dir.to_str().unwrap(),
+                    "--strip-components=2",
+                    "*/bin/node",
+                ])
+                .status()
+                .map_err(|e| format!("tar extraction failed: {e}"))?;
+            let _ = tokio::fs::remove_file(temp_archive).await;
+            if !status.success() {
+                return Err("tar extraction returned failure exit status".to_string());
+            }
+            let extracted = on_demand_dir.join("node");
+            if extracted.is_file() {
+                let _ = tokio::fs::rename(extracted, &node_bin).await;
+            }
+        } else {
+            tokio::fs::write(&node_bin, &bytes).await.map_err(|e| e.to_string())?;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&node_bin, std::fs::Permissions::from_mode(0o755));
+        }
+        Ok::<(), String>(())
+    })?;
+    Ok(())
 }
 
 /// Aggregate bounded public update checks and local runtime diagnostics for

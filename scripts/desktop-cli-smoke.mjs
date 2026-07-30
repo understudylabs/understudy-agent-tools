@@ -25,6 +25,7 @@ export function smokeDesktopCli({ root = repositoryRoot, build = false } = {}) {
   const paths = build ? buildDesktopCli({ root }) : desktopCliPaths(root);
   const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-desktop-cli-smoke-"));
+  const nodeBin = existsSync(paths.nodeBinary) ? paths.nodeBinary : process.execPath;
   const env = {
     HOME: process.env.HOME ?? runtimeHome,
     PATH: "/usr/bin:/bin",
@@ -34,13 +35,13 @@ export function smokeDesktopCli({ root = repositoryRoot, build = false } = {}) {
     UNDERSTUDY_TELEMETRY: "0",
   };
   try {
-    const cli = (args) => run(paths.nodeBinary, [paths.entry, ...args], env);
+    const cli = (args) => run(nodeBin, [paths.entry, ...args], env);
     const version = cli(["--version"]);
     if (version !== packageJson.version) {
       throw new Error(`bundled CLI version ${version} does not match ${packageJson.version}`);
     }
     run(
-      paths.nodeBinary,
+      nodeBin,
       [
         "-e",
         "const r=require('node:module').createRequire(process.argv[1]);" +
@@ -60,7 +61,7 @@ export function smokeDesktopCli({ root = repositoryRoot, build = false } = {}) {
     return { version, runtime_version: started.runtime_version, node: doctor.checks[0]?.detail };
   } finally {
     try {
-      run(paths.nodeBinary, [paths.entry, "runtime", "stop", "--json"], env);
+      run(nodeBin, [paths.entry, "runtime", "stop", "--json"], env);
     } catch {
       // Best-effort cleanup after a failed assertion.
     }
