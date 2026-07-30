@@ -563,8 +563,8 @@ function computeHeldout(
     return { label, precision, recall, f1, support: count.support };
   });
   return {
-    accuracy: correct / rows.length,
-    macro_f1: perClass.reduce((sum, row) => sum + row.f1, 0) / perClass.length,
+    accuracy: rows.length > 0 ? correct / rows.length : 0,
+    macro_f1: perClass.length > 0 ? perClass.reduce((sum, row) => sum + row.f1, 0) / perClass.length : 0,
     latency_ms_p50: latencyMsP50,
     per_class: perClass,
     weakest_classes: [...perClass]
