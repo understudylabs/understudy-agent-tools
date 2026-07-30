@@ -272,7 +272,9 @@ export function MonitorPane({
             className="monitor-refresh"
             aria-label="Refresh production monitor"
             disabled={!projectId || refreshing}
-            onClick={() => void loadSnapshot(projectId, window, { background: true })}
+            onClick={() => {
+              if (projectId) void loadSnapshot(projectId, window, { background: true });
+            }}
           >
             <RefreshCwIcon aria-hidden="true" size={15} className={refreshing ? "spinning" : ""} />
             Refresh
