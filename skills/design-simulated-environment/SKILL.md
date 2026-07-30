@@ -213,8 +213,8 @@ When you swap the model brick, re-check the parser/renderer.
 
 For trace-derived work, generate the environment through `understudy traces
 build-benchmark`; do not begin from the legacy v0 example. The helper was
-live-verified on 2026-07-21 against Prime Intellect Verifiers v1 commit
-`cb9c84969186f8a0954b1027320f225e6b6b0afb`. It emits the current typed
+live-verified on 2026-07-29 against Prime Intellect Verifiers `0.2.1`
+(release commit `ab65b6e8d34b03d162408d4bcb854430a86809e6`). It emits the current typed
 `TasksetConfig`/`Taskset`, per-rollout `State`, `Toolset` methods, strict and
 dense rewards, `HarnessConfig`/`Harness`, and `load_environment(EnvConfig)`
 package shape, with the audited commit recorded in the canonical benchmark.

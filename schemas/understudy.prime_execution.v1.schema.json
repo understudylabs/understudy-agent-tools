@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudy.dev/schemas/understudy.prime_execution.v1.schema.json",
+  "title": "Understudy provider-aware Prime execution",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "eval_config",
+    "import_config",
+    "source_dir",
+    "rejected_dir",
+    "identity",
+    "provider_policy",
+    "sampling"
+  ],
+  "properties": {
+    "schema_version": { "const": "understudy.prime_execution.v1" },
+    "eval_config": { "type": "string", "minLength": 1 },
+    "import_config": { "type": "string", "minLength": 1 },
+    "source_dir": { "type": "string", "minLength": 1 },
+    "rejected_dir": { "type": "string", "minLength": 1 },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmark_version", "environment_sha256", "verifier_version", "model", "run_id"],
+      "properties": {
+        "benchmark_version": { "type": "string", "minLength": 1 },
+        "environment_sha256": { "type": "string", "minLength": 1 },
+        "verifier_version": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "run_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provider_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "deployment", "allowed_providers"],
+      "properties": {
+        "provider": { "enum": ["openai", "anthropic", "openai-compatible", "understudy"] },
+        "deployment": { "type": "string", "minLength": 1 },
+        "allowed_providers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["openai", "anthropic", "openai-compatible", "understudy"] }
+        },
+        "zdr_required": { "type": "boolean" },
+        "zdr_confirmed": { "type": "boolean" }
+      }
+    },
+    "sampling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_tokens"],
+      "properties": {
+        "max_tokens": { "type": "integer", "minimum": 1 },
+        "temperature": { "type": "number" },
+        "top_p": { "type": "number" }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tasks": { "type": "integer", "minimum": 1 },
+        "models": { "type": "integer", "minimum": 1 },
+        "provider": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "backoff_ms": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

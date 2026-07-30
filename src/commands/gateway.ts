@@ -118,12 +118,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
         stream: Boolean(opts.stream),
         messages: [{ role: "user", content: "Reply with the single word ok." }],
       }
-    : {
-        model: opts.model ?? "gpt-4o-mini",
-        max_tokens: maxTokens,
-        stream: Boolean(opts.stream),
-        messages: [{ role: "user", content: "Reply with the single word ok." }],
-      };
+    : openAIProbeBody(opts.model ?? "gpt-4o-mini", maxTokens, Boolean(opts.stream));
 
   const started = Date.now();
   const res = await fetch(url, {
@@ -161,6 +156,18 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   process.stdout.write(`request_id ${requestId ?? "(none)"}\n`);
   process.stdout.write(`latency_ms ${latencyMs}\n`);
   process.stdout.write(`${res.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
+}
+
+function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Record<string, unknown> {
+  const tokenLimit = model.startsWith("gpt-5")
+    ? { max_completion_tokens: maxTokens }
+    : { max_tokens: maxTokens };
+  return {
+    model,
+    ...tokenLimit,
+    stream,
+    messages: [{ role: "user", content: "Reply with the single word ok." }],
+  };
 }
 
 function resolveGatewayUrl(override?: string): string {

@@ -40,6 +40,10 @@ import { isAnomalousEvalRow, liveJournalPath, readRunRequest, runRequestPath, RU
 import { accumulateReplay, type OracleReplay, type ReplayCall } from "./benchmark-replay.js";
 import { compileCaptureImport } from "./capture-import.js";
 import { compileDatasetFoundry, type DatasetFoundryOptions } from "./dataset-foundry.js";
+import { inspectPrimeBenchmark } from "./prime-benchmark-import.js";
+import { comparePrimeModels } from "./prime-benchmark-compare.js";
+import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "./prime-benchmark-lifecycle.js";
+import { planPrimeRun, planProviderAwarePrimeRun, primeExecutionCoverage } from "./prime-benchmark-runner.js";
 import { formatRegradeDelta, regradeRuns } from "./regrade.js";
 
 type Obj = Record<string, unknown>;
@@ -751,6 +755,97 @@ function toolFromDataset(args: Obj): unknown {
 
 export const BENCHMARKS_TOOLS = [
   {
+    name: "plan_prime_run",
+    description:
+      "Validate a native Prime TOML evaluation config and return the exact command plan without executing models or transferring data.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        eval_config: { type: "string", description: "Absolute path to the reviewed Prime eval TOML." },
+        prime_bin: { type: "string", description: "Optional Prime CLI executable path." },
+      },
+      required: ["eval_config"],
+    },
+  },
+  {
+    name: "plan_provider_prime_run",
+    description:
+      "Plan an idempotent provider-aware Prime run, resolve provider/deployment policy, normalize sampling, and list only missing tasks. Never executes models.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        execution_config: { type: "string", description: "Absolute path to understudy.prime_execution.v1 config." },
+      },
+      required: ["execution_config"],
+    },
+  },
+  {
+    name: "provider_prime_status",
+    description:
+      "Validate provider-aware native Prime rows and report accepted, rejected, and missing task coverage for safe resume/import.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        execution_config: { type: "string", description: "Absolute path to understudy.prime_execution.v1 config." },
+      },
+      required: ["execution_config"],
+    },
+  },
+  {
+    name: "prime_status",
+    description:
+      "Inspect a reviewed Prime benchmark config and report discovered native trace files, models, tasks, " +
+      "completion/version errors, and whether the corpus is ready for anonymized import.",
+    inputSchema: {
+      type: "object",
+      properties: { config: { type: "string", description: "Absolute path to understudy.prime_benchmark_import.v1 config." } },
+      required: ["config"],
+    },
+  },
+  {
+    name: "compare_prime_models",
+    description:
+      "Compare a candidate model with an incumbent over identical task ids in an imported Prime benchmark package.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dir: { type: "string", description: "Aggregate benchmark directory containing rows-prime.jsonl." },
+        baseline: { type: "string" },
+        candidate: { type: "string" },
+      },
+      required: ["dir", "baseline", "candidate"],
+    },
+  },
+  {
+    name: "review_prime_benchmark",
+    description:
+      "Append a human review decision to a Prime benchmark package. Agents may propose request_changes; " +
+      "approve should reflect an actual named reviewer decision.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dir: { type: "string" },
+        decision: { type: "string", enum: ["approve", "request_changes"] },
+        reviewer: { type: "string" },
+        note: { type: "string" },
+        scope: { type: "string", enum: ["benchmark", "task", "rollout"] },
+        ref: { type: "string" },
+      },
+      required: ["dir", "decision", "reviewer", "note"],
+    },
+  },
+  {
+    name: "freeze_prime_benchmark",
+    description:
+      "Freeze a calibrated Prime benchmark after its latest benchmark-scope human review approves it; " +
+      "writes content hashes and append-only version state.",
+    inputSchema: {
+      type: "object",
+      properties: { dir: { type: "string" }, note: { type: "string" } },
+      required: ["dir"],
+    },
+  },
+  {
     name: "list_benchmarks",
     description:
       "Benchmark directories under the configured roots (default ~/.understudy/benchmarks, plus any --root " +
@@ -1032,6 +1127,19 @@ export const BENCHMARKS_TOOLS = [
 /** Dispatch one tool call — exported so node:test can exercise tools without a stdio session. */
 export function callBenchmarksTool(name: string, args: Obj): unknown {
   switch (name) {
+    case "plan_prime_run": return planPrimeRun(requireString(args, "eval_config"), typeof args.prime_bin === "string" ? args.prime_bin : "prime");
+    case "plan_provider_prime_run": return planProviderAwarePrimeRun(requireString(args, "execution_config"));
+    case "provider_prime_status": return primeExecutionCoverage(requireString(args, "execution_config"));
+    case "prime_status": return inspectPrimeBenchmark(requireString(args, "config"));
+    case "compare_prime_models": return comparePrimeModels(requireString(args, "dir"), requireString(args, "baseline"), requireString(args, "candidate"));
+    case "review_prime_benchmark": return appendPrimeBenchmarkReview(requireString(args, "dir"), {
+      decision: requireString(args, "decision") as "approve" | "request_changes",
+      reviewer: requireString(args, "reviewer"),
+      note: requireString(args, "note"),
+      scope: (typeof args.scope === "string" ? args.scope : "benchmark") as "benchmark" | "task" | "rollout",
+      ref: typeof args.ref === "string" ? args.ref : null,
+    });
+    case "freeze_prime_benchmark": return freezePrimeBenchmark(requireString(args, "dir"), typeof args.note === "string" ? args.note : "");
     case "list_benchmarks": return toolListBenchmarks();
     case "read_benchmark": return toolReadBenchmark(args);
     case "read_task": return toolReadTask(args);

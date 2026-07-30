@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.prime_benchmark_import.v1.schema.json",
+  "title": "understudy.prime_benchmark_import.v1",
+  "description": "Reviewed local configuration that projects completed Prime Verifiers traces into an anonymized benchmark package and a private Prime-native scorecard.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "name", "source_dir", "output_dir", "verifier_version", "incumbent_model", "anonymized", "environment", "tasks", "pricing"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {"const": "understudy.prime_benchmark_import.v1"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "source_dir": {"type": "string", "minLength": 1},
+    "output_dir": {"type": "string", "minLength": 1},
+    "scorecard_output_dir": {"type": "string", "minLength": 1},
+    "verifier_version": {"type": "string", "minLength": 1},
+    "incumbent_model": {"type": "string", "minLength": 1},
+    "anonymized": {
+      "const": true,
+      "description": "Fail-closed acknowledgement that durable labels and metadata contain no customer identity. Raw traces remain local."
+    },
+    "environment": {
+      "type": "object",
+      "required": ["package_ref"],
+      "additionalProperties": true,
+      "properties": {
+        "package_ref": {"type": "string", "minLength": 1},
+        "package_sha256": {"type": ["string", "null"]},
+        "tool_surface": {"type": "array", "items": {"type": "string"}},
+        "runtime": {"enum": ["subprocess", "docker", "sandbox", null]}
+      }
+    },
+    "tasks": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["label", "category_id"],
+        "additionalProperties": true,
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "category_id": {"type": "string", "minLength": 1},
+          "summary": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+          "split": {"enum": ["train", "dev", "holdout", "none"]}
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["input", "cache_read", "output", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "input": {"type": "number", "minimum": 0},
+          "cache_read": {"type": "number", "minimum": 0},
+          "output": {"type": "number", "minimum": 0},
+          "source": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

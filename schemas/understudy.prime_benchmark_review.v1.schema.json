@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.prime_benchmark_review.v1.schema.json",
+  "title": "understudy.prime_benchmark_review.v1",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "decision", "scope", "note", "reviewer", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "understudy.prime_benchmark_review.v1"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "decision": {"enum": ["approve", "request_changes"]},
+    "scope": {"enum": ["benchmark", "task", "rollout"]},
+    "ref": {"type": ["string", "null"]},
+    "note": {"type": "string", "minLength": 1},
+    "reviewer": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1}
+  }
+}

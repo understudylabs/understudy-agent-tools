@@ -6,8 +6,9 @@ This reference backs the long-form implementation notes in `SKILL.md`.
 
 ### Current trace-foundry target (audited 2026-07-21)
 
-New trace-derived environments target the Verifiers v1 Taskset/Harness API at
-commit `cb9c84969186f8a0954b1027320f225e6b6b0afb`. Generate them with
+New trace-derived environments target the Verifiers v1 Taskset/Harness API in
+Prime Intellect Verifiers `0.2.1`, release commit
+`ab65b6e8d34b03d162408d4bcb854430a86809e6`. Generate them with
 `understudy traces build-benchmark`; the helper writes and pins the typed
 Taskset, per-rollout State and Toolset, Harness, loaders, canonical benchmark,
 oracle, and sentinels. Smoke-install the generated package against the recorded

@@ -2236,6 +2236,15 @@ class ScoreWithFeedback:
       assert.equal(openaiRequest.path, "/v1/chat/completions");
       assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
       assert.equal(openaiRequest.body.stream, true);
+      assert.equal(openaiRequest.body.max_tokens, 8);
+
+      const gpt5 = await runWithEnvAsync([
+        "--json", "gateway", "probe", "--provider", "openai", "--model", "gpt-5.4-mini",
+      ], env, repo);
+      assert.equal(gpt5.status, 0, gpt5.stderr);
+      const gpt5Request = requests.at(-1);
+      assert.equal(gpt5Request.body.max_completion_tokens, 8);
+      assert.equal(gpt5Request.body.max_tokens, undefined);
 
       // --no-stream is the explicit opt-out for reproducing buffered behavior.
       const buffered = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai", "--no-stream"], env, repo);
