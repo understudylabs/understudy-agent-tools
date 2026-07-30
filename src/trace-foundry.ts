@@ -453,12 +453,66 @@ function finalizePrimeVerifierV021Package(pkg: string): void {
     )
     .replace(
       "class TraceConfig(vf.TasksetConfig):\n",
-      "class TraceConfig(vf.TasksetConfig):\n    id: str = \"understudy_trace_env\"\n",
+      "class TraceConfig(vf.TasksetConfig):\n    id: str = \"understudy_trace_env\"\n    task_ids: list[str] = []\n",
+    )
+    .replace(
+      "class TraceTask(vf.Task[TraceData, WorldState]):\n",
+      "class TraceTask(vf.Task[TraceData, WorldState]):\n    tools = (WorldToolset,)\n\n    def server_config(self, server_cls: type) -> vf.ToolsetConfig:\n        return vf.ToolsetConfig(colocated=True)\n\n",
+    )
+    .replace(
+      "class TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n",
+      "class TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n",
+    )
+    .replace(
+      "    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n",
+      "    def load(self) -> list[TraceTask]:\n        selected = set(self.config.task_ids)\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if (not selected and r[\"split\"] == self.config.split) or r[\"task_id\"] in selected]\n",
     );
   writeFileSync(tasksetPath, taskset, { mode: 0o600 });
   writeFileSync(
+    join(pkg, "harness.py"),
+    `"""Prime Verifiers 0.2.1 null harness with a reproducible MCP client.
+
+The upstream null harness executes program.py through a second uv resolver. Its
+unbounded "mcp" dependency can drift independently of this environment's
+uv.lock and become wire-incompatible with the MCP server embedded in
+verifiers==0.2.1. Pin that nested runtime to the version in the environment
+lock before any model call.
+"""
+from verifiers.v1.harnesses.null import harness as _upstream
+
+_UNPINNED = '# dependencies = ["openai", "mcp", "httpx", "tenacity"]'
+_PINNED = '# dependencies = ["openai", "mcp==1.29.0", "httpx", "tenacity"]'
+if _UNPINNED not in _upstream.PROGRAM_SOURCE:
+    raise RuntimeError("Prime null harness dependency declaration changed; review the pin")
+_upstream.PROGRAM_SOURCE = _upstream.PROGRAM_SOURCE.replace(_UNPINNED, _PINNED, 1)
+
+
+class PinnedNullHarnessConfig(_upstream.NullHarnessConfig):
+    id: str = "understudy_trace_env"
+
+
+class PinnedNullHarness(_upstream.NullHarness):
+    config: PinnedNullHarnessConfig
+
+
+__all__ = ["PinnedNullHarness"]
+`,
+    { mode: 0o600 },
+  );
+  writeFileSync(
     join(pkg, "__init__.py"),
-    "from understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\"]\n",
+    `from understudy_trace_env.taskset import TraceTaskset
+
+__all__ = ["PinnedNullHarness", "TraceTaskset"]
+
+
+def __getattr__(name):
+    # Keep taskset-only/offline imports independent of the full harness module.
+    if name == "PinnedNullHarness":
+        from understudy_trace_env.harness import PinnedNullHarness
+        return PinnedNullHarness
+    raise AttributeError(name)
+`,
     { mode: 0o600 },
   );
 }
