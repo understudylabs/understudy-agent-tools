@@ -452,7 +452,19 @@ function writeJsonl(path: string, rows: Obj[]): void {
   writeFileSync(path, "", { mode: 0o600 });
   for (let i = 0; i < rows.length; i += 200) appendFileSync(path, rows.slice(i, i + 200).map((row) => JSON.stringify(row)).join("\n") + "\n");
 }
-function readJsonl(path: string): Obj[] { return existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/).filter(Boolean).map((line) => asObject(JSON.parse(line))) : []; }
+function readJsonl(path: string): Obj[] {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        return [asObject(JSON.parse(line))];
+      } catch {
+        return [];
+      }
+    });
+}
 function appendJsonl(path: string, rows: Obj[]): void { if (rows.length === 0) return; mkdirSync(resolve(path, ".."), { recursive: true }); appendFileSync(path, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", { mode: 0o600 }); }
 const pyName = (value: string): string => { const clean = value.replace(/[^A-Za-z0-9_]/g, "_"); return /^[A-Za-z_]/.test(clean) ? clean : `tool_${clean}`; };
 
