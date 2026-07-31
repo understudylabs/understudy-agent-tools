@@ -476,3 +476,37 @@ test("context-window normalization rejects transport and unrelated provider fail
     assert.equal(disposition.normalized, false, JSON.stringify(error));
   }
 });
+
+test("normalizes Poolside's exact input-length context-window failure shape", () => {
+  const trace = syntheticTrace("laguna-xs-2.1");
+  trace.stop_condition = "error";
+  delete trace.rewards;
+  delete trace.metrics;
+  trace.errors = [{
+    type: "ProviderError",
+    status_code: 400,
+    message: 'upstream 400: {"error":{"code":400,"message":"Input length 315811 exceeds the maximum allowed input length of 262112 tokens.","type":"Bad Request"}}',
+  }];
+  trace.calls[0].error = {
+    type: "ProviderError",
+    status_code: 400,
+    message: 'upstream 400: {"error":{"code":400,"message":"Input length 315797 exceeds the maximum allowed input length of 262112 tokens.","type":"Bad Request"}}',
+  };
+
+  assert.deepEqual(
+    primeTraceDisposition(trace, "0.2.1"),
+    {
+      accepted: true,
+      normalized: true,
+      stop_condition: "error",
+      display_stop_reason: "context_window_exceeded",
+      terminal_outcome: "model_failure",
+      score: 0,
+      partial_credit: 0,
+      issue: null,
+    },
+  );
+
+  trace.errors[0].message = "Input length is invalid.";
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, false);
+});

@@ -16,7 +16,7 @@ export const SCORED_TERMINAL_STOP_CONDITIONS = new Set([
 ]);
 
 const CONTEXT_WINDOW_MESSAGE =
-  /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum/i;
+  /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum|Input length \d+ exceeds the maximum allowed input length of \d+ tokens\./i;
 
 function isRecognizedContextWindowError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
