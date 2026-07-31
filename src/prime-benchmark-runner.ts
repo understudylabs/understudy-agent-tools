@@ -12,7 +12,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 
 import { inspectPrimeBenchmark } from "./prime-benchmark-import.js";
-import { primeTraceDisposition } from "./prime-trace-contract.js";
+import { hasOnlyAcceptedCallErrors, primeTraceDisposition } from "./prime-trace-contract.js";
 
 export type PrimeProvider = "openai" | "anthropic" | "openai-compatible" | "understudy";
 export type PrimeSampling = {
@@ -186,8 +186,13 @@ export function validatePrimeTrace(
   if (!Array.isArray(trace.task?.data?.outcome_contract?.required)) reasons.push("missing_outcome_contract");
   if (!Array.isArray(trace.nodes) || trace.nodes.length === 0) reasons.push("missing_nodes");
   if (calls.length === 0) reasons.push("missing_model_calls");
-  if (!disposition.normalized && calls.some((call: any) => call.error)) reasons.push("provider_call_error");
-  if (!disposition.normalized && calls.some((call: any) => !call.usage || !call.time || !Number.isFinite(call.time.start) || !Number.isFinite(call.time.end))) {
+  if (!disposition.normalized && !hasOnlyAcceptedCallErrors(trace, String(trace.stop_condition ?? ""))) reasons.push("provider_call_error");
+  if (!disposition.normalized && calls.some((call: any) =>
+    !call.time ||
+    !Number.isFinite(call.time.start) ||
+    !Number.isFinite(call.time.end) ||
+    (!call.error && !call.usage)
+  )) {
     reasons.push("missing_call_usage_or_timing");
   }
   if (!Number.isFinite(trace.timing?.generation?.start) || !Number.isFinite(trace.timing?.generation?.end)) {

@@ -27,6 +27,7 @@ type ImportConfig = {
   output_dir: string;
   verifier_version: string;
   incumbent_model: string;
+  benchmark_mode?: "authoritative" | "diagnostic";
   anonymized: boolean;
   environment: {
     package_ref: string;
@@ -61,6 +62,9 @@ function assertConfig(value: unknown): asserts value is ImportConfig {
     throw new Error("config.environment.package_ref is required");
   }
   if (!config.pricing || !config.tasks) throw new Error("config.pricing and config.tasks are required");
+  if (config.benchmark_mode !== undefined && !["authoritative", "diagnostic"].includes(config.benchmark_mode)) {
+    throw new Error("config.benchmark_mode must be authoritative or diagnostic");
+  }
   for (const [model, annotation] of Object.entries(config.availability_annotations ?? {})) {
     if (
       annotation.status !== "provider_unavailable" ||
@@ -187,6 +191,9 @@ export function importPrimeBenchmark(configPath: string): {
   const configValue = readJson(configFile);
   assertConfig(configValue);
   const config = configValue;
+  if (config.benchmark_mode === "diagnostic") {
+    throw new Error("diagnostic benchmark configs may build private scorecards but cannot be aggregate-imported");
+  }
   const configDir = dirname(configFile);
   const fromConfig = (value: string) => isAbsolute(value) ? value : resolve(configDir, value);
   const sourceDir = fromConfig(config.source_dir);

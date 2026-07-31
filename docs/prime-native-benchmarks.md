@@ -51,6 +51,19 @@ shown in a non-scoring lane and are excluded from rows, pass rates, rankings,
 cost comparisons, and the Pareto frontier. An annotated model may not also
 appear in the canonical trace source.
 
+Set `benchmark_mode` to `diagnostic` for a full audit view that deliberately
+preserves incumbent replay misses. Diagnostic configs may build a private
+scorecard, which is visibly labeled non-authoritative, but `import-prime`
+refuses to create an aggregate package from them. Authoritative parity configs
+use `benchmark_mode: "authoritative"` (the default) and retain the strict
+all-frozen-tasks incumbent calibration gate.
+
+A scored terminal trace may retain a recognized transient 429/5xx call attempt
+only when the top-level error list is empty and a later usage-bearing call
+proves recovery inside the same trace. Terminal provider failures, unknown
+transport messages, and retries without a later successful call remain
+rejected.
+
 ## Build and reopen
 
 ```sh

@@ -16,6 +16,10 @@
     "scorecard_output_dir": {"type": "string", "minLength": 1},
     "verifier_version": {"type": "string", "minLength": 1},
     "incumbent_model": {"type": "string", "minLength": 1},
+    "benchmark_mode": {
+      "enum": ["authoritative", "diagnostic"],
+      "description": "Defaults to authoritative. Diagnostic configs may render private scorecards but the aggregate importer rejects them."
+    },
     "anonymized": {
       "const": true,
       "description": "Fail-closed acknowledgement that durable labels and metadata contain no customer identity. Raw traces remain local."

@@ -16,16 +16,48 @@ export const SCORED_TERMINAL_STOP_CONDITIONS = new Set([
 ]);
 
 const CONTEXT_WINDOW_MESSAGE =
-  /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum|Input length \d+ exceeds the maximum allowed input length of \d+ tokens\./i;
+  /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum|Input length \d+ exceeds the maximum allowed input length of \d+ tokens\.|Input tokens exceed the configured limit of \d+ tokens\.\s*(?:Your input contained|Your messages resulted in) \d+ tokens\.(?:\s*Please reduce the length of the messages\.)?/i;
 
 function isRecognizedContextWindowError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const row = error as Record<string, unknown>;
   return (
-    row.type === "ProviderError" &&
+    (row.type === "ProviderError" || row.type === "OverlongPromptError") &&
     Number(row.status_code) === 400 &&
     typeof row.message === "string" &&
     CONTEXT_WINDOW_MESSAGE.test(row.message)
+  );
+}
+
+const RETRYABLE_TRANSPORT_MESSAGES: Record<number, RegExp> = {
+  429: /upstream 429:.*rate limit exceeded/is,
+  500: /upstream 500:.*internal server error/is,
+  502: /upstream 502:.*provider connection error:.*upstream response stream/is,
+  503: /upstream 503:.*overloaded_error.*provider is temporarily unavailable/is,
+};
+
+function isRecognizedRetryableTransportError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const row = error as Record<string, unknown>;
+  const status = Number(row.status_code);
+  return (
+    row.type === "ProviderError" &&
+    typeof row.message === "string" &&
+    RETRYABLE_TRANSPORT_MESSAGES[status]?.test(row.message) === true
+  );
+}
+
+export function hasOnlyAcceptedCallErrors(trace: Record<string, any>, stopCondition: string): boolean {
+  const calls = Array.isArray(trace.calls) ? trace.calls.filter((call: any) => !call?.sampling?.output_config) : [];
+  const errorIndexes = calls.flatMap((call: any, index: number) => call?.error ? [index] : []);
+  if (errorIndexes.length === 0) return true;
+  if (stopCondition === "context_length") {
+    return errorIndexes.every((index) => isRecognizedContextWindowError(calls[index].error));
+  }
+  if (stopCondition !== "agent_completed") return false;
+  return errorIndexes.every((index) =>
+    isRecognizedRetryableTransportError(calls[index].error) &&
+    calls.slice(index + 1).some((later: any) => !later?.error && later?.usage),
   );
 }
 
@@ -72,7 +104,7 @@ export function primeTraceDisposition(
   if (!Array.isArray(trace.errors) || trace.errors.length > 0) {
     return rejected(stopCondition, "runtime/provider errors are present");
   }
-  if ((trace.calls ?? []).some((call: any) => call?.error)) {
+  if (!hasOnlyAcceptedCallErrors(trace, stopCondition)) {
     return rejected(stopCondition, "provider call errors are present");
   }
   if (!Number.isFinite(trace.rewards?.final_state)) {

@@ -11,6 +11,9 @@ if (!["understudy.prime_scorecard.v1", "understudy.prime_benchmark_import.v1"].i
 if (config.anonymized !== true) {
   throw new Error("config.anonymized must be true before building a durable scorecard");
 }
+if (config.benchmark_mode !== undefined && !["authoritative", "diagnostic"].includes(config.benchmark_mode)) {
+  throw new Error("config.benchmark_mode must be authoritative or diagnostic");
+}
 const configDir = dirname(resolvedConfigPath);
 const fromConfig = (value) => isAbsolute(value) ? value : resolve(configDir, value);
 const primeRuns = fromConfig(config.source_dir);
@@ -30,11 +33,31 @@ const discoveredPrimeTraces = modelIds.flatMap((model) =>
 );
 const tracesById = new Map();
 const scoredTerminalStopConditions = new Set(["agent_completed", "context_length", "max_turns"]);
-const contextWindowMessage = /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum/i;
+const contextWindowMessage = /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum|Input length \d+ exceeds the maximum allowed input length of \d+ tokens\.|Input tokens exceed the configured limit of \d+ tokens\.\s*(?:Your input contained|Your messages resulted in) \d+ tokens\.(?:\s*Please reduce the length of the messages\.)?/i;
 const isContextWindowError = (error) =>
-  error?.type === "ProviderError" &&
+  ["ProviderError", "OverlongPromptError"].includes(error?.type) &&
   Number(error?.status_code) === 400 &&
   contextWindowMessage.test(String(error?.message ?? ""));
+const retryableTransportMessages = {
+  429: /upstream 429:.*rate limit exceeded/is,
+  500: /upstream 500:.*internal server error/is,
+  502: /upstream 502:.*provider connection error:.*upstream response stream/is,
+  503: /upstream 503:.*overloaded_error.*provider is temporarily unavailable/is,
+};
+const isRetryableTransportError = (error) =>
+  error?.type === "ProviderError" &&
+  retryableTransportMessages[Number(error?.status_code)]?.test(String(error?.message ?? "")) === true;
+const hasOnlyAcceptedCallErrors = (trace, stopCondition) => {
+  const calls = (trace.calls ?? []).filter((call) => !call?.sampling?.output_config);
+  const errorIndexes = calls.flatMap((call, index) => call?.error ? [index] : []);
+  if (!errorIndexes.length) return true;
+  if (stopCondition === "context_length") return errorIndexes.every((index) => isContextWindowError(calls[index].error));
+  if (stopCondition !== "agent_completed") return false;
+  return errorIndexes.every((index) =>
+    isRetryableTransportError(calls[index].error) &&
+    calls.slice(index + 1).some((later) => !later?.error && later?.usage),
+  );
+};
 const isNormalizedContextWindowFailure = (trace) => {
   const errors = Array.isArray(trace.errors) ? trace.errors : [];
   const callErrors = (trace.calls ?? []).map((call) => call?.error).filter(Boolean);
@@ -51,7 +74,7 @@ const traceDisposition = (trace) => {
     !scoredTerminalStopConditions.has(String(trace.stop_condition ?? "")) ||
     !Array.isArray(trace.errors) ||
     trace.errors.length > 0 ||
-    (trace.calls ?? []).some((call) => call?.error) ||
+    !hasOnlyAcceptedCallErrors(trace, String(trace.stop_condition ?? "")) ||
     !Number.isFinite(trace.rewards?.final_state) ||
     !Number.isFinite(trace.metrics?.final_state_partial_credit)
   ) return null;
@@ -247,6 +270,7 @@ const data = JSON.stringify({
   created_at: new Date().toISOString(),
   benchmark_id: config.benchmark_id,
   name: config.name,
+  benchmark_mode: config.benchmark_mode ?? "authoritative",
   incumbent_model: config.incumbent_model,
   verifier_version: config.verifier_version,
   source: `Prime Verifiers ${config.verifier_version} native traces only`,
@@ -439,7 +463,8 @@ function summaryOverview(models){
   const cheapest=[...qualified].filter(stat=>Number.isFinite(stat.cost)).sort((a,b)=>a.cost-b.cost)[0];
   const best=stats[0];
   const callout=(label,stat,value)=>'<div class="winner"><span>'+label+'</span><b>'+esc(shortModel(stat?.model??"—"))+'</b><small>'+value+'</small></div>';
-  return '<div class="big green">MODEL MATRIX</div><div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">scored models <b>'+stats.length+'</b></div><div class="metric">provider unavailable <b>'+D.availability_annotations.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Availability annotations are evidence-only and excluded from scores, rankings, and Pareto. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
+  const mode=D.benchmark_mode==="diagnostic"?'<div class="big amber">DIAGNOSTIC AUDIT</div><div class="sub">Non-authoritative private review; incumbent replay misses are preserved and this config cannot be aggregate-imported.</div>':'<div class="big green">MODEL MATRIX</div>';
+  return mode+'<div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">scored models <b>'+stats.length+'</b></div><div class="metric">provider unavailable <b>'+D.availability_annotations.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Availability annotations are evidence-only and excluded from scores, rankings, and Pareto. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
 }
 function render(){
   document.querySelector(".layout").classList.toggle("summary-mode",viewMode==="summary");

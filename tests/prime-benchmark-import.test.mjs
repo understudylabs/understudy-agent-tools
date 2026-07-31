@@ -172,10 +172,27 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   assert.match(viewer, /"required_tasks":50/);
   assert.match(viewer, /clean tasks/);
   assert.match(viewer, /corrected-v3\/provider-availability\.json/);
+  const diagnosticConfigPath = join(root, "diagnostic-config.json");
+  writeFileSync(diagnosticConfigPath, JSON.stringify({
+    ...config,
+    benchmark_id: "synthetic-prime-diagnostic-v1",
+    name: "Synthetic Prime Diagnostic",
+    benchmark_mode: "diagnostic",
+    scorecard_output_dir: join(root, "private-scorecards", "synthetic-diagnostic"),
+  }, null, 2));
+  assert.throws(
+    () => importPrimeBenchmark(diagnosticConfigPath),
+    /diagnostic benchmark configs may build private scorecards but cannot be aggregate-imported/,
+  );
+  const diagnosticRendered = spawnSync(process.execPath, [renderer, diagnosticConfigPath], { encoding: "utf8" });
+  assert.equal(diagnosticRendered.status, 0, diagnosticRendered.stderr);
+  const diagnosticViewer = readFileSync(join(root, "private-scorecards", "synthetic-diagnostic", "viewer", "index.html"), "utf8");
+  assert.match(diagnosticViewer, /DIAGNOSTIC AUDIT/);
+  assert.match(diagnosticViewer, /Non-authoritative private review/);
   const entries = discoverPrimeScorecards(join(root, "private-scorecards"));
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0].benchmark_id, "synthetic-prime-benchmark-v1");
-  assert.equal(entries[0].rollouts, 2);
+  assert.equal(entries.length, 2);
+  const authoritativeEntry = entries.find((entry) => entry.benchmark_id === "synthetic-prime-benchmark-v1");
+  assert.equal(authoritativeEntry.rollouts, 2);
   const gallery = renderScorecardGallery(entries);
   assert.match(gallery, /Synthetic Prime Benchmark/);
   assert.match(gallery, /\/b\/synthetic-prime-benchmark\//);
@@ -508,5 +525,55 @@ test("normalizes Poolside's exact input-length context-window failure shape", ()
   );
 
   trace.errors[0].message = "Input length is invalid.";
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, false);
+});
+
+test("accepts only recovered, recognized retryable call errors inside a scored completed trace", () => {
+  const trace = syntheticTrace("poolside/laguna-s-2.1");
+  trace.timing = { generation: { start: 100, end: 103 } };
+  trace.calls.splice(1, 0, {
+    error: {
+      type: "ProviderError",
+      status_code: 429,
+      message: 'upstream 429: {"error":"Rate limit exceeded"}',
+    },
+    usage: null,
+    time: { start: 101.5, end: 102 },
+  });
+  trace.calls.push({
+    usage: { prompt_tokens: 1100, cached_input_tokens: 0, completion_tokens: 50 },
+    time: { start: 102, end: 103 },
+  });
+
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, true);
+  assert.equal(validatePrimeTrace(trace, { verifierVersion: "0.2.1" }).accepted, true);
+
+  const terminalTransportFailure = structuredClone(trace);
+  terminalTransportFailure.calls.pop();
+  assert.equal(primeTraceDisposition(terminalTransportFailure, "0.2.1").accepted, false);
+
+  const unrecognized = structuredClone(trace);
+  unrecognized.calls[1].error.message = "upstream 429: unrelated bad request";
+  assert.equal(primeTraceDisposition(unrecognized, "0.2.1").accepted, false);
+});
+
+test("accepts the exact scored OpenAI overlong-prompt call shape", () => {
+  const trace = syntheticTrace("gpt-5.5", 0);
+  trace.stop_condition = "context_length";
+  trace.metrics.final_state_partial_credit = 0;
+  trace.timing = { generation: { start: 100, end: 102 } };
+  trace.calls.push({
+    error: {
+      type: "OverlongPromptError",
+      status_code: 400,
+      message: "upstream 400: OpenAI upstream error: Input tokens exceed the configured limit of 922000 tokens. Your messages resulted in 923456 tokens. Please reduce the length of the messages.",
+    },
+    usage: null,
+    time: { start: 101.5, end: 102 },
+  });
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, true);
+  assert.equal(validatePrimeTrace(trace, { verifierVersion: "0.2.1" }).accepted, true);
+
+  trace.calls[1].error.message = "input was too large";
   assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, false);
 });
