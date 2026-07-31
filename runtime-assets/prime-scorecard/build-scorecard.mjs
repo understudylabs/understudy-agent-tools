@@ -29,6 +29,39 @@ const discoveredPrimeTraces = modelIds.flatMap((model) =>
     .map(JSON.parse),
 );
 const tracesById = new Map();
+const scoredTerminalStopConditions = new Set(["agent_completed", "context_length", "max_turns"]);
+const contextWindowMessage = /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum/i;
+const isContextWindowError = (error) =>
+  error?.type === "ProviderError" &&
+  Number(error?.status_code) === 400 &&
+  contextWindowMessage.test(String(error?.message ?? ""));
+const isNormalizedContextWindowFailure = (trace) => {
+  const errors = Array.isArray(trace.errors) ? trace.errors : [];
+  const callErrors = (trace.calls ?? []).map((call) => call?.error).filter(Boolean);
+  const allErrors = [...errors, ...callErrors];
+  return trace.is_completed === true && trace.stop_condition === "error" &&
+    allErrors.length > 0 && allErrors.every(isContextWindowError);
+};
+const traceDisposition = (trace) => {
+  if (trace.verifiers?.version !== config.verifier_version || trace.is_completed !== true) return null;
+  if (isNormalizedContextWindowFailure(trace)) {
+    return { score: 0, partialCredit: 0, stopReason: "context_window_exceeded", normalized: true };
+  }
+  if (
+    !scoredTerminalStopConditions.has(String(trace.stop_condition ?? "")) ||
+    !Array.isArray(trace.errors) ||
+    trace.errors.length > 0 ||
+    (trace.calls ?? []).some((call) => call?.error) ||
+    !Number.isFinite(trace.rewards?.final_state) ||
+    !Number.isFinite(trace.metrics?.final_state_partial_credit)
+  ) return null;
+  return {
+    score: Number(trace.rewards.final_state),
+    partialCredit: Number(trace.metrics.final_state_partial_credit),
+    stopReason: String(trace.stop_condition),
+    normalized: false,
+  };
+};
 for (const trace of discoveredPrimeTraces) {
   const id = String(trace.id ?? "");
   if (!id) throw new Error("Prime trace is missing its stable id");
@@ -42,15 +75,9 @@ for (const trace of discoveredPrimeTraces) {
 const primeTraces = [...tracesById.values()].map(({ trace }) => trace);
 if (
   primeTraces.length === 0 ||
-  primeTraces.some(
-    (trace) =>
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0,
-  )
+  primeTraces.some((trace) => !traceDisposition(trace))
 ) {
-  throw new Error(`Refusing to build: every discovered trace must be a completed, error-free Prime Verifiers ${config.verifier_version} run`);
+  throw new Error(`Refusing to build: every discovered trace must be an error-free, scored terminal Prime Verifiers ${config.verifier_version} row`);
 }
 const pricing = config.pricing;
 const contentText = (content) => (Array.isArray(content)
@@ -141,6 +168,7 @@ const rollouts = primeTraces.map((prime) => {
     const calls = prime.calls.filter((call) => !isHarnessTitleCall(call));
     const usage = prime.calls.map((call) => call.usage ?? {});
     const rate = pricing[model];
+    const disposition = traceDisposition(prime);
     if (!rate) throw new Error(`Missing Understudy customer rate card for ${model}`);
     const cost = usage.reduce(
       (sum, row) =>
@@ -160,8 +188,9 @@ const rollouts = primeTraces.map((prime) => {
         : block.name,
     );
     const expected = expectedToolPath(prime);
-    const started = Math.min(...calls.map((call) => call.time.start));
-    const ended = Math.max(...calls.map((call) => call.time.end));
+    const timedCalls = calls.filter((call) => Number.isFinite(call.time?.start) && Number.isFinite(call.time?.end));
+    const started = timedCalls.length ? Math.min(...timedCalls.map((call) => call.time.start)) : 0;
+    const ended = timedCalls.length ? Math.max(...timedCalls.map((call) => call.time.end)) : started;
     const generationStarted = Number(prime.timing?.generation?.start);
     const generationEnded = Number(prime.timing?.generation?.end);
     const latencyMs = Number.isFinite(generationStarted) && Number.isFinite(generationEnded)
@@ -173,14 +202,17 @@ const rollouts = primeTraces.map((prime) => {
       task_id: taskId,
       prompt: taskDetails(prime).label,
       task_summary: taskDetails(prime).summary,
-      strict_pass: prime.rewards.final_state === 1,
-      reward: prime.rewards.final_state,
-      partial_credit: prime.metrics.final_state_partial_credit,
+      strict_pass: disposition.score === 1,
+      reward: disposition.score,
+      partial_credit: disposition.partialCredit,
       turns: calls.length,
       latency_ms: latencyMs,
       tokens: usage.reduce((sum, row) => sum + (row.prompt_tokens ?? 0) + (row.cached_input_tokens ?? 0) + (row.completion_tokens ?? 0), 0),
       cost_usd: cost,
-      terminal_reason: prime.stop_condition,
+      terminal_reason: disposition.stopReason,
+      native_terminal_reason: prime.stop_condition,
+      terminal_outcome: prime.stop_condition === "agent_completed" ? "completed" : "model_failure",
+      score_normalization: disposition.normalized ? "recognized_context_window_failure_zero" : null,
       grading_method: `Prime Verifiers ${config.verifier_version} deterministic final-state contract (no LLM judge or regex)`,
       tool_path: observed,
       expected_tool_path: expected,
@@ -389,7 +421,7 @@ function render(){
   document.querySelector(".layout").classList.toggle("summary-mode",viewMode==="summary");
   document.querySelector("#count").textContent=D.rollouts.length;
   const models=[...new Set(D.rollouts.map(r=>r.model))];
-  document.querySelector("#list").innerHTML='<button class="summary-button '+(viewMode==="summary"?"on":"")+'" id="view-summary">View summary <span>→</span></button>'+models.map((model,modelIndex)=>{const rows=D.rollouts.filter(r=>r.model===model);return '<details class="model-group" '+(modelIndex<3?"open":"")+'><summary class="model-group-title">'+esc(model.replace("claude-",""))+'<span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></summary>'+rows.map((r,i)=>'<button class="rollout '+(viewMode==="trace"&&r.id===selected.id?"on":"")+'" data-id="'+esc(r.id)+'"><div class="rowtop"><span>Task '+(i+1)+'</span><b class="reward '+(r.strict_pass?"green":"red")+'">'+r.partial_credit.toFixed(2)+'</b></div><div class="prompt">'+esc(r.prompt)+'</div></button>').join("")+'</details>'}).join("");
+  document.querySelector("#list").innerHTML='<button class="summary-button '+(viewMode==="summary"?"on":"")+'" id="view-summary">View summary <span>→</span></button>'+models.map((model,modelIndex)=>{const rows=D.rollouts.filter(r=>r.model===model);return '<details class="model-group" '+(modelIndex<3?"open":"")+'><summary class="model-group-title">'+esc(model.replace("claude-",""))+'<span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></summary>'+rows.map((r,i)=>'<button class="rollout '+(viewMode==="trace"&&r.id===selected.id?"on":"")+'" data-id="'+esc(r.id)+'"><div class="rowtop"><span>Task '+(i+1)+(r.terminal_outcome==="model_failure"?' · <span class="amber">'+esc(r.terminal_reason)+'</span>':"")+'</span><b class="reward '+(r.strict_pass?"green":"red")+'">'+r.partial_credit.toFixed(2)+'</b></div><div class="prompt">'+esc(r.prompt)+'</div></button>').join("")+'</details>'}).join("");
   if(viewMode==="summary"){
     document.querySelector("#center-title").textContent="Summary";
     document.querySelector("#history").innerHTML=summaryView(models);
@@ -404,7 +436,7 @@ function render(){
   document.querySelector("#history").innerHTML=taskSummary+conversation+verifier;
   document.querySelector("#reward").className="reward "+(selected.strict_pass?"green":"red");
   document.querySelector("#reward").textContent=selected.partial_credit.toFixed(3);
-  document.querySelector("#overview").innerHTML='<div class="big '+(selected.strict_pass?"green":"red")+'">'+(selected.strict_pass?"PASS":"FAIL")+'</div><div class="label">Prime metrics</div><div class="metric">reward <b>'+selected.reward.toFixed(3)+'</b></div><div class="metric">partial_credit <b>'+selected.partial_credit.toFixed(3)+'</b></div><div class="metric">cost_per_task <b title="'+esc(selected.cost_note)+'">'+usd(selected.cost_usd)+'</b></div><div class="metric">model calls <b>'+selected.turns+'</b></div><div class="metric">latency <b>'+ms(selected.latency_ms)+'</b></div><div class="metric">tokens <b>'+tok(selected.tokens)+'</b></div><div class="label">Native run</div><div class="metric">model <b>'+esc(selected.model)+'</b></div><div class="metric">verifiers <b>'+esc(selected.verifier_version)+'</b></div><div class="metric">harness <b>'+esc(selected.harness)+'</b></div><div class="metric">task <b>'+esc(selected.task_id.slice(-8))+'</b></div><div class="metric">run <b>'+esc(selected.run_id.slice(0,8))+'</b></div><div class="label">Tool path</div><div class="path">'+esc(selected.tool_path.join(" → ")||"none")+'</div>'+selected.misses.map(x=>'<div class="failure">'+esc(x)+'</div>').join("");
+  document.querySelector("#overview").innerHTML='<div class="big '+(selected.strict_pass?"green":"red")+'">'+(selected.strict_pass?"PASS":"FAIL")+'</div><div class="label">Prime metrics</div><div class="metric">reward <b>'+selected.reward.toFixed(3)+'</b></div><div class="metric">partial_credit <b>'+selected.partial_credit.toFixed(3)+'</b></div><div class="metric">stop reason <b class="'+(selected.terminal_outcome==="model_failure"?"amber":"")+'">'+esc(selected.terminal_reason)+'</b></div><div class="metric">cost_per_task <b title="'+esc(selected.cost_note)+'">'+usd(selected.cost_usd)+'</b></div><div class="metric">model calls <b>'+selected.turns+'</b></div><div class="metric">latency <b>'+ms(selected.latency_ms)+'</b></div><div class="metric">tokens <b>'+tok(selected.tokens)+'</b></div><div class="label">Native run</div><div class="metric">model <b>'+esc(selected.model)+'</b></div><div class="metric">verifiers <b>'+esc(selected.verifier_version)+'</b></div><div class="metric">harness <b>'+esc(selected.harness)+'</b></div><div class="metric">task <b>'+esc(selected.task_id.slice(-8))+'</b></div><div class="metric">run <b>'+esc(selected.run_id.slice(0,8))+'</b></div><div class="label">Tool path</div><div class="path">'+esc(selected.tool_path.join(" → ")||"none")+'</div>'+selected.misses.map(x=>'<div class="failure">'+esc(x)+'</div>').join("");
   }
   document.querySelector("#view-summary").addEventListener("click",()=>{viewMode="summary";render()});
   document.querySelectorAll(".sort-button").forEach(button=>button.addEventListener("click",()=>{

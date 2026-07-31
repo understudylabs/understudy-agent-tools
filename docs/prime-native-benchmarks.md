@@ -145,13 +145,23 @@ Prime verifier version, model, run, and task. Resume runs only missing or invali
 tasks. Provider and deployment must be resolved in advance and included in the
 approved allowlist; required ZDR must be explicitly confirmed.
 
-Every provider attempt writes to a private staging directory. Only rows with
-`is_completed=true`, `stop_condition=agent_completed`, no errors, the pinned
-verifier, matching task/model identity, native nodes and calls, usage and timing,
-outcome contract, reward, and partial credit enter `source_dir`. Failed or
-incomplete attempts move append-only to `rejected_dir` with provider/request
-metadata. A nonempty `traces.jsonl` is therefore never treated as completion.
-Only 429/503-style transient failures receive exponential backoff.
+Every provider attempt writes to a private staging directory. Accepted rows
+must be terminal, pinned to the reviewed verifier, match task/model identity,
+and carry the required native evidence described below. Failed or incomplete
+attempts move append-only to `rejected_dir` with provider/request metadata. A
+nonempty `traces.jsonl` is therefore never treated as completion. Only
+429/503-style transient failures receive exponential backoff.
+
+Scored terminal model failures are evidence, not missing rows. Prime
+`context_length` and `max_turns` rows are importable when they are error-free and
+carry final reward plus partial credit. A narrower normalization also accepts a
+terminal ProviderError 400 only when every recorded error explicitly identifies
+a context-window overflow (for example, `ContextWindowExceededError` or
+`prompt is too long: N tokens > M maximum`). The raw trace remains unchanged;
+the aggregate row records score `0`, `terminal_outcome=model_failure`,
+`stop_condition=context_window_exceeded`, and an explicit normalization marker.
+Generic 400s, invalid JSON, 429s, 5xx responses, network errors, and rows without
+recognized terminal evidence remain rejected.
 
 ## Production replication contract
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { primeTraceDisposition } from "./prime-trace-contract.js";
 
 type Price = { input: number; cache_read: number; output: number; source: string };
 type TaskMetadata = {
@@ -167,13 +168,9 @@ export function importPrimeBenchmark(configPath: string): {
   if (traces.length === 0) throw new Error(`no Prime traces found under ${sourceDir}`);
 
   for (const trace of traces) {
-    if (
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0
-    ) {
-      throw new Error(`trace ${trace.id ?? "unknown"} is not a completed, error-free Prime ${config.verifier_version} run`);
+    const disposition = primeTraceDisposition(trace, config.verifier_version);
+    if (!disposition.accepted) {
+      throw new Error(`trace ${trace.id ?? "unknown"} is not an importable Prime ${config.verifier_version} scored terminal row: ${disposition.issue}`);
     }
     const taskId = trace.task?.data?.task_id;
     const model = trace.agent?.model;
@@ -228,6 +225,7 @@ export function importPrimeBenchmark(configPath: string): {
     const taskId = String(trace.task.data.task_id);
     const tokenUsage = tokensFor(trace);
     const price = config.pricing[model];
+    const disposition = primeTraceDisposition(trace, config.verifier_version);
     return {
       schema_version: "understudy.eval_result.v1",
       run_id: String(trace.run?.id ?? trace.id),
@@ -235,9 +233,13 @@ export function importPrimeBenchmark(configPath: string): {
       runtime_backend: "prime-verifiers",
       task_id: taskId,
       split: config.tasks[taskId].split ?? "none",
-      score: Number(trace.rewards?.final_state ?? 0),
-      subscores: { final_state_partial_credit: Number(trace.metrics?.final_state_partial_credit ?? 0) },
+      score: disposition.score,
+      subscores: { final_state_partial_credit: disposition.partial_credit },
       status: "ok",
+      stop_condition: disposition.display_stop_reason,
+      native_stop_condition: disposition.stop_condition,
+      terminal_outcome: disposition.terminal_outcome,
+      score_normalization: disposition.normalized ? "recognized_context_window_failure_zero" : null,
       model,
       route: "byo-provider",
       cost: { usd: costFor(trace, price), basis: price.source },
@@ -298,13 +300,7 @@ export function inspectPrimeBenchmark(configPath: string): Record<string, unknow
     : resolve(dirname(configFile), config.source_dir);
   const files = listTraceFiles(sourceDir);
   const traces = files.length ? loadPrimeTraces(sourceDir) : [];
-  const invalid = traces.filter(
-    (trace) =>
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0,
-  );
+  const invalid = traces.filter((trace) => !primeTraceDisposition(trace, config.verifier_version).accepted);
   const models = [...new Set(traces.map((trace) => String(trace.agent?.model ?? "unknown")))].sort();
   const tasks = [...new Set(traces.map((trace) => String(trace.task?.data?.task_id ?? "unknown")))].sort();
   const expected = Object.keys(config.tasks).length * Math.max(models.length, 1);
@@ -319,6 +315,21 @@ export function inspectPrimeBenchmark(configPath: string): Record<string, unknow
     models,
     tasks,
     completed_error_free: traces.length - invalid.length,
+    scored_terminal_error_free: traces.length - invalid.length,
+    terminal_model_failures: traces.filter(
+      (trace) => {
+        const disposition = primeTraceDisposition(trace, config.verifier_version);
+        return disposition.accepted && disposition.terminal_outcome === "model_failure";
+      },
+    ).map((trace) => {
+      const disposition = primeTraceDisposition(trace, config.verifier_version);
+      return {
+        trace_id: trace.id ?? "unknown",
+        stop_condition: disposition.display_stop_reason,
+        native_stop_condition: disposition.stop_condition,
+        normalized: disposition.normalized,
+      };
+    }),
     invalid_traces: invalid.map((trace) => trace.id ?? "unknown"),
     ready_to_import:
       traces.length > 0 &&
