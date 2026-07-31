@@ -113,6 +113,16 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
       "synthetic-model": { input: 1, cache_read: 0.1, output: 5, source: "synthetic reviewed fixture price" },
       "synthetic-candidate": { input: 0.5, cache_read: 0.05, output: 2.5, source: "synthetic reviewed fixture price" },
     },
+    availability_annotations: {
+      "synthetic-unavailable": {
+        status: "provider_unavailable",
+        reason: "Repeated explicit upstream 503 overloads left incomplete frozen-task coverage.",
+        receipt_ref: "corrected-v3/provider-availability.json",
+        attempt_rows: 135,
+        clean_tasks: 8,
+        required_tasks: 50,
+      },
+    },
   };
   const configPath = join(root, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -128,8 +138,19 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   const manifest = JSON.parse(readFileSync(join(aggregateOutput, "benchmark.json"), "utf8"));
   assert.equal(manifest.schema_version, "understudy.benchmark.v1");
   assert.equal(manifest.benchmark_id, "synthetic-prime-benchmark-v1");
+  assert.deepEqual(manifest.availability_annotations["synthetic-unavailable"], {
+    status: "provider_unavailable",
+    reason: "Repeated explicit upstream 503 overloads left incomplete frozen-task coverage.",
+    receipt_ref: "corrected-v3/provider-availability.json",
+    attempt_rows: 135,
+    clean_tasks: 8,
+    required_tasks: 50,
+    canonical_score: null,
+    scoring_policy: "excluded_from_leaderboard_and_pareto",
+  });
   const aggregateText = readFileSync(join(aggregateOutput, "rows-prime.jsonl"), "utf8");
   assert.doesNotMatch(aggregateText, /Synthetic private prompt/);
+  assert.doesNotMatch(aggregateText, /synthetic-unavailable/);
   assert.match(aggregateText, /"usd":0\.00155/);
   const comparison = comparePrimeModels(aggregateOutput, "synthetic-model", "synthetic-candidate");
   assert.equal(comparison.comparable_task_count, 1);
@@ -146,6 +167,11 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   assert.match(viewer, /Conversation history/);
   assert.match(viewer, /production incumbent/);
   assert.match(viewer, /% vs incumbent/);
+  assert.match(viewer, /provider_unavailable/);
+  assert.match(viewer, /"clean_tasks":8/);
+  assert.match(viewer, /"required_tasks":50/);
+  assert.match(viewer, /clean tasks/);
+  assert.match(viewer, /corrected-v3\/provider-availability\.json/);
   const entries = discoverPrimeScorecards(join(root, "private-scorecards"));
   assert.equal(entries.length, 1);
   assert.equal(entries[0].benchmark_id, "synthetic-prime-benchmark-v1");

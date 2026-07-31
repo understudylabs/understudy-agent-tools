@@ -73,6 +73,23 @@ for (const trace of discoveredPrimeTraces) {
   if (!prior) tracesById.set(id, { canonical, trace });
 }
 const primeTraces = [...tracesById.values()].map(({ trace }) => trace);
+const availabilityAnnotations = Object.entries(config.availability_annotations ?? {}).map(([model, annotation]) => ({
+  model,
+  status: annotation.status,
+  reason: annotation.reason,
+  receipt_ref: annotation.receipt_ref,
+  attempt_rows: annotation.attempt_rows,
+  clean_tasks: annotation.clean_tasks,
+  required_tasks: annotation.required_tasks,
+}));
+for (const annotation of availabilityAnnotations) {
+  if (annotation.status !== "provider_unavailable") {
+    throw new Error(`Unsupported availability status for ${annotation.model}: ${annotation.status}`);
+  }
+  if (primeTraces.some((trace) => trace.agent?.model === annotation.model)) {
+    throw new Error(`Availability annotation for ${annotation.model} conflicts with discovered scored traces`);
+  }
+}
 if (
   primeTraces.length === 0 ||
   primeTraces.some((trace) => !traceDisposition(trace))
@@ -233,6 +250,7 @@ const data = JSON.stringify({
   incumbent_model: config.incumbent_model,
   verifier_version: config.verifier_version,
   source: `Prime Verifiers ${config.verifier_version} native traces only`,
+  availability_annotations: availabilityAnnotations,
   rollouts,
 }).replaceAll("</", "<\\/");
 
@@ -245,6 +263,11 @@ const html = String.raw`<!doctype html><html><head><meta charset="utf-8"><meta n
 .layout.summary-mode>aside{display:none}
 .summary-highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .summary-highlights .winner{margin:0;padding:12px 14px}
+.availability-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.availability-card{border:1px solid #56421f;border-radius:9px;background:#0d0a05;padding:13px}
+.availability-card b,.availability-card span,.availability-card small{display:block}
+.availability-card b{color:var(--amber);margin-bottom:5px}
+.availability-card span{color:#bbb}.availability-card small{color:#777;margin-top:7px;line-height:1.5}
 .model-toggle{all:unset;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .model-toggle:before{content:"▸";color:#666;font-size:10px}
 .model-toggle.open:before{content:"▾";color:var(--green)}
@@ -400,6 +423,7 @@ function summaryView(models){
   const cheapest=[...qualified].filter(stat=>Number.isFinite(stat.cost)).sort((a,b)=>a.cost-b.cost)[0];
   const callout=(label,stat,value)=>'<div class="winner"><span>'+label+'</span><b>'+esc(shortModel(stat?.model??"—"))+'</b><small>'+value+'</small></div>';
   const highlights='<div class="summary-highlights">'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'</div>';
+  const availability=D.availability_annotations.length?'<section class="summary-card"><h2>Provider availability · non-scoring</h2><div class="availability-grid">'+D.availability_annotations.map(row=>'<div class="availability-card"><b>'+esc(shortModel(row.model))+'</b><span>'+esc(row.status)+' · '+row.clean_tasks+'/'+row.required_tasks+' clean tasks</span><small>'+esc(row.reason)+'</small><small>'+row.attempt_rows+' attempt rows · receipt '+esc(row.receipt_ref)+'</small></div>').join("")+'</div></section>':"";
   const leaderboard=stats.map((stat,index)=>{
     const open=expandedModel===stat.model;
     const rollouts=stat.rows.map((row,taskIndex)=>'<button class="nested-rollout rollout" data-id="'+esc(row.id)+'"><b>Task '+(taskIndex+1)+' <span class="'+(row.strict_pass?"green":"red")+'">'+row.partial_credit.toFixed(2)+'</span></b><span class="sub">'+esc(row.prompt)+' · '+ms(row.latency_ms)+' · '+usd(row.cost_usd)+'</span></button>').join("");
@@ -407,7 +431,7 @@ function summaryView(models){
     return '<tr><td class="rank">'+(index+1)+'</td><td><button class="model-toggle '+(open?"open":"")+'" data-model="'+esc(stat.model)+'"><b>'+esc(shortModel(stat.model))+'</b></button>'+statusPill(stat)+baseline+'</td><td>'+stat.score.toFixed(3)+(incumbent&&stat!==incumbent?delta(stat.score,incumbent.score):"")+'</td><td>'+Math.round(stat.pass*stat.rows.length)+'/'+stat.rows.length+(incumbent&&stat!==incumbent?delta(stat.pass,incumbent.pass):"")+'</td><td>'+ms(stat.time)+(incumbent&&stat!==incumbent?delta(stat.time,incumbent.time,true):"")+'</td><td>'+usd(stat.cost)+(incumbent&&stat!==incumbent?delta(stat.cost,incumbent.cost,true):"")+'</td><td>'+stat.calls.toFixed(1)+(incumbent&&stat!==incumbent?delta(stat.calls,incumbent.calls,true):"")+'</td></tr>'+(open?'<tr class="rollout-detail"><td colspan="7"><div class="nested-rollouts">'+rollouts+'</div></td></tr>':"");
   }).join("");
   const taskCards=tasks.map((task,index)=>{const rows=stats.map(stat=>D.rollouts.find(row=>row.model===stat.model&&row.task_id===task.task_id)).filter(Boolean);const incumbentRow=rows.find(row=>row.model===D.incumbent_model);return '<section class="task-card"><div class="task-card-head"><div><span>Task '+(index+1)+'</span><b>'+esc(task.prompt)+'</b></div><span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></div><table class="matrix-table"><thead><tr><th>Model</th><th>Score</th><th>Time</th><th>Cost</th><th>Calls</th></tr></thead><tbody>'+rows.map(row=>'<tr><td>'+esc(shortModel(row.model))+(row.model===D.incumbent_model?'<span class="delta">incumbent</span>':"")+'</td><td class="'+(row.strict_pass?"green":"red")+'">'+row.partial_credit.toFixed(2)+(incumbentRow&&row!==incumbentRow?delta(row.partial_credit,incumbentRow.partial_credit):"")+'</td><td>'+ms(row.latency_ms)+(incumbentRow&&row!==incumbentRow?delta(row.latency_ms,incumbentRow.latency_ms,true):"")+'</td><td>'+usd(row.cost_usd)+(incumbentRow&&row!==incumbentRow?delta(row.cost_usd,incumbentRow.cost_usd,true):"")+'</td><td>'+row.turns+(incumbentRow&&row!==incumbentRow?delta(row.turns,incumbentRow.turns,true):"")+'</td></tr>').join("")+'</tbody></table></section>'}).join("");
-  return '<div class="summary-stack">'+highlights+'<section class="summary-card"><h2>Verifier score vs cost per task</h2>'+paretoPlot(stats)+'</section><section class="summary-card"><h2>Model leaderboard</h2><div class="table-scroll"><table class="leaderboard-table"><thead><tr><th>#</th>'+sortHead("model","Model")+sortHead("score","Score")+sortHead("pass","Pass")+sortHead("time","Time / task")+sortHead("cost","Cost / task")+sortHead("calls","Calls")+'</tr></thead><tbody>'+leaderboard+'</tbody></table></div></section><section class="summary-card"><h2>Production task comparison</h2><div class="task-grid">'+taskCards+'</div></section></div>';
+  return '<div class="summary-stack">'+highlights+availability+'<section class="summary-card"><h2>Verifier score vs cost per task</h2>'+paretoPlot(stats)+'</section><section class="summary-card"><h2>Model leaderboard</h2><div class="table-scroll"><table class="leaderboard-table"><thead><tr><th>#</th>'+sortHead("model","Model")+sortHead("score","Score")+sortHead("pass","Pass")+sortHead("time","Time / task")+sortHead("cost","Cost / task")+sortHead("calls","Calls")+'</tr></thead><tbody>'+leaderboard+'</tbody></table></div></section><section class="summary-card"><h2>Production task comparison</h2><div class="task-grid">'+taskCards+'</div></section></div>';
 }
 function summaryOverview(models){
   const stats=modelStats(models),qualified=stats.filter(stat=>stat.pass===1),priced=stats.filter(stat=>Number.isFinite(stat.cost));
@@ -415,7 +439,7 @@ function summaryOverview(models){
   const cheapest=[...qualified].filter(stat=>Number.isFinite(stat.cost)).sort((a,b)=>a.cost-b.cost)[0];
   const best=stats[0];
   const callout=(label,stat,value)=>'<div class="winner"><span>'+label+'</span><b>'+esc(shortModel(stat?.model??"—"))+'</b><small>'+value+'</small></div>';
-  return '<div class="big green">MODEL MATRIX</div><div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">models <b>'+stats.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Models are rows, so new candidates add vertically without clipping. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
+  return '<div class="big green">MODEL MATRIX</div><div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">scored models <b>'+stats.length+'</b></div><div class="metric">provider unavailable <b>'+D.availability_annotations.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Availability annotations are evidence-only and excluded from scores, rankings, and Pareto. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
 }
 function render(){
   document.querySelector(".layout").classList.toggle("summary-mode",viewMode==="summary");

@@ -28,8 +28,10 @@ Never commit the scorecard merely because the aggregate package is safe.
 
 Every discovered trace must:
 
-- be complete and error-free;
-- stop with `agent_completed`;
+- be complete and either error-free or a narrowly recognized deterministic
+  context-window failure;
+- stop with `agent_completed`, a scored terminal model stop such as
+  `context_length` or `max_turns`, or a recognized context-window error;
 - carry the exact configured `verifiers.version`;
 - identify `agent.model`, `run.id`, and `task.data.task_id`;
 - retain `task.data.outcome_contract.required`;
@@ -41,6 +43,13 @@ Every discovered trace must:
 The importer rejects a corpus when any model lacks reviewed pricing or any task
 lacks explicit anonymized metadata. It also rejects calibration unless the
 declared incumbent strictly passes every frozen task.
+
+Models with incomplete evidence caused by repeatable upstream availability
+failures must not receive a score. An optional `availability_annotations` entry
+may retain their reviewed receipt as `provider_unavailable`; those models are
+shown in a non-scoring lane and are excluded from rows, pass rates, rankings,
+cost comparisons, and the Pareto frontier. An annotated model may not also
+appear in the canonical trace source.
 
 ## Build and reopen
 
@@ -70,10 +79,12 @@ understudy benchmarks reopen-prime config.json
 ```
 
 `run-prime --dry-run` validates and prints the exact invocation without provider
-execution. `watch-prime` exits only when every discovered native trace is
-complete, error-free, stopped with `agent_completed`, and pinned to the
-configured verifier version. `reopen-prime` serves the scorecard through the
-loopback gallery instead of relying on `file://`.
+execution. `watch-prime` exits only when every discovered native trace has an
+accepted terminal disposition and is pinned to the configured verifier version.
+Provider/transport failures remain rejected, except for narrowly recognized
+deterministic context-window failures that are preserved as score-zero model
+outcomes. `reopen-prime` serves the scorecard through the loopback gallery
+instead of relying on `file://`.
 
 Agents can call the MCP `plan_prime_run` tool to inspect the exact native command
 without spend or data transfer, then use `prime_status` while execution proceeds.

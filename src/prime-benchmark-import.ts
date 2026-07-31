@@ -10,6 +10,14 @@ type TaskMetadata = {
   summary?: string[];
   split?: "train" | "dev" | "holdout" | "none";
 };
+type AvailabilityAnnotation = {
+  status: "provider_unavailable";
+  reason: string;
+  receipt_ref: string;
+  attempt_rows: number;
+  clean_tasks: number;
+  required_tasks: number;
+};
 type ImportConfig = {
   schema_version: "understudy.prime_benchmark_import.v1";
   benchmark_id: string;
@@ -28,6 +36,7 @@ type ImportConfig = {
   };
   pricing: Record<string, Price>;
   tasks: Record<string, TaskMetadata>;
+  availability_annotations?: Record<string, AvailabilityAnnotation>;
 };
 
 type PrimeTrace = Record<string, any>;
@@ -52,6 +61,24 @@ function assertConfig(value: unknown): asserts value is ImportConfig {
     throw new Error("config.environment.package_ref is required");
   }
   if (!config.pricing || !config.tasks) throw new Error("config.pricing and config.tasks are required");
+  for (const [model, annotation] of Object.entries(config.availability_annotations ?? {})) {
+    if (
+      annotation.status !== "provider_unavailable" ||
+      typeof annotation.reason !== "string" ||
+      !annotation.reason ||
+      typeof annotation.receipt_ref !== "string" ||
+      !annotation.receipt_ref ||
+      !Number.isInteger(annotation.attempt_rows) ||
+      annotation.attempt_rows < 1 ||
+      !Number.isInteger(annotation.clean_tasks) ||
+      annotation.clean_tasks < 0 ||
+      !Number.isInteger(annotation.required_tasks) ||
+      annotation.required_tasks < 1 ||
+      annotation.clean_tasks >= annotation.required_tasks
+    ) {
+      throw new Error(`config.availability_annotations.${model} must describe incomplete provider_unavailable coverage`);
+    }
+  }
 }
 
 function listTraceFiles(sourceDir: string): string[] {
@@ -166,6 +193,11 @@ export function importPrimeBenchmark(configPath: string): {
   const outputDir = fromConfig(config.output_dir);
   const traces = loadPrimeTraces(sourceDir);
   if (traces.length === 0) throw new Error(`no Prime traces found under ${sourceDir}`);
+  for (const model of Object.keys(config.availability_annotations ?? {})) {
+    if (traces.some((trace) => trace.agent?.model === model)) {
+      throw new Error(`availability annotation for ${model} conflicts with discovered scored traces`);
+    }
+  }
 
   for (const trace of traces) {
     const disposition = primeTraceDisposition(trace, config.verifier_version);
@@ -218,6 +250,12 @@ export function importPrimeBenchmark(configPath: string): {
       dense_metric: "final_state_partial_credit",
       replayable: false,
     },
+    availability_annotations: Object.fromEntries(
+      Object.entries(config.availability_annotations ?? {}).map(([model, annotation]) => [
+        model,
+        { ...annotation, canonical_score: null, scoring_policy: "excluded_from_leaderboard_and_pareto" },
+      ]),
+    ),
   };
 
   const rows = traces.map((trace) => {
