@@ -8,6 +8,13 @@ import {
   deriveGeneralizationReport,
   renderGeneralizationReport,
 } from "../dist/generalization.js";
+import {
+  automationbenchArmRows,
+  automationbenchFrozenHoldoutSha256,
+  automationbenchGroup,
+  oraclePolicy,
+  sentinelPolicy,
+} from "../dist/generalization-automationbench.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(join(here, "fixtures", "generalization", name), "utf8")
@@ -142,4 +149,64 @@ test("makes transfer ratio null without positive in-domain gain", () => {
   assert.ok(Math.abs(report.score.in_domain_gain + 0.1) < 1e-12);
   assert.equal(report.score.transfer_ratio, null);
   assert.equal(report.score.generalization_score, null);
+});
+
+test("binds the real offline AutomationBench evaluator as group A", () => {
+  const frozenHoldoutSha256 = automationbenchFrozenHoldoutSha256();
+  const baseline = automationbenchArmRows({
+    runId: "automationbench-baseline",
+    splits: ["train", "holdout"],
+    policy: sentinelPolicy(),
+    model: "sentinel",
+    frozenHoldoutSha256,
+  });
+  const candidate = automationbenchArmRows({
+    runId: "automationbench-candidate",
+    splits: ["train", "holdout"],
+    policy: oraclePolicy,
+    model: "oracle",
+    frozenHoldoutSha256,
+  });
+  const group = automationbenchGroup();
+  const report = deriveGeneralizationReport({
+    schema_version: "understudy.generalization_manifest.v1",
+    frozen_split_sha256: frozenHoldoutSha256,
+    eval_splits: ["train", "holdout"],
+    groups: [group],
+    arms: [{
+      arm_id: "automationbench",
+      train_groups: [group.group_id],
+      baseline: { rows: "offline-baseline", model: "sentinel" },
+      candidate: { rows: "offline-candidate", model: "oracle" },
+    }],
+  }, {
+    automationbench: { baseline, candidate },
+  });
+  const cell = report.matrix[0].cells[0];
+  assert.equal(cell.status, "scored");
+  assert.equal(cell.in_domain, true);
+  assert.ok(cell.delta >= 0);
+});
+
+test("real offline AutomationBench holdout rows reject a wrong manifest hash", () => {
+  const rows = automationbenchArmRows({
+    runId: "automationbench-holdout",
+    splits: ["holdout"],
+    policy: sentinelPolicy(),
+    frozenHoldoutSha256: automationbenchFrozenHoldoutSha256(),
+  });
+  const group = automationbenchGroup();
+  assert.throws(() => deriveGeneralizationReport({
+    schema_version: "understudy.generalization_manifest.v1",
+    frozen_split_sha256: "wrong-frozen-hash",
+    groups: [group],
+    arms: [{
+      arm_id: "automationbench",
+      train_groups: [group.group_id],
+      baseline: { rows: "offline-baseline" },
+      candidate: { rows: "offline-candidate" },
+    }],
+  }, {
+    automationbench: { baseline: rows, candidate: rows },
+  }), /expected frozen hash wrong-frozen-hash/);
 });

@@ -17,14 +17,36 @@ provider receipts for scores, or makes network calls.
 
 ### A: AutomationBench
 
-This checkout does **not** contain `src/automationbench-offline.ts`. The current
-in-repo surface is the imported projection at
-`experiments/benchmark-hub-demo/automationbench-import/project-rows.mjs`,
-which uses `normalizeTraceRecord`, `extractBranches`, and
-`projectBranchesToEvalRows` from `src/benchmark.ts`. Imported task IDs use a
-domain/family shape such as `sales.multi_hop_lookup`; the fixture contains
-Sales, Marketing, Operations, Support, Finance, and HR domains. The projection
-converts externally produced per-task scores into shared eval rows.
+The primary in-repo evaluator is `src/automationbench-offline.ts`, a synthetic
+offline implementation of the AutomationBench `simple/api` subset. It contains
+12 task families with 6 instances each: 72 tasks total, split positionally
+into 48 train, 12 dev, and 12 holdout tasks. Task IDs have the form
+`simple-api-<family-slug>-<NN>`, with `NN` identifying the zero-padded
+instance.
+
+The evaluator exposes `evaluateSplit`, `oraclePolicy`, `sentinelPolicy`, and
+`importSubset`. The scripted oracle and reward-hacking sentinel make
+deterministic local baseline/candidate rows possible without providers. The
+thin adapter in `src/generalization-automationbench.ts` binds group A to
+`benchmark_id: "automationbench-simple-api-offline"` while keeping the
+generalization core evaluator-agnostic.
+
+`taskPool({ split: "holdout", frozenHoldoutSha256 })` fails closed unless the
+hash equals `splitSha256("holdout")`. The adapter exports
+`automationbenchFrozenHoldoutSha256()` for manifest authors. For an A-only
+run, `manifest.frozen_split_sha256` must equal that value. Evaluated rows stamp
+`provenance.split_sha256` from `splitSha256(split)`,
+`provenance.harness_sha256` from `fixtureSha256()`, and a fixture artifact
+reference.
+
+#### Secondary adapter: imported projection
+
+Externally produced AutomationBench scores can still be folded into the same
+row contract through `importSubset` and
+`experiments/benchmark-hub-demo/automationbench-import/project-rows.mjs`.
+That path uses the shared `projectBranchesToEvalRows` projection helpers and
+is secondary to the local evaluator; both paths feed
+`understudy.eval_result.v1` rows.
 
 ### B: Existing verifier environments
 
@@ -141,6 +163,12 @@ Tinker or Fireworks-managed evaluations must stamp every row with:
 - `provenance.task_content_hashes.env_sha256` and `verifier_sha256`;
 - `provenance.artifact_refs`: paths or IDs pointing at the receipt and
   supporting artifacts.
+
+The offline AutomationBench evaluator is the reference row producer for these
+stamps: `split_sha256` comes from `splitSha256(split)` and
+`harness_sha256` comes from `fixtureSha256()`. A real provider run should mirror
+that provenance shape, including the frozen holdout hash and task content
+hashes where available.
 
 The candidate manifest may record a Tinker manifest or Fireworks/train-api
 workflow receipt in `candidate.receipt`. The harness records that path for
