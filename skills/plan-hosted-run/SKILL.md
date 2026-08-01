@@ -221,3 +221,8 @@ A short plan the developer can audit:
   offerings, RL/fine-tuning support, batch/throughput, cited pricing, OSS
   footprint, route-to lines, and the verified/unverified flags, with its own
   Source freshness table.
+- [`references/gemma-supplier-support.md`](references/gemma-supplier-support.md)
+  — worked supplier-support snapshot for the Gemma 4 family: exact Fireworks
+  model IDs and LoRA/DPO/RFT eligibility, Tinker's absence of Gemma, chat and
+  tool template risks, evaluation-deployment cost floors, which bases are
+  comparable across both suppliers, and the no-spend verification path.

@@ -17,6 +17,7 @@ implies no commercial relationship.
 | **Lilac** (getlilac) | Gemma 4 31B $0.11 in / $0.35 out per 1M [V] | — | No | No |
 | **Together AI** | Llama 3 8B Lite $0.14/$0.14; Llama 3.3 70B $1.04/$1.04 [V] | H100 $5.49 (cluster) – $6.49 (dedicated) [V] | No self-serve RFT [V] | **Yes — InfiniBand, up to 4,000+ GPUs** [V] |
 | **Fireworks AI** | per-token rates not on pricing page [U] | H100 $7.00 on-demand [V] | **Yes — GRPO RFT** [V] | No (managed platform) [V] |
+| **Tinker** (Thinking Machines) | serverless inference beta, Inkling only [V] | — (per-token, no GPU rental) | LoRA SL + RL, per-token billing [V] | No (managed platform) [V] |
 | **Prime Intellect** | — (compute/training, not a serverless catalog) | **H100 $2.43 on-demand / $0.94 spot** [V] | **Yes — verifiers + prime-rl + Lab** [V] | Yes — marketplace, 1–256 GPUs [V] |
 | **GCP** | — (hyperscaler IaaS / Vertex) | A100/L4/H100 via Compute + Vertex (see GCP pricing) | Vertex custom jobs (you bring the recipe) | Yes (you manage) |
 | **Azure / Microsoft Foundry** | Foundry/OpenAI model endpoints | NCads H100 v5 (see Azure pricing calculator) [V] | Foundry SFT/DPO/RFT by model [V] | Yes (you manage) |
@@ -41,6 +42,9 @@ verify-before-quoting; pricing especially.
 | Fireworks RFT (GRPO, reward-kit) | primary | fireworks.ai/reinforcement-fine-tuning | 2026-06-07 |
 | Fireworks RPM / 429 / autoscale | primary | docs.fireworks.ai (account-quotas, billing-scaling) | 2026-06-07 |
 | Fireworks per-token serverless rates | **unverified** (not on pricing page) | docs.fireworks.ai | 2026-06-07 |
+| Fireworks trainable base models (registry) | primary | docs.fireworks.ai/fine-tuning/models | 2026-08-01 |
+| Tinker catalog + per-token pricing | primary | tinker-docs.thinkingmachines.ai/tinker/models/ | 2026-08-01 |
+| Gemma availability across Tinker/Fireworks | primary | [`gemma-supplier-support.md`](gemma-supplier-support.md) | 2026-08-01 |
 | Together pricing + Batch API | primary | together.ai/pricing · together.ai/batch-inference | 2026-06-07 |
 | Together rate-limits (dynamic, 429) | primary | docs.together.ai/docs/rate-limits | 2026-06-07 |
 | Together batch token limits | **unverified** (sources conflict) | x.com/togethercompute | 2026-06-07 |
@@ -111,9 +115,14 @@ fine-tuning + **managed reinforcement fine-tuning (RFT)**. It is a managed platf
 **Fine-tuning / RL [V]:** LoRA + full-param SFT, DPO, and **self-serve GRPO-based RFT**
 (GA Nov 2025): define a reward/evaluator, run multi-turn agent rollouts in your own
 environment, train via GRPO, one-click deploy. Delta-compressed checkpoints (~98%
-smaller), sub-minute hot-loading. Base families: Llama, Qwen 2.5/3, Phi 3/4,
-DeepSeek V3/R1, Kimi K2. **Trajectory generation is built into the RFT training loop** —
-the integrated path when rollouts feed straight into training.
+smaller), sub-minute hot-loading. **Trajectory generation is built into the RFT training
+loop** — the integrated path when rollouts feed straight into training. Trainable base
+families change often (Gemma 4, Qwen 3.x, Kimi, GLM, DeepSeek, Nemotron, Llama,
+Ministral as of 2026-08-01); read the dated registry at
+https://docs.fireworks.ai/fine-tuning/models rather than a cached list, and note that
+method eligibility is per-model (a model can allow LoRA SFT but not managed RFT).
+Fine-tuned LoRAs serve **only** on on-demand dedicated deployments — never serverless —
+so eval carries a GPU-hour floor [V].
 
 **Pricing [V]:** on-demand GPU/hr **H100 $7.00 · H200 $7.00 · B200 $10.00 · B300 $12.00**
 (RFT billed per-GPU-second at the same rate). Fine-tuning per 1M training tokens (≤16B):
@@ -141,6 +150,38 @@ the least assembly.
 Sources: https://fireworks.ai/pricing · https://fireworks.ai/reinforcement-fine-tuning
 · https://fireworks.ai/blog/fireworks-rft · https://docs.fireworks.ai/fine-tuning/reinforcement-fine-tuning-models
 · https://docs.fireworks.ai/tools-sdks/openai-compatibility
+
+---
+
+## Tinker — thinkingmachines.ai
+
+**Core offering [V]:** a managed **LoRA** post-training service (supervised and RL) driven
+from your own Python loop — you own the training code, Tinker owns the GPUs. **No full
+fine-tuning**, no cluster rental, no dedicated deployment: billing is per token across
+prefill / sample / train, plus **$0.10/GB/month** checkpoint storage.
+
+**Catalog [V]:** first-party Inkling / Inkling-Small plus Qwen3 / 3.5 / 3.6, GPT-OSS
+20B/120B, Kimi-K2.6, Nemotron-3 (Nano/Super/Ultra), DeepSeek-V3.1 (28 entries live on
+2026-08-01). **No Gemma at any size, and none ever deprecated** — see
+[`gemma-supplier-support.md`](gemma-supplier-support.md). The live catalog can differ
+from the docs table; query `ServiceClient.get_server_capabilities()` (free, read-only)
+before planning.
+
+**Pricing [V]** (per 1M tokens, prefill / sample / train; cached prefill 80% off):
+Qwen3.5-4B $0.33 / $1.005 / $0.737 · Qwen3.5-9B $0.66 / $1.995 / $1.463 ·
+Qwen3.6-27B $1.86 / $5.595 / $4.103 · GPT-OSS-20B $0.18 / $0.45 / $0.396.
+Serverless inference is **beta and Inkling-only**; for other models you sample through
+the training session or export weights and serve them yourself.
+
+**Route to Tinker when** you want per-token LoRA training with no deployment to
+provision or tear down, and the base you need is in its catalog. Route elsewhere when
+you need full-parameter training, a hosted production endpoint, or a base it does not
+host (Gemma being the notable gap).
+
+Sources: https://tinker-docs.thinkingmachines.ai/tinker/models/ ·
+https://tinker-docs.thinkingmachines.ai/tinker/lora-primer/ ·
+https://tinker-docs.thinkingmachines.ai/tinker/model-deprecations/ ·
+https://github.com/thinking-machines-lab/tinker-cookbook
 
 ---
 
