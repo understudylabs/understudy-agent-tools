@@ -1,6 +1,11 @@
 /**
- * automationbench-offline — the smallest local, synthetic, offline evaluator +
- * importer for ONE reachable AutomationBench subset: `simple`/`api`.
+ * automationbench-offline — a local, synthetic, offline evaluator + importer
+ * for ONE reachable AutomationBench subset: `simple`/`api`.
+ *
+ * The fixture is ranking-sized rather than illustrative: 12 task families x 6
+ * instances = 72 tasks (train 48 / dev 12 / holdout 12), spread across three
+ * difficulty bands (single-write, discovery, multi-write) so a run separates
+ * models instead of saturating.
  *
  * Subset choice is repo-evidenced, not invented: the AutomationBench wiring
  * verified in skills/prepare-verifier-handoff/references/stage-1-author-env.md
@@ -36,6 +41,11 @@
  *      is itself a JSON string (double-decode).
  *   9. frozen-holdout refusal — holdout rows are refused unless the caller
  *      passes the matching frozen holdout hash explicitly.
+ *  10. reachability — every literal the gold action sequence needs (record id,
+ *      address, subject, owner) is present in the prompt or readable through a
+ *      read-only call, so no task is unsolvable from the allowed observations.
+ *  11. fixture integrity — tasks are unique, no task's assertions are all
+ *      already true at reset, and no task may write the guard contact.
  */
 
 import { createHash } from "node:crypto";
@@ -70,7 +80,16 @@ export const RESET_SEED = AUTOMATIONBENCH_SUBSET.split_seed;
 
 export type Split = "train" | "dev" | "holdout";
 
-export type Assertion = { path: string; equals: unknown };
+/**
+ * A final-state assertion. `equals` pins a value that already has a stable id
+ * in `initial_state`; `exists` / `absent` match an entry inside a collection by
+ * content, so a task whose gold record is CREATED during the episode is scored
+ * on what the record contains rather than on the id the env happened to mint.
+ */
+export type Assertion =
+  | { kind: "equals"; path: string; equals: unknown }
+  | { kind: "exists"; collection: string; match: Record<string, unknown> }
+  | { kind: "absent"; collection: string; match: Record<string, unknown> };
 
 export type ToolCall = { name: string; arguments: Record<string, unknown> };
 
@@ -88,11 +107,15 @@ export type Task = {
   oracle: ToolCall[];
 };
 
+export type Contact = { name: string; email: string; status: string; owner: string };
+export type Draft = { to: string; subject: string; status: string };
+export type Message = { to: string; subject: string; sent: boolean };
+
 export type WorldState = {
-  crm: { contacts: Record<string, { name: string; status: string; owner: string }> };
+  crm: { contacts: Record<string, Contact> };
   mail: {
-    drafts: Record<string, { to: string; subject: string }>;
-    messages: Record<string, { to: string; subject: string; sent: boolean }>;
+    drafts: Record<string, Draft>;
+    messages: Record<string, Message>;
     /** Deterministic id counter — the only id source, seeded from initial state. */
     sequence: number;
   };
@@ -132,112 +155,449 @@ const ENDPOINTS = [
   { url: "/crm/contacts", methods: ["GET"], summary: "List CRM contacts and their ids." },
   { url: "/crm/contacts/{id}", methods: ["GET", "PATCH"], summary: "Read or update a CRM contact." },
   { url: "/mail/drafts", methods: ["GET", "POST"], summary: "List or create a mail draft." },
+  { url: "/mail/drafts/{id}", methods: ["GET", "PATCH"], summary: "Read a mail draft, retitle it, or mark it discarded." },
   { url: "/mail/messages", methods: ["GET", "POST"], summary: "List sent mail, or send an existing draft by draft_id." },
 ];
 
 const MAX_STEPS = 12;
 
-function baseState(): WorldState {
-  return {
-    crm: {
-      contacts: {
-        "c-1": { name: "Ada Lovelace", status: "open", owner: "u-1" },
-        "c-2": { name: "Grace Hopper", status: "open", owner: "u-1" },
-        "c-3": { name: "Alan Turing", status: "open", owner: "u-3" },
-      },
-    },
-    mail: { drafts: { "d-1": { to: "ada@example.test", subject: "Kickoff" } }, messages: {}, sequence: 1 },
-  };
-}
+// --- Synthetic entity tables -----------------------------------------------
+// Public-figure names in a fictional CRM. No upstream dataset, no customer data.
+
+type Persona = { name: string; email: string };
+
+const PERSONAS: Persona[] = [
+  { name: "Ada Lovelace", email: "ada.lovelace@example.test" },
+  { name: "Grace Hopper", email: "grace.hopper@example.test" },
+  { name: "Alan Turing", email: "alan.turing@example.test" },
+  { name: "Barbara Liskov", email: "barbara.liskov@example.test" },
+  { name: "Edsger Dijkstra", email: "edsger.dijkstra@example.test" },
+  { name: "Frances Allen", email: "frances.allen@example.test" },
+  { name: "Donald Knuth", email: "donald.knuth@example.test" },
+  { name: "Radia Perlman", email: "radia.perlman@example.test" },
+  { name: "Vint Cerf", email: "vint.cerf@example.test" },
+  { name: "Shafi Goldwasser", email: "shafi.goldwasser@example.test" },
+  { name: "Ken Thompson", email: "ken.thompson@example.test" },
+  { name: "Jean Bartik", email: "jean.bartik@example.test" },
+  { name: "Tim Berners-Lee", email: "tim.berners.lee@example.test" },
+  { name: "Anita Borg", email: "anita.borg@example.test" },
+  { name: "Leslie Lamport", email: "leslie.lamport@example.test" },
+  { name: "Sophie Wilson", email: "sophie.wilson@example.test" },
+  { name: "Lynn Conway", email: "lynn.conway@example.test" },
+  { name: "Adele Goldberg", email: "adele.goldberg@example.test" },
+  { name: "Hedy Lamarr", email: "hedy.lamarr@example.test" },
+  { name: "Claude Shannon", email: "claude.shannon@example.test" },
+  { name: "Evelyn Boyd", email: "evelyn.boyd@example.test" },
+  { name: "Mary Jackson", email: "mary.jackson@example.test" },
+  { name: "Andrew Yao", email: "andrew.yao@example.test" },
+  { name: "Ruth Teitelbaum", email: "ruth.teitelbaum@example.test" },
+];
 
 /**
- * The frozen synthetic subset. Eight tasks under the seed-7 split boundary:
- * train 4 / dev 2 / holdout 2. Small by design — this is a contract fixture,
- * not a leaderboard-sized benchmark.
+ * Present in every world and writable by no task. The reward-hacking sentinel
+ * writes here, so the sentinel gate is structural rather than per-task luck.
  */
-export const TASKS: Task[] = [
+const GUARD_CONTACT: ContactSeed = { id: "c-0", name: "Margaret Hamilton", email: "margaret.hamilton@example.test", status: "reference", owner: "u-9" };
+
+/** Same-first-name pairs for the disambiguation family: the listing, not the prompt, resolves the id. */
+const NAME_COLLISIONS: { target: Persona; decoy: Persona }[] = [
+  { target: { name: "Alan Turing", email: "alan.turing@example.test" }, decoy: { name: "Alan Kay", email: "alan.kay@example.test" } },
+  { target: { name: "Grace Hopper", email: "grace.hopper@example.test" }, decoy: { name: "Grace Murray", email: "grace.murray@example.test" } },
+  { target: { name: "John McCarthy", email: "john.mccarthy@example.test" }, decoy: { name: "John Backus", email: "john.backus@example.test" } },
+  { target: { name: "Karen Jones", email: "karen.jones@example.test" }, decoy: { name: "Karen Uhlenbeck", email: "karen.uhlenbeck@example.test" } },
+  { target: { name: "Bob Kahn", email: "bob.kahn@example.test" }, decoy: { name: "Bob Metcalfe", email: "bob.metcalfe@example.test" } },
+  { target: { name: "Peter Naur", email: "peter.naur@example.test" }, decoy: { name: "Peter Chen", email: "peter.chen@example.test" } },
+];
+
+const CLOSE_CONTEXTS = [
+  "signed the contract",
+  "countersigned the order form",
+  "cleared procurement review",
+  "returned the signed quote",
+  "approved the renewal terms",
+  "committed after the security review",
+];
+
+const LOST_CONTEXTS = [
+  "chose a competitor",
+  "ended the pilot without buying",
+  "froze the budget for the year",
+  "consolidated vendors after an acquisition",
+  "cancelled the evaluation",
+  "declined the renewal",
+];
+
+const NEW_OWNERS = ["u-2", "u-4", "u-5", "u-6", "u-7", "u-8"];
+const MIDDLE_INITIALS = ["B", "C", "D", "E", "F", "G"];
+const SUBJECTS = ["Welcome", "Onboarding plan", "Renewal options", "Pricing update", "Kickoff agenda", "Security review"];
+const REVISED_SUBJECTS = ["Welcome (revised)", "Onboarding plan v2", "Renewal options final", "Pricing update 2026", "Kickoff agenda updated", "Security review packet"];
+const STALE_SUBJECTS = ["Old pricing sheet", "Superseded agenda", "Legacy renewal note", "Duplicate quote", "Outdated onboarding", "Archived kickoff"];
+
+// --- World construction ------------------------------------------------------
+
+type ContactSeed = { id: string; name: string; email: string; status: string; owner: string };
+type DraftSeed = { to: string; subject: string };
+
+/** Deterministic contact slice: personas are picked by index, never by RNG. */
+function contactSeeds(offset: number, owners: string[]): ContactSeed[] {
+  return owners.map((owner, index) => {
+    const persona = PERSONAS[(offset + index) % PERSONAS.length];
+    return { id: `c-${index + 1}`, name: persona.name, email: persona.email, status: "open", owner };
+  });
+}
+
+function world(seeds: ContactSeed[], drafts: DraftSeed[]): WorldState {
+  const contacts: Record<string, Contact> = {};
+  for (const seed of [GUARD_CONTACT, ...seeds]) contacts[seed.id] = { name: seed.name, email: seed.email, status: seed.status, owner: seed.owner };
+  const draftRecords: Record<string, Draft> = {};
+  drafts.forEach((draft, index) => {
+    draftRecords[`d-${index + 1}`] = { to: draft.to, subject: draft.subject, status: "draft" };
+  });
+  return { crm: { contacts }, mail: { drafts: draftRecords, messages: {}, sequence: drafts.length } };
+}
+
+// --- Oracle action helpers ---------------------------------------------------
+
+const LIST_CONTACTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } };
+const LIST_DRAFTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/mail/drafts" } };
+
+function search(query: string): ToolCall {
+  return { name: "api_search", arguments: { query } };
+}
+
+function patchContact(id: string, body: Record<string, unknown>): ToolCall {
+  return { name: "api_fetch", arguments: { method: "PATCH", url: `/crm/contacts/${id}`, body } };
+}
+
+function patchDraft(id: string, body: Record<string, unknown>): ToolCall {
+  return { name: "api_fetch", arguments: { method: "PATCH", url: `/mail/drafts/${id}`, body } };
+}
+
+function createDraft(body: Record<string, unknown>): ToolCall {
+  return { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body } };
+}
+
+function sendDraft(draftId: string): ToolCall {
+  return { name: "api_fetch", arguments: { method: "POST", url: "/mail/messages", body: { draft_id: draftId } } };
+}
+
+// --- Task families -----------------------------------------------------------
+
+/** One authored task before it is stamped with an id and a split. */
+type CaseDraft = { prompt: string; state: WorldState; assertions: Assertion[]; allowedWrites: string[]; oracle: ToolCall[] };
+
+type Family = {
+  slug: string;
+  /** Difficulty band, used only for reporting; scoring never reads it. */
+  band: "single-write" | "discovery" | "multi-write";
+  label: string;
+  build: (instance: number, offset: number) => CaseDraft;
+};
+
+const DEFAULT_OWNERS = ["u-1", "u-2", "u-3", "u-1"];
+
+/**
+ * Twelve families. Each contributes six instances (four train, one dev, one
+ * holdout), so every family is represented in every split and no split is a
+ * skill the others never see.
+ */
+const FAMILIES: Family[] = [
   {
-    taskId: "simple-api-001",
-    split: "train",
-    prompt: "Ada Lovelace signed the contract. Update her CRM contact record to reflect the closed-won outcome.",
-    initialState: baseState(),
-    assertions: [{ path: "crm.contacts.c-1.status", equals: "won" }],
-    allowedWrites: ["crm.contacts.c-1"],
-    oracle: [
-      { name: "api_search", arguments: { query: "update crm contact" } },
-      { name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-1", body: { status: "won" } } },
-    ],
+    slug: "crm-close",
+    band: "single-write",
+    label: "close a CRM deal as won",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[instance % seeds.length];
+      return {
+        prompt: `${target.name} ${CLOSE_CONTEXTS[instance]}. Record the deal as won on that CRM contact.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "equals", path: `crm.contacts.${target.id}.status`, equals: "won" }],
+        allowedWrites: [`crm.contacts.${target.id}`],
+        oracle: [search("update crm contact"), LIST_CONTACTS, patchContact(target.id, { status: "won" })],
+      };
+    },
   },
   {
-    taskId: "simple-api-002",
-    split: "train",
-    prompt: "Prepare (do not send) an email to grace@example.test titled Welcome.",
-    initialState: baseState(),
-    assertions: [
-      { path: "mail.drafts.d-2.to", equals: "grace@example.test" },
-      { path: "mail.drafts.d-2.subject", equals: "Welcome" },
-    ],
-    allowedWrites: ["mail.drafts", "mail.sequence"],
-    oracle: [{ name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "grace@example.test", subject: "Welcome" } } }],
+    slug: "crm-lost",
+    band: "single-write",
+    label: "close a CRM deal as lost",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[(instance + 1) % seeds.length];
+      return {
+        prompt: `${target.name} ${LOST_CONTEXTS[instance]}. Record the deal as lost on that CRM contact.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "equals", path: `crm.contacts.${target.id}.status`, equals: "lost" }],
+        allowedWrites: [`crm.contacts.${target.id}`],
+        oracle: [LIST_CONTACTS, patchContact(target.id, { status: "lost" })],
+      };
+    },
   },
   {
-    taskId: "simple-api-003",
-    split: "train",
-    prompt: "Grace Hopper's account has been reassigned to the rep with id u-2. Reflect that in CRM.",
-    initialState: baseState(),
-    assertions: [{ path: "crm.contacts.c-2.owner", equals: "u-2" }],
-    allowedWrites: ["crm.contacts.c-2"],
-    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-2", body: { owner: "u-2" } } }],
+    slug: "crm-owner",
+    band: "single-write",
+    label: "reassign one CRM account",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[instance % seeds.length];
+      const owner = NEW_OWNERS[instance];
+      return {
+        prompt: `The account for ${target.name} moves to rep ${owner}. Update the CRM owner for that contact.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "equals", path: `crm.contacts.${target.id}.owner`, equals: owner }],
+        allowedWrites: [`crm.contacts.${target.id}`],
+        oracle: [LIST_CONTACTS, patchContact(target.id, { owner })],
+      };
+    },
   },
   {
-    taskId: "simple-api-004",
-    split: "train",
-    prompt: "The Kickoff email that is already drafted is approved. Deliver it.",
-    initialState: baseState(),
-    assertions: [{ path: "mail.messages.m-2.sent", equals: true }],
-    allowedWrites: ["mail.messages", "mail.drafts", "mail.sequence"],
-    oracle: [{ name: "api_fetch", arguments: { method: "POST", url: "/mail/messages", body: { draft_id: "d-1" } } }],
+    slug: "crm-rename",
+    band: "single-write",
+    label: "correct a CRM display name",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[(instance + 2) % seeds.length];
+      const [first, ...rest] = target.name.split(" ");
+      const legalName = `${first} ${MIDDLE_INITIALS[instance]}. ${rest.join(" ")}`;
+      return {
+        prompt: `The signed contract lists the legal name ${legalName} for the contact recorded as ${target.name}. Correct that CRM contact's name to the legal name exactly.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "equals", path: `crm.contacts.${target.id}.name`, equals: legalName }],
+        allowedWrites: [`crm.contacts.${target.id}`],
+        oracle: [LIST_CONTACTS, patchContact(target.id, { name: legalName })],
+      };
+    },
   },
   {
-    taskId: "simple-api-005",
-    split: "dev",
-    prompt: "Alan Turing went with a competitor. Record the outcome on his CRM contact.",
-    initialState: baseState(),
-    assertions: [{ path: "crm.contacts.c-3.status", equals: "lost" }],
-    allowedWrites: ["crm.contacts.c-3"],
-    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-3", body: { status: "lost" } } }],
+    slug: "mail-draft",
+    band: "discovery",
+    label: "draft mail to a contact found in CRM",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[(instance + 3) % seeds.length];
+      const subject = SUBJECTS[instance];
+      return {
+        prompt: `Prepare an email to ${target.name} with the subject "${subject}". Do not send it \u2014 leave it as a draft. Their address is in the CRM record.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "exists", collection: "mail.drafts", match: { to: target.email, subject, status: "draft" } }],
+        allowedWrites: ["mail.drafts", "mail.sequence"],
+        oracle: [LIST_CONTACTS, createDraft({ to: target.email, subject })],
+      };
+    },
   },
   {
-    taskId: "simple-api-006",
-    split: "holdout",
-    prompt: "Draft (do not send) a renewal note to ada@example.test titled Renewal.",
-    initialState: baseState(),
-    assertions: [
-      { path: "mail.drafts.d-2.to", equals: "ada@example.test" },
-      { path: "mail.drafts.d-2.subject", equals: "Renewal" },
-    ],
-    allowedWrites: ["mail.drafts", "mail.sequence"],
-    oracle: [{ name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "ada@example.test", subject: "Renewal" } } }],
+    slug: "mail-revise",
+    band: "discovery",
+    label: "retitle one draft among several",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const owner = seeds[instance % seeds.length];
+      const other = seeds[(instance + 1) % seeds.length];
+      const oldSubject = SUBJECTS[instance];
+      const newSubject = REVISED_SUBJECTS[instance];
+      const targetFirst = instance % 2 === 0;
+      const drafts: DraftSeed[] = targetFirst
+        ? [{ to: owner.email, subject: oldSubject }, { to: other.email, subject: STALE_SUBJECTS[instance] }]
+        : [{ to: other.email, subject: STALE_SUBJECTS[instance] }, { to: owner.email, subject: oldSubject }];
+      const targetDraftId = targetFirst ? "d-1" : "d-2";
+      return {
+        prompt: `The draft titled "${oldSubject}" should be retitled "${newSubject}". Change only that draft and leave every other draft untouched.`,
+        state: world(seeds, drafts),
+        assertions: [{ kind: "equals", path: `mail.drafts.${targetDraftId}.subject`, equals: newSubject }],
+        allowedWrites: [`mail.drafts.${targetDraftId}`],
+        oracle: [LIST_DRAFTS, patchDraft(targetDraftId, { subject: newSubject })],
+      };
+    },
   },
   {
-    taskId: "simple-api-007",
-    split: "dev",
-    prompt: "Grace Hopper's account is active again. Record that status in CRM.",
-    initialState: baseState(),
-    assertions: [{ path: "crm.contacts.c-2.status", equals: "active" }],
-    allowedWrites: ["crm.contacts.c-2"],
-    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-2", body: { status: "active" } } }],
+    slug: "mail-discard",
+    band: "discovery",
+    label: "discard the obsolete draft only",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const owner = seeds[(instance + 1) % seeds.length];
+      const other = seeds[(instance + 2) % seeds.length];
+      const staleSubject = STALE_SUBJECTS[instance];
+      const targetFirst = instance % 2 === 1;
+      const drafts: DraftSeed[] = targetFirst
+        ? [{ to: owner.email, subject: staleSubject }, { to: other.email, subject: SUBJECTS[instance] }]
+        : [{ to: other.email, subject: SUBJECTS[instance] }, { to: owner.email, subject: staleSubject }];
+      const targetDraftId = targetFirst ? "d-1" : "d-2";
+      return {
+        prompt: `The draft titled "${staleSubject}" is obsolete. Mark that draft discarded. Do not modify or send any other draft.`,
+        state: world(seeds, drafts),
+        assertions: [{ kind: "equals", path: `mail.drafts.${targetDraftId}.status`, equals: "discarded" }],
+        allowedWrites: [`mail.drafts.${targetDraftId}`],
+        oracle: [LIST_DRAFTS, patchDraft(targetDraftId, { status: "discarded" })],
+      };
+    },
   },
   {
-    taskId: "simple-api-008",
-    split: "holdout",
-    prompt: "Assign Alan Turing's CRM account to rep u-4.",
-    initialState: baseState(),
-    assertions: [{ path: "crm.contacts.c-3.owner", equals: "u-4" }],
-    allowedWrites: ["crm.contacts.c-3"],
-    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-3", body: { owner: "u-4" } } }],
+    slug: "mail-send",
+    band: "discovery",
+    label: "send the approved draft",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const recipient = seeds[(instance + 2) % seeds.length];
+      const other = seeds[(instance + 3) % seeds.length];
+      const subject = SUBJECTS[instance];
+      const targetFirst = instance % 2 === 0;
+      const drafts: DraftSeed[] = targetFirst
+        ? [{ to: recipient.email, subject }, { to: other.email, subject: STALE_SUBJECTS[instance] }]
+        : [{ to: other.email, subject: STALE_SUBJECTS[instance] }, { to: recipient.email, subject }];
+      const targetDraftId = targetFirst ? "d-1" : "d-2";
+      return {
+        prompt: `The draft titled "${subject}" is approved. Deliver it. Leave the other draft alone.`,
+        state: world(seeds, drafts),
+        assertions: [
+          { kind: "exists", collection: "mail.messages", match: { to: recipient.email, subject, sent: true } },
+          { kind: "absent", collection: "mail.drafts", match: { subject } },
+        ],
+        allowedWrites: ["mail.messages", "mail.sequence", `mail.drafts.${targetDraftId}`],
+        oracle: [LIST_DRAFTS, sendDraft(targetDraftId)],
+      };
+    },
+  },
+  {
+    slug: "crm-bulk-owner",
+    band: "multi-write",
+    label: "reassign every account of a departing rep",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, ["u-1", "u-3", "u-2", "u-3"]);
+      const owner = NEW_OWNERS[instance];
+      const targets = seeds.filter((seed) => seed.owner === "u-3");
+      return {
+        prompt: `Rep u-3 has left. Reassign every CRM contact currently owned by u-3 to rep ${owner}. Leave contacts owned by anyone else unchanged.`,
+        state: world(seeds, []),
+        assertions: targets.map((target) => ({ kind: "equals", path: `crm.contacts.${target.id}.owner`, equals: owner }) as Assertion),
+        allowedWrites: targets.map((target) => `crm.contacts.${target.id}`),
+        oracle: [LIST_CONTACTS, ...targets.map((target) => patchContact(target.id, { owner }))],
+      };
+    },
+  },
+  {
+    slug: "crm-disambiguate",
+    band: "multi-write",
+    label: "pick the right contact when first names collide",
+    build: (instance, offset) => {
+      const pair = NAME_COLLISIONS[instance];
+      const filler = contactSeeds(offset, ["u-1", "u-2"]);
+      const seeds: ContactSeed[] = [
+        { id: "c-1", name: pair.decoy.name, email: pair.decoy.email, status: "open", owner: "u-1" },
+        { id: "c-2", name: filler[0].name, email: filler[0].email, status: "open", owner: "u-2" },
+        { id: "c-3", name: pair.target.name, email: pair.target.email, status: "open", owner: "u-3" },
+        { id: "c-4", name: filler[1].name, email: filler[1].email, status: "open", owner: "u-1" },
+      ];
+      const outcome = instance % 2 === 0 ? "won" : "lost";
+      return {
+        prompt: `${pair.target.name} ${outcome === "won" ? CLOSE_CONTEXTS[instance] : LOST_CONTEXTS[instance]}. Record the deal as ${outcome} on that contact only \u2014 another contact shares the same first name, and touching the wrong record is a failure.`,
+        state: world(seeds, []),
+        assertions: [{ kind: "equals", path: "crm.contacts.c-3.status", equals: outcome }],
+        allowedWrites: ["crm.contacts.c-3"],
+        oracle: [LIST_CONTACTS, patchContact("c-3", { status: outcome })],
+      };
+    },
+  },
+  {
+    slug: "crm-mail-churn",
+    band: "multi-write",
+    label: "record a loss and draft the follow-up",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[(instance + 1) % seeds.length];
+      const subject = REVISED_SUBJECTS[instance];
+      return {
+        prompt: `${target.name} ${LOST_CONTEXTS[instance]}. Record the deal as lost on that CRM contact and prepare an email to them with the subject "${subject}". Do not send the email.`,
+        state: world(seeds, []),
+        assertions: [
+          { kind: "equals", path: `crm.contacts.${target.id}.status`, equals: "lost" },
+          { kind: "exists", collection: "mail.drafts", match: { to: target.email, subject, status: "draft" } },
+        ],
+        allowedWrites: [`crm.contacts.${target.id}`, "mail.drafts", "mail.sequence"],
+        oracle: [LIST_CONTACTS, patchContact(target.id, { status: "lost" }), createDraft({ to: target.email, subject })],
+      };
+    },
+  },
+  {
+    slug: "mail-send-and-close",
+    band: "multi-write",
+    label: "deliver the quote and close the deal",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const target = seeds[(instance + 3) % seeds.length];
+      const other = seeds[instance % seeds.length];
+      const subject = SUBJECTS[(instance + 2) % SUBJECTS.length];
+      const targetFirst = instance % 2 === 1;
+      const drafts: DraftSeed[] = targetFirst
+        ? [{ to: target.email, subject }, { to: other.email, subject: STALE_SUBJECTS[instance] }]
+        : [{ to: other.email, subject: STALE_SUBJECTS[instance] }, { to: target.email, subject }];
+      const targetDraftId = targetFirst ? "d-1" : "d-2";
+      return {
+        prompt: `${target.name} ${CLOSE_CONTEXTS[instance]}. Deliver the draft titled "${subject}" and record the deal as won on their CRM contact.`,
+        state: world(seeds, drafts),
+        assertions: [
+          { kind: "exists", collection: "mail.messages", match: { to: target.email, subject, sent: true } },
+          { kind: "absent", collection: "mail.drafts", match: { subject } },
+          { kind: "equals", path: `crm.contacts.${target.id}.status`, equals: "won" },
+        ],
+        allowedWrites: [`crm.contacts.${target.id}`, "mail.messages", "mail.sequence", `mail.drafts.${targetDraftId}`],
+        oracle: [LIST_DRAFTS, sendDraft(targetDraftId), LIST_CONTACTS, patchContact(target.id, { status: "won" })],
+      };
+    },
   },
 ];
+
+const INSTANCES_PER_FAMILY = 6;
+
+/**
+ * Split assignment is positional, not hashed: instances 1-4 of every family are
+ * train, instance 5 is dev, instance 6 is holdout. Family-stratified rather
+ * than family-held-out, so dev/holdout measure generalization to unseen
+ * entities and parameters within a known skill.
+ */
+const SPLIT_BY_INSTANCE: Split[] = ["train", "train", "train", "train", "dev", "holdout"];
+
+/**
+ * The frozen synthetic subset: 12 families x 6 instances = 72 tasks under the
+ * seed-7 split boundary (train 48 / dev 12 / holdout 12). Generated by pure,
+ * index-driven construction — no RNG, no wall clock, no I/O — so the fixture
+ * hash is a function of this source file alone.
+ */
+export const TASKS: Task[] = buildTasks();
+
+function buildTasks(): Task[] {
+  const tasks: Task[] = [];
+  FAMILIES.forEach((family, familyIndex) => {
+    for (let instance = 0; instance < INSTANCES_PER_FAMILY; instance += 1) {
+      const offset = (familyIndex * 7 + instance * 5) % PERSONAS.length;
+      const authored = family.build(instance, offset);
+      tasks.push({
+        taskId: `simple-api-${family.slug}-${String(instance + 1).padStart(2, "0")}`,
+        split: SPLIT_BY_INSTANCE[instance],
+        prompt: authored.prompt,
+        initialState: authored.state,
+        assertions: authored.assertions,
+        allowedWrites: authored.allowedWrites,
+        oracle: authored.oracle,
+      });
+    }
+  });
+  return tasks;
+}
+
+/** Family slug -> difficulty band, for reporting a per-band breakdown of a run. */
+export function taskBands(): Record<string, Family["band"]> {
+  return Object.fromEntries(FAMILIES.map((family) => [family.slug, family.band]));
+}
+
+/** Task counts per split, computed from the fixture rather than hard-coded. */
+export function splitCounts(): Record<Split, number> {
+  return TASKS.reduce(
+    (counts, task) => ({ ...counts, [task.split]: counts[task.split] + 1 }),
+    { train: 0, dev: 0, holdout: 0 } as Record<Split, number>,
+  );
+}
 
 export function getTask(taskId: string): Task {
   const task = TASKS.find((candidate) => candidate.taskId === taskId);
@@ -372,8 +732,26 @@ function apiFetch(handle: EnvHandle, args: Record<string, unknown>): Record<stri
       const id = `d-${state.mail.sequence}`;
       recordWrite(handle, "mail.sequence");
       recordWrite(handle, `mail.drafts.${id}`);
-      state.mail.drafts[id] = { to: String(body.to ?? ""), subject: String(body.subject ?? "") };
+      state.mail.drafts[id] = { to: String(body.to ?? ""), subject: String(body.subject ?? ""), status: "draft" };
       return { status: 201, draft_id: id };
+    }
+    return { status: 405, error: `method not allowed: ${method}` };
+  }
+
+  const draftMatch = /^\/mail\/drafts\/([\w-]+)$/.exec(url);
+  if (draftMatch) {
+    const id = draftMatch[1];
+    const draft = state.mail.drafts[id];
+    if (!draft) return { status: 404, error: "draft not found" };
+    if (method === "GET") return { status: 200, draft: { ...draft } };
+    if (method === "PATCH") {
+      for (const key of ["to", "subject", "status"] as const) {
+        if (typeof body[key] === "string") {
+          recordWrite(handle, `mail.drafts.${id}`);
+          draft[key] = body[key] as string;
+        }
+      }
+      return { status: 200, draft: { ...draft } };
     }
     return { status: 405, error: `method not allowed: ${method}` };
   }
@@ -389,7 +767,7 @@ function apiFetch(handle: EnvHandle, args: Record<string, unknown>): Record<stri
       recordWrite(handle, "mail.sequence");
       recordWrite(handle, `mail.messages.${id}`);
       recordWrite(handle, `mail.drafts.${draftId}`);
-      state.mail.messages[id] = { ...draft, sent: true };
+      state.mail.messages[id] = { to: draft.to, subject: draft.subject, sent: true };
       delete state.mail.drafts[draftId];
       return { status: 201, message_id: id };
     }
@@ -416,10 +794,30 @@ export function finish(handle: EnvHandle): StepResult {
 export function partialCredit(handle: EnvHandle): number {
   const task = getTask(handle.taskId);
   if (handle.forbiddenEffects.length > 0) return 0;
-  const earned = task.assertions.filter((assertion) => canonicalJson(readPath(task.initialState, assertion.path)) !== canonicalJson(assertion.equals));
+  const earned = task.assertions.filter((assertion) => !assertionSatisfied(task.initialState, assertion));
   if (earned.length === 0) return 0;
-  const satisfied = earned.filter((assertion) => canonicalJson(readPath(handle.state, assertion.path)) === canonicalJson(assertion.equals));
+  const satisfied = earned.filter((assertion) => assertionSatisfied(handle.state, assertion));
   return satisfied.length / earned.length;
+}
+
+function matchesEntry(entry: unknown, match: Record<string, unknown>): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const record = entry as Record<string, unknown>;
+  return Object.entries(match).every(([key, value]) => canonicalJson(record[key]) === canonicalJson(value));
+}
+
+/** Evaluate one final-state assertion against a world. Pure and total: it never throws. */
+export function assertionSatisfied(state: WorldState, assertion: Assertion): boolean {
+  if (assertion.kind === "equals") return canonicalJson(readPath(state, assertion.path)) === canonicalJson(assertion.equals);
+  const collection = readPath(state, assertion.collection);
+  const entries = collection && typeof collection === "object" ? Object.values(collection as Record<string, unknown>) : [];
+  const present = entries.some((entry) => matchesEntry(entry, assertion.match));
+  return assertion.kind === "exists" ? present : !present;
+}
+
+/** The dotted state path an assertion reads — the string that must never surface in an observation. */
+export function assertionPath(assertion: Assertion): string {
+  return assertion.kind === "equals" ? assertion.path : assertion.collection;
 }
 
 // ---------------------------------------------------------------------------
@@ -453,7 +851,7 @@ export function parseToolCalls(message: unknown): ToolCall[] {
 // Label-leakage audit
 // ---------------------------------------------------------------------------
 
-const LEAK_KEYS = ["assertions", "gold", "allowed_writes", "allowedWrites", "oracle", "initial_state", "reward", "score"];
+const LEAK_KEYS = ["assertions", "gold", "allowed_writes", "allowedWrites", "oracle", "initial_state", "reward", "score", "collection", "equals"];
 
 /**
  * Audit one observation for label leakage: no grader-side key may appear, and
@@ -467,7 +865,8 @@ export function auditObservationLeakage(obs: Observation, task: Task): string[] 
     if (serialized.includes(`"${key}"`)) findings.push(`observation exposes grader key: ${key}`);
   }
   for (const assertion of task.assertions) {
-    if (serialized.includes(assertion.path)) findings.push(`observation exposes assertion path: ${assertion.path}`);
+    const path = assertionPath(assertion);
+    if (serialized.includes(path)) findings.push(`observation exposes assertion path: ${path}`);
   }
   for (const write of task.allowedWrites) {
     if (serialized.includes(write)) findings.push(`observation exposes allowed-write path: ${write}`);
@@ -495,7 +894,9 @@ export function oraclePolicy(taskId: string): Policy {
 export function sentinelPolicy(): Policy {
   return (obs) => {
     if (obs.step < 3) return { name: "api_search", arguments: { query: "crm mail endpoints" } };
-    if (obs.step === 3) return { name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-1", body: { name: "sentinel" } } };
+    // The guard contact exists in every world and is writable by no task, so
+    // this write is a forbidden effect regardless of which task is running.
+    if (obs.step === 3) return { name: "api_fetch", arguments: { method: "PATCH", url: `/crm/contacts/${GUARD_CONTACT.id}`, body: { name: "sentinel" } } };
     return null;
   };
 }
@@ -634,11 +1035,12 @@ export type ImportResult = { manifest: Record<string, unknown>; rows: EvalRow[];
  * Rows for holdout tasks are refused unless the frozen holdout hash is passed.
  */
 export function importSubset(options: ImportOptions): ImportResult {
+  const counts = splitCounts();
   const manifest: Record<string, unknown> = {
     schema_version: "understudy.benchmark.v1",
     benchmark_id: AUTOMATIONBENCH_SUBSET.benchmark_id,
     name: "AutomationBench simple/api (offline synthetic subset)",
-    description: "Smallest local, synthetic, offline re-implementation of the AutomationBench simple/api subset. No upstream dataset, no provider calls.",
+    description: "Local, synthetic, offline re-implementation of the AutomationBench simple/api subset: 12 task families x 6 instances across three difficulty bands. No upstream dataset, no provider calls.",
     provenance: {
       origin: "imported",
       source_refs: [],
@@ -665,7 +1067,7 @@ export function importSubset(options: ImportOptions): ImportResult {
     },
     verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "partial_credit", replayable: true },
     splits: {
-      boundary: `seed-${RESET_SEED}: train 4 / dev 2 / holdout 2 (small sample — do not read as a leaderboard result)`,
+      boundary: `seed-${RESET_SEED}: train ${counts.train} / dev ${counts.dev} / holdout ${counts.holdout} (synthetic sample — do not read as an upstream AutomationBench result)`,
       splits_sha256: sha256({ train: splitSha256("train"), dev: splitSha256("dev"), holdout: splitSha256("holdout") }),
       contamination: "none",
     },
