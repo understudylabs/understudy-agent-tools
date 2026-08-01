@@ -1,0 +1,14 @@
+{
+  "task_count": 12,
+  "mean_reward": 0.7916666666666666,
+  "errored_tasks": 0,
+  "forbidden_effect_tasks": 0,
+  "malformed_tool_calls": 0,
+  "no_tool_call_stops": 11,
+  "unknown_tool": 0,
+  "step_limit_terminations": 1,
+  "truncated_responses": 0,
+  "prompt_tokens": 27383,
+  "completion_tokens": 1700,
+  "wall_time_ms": 24019
+}
