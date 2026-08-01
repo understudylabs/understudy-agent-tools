@@ -28,7 +28,7 @@ Zapier dataset and must never be reported as an upstream AutomationBench score.
 | benchmark id | `automationbench-simple-api-offline` |
 | fixture id | `automationbench-simple-api-offline-v1` |
 | reset / split seed | `7` |
-| splits | train 4 / dev 1 / holdout 1 |
+| splits | train 4 / dev 2 / holdout 2 |
 | verifiers pin | `ab65b6e8d34b03d162408d4bcb854430a86809e6` (`verifiers.v1`) |
 | fixture hash | `fixtureSha256()` — canonical-JSON sha256 over tasks + tool catalog + endpoint catalog |
 
@@ -96,10 +96,13 @@ const { manifest, rows: imported } = importSubset({ runId: "run-1", nativeExport
 
 ## Limitations
 
-- **Synthetic, not upstream.** Two apps, three endpoints, six tasks. Results are
+- **Synthetic, not upstream.** Two apps, four endpoints, eight tasks. Results are
   a harness self-check, never an AutomationBench leaderboard number.
-- **Sample size is tiny** (train 4 / dev 1 / holdout 1) — deliberately, so the
+- **Sample size is tiny** (train 4 / dev 2 / holdout 2) — deliberately, so the
   gates stay readable. It cannot separate models.
+- CRM contact ids are reachable through the read-only `GET /crm/contacts`
+  endpoint. Every value needed for a write is either in the prompt or
+  discoverable through an allowed read-only call.
 - **Scripted policies only.** There is no model runner here by design; wiring a
   policy to a model is the caller's job, outside this module's no-live-effects
   boundary.

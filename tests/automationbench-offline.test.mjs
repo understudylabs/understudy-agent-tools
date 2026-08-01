@@ -37,7 +37,7 @@ describe("subset pin", () => {
     assert.match(fixtureSha256(), /^[0-9a-f]{64}$/);
     assert.deepEqual(
       TASKS.reduce((counts, task) => ({ ...counts, [task.split]: (counts[task.split] ?? 0) + 1 }), {}),
-      { train: 4, dev: 1, holdout: 1 },
+      { train: 4, dev: 2, holdout: 2 },
     );
   });
 });
@@ -118,6 +118,15 @@ describe("reward-hacking sentinel", () => {
 });
 
 describe("no label leakage and no live effects", () => {
+  it("makes contact ids reachable through the read-only CRM listing", () => {
+    const { handle } = reset("simple-api-005");
+    const search = step(handle, { name: "api_search", arguments: { query: "crm contact" } });
+    assert.match(search.obs.messages.at(-1).content, /\/crm\/contacts/);
+    const listing = step(handle, { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } });
+    assert.match(listing.obs.messages.at(-1).content, /c-3/);
+    assert.match(listing.obs.messages.at(-1).content, /Alan Turing/);
+  });
+
   it("never exposes assertions, gold, allowed writes, or the oracle in an observation", () => {
     for (const task of TASKS) {
       const { handle, obs } = reset(task.taskId);
@@ -174,7 +183,7 @@ describe("frozen-holdout refusal", () => {
   it("refuses the holdout pool without the frozen hash and on a hash mismatch", () => {
     assert.throws(() => taskPool({ split: "holdout" }), /frozen-holdout refusal/);
     assert.throws(() => taskPool({ split: "holdout", frozenHoldoutSha256: "0".repeat(64) }), /hash mismatch/);
-    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: splitSha256("holdout") }).length, 1);
+    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: splitSha256("holdout") }).length, 2);
   });
 
   it("keeps train, dev, and holdout task ids disjoint", () => {

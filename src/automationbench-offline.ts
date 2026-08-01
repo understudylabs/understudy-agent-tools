@@ -129,6 +129,7 @@ const TOOL_CATALOG: Observation["tools"] = [
 ];
 
 const ENDPOINTS = [
+  { url: "/crm/contacts", methods: ["GET"], summary: "List CRM contacts and their ids." },
   { url: "/crm/contacts/{id}", methods: ["GET", "PATCH"], summary: "Read or update a CRM contact." },
   { url: "/mail/drafts", methods: ["GET", "POST"], summary: "List or create a mail draft." },
   { url: "/mail/messages", methods: ["GET", "POST"], summary: "List sent mail, or send an existing draft by draft_id." },
@@ -150,9 +151,9 @@ function baseState(): WorldState {
 }
 
 /**
- * The frozen synthetic subset. Six tasks under the seed-7 split boundary:
- * train 4 / dev 1 / holdout 1. Small by design — this is the smallest thing
- * that can exercise every gate, and the sample size is deliberately flagged.
+ * The frozen synthetic subset. Eight tasks under the seed-7 split boundary:
+ * train 4 / dev 2 / holdout 2. Small by design — this is a contract fixture,
+ * not a leaderboard-sized benchmark.
  */
 export const TASKS: Task[] = [
   {
@@ -217,6 +218,24 @@ export const TASKS: Task[] = [
     ],
     allowedWrites: ["mail.drafts", "mail.sequence"],
     oracle: [{ name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "ada@example.test", subject: "Renewal" } } }],
+  },
+  {
+    taskId: "simple-api-007",
+    split: "dev",
+    prompt: "Grace Hopper's account is active again. Record that status in CRM.",
+    initialState: baseState(),
+    assertions: [{ path: "crm.contacts.c-2.status", equals: "active" }],
+    allowedWrites: ["crm.contacts.c-2"],
+    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-2", body: { status: "active" } } }],
+  },
+  {
+    taskId: "simple-api-008",
+    split: "holdout",
+    prompt: "Assign Alan Turing's CRM account to rep u-4.",
+    initialState: baseState(),
+    assertions: [{ path: "crm.contacts.c-3.owner", equals: "u-4" }],
+    allowedWrites: ["crm.contacts.c-3"],
+    oracle: [{ name: "api_fetch", arguments: { method: "PATCH", url: "/crm/contacts/c-3", body: { owner: "u-4" } } }],
   },
 ];
 
@@ -323,6 +342,10 @@ function apiFetch(handle: EnvHandle, args: Record<string, unknown>): Record<stri
   const url = String(args.url ?? "");
   const body = (args.body && typeof args.body === "object" ? (args.body as Record<string, unknown>) : {}) as Record<string, unknown>;
   const state = handle.state;
+
+  if (url === "/crm/contacts" && method === "GET") {
+    return { status: 200, contacts: { ...state.crm.contacts } };
+  }
 
   const contactMatch = /^\/crm\/contacts\/([\w-]+)$/.exec(url);
   if (contactMatch) {
@@ -642,7 +665,7 @@ export function importSubset(options: ImportOptions): ImportResult {
     },
     verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "partial_credit", replayable: true },
     splits: {
-      boundary: `seed-${RESET_SEED}: train 4 / dev 1 / holdout 1 (small sample — do not read as a leaderboard result)`,
+      boundary: `seed-${RESET_SEED}: train 4 / dev 2 / holdout 2 (small sample — do not read as a leaderboard result)`,
       splits_sha256: sha256({ train: splitSha256("train"), dev: splitSha256("dev"), holdout: splitSha256("holdout") }),
       contamination: "none",
     },
