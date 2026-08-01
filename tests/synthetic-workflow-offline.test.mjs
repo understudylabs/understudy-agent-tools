@@ -303,14 +303,14 @@ describe("evaluator and importer", () => {
 describe("identity and domain denylist", () => {
   it("contains no identity tokens, credential prefixes, or non-test domains", () => {
     const blocked = [
-      "workload-00",
-      "org_01",
-      "proj_0",
-      "sk-",
-      "xoxb-",
-      "ghp_",
-      "AIza",
-      "AKIA",
+      ["workload-", "00"].join(""),
+      ["o", "rg_01"].join(""),
+      ["pro", "j_0"].join(""),
+      ["s", "k-"].join(""),
+      ["xo", "xb-"].join(""),
+      ["g", "hp_"].join(""),
+      ["AI", "za"].join(""),
+      ["AK", "IA"].join(""),
     ];
     for (const token of blocked) assert.doesNotMatch(allSource, new RegExp(token, "i"));
     const literals = allSource.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
