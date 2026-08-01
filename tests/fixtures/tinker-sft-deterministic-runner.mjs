@@ -39,6 +39,9 @@ process.stdout.write(`${JSON.stringify({
 })}\n`);
 
 const badCost = request.run_id.includes("bad-cost");
+const loraScope = request.run_id.includes("bad-scope")
+  ? { ...request.lora_scope, train_unembed: !request.lora_scope.train_unembed }
+  : request.lora_scope;
 const model = request.requested_model ?? request.price_catalog.entries[0].model;
 const baseline = evaluation(1);
 const trained = evaluation(2);
@@ -60,7 +63,7 @@ process.stdout.write(`${JSON.stringify({
     renderer: "deterministic_renderer",
     sampler_state_path: `tinker://checkpoint/${request.run_id}`,
     checkpoint_ttl_seconds: 3600,
-    training: { steps: 2, tokens: 256, loss_mask: "last_assistant_message" },
+    training: { steps: 2, tokens: 256, loss_mask: "last_assistant_message", lora_scope: loraScope },
     baseline,
     heldout: trained,
     improvement: { absolute_score_delta: trained.score - baseline.score, improved: true },

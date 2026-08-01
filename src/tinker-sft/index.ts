@@ -21,6 +21,29 @@ import {
 export const TINKER_SFT_RUNTIME_PACKAGES = ["tinker==0.23.1", "tinker-cookbook==0.5.2"] as const;
 export const TINKER_SFT_MAX_RUNTIME_SECONDS = 15 * 60;
 
+export type TinkerLoraScope = {
+  train_attn: boolean;
+  train_mlp: boolean;
+  train_unembed: boolean;
+};
+
+/**
+ * Which module families the LoRA adapts, sent explicitly instead of relying on
+ * the provider defaults so the run receipt records what was trained.
+ *
+ * `train_unembed` matters beyond Tinker: a LoRA that adapts the unembedding
+ * layer cannot be re-deployed as a Fireworks LoRA addon, whose accepted target
+ * modules exclude embedding layers and allow `lm_head` only for specific base
+ * families. Flipping it to `false` would trade Tinker quality for adapter
+ * portability, so it stays at the provider default here and is disclosed in the
+ * backend compile receipt (see docs/training-backend-portability.md).
+ */
+export const TINKER_LORA_SCOPE: Readonly<TinkerLoraScope> = Object.freeze({
+  train_attn: true,
+  train_mlp: true,
+  train_unembed: true,
+});
+
 const RUN_SCHEMA = "understudy.tinker_sft.run.v1";
 const MAX_STDIO_BYTES = 1024 * 1024;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -85,6 +108,11 @@ const RuntimeResultSchema = z.object({
     steps: z.number().int().positive(),
     tokens: z.number().int().positive(),
     loss_mask: z.literal("last_assistant_message"),
+    lora_scope: z.object({
+      train_attn: z.boolean(),
+      train_mlp: z.boolean(),
+      train_unembed: z.boolean(),
+    }),
   }),
   baseline: EvaluationSchema,
   heldout: EvaluationSchema,
@@ -318,6 +346,13 @@ function validateRuntimeResult(
   if (result.baseline.examples !== result.heldout.examples) {
     throw new Error("Tinker did not evaluate the base and tuned model on the same holdout size.");
   }
+  if (
+    result.training.lora_scope.train_attn !== TINKER_LORA_SCOPE.train_attn
+    || result.training.lora_scope.train_mlp !== TINKER_LORA_SCOPE.train_mlp
+    || result.training.lora_scope.train_unembed !== TINKER_LORA_SCOPE.train_unembed
+  ) {
+    throw new Error("Tinker receipt reports a LoRA scope the run did not approve.");
+  }
   const delta = result.heldout.score - result.baseline.score;
   const promoted = result.heldout.score >= verified.plan.minimum_accuracy
     && delta >= verified.plan.minimum_improvement_over_base;
@@ -457,6 +492,7 @@ export function startTinkerSftTraining(options: StartTinkerSftTrainingOptions): 
     maximum_spend_usd: approvedMaxUsd,
     minimum_accuracy: verified.plan.minimum_accuracy,
     minimum_improvement_over_base: verified.plan.minimum_improvement_over_base,
+    lora_scope: TINKER_LORA_SCOPE,
     price_catalog: TINKER_PRICE_CATALOG,
   };
   writePrivateExclusive(requestPath, `${JSON.stringify(request, null, 2)}\n`);
