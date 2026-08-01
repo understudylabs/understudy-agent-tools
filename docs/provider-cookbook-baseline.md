@@ -312,17 +312,11 @@ Verbatim listings are preserved in `runs/lane-a-qwen3p5-9b-v4/teardown.json`. No
 
 **Unrelated finding worth acting on.** The account listing is *not* empty — it holds 40
 pre-existing deployments from earlier work, none of them ours. Thirty-six sit at 0 replicas
-(scale-to-zero, no GPU charge), but **four are currently running replicas**:
-
-| Deployment | Base model | GPUs | Created |
-|---|---|---|---|
-| `bij-ab-g26ba4b-probe` | `understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3` | 4 × B200 | 2026-08-01 22:53Z |
-| `ab-g26ba4b-arm` | `fireworks/models/gemma-4-26b-a4b-it` | 2 × H100 | 2026-08-01 21:40Z |
-| `abo-g26-bf16-lora` | `fireworks/models/gemma-4-26b-a4b-it` | 1 × H200 | 2026-08-01 23:10Z |
-| `ob7h73qd` | `fireworks/models/nemotron-nano-3-30b-a3b` | 1 × H200 | 2026-08-01 22:17Z |
-
-That is ~$61/hour of live on-demand GPU (4×$10 + 2×$7 + $7 + $7). They belong to concurrent work,
-so I have not touched them — but if those sessions have finished, they are burning money now.
+(scale-to-zero, no GPU charge), but **four were running replicas** at the time of this run
+(4 × B200, 2 × H100, 1 × H200, 1 × H200), all created the same day by concurrent work. That is
+~$61/hour of live on-demand GPU. They are not ours, so this run did not touch them — but idle
+dedicated deployments left at non-zero replicas are a standing cost leak worth auditing. Specific
+resource identifiers are deliberately omitted here; see the session record.
 
 ## 6. Cookbook tasks vs our AutomationBench / sanitized synthetic tasks
 
