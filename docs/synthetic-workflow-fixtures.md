@@ -169,6 +169,10 @@ the table describes only generic workflow shapes.
 Several additional route labels in the source corpus have no call ordering or
 terminal-state contract behind them and are deliberately not modelled.
 
+The two `saw-doc-*` tasks model a verified subset of the observed shape: the
+source run exercised only a fraction of the tools its environment advertised,
+so these tasks are not coverage of that workflow in full.
+
 ### 4.1 Family builders
 
 Each family supplies:
