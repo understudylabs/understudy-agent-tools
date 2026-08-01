@@ -9,6 +9,7 @@ import { afterEach, describe, it } from "node:test";
 import { TINKER_PRICE_CATALOG } from "../dist/tinker-sft/catalog.js";
 import {
   startTinkerSftTraining,
+  TINKER_LORA_SCOPE,
   TINKER_SFT_RUNTIME_PACKAGES,
 } from "../dist/tinker-sft/index.js";
 import { tinkerSftRuntimeSource } from "../dist/tinker-sft/runtime-source.js";
@@ -153,6 +154,55 @@ describe("portable Tinker SFT backend", () => {
       _runnerOverrideForTests: { command: process.execPath, args: [deterministicRunner] },
       now: new Date("2026-07-19T12:00:00.000Z"),
     }).completion, /cost contract/);
+  });
+
+  it("records the approved LoRA scope and rejects a receipt that changed it", async () => {
+    const fixture = portablePlan();
+    const result = await startTinkerSftTraining({
+      planPath: fixture.planPath,
+      runId: "gsm8k-lora-scope",
+      confirmUpload: true,
+      confirmSpend: true,
+      maximumSpendUsd: 0.5,
+      outputRoot: join(fixture.root, "runs"),
+      runtimeRoot: join(fixture.root, "runtime"),
+      _runnerOverrideForTests: { command: process.execPath, args: [deterministicRunner] },
+      now: new Date("2026-07-19T12:00:00.000Z"),
+    }).completion;
+    assert.deepEqual(result.training.lora_scope, {
+      train_attn: true,
+      train_mlp: true,
+      train_unembed: true,
+    });
+    assert.deepEqual(TINKER_LORA_SCOPE, result.training.lora_scope);
+
+    const other = portablePlan();
+    await assert.rejects(startTinkerSftTraining({
+      planPath: other.planPath,
+      runId: "bad-scope-receipt",
+      confirmUpload: true,
+      confirmSpend: true,
+      maximumSpendUsd: 0.5,
+      outputRoot: join(other.root, "runs"),
+      runtimeRoot: join(other.root, "runtime"),
+      _runnerOverrideForTests: { command: process.execPath, args: [deterministicRunner] },
+      now: new Date("2026-07-19T12:00:00.000Z"),
+    }).completion, /LoRA scope the run did not approve/);
+  });
+
+  it("refuses a recipe the Tinker executor does not implement", () => {
+    const fixture = portablePlan({
+      recipe_id: "chat_sft_exact_response_v1",
+      evaluator: "exact_response",
+    });
+    assert.throws(() => startTinkerSftTraining({
+      planPath: fixture.planPath,
+      runId: "unsupported-recipe",
+      confirmUpload: true,
+      confirmSpend: true,
+      outputRoot: join(fixture.root, "runs"),
+      _runnerOverrideForTests: { command: process.execPath, args: [deterministicRunner] },
+    }), /does not support recipe chat_sft_exact_response_v1/);
   });
 
   it("contains no fake endpoint or fake provider path", () => {

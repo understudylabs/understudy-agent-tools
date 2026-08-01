@@ -182,6 +182,78 @@ describe("portable training backend compiler", () => {
     assert.match(tinker.blocked_reasons.join(" "), /No remote spend is approved/);
   });
 
+  it("reports the recipes each remote executor actually implements", () => {
+    const fixture = portablePlan();
+    Object.assign(fixture.plan, {
+      recipe_id: "chat_sft_exact_response_v1",
+      evaluator: "exact_response",
+    });
+    writeFileSync(fixture.planPath, `${JSON.stringify(fixture.plan, null, 2)}\n`);
+
+    const mlx = compileTrainingBackend({
+      planPath: fixture.planPath,
+      backend: "mlx-local",
+      platform: "darwin",
+      architecture: "arm64",
+    });
+    const tinker = compileTrainingBackend({ planPath: fixture.planPath, backend: "tinker" });
+    const managed = compileTrainingBackend({ planPath: fixture.planPath, backend: "fireworks" });
+
+    // Declared support in the portable recipe registry is not an executor.
+    assert.equal(mlx.compatible, true);
+    assert.equal(mlx.adapter_implemented, false);
+    assert.equal(mlx.execution_ready, false);
+    assert.match(mlx.blocked_reasons.join(" "), /run-local-sft/);
+    assert.equal(tinker.compatible, true);
+    assert.equal(tinker.adapter_implemented, false);
+    assert.equal(tinker.execution_ready, false);
+    assert.match(tinker.blocked_reasons.join(" "), /run-tinker-sft/);
+    assert.deepEqual(tinker.portability_notes, []);
+    assert.equal(managed.adapter_implemented, true);
+  });
+
+  it("blocks a plan the managed train API contract would reject", () => {
+    const fixture = portablePlan();
+    Object.assign(fixture.plan, {
+      model_profile: "understudy/local",
+      output_model_name: "Public GSM8K Model",
+      lora_rank: 512,
+    });
+    writeFileSync(fixture.planPath, `${JSON.stringify(fixture.plan, null, 2)}\n`);
+
+    const managed = compileTrainingBackend({ planPath: fixture.planPath, backend: "fireworks" });
+    const reasons = managed.blocked_reasons.join(" ");
+    assert.equal(managed.execution_ready, false);
+    assert.match(reasons, /understudy\/local is not a managed training profile/);
+    assert.match(reasons, /does not match the managed naming contract/);
+    assert.match(reasons, /LoRA rank between 4 and 128/);
+    // The fixture approves fewer evaluation examples than the service accepts.
+    assert.match(reasons, /evaluation examples between 5 and 500/);
+  });
+
+  it("discloses that a Tinker adapter is not a Fireworks-hostable LoRA", () => {
+    const fixture = portablePlan();
+    const tinker = compileTrainingBackend({ planPath: fixture.planPath, backend: "tinker" });
+    assert.deepEqual(tinker.execution.lora_scope, {
+      train_attn: true,
+      train_mlp: true,
+      train_unembed: true,
+    });
+    assert.match(tinker.portability_notes.join(" "), /train_unembed/);
+    assert.match(tinker.portability_notes.join(" "), /Fireworks LoRA addons cannot host/);
+  });
+
+  it("blocks Tinker once the bundled price basis expires", () => {
+    const fixture = portablePlan();
+    const tinker = compileTrainingBackend({
+      planPath: fixture.planPath,
+      backend: "tinker",
+      now: new Date("2099-01-01T00:00:00.000Z"),
+    });
+    assert.equal(tinker.execution_ready, false);
+    assert.match(tinker.blocked_reasons.join(" "), /price basis expired/);
+  });
+
   it("fails before compilation when an approved artifact changes", () => {
     const fixture = portablePlan();
     writeFileSync(fixture.artifacts[0].path, "{}\n");

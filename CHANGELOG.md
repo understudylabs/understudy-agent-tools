@@ -159,6 +159,20 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Honest backend readiness for the same training plan.** Compiling a portable
+  plan no longer claims a backend can run a recipe it has no executor for:
+  `adapter_implemented` now comes from the local MLX and Tinker executor
+  registries, and the blocked reason names the command that would have to grow
+  the recipe. Managed (Fireworks) compilation reports the train API request
+  bounds it would be rejected for — model profile, output model name, epochs,
+  LoRA rank, context length, runtime, and the 5–500 evaluation-example range —
+  instead of implying the plan only needs consent and a live check. Tinker
+  compilation blocks on an expired bundled price basis, sends its LoRA scope
+  explicitly, rejects a run receipt that reports a different scope, and
+  discloses in the new `portability_notes` that a `train_unembed` adapter cannot
+  be hosted as a Fireworks LoRA addon. See
+  [`docs/training-backend-portability.md`](docs/training-backend-portability.md).
+
 - **Desktop window controls are simpler and updates are easier to verify.**
   Desktop/runtime 0.3.18 and CLI 0.6.15 remove the persisted always-on-top
   titlebar pin and its native capability. The macOS application menu and

@@ -125,6 +125,9 @@ async def main(request: dict) -> dict:
         raise RuntimeError("TINKER_API_KEY is required for Tinker execution.")
     if instant(request["price_catalog"]["expires_at"]) <= instant(request["started_at"]):
         raise RuntimeError("The bundled Tinker price basis is stale; update it before spending.")
+    lora_scope = request["lora_scope"]
+    if not any(lora_scope[name] for name in ("train_attn", "train_mlp", "train_unembed")):
+        raise RuntimeError("The approved LoRA scope trains no module family.")
 
     emit({"type": "phase", "phase": "preparing", "message": "Checking the live Tinker model catalog and renderer."})
     service = tinker.ServiceClient(user_metadata={"understudy_run": request["run_id"]})
@@ -183,9 +186,9 @@ async def main(request: dict) -> dict:
         base_model=model,
         rank=request["lora_rank"],
         seed=44,
-        train_attn=True,
-        train_mlp=True,
-        train_unembed=True,
+        train_attn=lora_scope["train_attn"],
+        train_mlp=lora_scope["train_mlp"],
+        train_unembed=lora_scope["train_unembed"],
         user_metadata={"understudy_run": request["run_id"], "recipe_id": request["recipe_id"]},
     )
     batch_size = min(8, max(1, int(getattr(capabilities, "max_batch_size", 8) or 8)))
@@ -241,7 +244,12 @@ async def main(request: dict) -> dict:
         "renderer": renderer_name,
         "sampler_state_path": saved.path,
         "checkpoint_ttl_seconds": 3600,
-        "training": {"steps": steps, "tokens": train_tokens, "loss_mask": "last_assistant_message"},
+        "training": {
+            "steps": steps,
+            "tokens": train_tokens,
+            "loss_mask": "last_assistant_message",
+            "lora_scope": lora_scope,
+        },
         "baseline": baseline,
         "heldout": heldout,
         "improvement": {"absolute_score_delta": delta, "improved": delta > 0},
