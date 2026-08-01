@@ -119,6 +119,41 @@ lightweight structural check (required fields, enums, score range) so no
 validator dependency is needed; external consumers can use any draft-2020-12
 validator.
 
+## `understudy.training_evidence.v1`
+
+[`understudy.training_evidence.v1.schema.json`](understudy.training_evidence.v1.schema.json)
+is the smallest artifact that records a scored rollout as reusable training
+evidence: one row is one **episode**, decomposed into **steps**, each carrying
+the **candidate** generation(s), the **verifier outcome** per candidate, and
+**optional token-logprob** records — plus split/holdout hashes, the source pin,
+model/version, seed, terminal reward, latency/cost, and the privileged-context
+boundary. The point is that **SFT, DPO, and GRPO all project from the same
+row** without re-running the workload.
+
+It aligns with the two contracts above: `eval_result.v1` (nullable,
+additive-extensible rows; `split`/`status`/`cost` conventions; "a real 0 is a
+scored value") and `verifier_handoff.v1`
+(`splits_sha256`/`holdout_sha256`/`contamination`; terminal-by-default reward
+with shaping explicit and optional).
+
+Two safety gates bind every projection:
+
+1. **Split gate** — training pools draw only from `split: "train"` (and, where
+   a producer allows it, `"dev"`); `"holdout"` rows are return-eval evidence
+   only and must never enter a pool.
+2. **Privileged-context boundary** — `privileged_context.in_policy_input: true`
+   marks a row whose trainable input carries privileged signal (gold/oracle/
+   teacher/future state); the safe case is `verifier_only` (privilege scores a
+   candidate, never shown to the policy). A `teacher`/`oracle` or
+   `privileged: true` candidate may be a reward/reference source but never an
+   SFT target or DPO `chosen` side.
+
+This is a local evidence artifact and never triggers provider calls or spend —
+hosted training that consumes the projected pool is authorized separately via a
+`verifier_handoff.v1` packet. SFT/DPO/GRPO-safe usage and reference projectors:
+[`docs/training-evidence.md`](../docs/training-evidence.md) and
+`tests/training-evidence.test.mjs`.
+
 ## `understudy.route_decision_packet.v1`
 
 [`understudy.route_decision_packet.v1.schema.json`](understudy.route_decision_packet.v1.schema.json)

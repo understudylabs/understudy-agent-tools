@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.training_evidence.v1.schema.json",
+  "title": "understudy.training_evidence.v1",
+  "description": "One training-evidence episode (one row): a single scored rollout of a task, decomposed into steps, each with the candidate generation(s) the policy (or a teacher/reference) produced, the verifier outcome for each candidate, and optional token-logprob records. This is the smallest artifact that lets SFT, DPO, and GRPO all be projected from the SAME evidence without re-running anything: SFT reads the selected candidate per step, DPO reads chosen-vs-rejected candidate pairs by reward, and GRPO reads the full candidate group with per-token logprobs. It aligns with understudy.eval_result.v1 (nullable, additive-extensible rows; split/status/cost conventions) and understudy.verifier_handoff.v1 (split/holdout hashes, contamination, terminal-by-default reward). It is a local evidence artifact — reference source/prompt/output content by hash or path when confidentiality requires it; only inline text you are allowed to train on. Producers may add extra fields; consumers must ignore fields they do not understand. Most fields are nullable so a producer can adopt the schema today and enrich rows over time.",
+  "type": "object",
+  "required": ["schema_version", "episode_id", "task_id", "steps"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.training_evidence.v1",
+      "description": "Version stamp for this row shape."
+    },
+    "episode_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of this rollout/episode. Unique per task attempt; the natural join key back to canonical conversation-runtime evidence."
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Identifier of the collection run this episode belongs to. All episodes produced by one rollout-generation invocation share a run_id (mirrors eval_result.v1 run_id)."
+    },
+    "capture_run_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Per-attempt id that joins this episode to immutable canonical conversation-runtime JSONL, matching eval_result.v1.capture_run_id."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the task/example the episode is a rollout of."
+    },
+    "split": {
+      "enum": ["train", "dev", "holdout", "none", null],
+      "description": "Which frozen split the task belongs to (same vocabulary as eval_result.v1). GRPO/DPO/SFT training pools MUST draw only from 'train' (and, where a producer allows it, 'dev'); 'holdout' rows are evidence for return-eval scoring and must never enter a training pool. 'none' = no split contract; null = unknown."
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "description": "Sampling seed that produced this episode's rollout, when the generator set one. Needed to reproduce a group of candidates for GRPO."
+    },
+    "model": {
+      "type": ["object", "null"],
+      "description": "The policy model that produced the episode's candidates (per-candidate role/model overrides live on the candidate).",
+      "properties": {
+        "id": { "type": ["string", "null"], "description": "Resolved model id, e.g. 'gemma-4-31b-it' or a Fireworks model id." },
+        "version": { "type": ["string", "null"], "description": "Model/checkpoint version or revision that generated the rollout (weights sha, adapter id, or provider revision)." },
+        "route": { "type": ["string", "null"], "description": "Route or lane the rollout ran on, e.g. local | gateway | byo-provider (mirrors eval_result.v1.route)." },
+        "provider": { "type": ["string", "null"], "description": "Provider or backend that served the model, when known." }
+      },
+      "additionalProperties": true
+    },
+    "policy_version": {
+      "type": ["string", "null"],
+      "description": "Optional label of the training policy iteration these rollouts were sampled under (e.g. GRPO step / iteration tag). Off-policy rows for a later update must carry the version they were actually sampled with, not the current one."
+    },
+    "source": {
+      "type": ["object", "null"],
+      "description": "The pinned source of the task the episode was rolled out on — the 'source pin'. References only; never inline dataset contents here.",
+      "properties": {
+        "pin": { "type": ["string", "null"], "description": "Human-readable source pin, e.g. a git ref, dataset@version, or benchmark id + version." },
+        "source_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$", "description": "sha256 content pin of the task's source record (canonical-JSON or file bytes), so a row can be traced to the exact input it was generated from." },
+        "dataset_id": { "type": ["string", "null"], "description": "Identifier of the dataset/benchmark the task came from." },
+        "task_version": { "type": ["string", "null"], "description": "Semantic version (MAJOR.MINOR.PATCH) of the task at rollout time, matching eval_result.v1 provenance.task_version." }
+      },
+      "additionalProperties": true
+    },
+    "reward": {
+      "$ref": "#/$defs/reward",
+      "description": "Episode-level (terminal) reward for the whole rollout. Terminal fractional final-state score by default; any shaping must be explicit and optional, matching verifier_handoff.v1's pinned reward definition. Per-step / per-candidate rewards live on the candidate."
+    },
+    "latency_ms": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "End-to-end wall clock for the whole rollout in milliseconds."
+    },
+    "cost": {
+      "$ref": "#/$defs/cost",
+      "description": "Cost of generating this episode. Never invent prices — usd stays null unless a real basis exists (mirrors eval_result.v1.cost)."
+    },
+    "started_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for when the rollout started, when known."
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for when the row was recorded."
+    },
+    "privileged_context": {
+      "$ref": "#/$defs/privileged_context",
+      "description": "Episode-level declaration of the privileged-context boundary: information available to the generator/teacher/verifier (gold answers, oracle hints, future/simulator state, teacher rationales) that must be handled explicitly before training. When in_policy_input is true, this episode's trainable input is contaminated with privileged signal and MUST NOT be used as-is for on-policy SFT/DPO/GRPO. A step or candidate may narrow this with its own privileged_context / privileged flag."
+    },
+    "splits": {
+      "type": ["object", "null"],
+      "description": "Train/dev/holdout boundary and contamination status, reusing the verifier_handoff.v1 contract so curation and return-eval line up.",
+      "properties": {
+        "boundary": { "type": ["string", "null"], "description": "The train/dev/holdout boundary in force (e.g. 'seed-7: train 18 / dev 6 / holdout 6')." },
+        "splits_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$", "description": "sha256 of the frozen split contract (matches capture-evidence / verifier_handoff.v1 splits_sha256)." },
+        "holdout_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$", "description": "sha256 of the frozen holdout membership. The return-eval command refuses on a holdout-hash mismatch; a training pool builder refuses any row whose task is in this set." },
+        "contamination": {
+          "enum": ["clean", "contaminated", "unknown", null],
+          "description": "Whether the training pool this row would enter has been verified to exclude frozen dev/holdout rows (curate-trajectories contamination report)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "steps": {
+      "type": "array",
+      "description": "The ordered decision points of the rollout. A single-turn workload has one step. Each step carries the candidate generation(s) at that point.",
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "provenance": {
+      "type": ["object", "null"],
+      "description": "Optional but standardized provenance chain, matching eval_result.v1.provenance.",
+      "properties": {
+        "harness_sha256": { "type": ["string", "null"], "description": "sha256 of the harness/generator definition that produced the row." },
+        "split_sha256": { "type": ["string", "null"], "description": "sha256 of the frozen split contract the row was drawn from (splits_sha256 in capture-evidence)." },
+        "verifier_sha256": { "type": ["string", "null"], "description": "sha256 of the verifier definition that scored the candidates, so a returned policy is re-scored by the same rule." },
+        "artifact_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths or ids of supporting artifacts (rollout files, trace bodies, logprob sidecars). References only — never inline contents."
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "reward": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "value": {
+          "type": ["number", "null"],
+          "description": "Scalar reward. Null when unrewarded (no verifier/gold covers this) — a real 0 is a scored-zero reward, never a missing value, exactly as eval_result.v1 treats score."
+        },
+        "kind": {
+          "enum": ["terminal", "shaped", null],
+          "description": "terminal = fractional final-state score (the default); shaped = intermediate/dense shaping, which must be explicit and optional."
+        },
+        "max": { "type": ["number", "null"], "description": "Maximum attainable reward for this scale, when the scale is not 0..1." },
+        "basis": { "type": ["string", "null"], "description": "How the reward was derived, e.g. 'verifier-terminal', 'rubric-dense', 'preference-margin'." }
+      }
+    },
+    "cost": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "usd": { "type": ["number", "null"], "minimum": 0, "description": "Cost of the rollout in USD. Null when no price basis exists — never invent prices." },
+        "basis": { "type": ["string", "null"], "description": "How the cost was derived, e.g. 'local-zero-marginal-cost', 'gateway-metered', 'provider-price-table'." }
+      }
+    },
+    "privileged_context": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "present": { "type": ["boolean", "null"], "description": "Whether any privileged signal (gold answer, oracle hint, teacher rationale, future/simulator state) was in scope when this evidence was produced." },
+        "in_policy_input": { "type": ["boolean", "null"], "description": "The boundary flag that matters for training safety: true means the privileged signal reached the trainable policy input, so the row is NOT safe to train on as-is. false means the privileged signal stayed out of the policy input (e.g. used only by the verifier or teacher) and the policy input is train-safe." },
+        "channels": {
+          "type": ["array", "null"],
+          "items": { "enum": ["gold_answer", "oracle_hint", "teacher_rationale", "future_state", "simulator_state", "verifier_only", "other"] },
+          "description": "Which privileged channels were in scope. 'verifier_only' is the safe case: privilege used to score, never shown to the policy."
+        },
+        "note": { "type": ["string", "null"], "description": "Free-text description of the boundary, e.g. 'teacher answer used only to compute reward; never in the student prompt'." }
+      }
+    },
+    "token_logprob": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["logprob"],
+      "properties": {
+        "token": { "type": ["string", "null"], "description": "The decoded token string, when available." },
+        "token_id": { "type": ["integer", "null"], "description": "The tokenizer id of the token, when available." },
+        "logprob": { "type": "number", "description": "Natural-log probability of the sampled token under the sampling (old) policy. GRPO importance sampling and DPO reference terms read these." },
+        "top_logprobs": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["logprob"],
+            "properties": {
+              "token": { "type": ["string", "null"] },
+              "token_id": { "type": ["integer", "null"] },
+              "logprob": { "type": "number" }
+            }
+          },
+          "description": "Optional alternatives at this position."
+        }
+      }
+    },
+    "verifier_outcome": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "outcome": {
+          "enum": ["pass", "fail", "partial", "error", "unscored", null],
+          "description": "The verifier's verdict for the candidate. pass/fail/partial = scored; error = the verifier could not run; unscored = no rubric/gold covers this candidate (exclude from reward stats, never count as 0), matching eval_result.v1 status semantics."
+        },
+        "score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Primary verifier score normalized to 0..1. Null when unscored; a real 0 is a scored failure."
+        },
+        "verifier_id": { "type": ["string", "null"], "description": "Identifier of the verifier/rubric that produced the outcome." },
+        "reward": { "$ref": "#/$defs/reward", "description": "The reward the verifier assigned this candidate, when it differs from a raw score (e.g. shaped or scaled)." },
+        "detail": { "type": ["string", "null"], "description": "Optional short human-readable reason." }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["candidate_id"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1, "description": "Identifier unique within the step. GRPO reads all candidates of a step as one group; DPO pairs two by reward." },
+        "role": {
+          "enum": ["policy", "reference", "teacher", "oracle", "baseline", null],
+          "description": "Who produced this candidate. 'policy' is the trainee; 'reference'/'teacher'/'oracle' are comparison or supervision sources. On-policy GRPO uses only 'policy' candidates; DPO can pair policy against reference/teacher."
+        },
+        "model": { "type": ["string", "null"], "description": "Resolved model id that produced this candidate, when it differs from the episode model." },
+        "output": { "type": ["string", "null"], "description": "The generated text/action for this candidate. Inline only what you are allowed to train on; otherwise leave null and set output_ref." },
+        "output_ref": { "type": ["string", "null"], "description": "Reference (path/id) to canonical candidate content when it must not be inlined." },
+        "reward": { "$ref": "#/$defs/reward", "description": "Per-candidate reward. This is the DPO/GRPO signal: chosen-vs-rejected and group-relative advantages are computed from these values." },
+        "verifier": { "$ref": "#/$defs/verifier_outcome", "description": "The verifier outcome for this candidate." },
+        "token_logprobs": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/token_logprob" },
+          "description": "Optional per-token logprobs of this candidate under the sampling policy. Required for GRPO importance weighting; optional for SFT/DPO. Keep raw arrays local — reference a sidecar via output_ref/artifact_refs when confidentiality requires it."
+        },
+        "selected": { "type": ["boolean", "null"], "description": "Whether this candidate is the chosen/target generation for the step. SFT trains on the selected candidate; DPO treats selected as 'chosen'. Redundant with step.chosen_candidate_id and provided for row-local convenience." },
+        "privileged": { "type": ["boolean", "null"], "description": "Whether this candidate was produced with privileged context in its input (e.g. a teacher shown the gold answer). Narrows the episode privileged_context boundary to this candidate." }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["step_index", "candidates"],
+      "properties": {
+        "step_index": { "type": "integer", "minimum": 0, "description": "0-based position of this decision point in the rollout." },
+        "kind": { "type": ["string", "null"], "description": "Optional shape of the step, e.g. message | tool_call | decision." },
+        "prompt": { "type": ["string", "null"], "description": "The policy input at this step (the trainable context). Inline only what you are allowed to train on; otherwise leave null and set prompt_ref." },
+        "prompt_ref": { "type": ["string", "null"], "description": "Reference (path/id) to the canonical step input when it must not be inlined." },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/candidate" },
+          "description": "The candidate generation(s) at this step. One = a single trajectory (SFT/DPO-against-reference). Many = a sampled group (DPO pairs, GRPO group-relative advantage)."
+        },
+        "chosen_candidate_id": { "type": ["string", "null"], "description": "candidate_id of the selected/target candidate for this step, if any." },
+        "privileged_context": { "$ref": "#/$defs/privileged_context", "description": "Optional step-level override of the episode privileged-context boundary." }
+      }
+    }
+  }
+}
