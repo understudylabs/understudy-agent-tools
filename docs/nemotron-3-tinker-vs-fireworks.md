@@ -5,10 +5,13 @@ Supplier-support reference for NVIDIA Nemotron 3 open-weight models on **Tinker*
 templates, evaluation deployment, and whether the *same base model* can be compared
 across both suppliers.
 
-Compiled from official provider docs and catalogs on **2026-08-01**. Tags: **[V]**
-verified against a primary source (linked in [Sources](#sources)) · **[U]** unverified
-or documentation conflicts — flagged inline. Prices and catalogs drift; re-verify
-before any spend. Nothing here was launched or billed — no jobs were run.
+Compiled from official provider docs and catalogs on **2026-08-01**, then confirmed
+against both providers' **live APIs** with read-only calls (see
+[Phase-0 verification](#phase-0-verification-run-2026-08-01-read-only-no-spend)).
+Tags: **[V]** verified against a primary source (linked in [Sources](#sources)) ·
+**[L]** confirmed live against the provider API on 2026-08-01 · **[U]** unverified —
+flagged inline. Prices and catalogs drift; re-verify before any spend. Nothing here
+was launched, deployed, or billed — no training jobs and no deployments were created.
 
 ## Bottom line
 
@@ -16,17 +19,23 @@ before any spend. Nothing here was launched or billed — no jobs were run.
   30B-A3B BF16.** Both suppliers serve the *same* Hugging Face checkpoint
   (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`) and both offer managed **supervised
   LoRA** on it. [V]
-- **Super 120B-A12B BF16 is probably comparable too, but the Fireworks docs conflict
-  with the Fireworks live shape catalog** — verify with `firectl` before planning
-  it. [U]
+- **Nano's chat template is identical across the comparison** [L]: Tinker's
+  `nemotron3` renderers are token-exact against the model's HF chat template (44/44
+  cookbook tests + an independent tool-calling round-trip), and Fireworks renders Nano
+  with that same HF template (`useHfApplyChatTemplate: true`). Three-way parity.
+- **Super 120B-A12B BF16 *is* supervised-LoRA tunable on Fireworks** — the live API
+  says `supervisedLoraTunable: true`; the docs table that omits it is stale. [L] But
+  Super sets `useHfApplyChatTemplate: false`, so Fireworks renders it with an internal
+  renderer you cannot override — template parity with Tinker is **unproven**. [U]
 - **Ultra 550B-A55B is not comparable for training**: Tinker offers LoRA on the BF16
-  checkpoint; Fireworks publishes no managed-SFT shape for it. [V]
+  checkpoint; Fireworks reports `supervisedLoraTunable: false` (a LoRA *shape* exists
+  but managed SFT is off). [L]
 - **Adapters are almost certainly not portable Tinker → Fireworks** for this family
   (Mamba `in_proj`/`out_proj` targets are outside Fireworks' documented import
   allow-list). Plan on training once per supplier, not train-once-serve-both. [V/U]
-- **No-spend recommendation:** do the Phase-0 verification below (catalog probes +
-  local template rendering + a frozen eval), then, if a pilot is authorized, run the
-  **Tinker Nano arm first** — it is per-token with no GPU-hour floor, while the
+- **No-spend recommendation:** the Phase-0 provider checks are **done** (below, all
+  read-only); the only remaining pre-spend work is freezing the eval + grader. Then, if
+  a pilot is authorized, run the **Tinker Nano arm first** — it is per-token with no GPU-hour floor, while the
   Fireworks arm needs a dedicated 2×B200 deployment ($20/hr [V]) merely to evaluate.
 
 ## Exact model IDs
@@ -50,7 +59,7 @@ cap. [V]
 | Model path (`accounts/fireworks/models/…`) | HF checkpoint | Managed SFT | Serverless inference | Function calling |
 |---|---|---|---|---|
 | `nemotron-nano-3-30b-a3b` | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | **LoRA ✔** | ✖ | ✔ |
-| `nemotron-3-super-120b-a12b-bf16` | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16` | **LoRA ✔** [U] | ✖ | ✔ |
+| `nemotron-3-super-120b-a12b-bf16` | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16` | **LoRA ✔** | ✖ | ✔ |
 | `nvidia-nemotron-3-super-120b-a12b-fp8` | — | ✖ | ✖ | ✔ |
 | `nvidia-nemotron-3-super-120b-a12b-nvfp4` | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | ✖ | ✖ | ✔ |
 | `nemotron-3-ultra-bf16` | `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16` | ✖ | ✖ | ✔ |
@@ -62,22 +71,25 @@ Training shapes from the live registry (catalog `generatedAt` 2026-07-31 21:02 U
 
 | Base model | Shape | Method | GPUs | Shape ctx | Managed SFT / DPO | Model train ctx |
 |---|---|---|---|---:|---|---:|
-| `nemotron-nano-3-30b-a3b` | `nemotron-nano-3-30b-a3b-262k-b200-lora` | LoRA | 2×B200 | 262,144 | ✔ / ✔ | 131,072 |
-| `nemotron-3-super-120b-a12b-bf16` | `nemotron-3-super-120b-a12b-bf16-128k-lora` | LoRA | 8×B200 | 262,144 | ✔ / ✔ | 65,536 |
+| `nemotron-nano-3-30b-a3b` | `nemotron-nano-3-30b-a3b-262k-b200-lora` | LoRA | 2×B200 (1 node, TP2/EP2) | 262,144 | ✔ / ✔ | 131,072 |
+| `nemotron-3-super-120b-a12b-bf16` | `nemotron-3-super-120b-a12b-bf16-128k-lora` | LoRA | 8×B200 (1 node, CP8/EP8) | 262,144 | ✔ / ✔ | 65,536 |
 | `nemotron-3-super-120b-a12b-bf16` | `nemotron-3-super-120b-a12b-bf16` | Full-Param | 8×B200 | 262,144 | ✖ / ✖ | 65,536 |
-| `nemotron-3-ultra-bf16` | `nemotron-3-ultra-550b-a55b-bf16-lora` | LoRA | 16×B300 | 262,144 | ✖ / ✖ | 65,536 |
+| `nemotron-3-ultra-bf16` | `nemotron-3-ultra-550b-a55b-bf16-lora` | LoRA | 8×B300 × 2 nodes | 262,144 | ✖ / ✖ | 65,536 |
 | `nemotron-3-ultra-bf16` | `nemotron-3-ultra-550b-a55b-bf16` | Full-Param | 32×B300 | 262,144 | ✖ / ✖ | 65,536 |
+
+GPU layouts, `maxSupportedContextLength: 262144`, and `Validated: true` for the Nano
+and Super LoRA shapes were read live from `firectl training-shape-version get`. [L]
 
 No Nemotron model exposes managed **RFT/RL** (`rftLoraManaged: false`,
 `rlLoraTunable: false`) and none is on the **serverless training** pool (private
 preview: Qwen 3.5 9B, Qwen 3.6 27B, Kimi K3 only). [V]
 
-**Documentation conflict [U]:** the Fireworks *Supported base models* table lists only
-`nemotron-nano-3-30b-a3b` (and still lists `minimax-m2p5`, which is absent from the
-live catalog), while the live shape catalog shows `nemotron-3-super-120b-a12b-bf16`
-with `managedSft: true` on its LoRA shape. The table appears stale. Resolve with
-`firectl model get -a fireworks nemotron-3-super-120b-a12b-bf16` (look for `Tunable`)
-and the shape list before planning a Super run.
+**Documentation conflict — resolved [L]:** the Fireworks *Supported base models* doc
+table lists only `nemotron-nano-3-30b-a3b` (and still lists `minimax-m2p5`, absent
+from the live catalog), but the live API reports `supervisedLoraTunable: true` for
+Super BF16 as well. The doc table is stale; trust the API. Note also that the
+model-level `tunable: false` on every Nemotron entry refers to *full-parameter*
+tunability — it is not a contradiction of `supervisedLoraTunable`.
 
 ## Supervised LoRA
 
@@ -115,14 +127,21 @@ emitted as `<tool_call>` blocks and parsed back into `ToolCall` objects;
 `TrainOnWhat.LAST_ASSISTANT_TURN` trains on a full turn including tool calls and
 responses.
 
-**Fireworks** reports `Function Calling: Supported` for every Nemotron 3 entry and
-accepts `tools`/`tool_calls` in SFT data, but rendering is not yours to choose: the
-base model's registered renderer applies, and Training V2 rejects a custom Jinja
-template. Practical consequence for a cross-supplier comparison: **thinking-mode
-handling is a supplier-controlled variable on Fireworks and a caller-controlled one on
-Tinker** — pin the mode explicitly (reasoning off is the easiest to hold equal) and
-diff a rendered sample from each side before trusting an A/B. [V/U — Fireworks does not
-document which Nemotron thinking mode its renderer selects]
+**Fireworks** reports `supportsTools: true` for every Nemotron 3 entry and accepts
+`tools`/`tool_calls` in SFT data, but rendering is not yours to choose: the base
+model's registered renderer applies, and Training V2 rejects a custom Jinja template.
+The decisive live field is **`useHfApplyChatTemplate`**: [L]
+
+| Fireworks model | `useHfApplyChatTemplate` | Consequence |
+|---|---|---|
+| `nemotron-nano-3-30b-a3b` | **true** | renders with the model's own HF `chat_template.jinja` — the same template Tinker's renderer is token-exact against ⇒ **template parity holds** |
+| `nemotron-3-super-120b-a12b-bf16` | **false** | internal Fireworks renderer, not overridable ⇒ parity **unproven** [U] |
+| `nemotron-3-ultra-bf16` / quantized variants | false | same caveat (moot — no managed SFT) |
+
+So Nano is the only variant where "same prompt bytes on both suppliers" is currently
+demonstrable. Thinking mode is still yours to pin explicitly on the Tinker side
+(reasoning off is the easiest to hold equal); Fireworks does not document which mode
+its pipeline selects. [U]
 
 ## Evaluation and deployment
 
@@ -139,10 +158,19 @@ and Super are listed) — assume export is unproven for Ultra. [U]
 
 ## Can the same base model be compared across both suppliers?
 
-**Yes for Nano 30B-A3B BF16 — same HF checkpoint, managed supervised LoRA on both.**
-Probably yes for Super BF16 pending the `firectl` check. No for Ultra (no Fireworks
-managed SFT; the only serverless Ultra is the **NVFP4** quantization, a different
-artifact from the BF16 both trainers use).
+**Yes for Nano 30B-A3B BF16 — same HF checkpoint, managed supervised LoRA on both, and
+verified identical chat-template rendering.** Super BF16 is trainable on both, but its
+Fireworks rendering is opaque, so an A/B there carries an unmeasured template variable.
+No for Ultra (no Fireworks managed SFT; the only serverless Ultra is the **NVFP4**
+quantization, a different artifact from the BF16 both trainers use).
+
+**Residual blocker — checkpoint revision [U]:** neither provider publishes the HF
+*commit* it pinned. Fireworks exposes only `huggingFaceUrl` +
+`snapshotType: FULL_SNAPSHOT` (Nano's entry last updated 2026-07-22), and Tinker
+exposes only the repo-shaped model ID. "Same repo" is provable; "same revision" is an
+assumption. The local checks here pinned
+`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16@2d59de1cbd51c0adf384eb906b766d1aee0e0517`;
+ask both vendors to confirm the revision if the comparison has to be defensible.
 
 Variables to hold equal for an honest A/B — none of these are equal by default:
 
@@ -172,27 +200,36 @@ Likely **not available** for this family:
   list, which does not mention NemotronH. [U]
 
 So treat "train on Tinker, serve on Fireworks" as unproven; validate with a tiny
-adapter upload before designing around it. The proven external-serving path for a
+adapter upload before designing around it (an upload creates a resource, so it was
+**not** attempted during no-spend verification). The proven external-serving path for a
 Tinker Nemotron adapter is **vLLM** (verified in the cookbook for Nano TP=2 / Super
 TP=4).
 
+## Phase-0 verification run 2026-08-01 (read-only, no spend)
+
+Every check below is a metadata read or a local CPU computation. No training job, no
+deployment, no paid inference.
+
+| Check | Command / method | Result |
+|---|---|---|
+| Tinker live model list | `tinker.ServiceClient().get_server_capabilities()` | 28 models; **exactly 5** Nemotron IDs, matching the table above (no Nano 256K variant) |
+| Tinker prices/IDs | `GET tinker/models.json` | matches the price table above (50%-off rates live) |
+| Fireworks model metadata | `firectl get model -a fireworks <id> --api-key …` and `GET /v1/accounts/fireworks/models/<id>` | Nano: `supervisedLoraTunable: true`, `useTrainingV2: true`, `useHfApplyChatTemplate: true`, `supportsTools: true`, `trainingContextLength: 131072`, `state: READY`. Super BF16: same but `useHfApplyChatTemplate: false`, `trainingContextLength: 65536`. Ultra BF16: `supervisedLoraTunable: false` |
+| Fireworks training shapes | `firectl training-shape-version list` / `get` | Nano LoRA 2×B200 TP2/EP2, Super LoRA 8×B200 CP8/EP8, both `Validated: true`, `Max Supported Context Length: 262144`; Ultra LoRA shape exists (8×B300 × 2 nodes) but its model has managed SFT off |
+| Tinker renderer ↔ HF template | `pytest tinker_cookbook/renderers/nemotron3_test.py` (real tokenizer, CPU) | **44/44 passed** |
+| Tool-calling round-trip | independent script: system + tools + assistant `tool_call` + `tool` response + final assistant, rendered by `get_renderer("nemotron3"\|"nemotron3_disable_thinking")` vs `tokenizer.apply_chat_template(…, tools=…)` | **token-identical** (399 tokens) for both modes, supervised and generation prompts; `LAST_ASSISTANT_TURN` masks 54 trained tokens |
+
+Notes: `firectl training-shape list` returns `PermissionDenied` on a normal account
+(use `training-shape-version list`), and `deploymentShapes` reads are also denied — so
+the exact GPU count of the *serving* deployment for a fine-tuned Nano could not be
+confirmed; the linked deployment shape is `nemotron-nano-3-30b-a3b-grouped`. [U]
+
 ## No-spend recommendation
 
-**Phase 0 — verification, zero spend (do this before asking for budget):**
-
-1. Pull the machine-readable Tinker catalog: `https://tinker-docs.thinkingmachines.ai/tinker/models.json`
-   (and `serverless.json`) — confirms IDs and current prices without an API call.
-2. `service_client.get_server_capabilities()` for the authoritative live Tinker model
-   list (metadata call, no tokens billed).
-3. `firectl model get -a fireworks nemotron-nano-3-30b-a3b` and
-   `… nemotron-3-super-120b-a12b-bf16` — read `Tunable` / `Supports Lora`, and list
-   training shapes. Resolves the Super conflict above.
-4. Locally (CPU, tokenizer/config download only) render one tool-calling sample through
-   the HF `apply_chat_template` and through `renderers.get_renderer("nemotron3_disable_thinking", …)`
-   and diff the token IDs. That is the cheapest way to catch a template mismatch that
-   would otherwise silently poison the comparison.
-5. Freeze the eval set + grader first (outcome-first, not tool-name accuracy — see
-   `docs/benchmark-rigor.md`), and size the dataset so LoRA params ≥ completion tokens.
+**Phase 0 — done (see the verification run above).** What is left before spend is not a
+provider probe: freeze the eval set + grader first (outcome-first, not tool-name
+accuracy — see `docs/benchmark-rigor.md`), and size the dataset so LoRA params ≥
+completion tokens.
 
 **Phase 1 — if and when a pilot is authorized:** run **Nano BF16 on Tinker only**.
 Per-token pricing with no deployment means a small SFT + eval is single-digit dollars,
@@ -226,3 +263,6 @@ All fetched 2026-08-01.
 | Serverless training pool models | https://docs.fireworks.ai/fine-tuning/training-api/serverless |
 | Imported LoRA adapter requirements; custom architectures | https://docs.fireworks.ai/models/uploading-custom-models |
 | GPU-hour and training-token pricing | https://fireworks.ai/pricing |
+| Live Fireworks model metadata + training shape versions | `firectl` 1.7.33 / `api.fireworks.ai/v1` (read-only) |
+| Live Tinker model list | `tinker` 0.24.0 `get_server_capabilities()` |
+| Renderer ↔ HF template token parity | `pytest tinker_cookbook/renderers/nemotron3_test.py` + local round-trip script |
