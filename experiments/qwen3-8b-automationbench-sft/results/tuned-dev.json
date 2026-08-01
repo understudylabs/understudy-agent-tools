@@ -1,0 +1,274 @@
+{
+  "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/qwen3-8b-abo-tuned",
+  "split": "dev",
+  "n_tasks": 12,
+  "mean_reward": 0.5833333333333334,
+  "per_task": [
+    {
+      "task_id": "simple-api-crm-close-05",
+      "split": "dev",
+      "band": "single-write",
+      "reward": 1,
+      "steps": 12,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-lost-05",
+      "split": "dev",
+      "band": "single-write",
+      "reward": 0,
+      "steps": 9,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-owner-05",
+      "split": "dev",
+      "band": "single-write",
+      "reward": 1,
+      "steps": 6,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-rename-05",
+      "split": "dev",
+      "band": "single-write",
+      "reward": 1,
+      "steps": 5,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-draft-05",
+      "split": "dev",
+      "band": "discovery",
+      "reward": 1,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_fetch",
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-revise-05",
+      "split": "dev",
+      "band": "discovery",
+      "reward": 1,
+      "steps": 9,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-discard-05",
+      "split": "dev",
+      "band": "discovery",
+      "reward": 0,
+      "steps": 9,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-send-05",
+      "split": "dev",
+      "band": "discovery",
+      "reward": 0,
+      "steps": 12,
+      "malformed": 0,
+      "forbidden_effects": [
+        "mail.drafts.d-3",
+        "mail.drafts.d-3",
+        "mail.drafts.d-2"
+      ],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "split": "dev",
+      "band": "multi-write",
+      "reward": 1,
+      "steps": 12,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-05",
+      "split": "dev",
+      "band": "multi-write",
+      "reward": 1,
+      "steps": 12,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-05",
+      "split": "dev",
+      "band": "multi-write",
+      "reward": 0,
+      "steps": 5,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-05",
+      "split": "dev",
+      "band": "multi-write",
+      "reward": 0,
+      "steps": 9,
+      "malformed": 0,
+      "forbidden_effects": [
+        "mail.drafts.d-3",
+        "mail.drafts.d-3"
+      ],
+      "tool_call_names": [
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    }
+  ],
+  "totals": {
+    "prompt_tokens": 94713,
+    "completion_tokens": 3848,
+    "requests": 112,
+    "wall_seconds": 8.649297318999999,
+    "retries": 0,
+    "malformed_tasks": 0
+  },
+  "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+  "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+  "generated_at": "2026-08-01T22:10:55.497Z"
+}

@@ -1,0 +1,248 @@
+[
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You operate business apps through api_search and api_fetch. Make the smallest change that satisfies the request. Accomplish the user's request by calling the provided tools, and stop calling tools when you are done. /no_think"
+      },
+      {
+        "role": "user",
+        "content": "Ada Lovelace signed the contract. Record the deal as won on that CRM contact."
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "api_search",
+              "arguments": "{\"query\":\"update crm contact\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"}]}"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_2",
+            "type": "function",
+            "function": {
+              "name": "api_fetch",
+              "arguments": "{\"method\":\"GET\",\"url\":\"/crm/contacts\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_2",
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"barbara.liskov@example.test\",\"name\":\"Barbara Liskov\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_3",
+            "type": "function",
+            "function": {
+              "name": "api_fetch",
+              "arguments": "{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"won\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_3",
+        "content": "{\"contact\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-1\",\"status\":\"won\"},\"status\":200}"
+      },
+      {
+        "role": "assistant",
+        "content": ""
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "api_search",
+          "description": "Read-only endpoint discovery. Args: {query: string, top_k?: number}.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "top_k": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "api_fetch",
+          "description": "Apply one API call. Args: {method: string, url: string, body?: object}.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "body": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You operate business apps through api_search and api_fetch. Make the smallest change that satisfies the request. Accomplish the user's request by calling the provided tools, and stop calling tools when you are done. /no_think"
+      },
+      {
+        "role": "user",
+        "content": "Donald Knuth countersigned the order form. Record the deal as won on that CRM contact."
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_1",
+            "type": "function",
+            "function": {
+              "name": "api_search",
+              "arguments": "{\"query\":\"update crm contact\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"}]}"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_2",
+            "type": "function",
+            "function": {
+              "name": "api_fetch",
+              "arguments": "{\"method\":\"GET\",\"url\":\"/crm/contacts\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_2",
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}"
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "call_3",
+            "type": "function",
+            "function": {
+              "name": "api_fetch",
+              "arguments": "{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"won\"}}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "tool_call_id": "call_3",
+        "content": "{\"contact\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"won\"},\"status\":200}"
+      },
+      {
+        "role": "assistant",
+        "content": ""
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "api_search",
+          "description": "Read-only endpoint discovery. Args: {query: string, top_k?: number}.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "query": {
+                "type": "string"
+              },
+              "top_k": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "query"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "type": "function",
+        "function": {
+          "name": "api_fetch",
+          "description": "Apply one API call. Args: {method: string, url: string, body?: object}.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "body": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "method",
+              "url"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ]
+  }
+]

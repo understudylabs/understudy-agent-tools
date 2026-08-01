@@ -1,0 +1,199 @@
+{
+  "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/qwen3-8b-abo-base3",
+  "split": "holdout",
+  "n_tasks": 12,
+  "mean_reward": 0.4444444444444444,
+  "per_task": [
+    {
+      "task_id": "simple-api-crm-close-06",
+      "split": "holdout",
+      "band": "single-write",
+      "reward": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-lost-06",
+      "split": "holdout",
+      "band": "single-write",
+      "reward": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-owner-06",
+      "split": "holdout",
+      "band": "single-write",
+      "reward": 0,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-rename-06",
+      "split": "holdout",
+      "band": "single-write",
+      "reward": 0,
+      "steps": 2,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-draft-06",
+      "split": "holdout",
+      "band": "discovery",
+      "reward": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-revise-06",
+      "split": "holdout",
+      "band": "discovery",
+      "reward": 0,
+      "steps": 2,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-discard-06",
+      "split": "holdout",
+      "band": "discovery",
+      "reward": 0,
+      "steps": 2,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-send-06",
+      "split": "holdout",
+      "band": "discovery",
+      "reward": 0,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-06",
+      "split": "holdout",
+      "band": "multi-write",
+      "reward": 1,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-06",
+      "split": "holdout",
+      "band": "multi-write",
+      "reward": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-06",
+      "split": "holdout",
+      "band": "multi-write",
+      "reward": 0,
+      "steps": 2,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch"
+      ],
+      "error": null
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-06",
+      "split": "holdout",
+      "band": "multi-write",
+      "reward": 0.3333333333333333,
+      "steps": 5,
+      "malformed": 0,
+      "forbidden_effects": [],
+      "tool_call_names": [
+        "api_search",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch",
+        "api_fetch"
+      ],
+      "error": null
+    }
+  ],
+  "totals": {
+    "prompt_tokens": 26775,
+    "completion_tokens": 1816,
+    "requests": 48,
+    "wall_seconds": 3.3410045929999996,
+    "retries": 0,
+    "malformed_tasks": 0
+  },
+  "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+  "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "generated_at": "2026-08-01T22:11:52.502Z"
+}
