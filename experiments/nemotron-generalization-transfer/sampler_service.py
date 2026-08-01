@@ -67,6 +67,7 @@ class Sampler:
             session_id=self.session_id,
             timeout=30.0,
         )
+        self.service_client.holder._sampling_client_counter = 0
         self.rest_client = self.service_client.create_rest_client()
         self.tokenizer = get_tokenizer(MODEL_NAME)
         self.renderer = renderers.get_renderer(
@@ -84,14 +85,12 @@ class Sampler:
             self.sampling_client = SamplingClient.create(
                 self.service_client.holder,
                 model_path=model_path,
-                sampling_session_id=self.session_id,
             ).result()
         else:
             self.weights_info = None
             self.sampling_client = SamplingClient.create(
                 self.service_client.holder,
                 base_model=base_model,
-                sampling_session_id=self.session_id,
             ).result()
 
     def health(self) -> dict[str, Any]:
