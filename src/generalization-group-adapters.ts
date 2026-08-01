@@ -7,6 +7,7 @@ import {
   finish as automationFinish,
   partialCredit as automationCredit,
   splitSha256 as automationSplitSha,
+  fixtureSha256 as automationFixtureSha,
   taskPool as automationPool,
   type Split as AutomationSplit,
 } from "./automationbench-offline.js";
@@ -18,6 +19,7 @@ import {
   finish as syntheticFinish,
   partialCredit as syntheticCredit,
   splitSha256 as syntheticSplitSha,
+  fixtureSha256 as syntheticFixtureSha,
   taskPool as syntheticPool,
 } from "./synthetic-workflow-offline.js";
 import {
@@ -28,6 +30,7 @@ import {
   parseFinalJson,
   scoreCompletion,
   splitSha256 as eventSplitSha,
+  fixtureSha256 as eventFixtureSha,
   taskPool as eventPool,
   type Split as EventSplit,
 } from "./event-categorizer-offline.js";
@@ -66,7 +69,7 @@ function automationAdapter(): ModelTaskAdapter {
   return {
     taskIds: ({ split, frozenHoldoutSha256 }) => splitTasks(automationPool({ split: split as AutomationSplit, frozenHoldoutSha256 }), split),
     splitSha256: (split) => automationSplitSha(split as AutomationSplit),
-    harnessSha256: automationSplitSha("train"),
+    harnessSha256: automationFixtureSha(),
     start: (taskId): ModelEpisode => {
       const task = AUTOMATION_TASKS.find((candidate) => candidate.taskId === taskId)!;
       const reset = automationReset(taskId);
@@ -99,7 +102,7 @@ function syntheticAdapter(): ModelTaskAdapter {
   return {
     taskIds: ({ split, frozenHoldoutSha256 }) => splitTasks(syntheticPool({ split: split as SyntheticSplit, frozenHoldoutSha256 }), split),
     splitSha256: (split) => syntheticSplitSha(split as SyntheticSplit),
-    harnessSha256: syntheticSplitSha("train"),
+    harnessSha256: syntheticFixtureSha(),
     start: (taskId): ModelEpisode => {
       const task = SYNTHETIC_TASKS.find((candidate) => candidate.taskId === taskId)!;
       const reset = syntheticReset(taskId);
@@ -132,7 +135,7 @@ function eventAdapter(): ModelTaskAdapter {
   return {
     taskIds: ({ split, frozenHoldoutSha256 }) => splitTasks(eventPool({ split: split as EventSplit, frozenHoldoutSha256 }), split),
     splitSha256: (split) => eventSplitSha(split as EventSplit),
-    harnessSha256: hash({ fixture: EVENT_CATEGORIZER_SUBSET, playbook: PLAYBOOK }),
+    harnessSha256: eventFixtureSha(),
     start: (taskId): ModelEpisode => {
       const task = getEventTask(taskId);
       let final = "";
