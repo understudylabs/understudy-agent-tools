@@ -1,0 +1,86 @@
+{
+  "schema_version": "understudy.generalization_manifest.v1",
+  "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "eval_splits": [
+    "train",
+    "dev",
+    "holdout"
+  ],
+  "groups": [
+    {
+      "group_id": "automationbench-simple-api",
+      "label": "AutomationBench simple/api",
+      "status": "present",
+      "match": {
+        "benchmark_id": "automationbench-simple-api-offline"
+      },
+      "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+      "expected_task_counts": {
+        "dev": 12,
+        "holdout": 12
+      }
+    },
+    {
+      "group_id": "event-categorizer",
+      "label": "Event Categorizer verifiers",
+      "status": "present",
+      "match": {
+        "benchmark_id": "event-categorizer-offline"
+      },
+      "frozen_split_sha256": "803ed4bf0664783d76b9e8b7aa139a15a9ff5a82cda402f214d8225ce02dcee2",
+      "expected_task_counts": {
+        "train": 8,
+        "dev": 2,
+        "holdout": 2
+      }
+    },
+    {
+      "group_id": "synthetic-workflow-shapes",
+      "label": "Synthetic workflow shapes",
+      "status": "present",
+      "match": {
+        "benchmark_id": "synthetic-workflow-shapes-offline"
+      },
+      "frozen_split_sha256": "01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326",
+      "expected_task_counts": {
+        "train": 5,
+        "dev": 2,
+        "holdout": 2
+      }
+    }
+  ],
+  "arms": [
+    {
+      "arm_id": "zeroshot-haiku-vs-gptoss",
+      "train_groups": [],
+      "baseline": {
+        "rows": "gpt-oss-20b-rows.jsonl",
+        "model": "accounts/fireworks/models/gpt-oss-20b"
+      },
+      "candidate": {
+        "rows": "haiku-4-5-rows.jsonl",
+        "model": "claude-haiku-4-5-20251001",
+        "receipt": "haiku-4-5-receipts.jsonl"
+      }
+    },
+    {
+      "arm_id": "mechanism-demo",
+      "train_groups": [
+        "automationbench-simple-api",
+        "event-categorizer",
+        "synthetic-workflow-shapes"
+      ],
+      "baseline": {
+        "rows": "mechanism-demo-baseline.jsonl",
+        "model": "sentinel"
+      },
+      "candidate": {
+        "rows": "mechanism-demo-candidate.jsonl",
+        "model": "oracle",
+        "receipt": "mechanism-demo-scripted.jsonl"
+      }
+    }
+  ],
+  "require_content_hashes": true,
+  "require_all_groups_scored": true
+}

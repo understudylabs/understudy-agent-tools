@@ -1,0 +1,2 @@
+{"run_id":"smoke-anthropic","task_id":"simple-api-crm-close-05","step":0,"model":"claude-haiku-4-5-20251001","tokens":{"prompt":103,"completion":48},"usd":0.000343,"latency_ms":1466,"http_status":200}
+{"run_id":"smoke-anthropic","task_id":"simple-api-crm-lost-05","step":0,"model":"claude-haiku-4-5-20251001","tokens":{"prompt":106,"completion":83},"usd":0.000521,"latency_ms":1023,"http_status":200}
