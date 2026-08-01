@@ -113,7 +113,7 @@ schemas. They never contain assertions, gold state, allowed writes, or oracle
 actions.
 
 `auditObservationLeakage()` checks candidate-readable messages for grader
-metadata and assertion/write paths. Task-prompt overlap is benign because the
+metadata and assertion/write paths. Prompt overlap is benign because the
 prompt is the candidate's input.
 
 ### 2.5 Test gates
