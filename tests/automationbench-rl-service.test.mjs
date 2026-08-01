@@ -65,13 +65,13 @@ describe("AutomationBench RL service", () => {
     const allowed = await json(`/tasks?split=holdout&frozen_holdout_sha256=${splitSha256("holdout")}`);
     assert.equal(allowed.response.status, 200);
     assert.equal(Array.isArray(allowed.body), true);
-    assert.equal(allowed.body.length, 12);
+    assert.equal(allowed.body.length, 48);
   });
 
   it("runs an oracle episode over HTTP and scores 1.0", async () => {
     const taskListing = await json("/tasks?split=train");
     assert.equal(taskListing.response.status, 200);
-    assert.equal(taskListing.body.length, 48);
+    assert.equal(taskListing.body.length, 192);
     const task = taskListing.body[0];
     const resetResponse = await json("/reset", {
       method: "POST",

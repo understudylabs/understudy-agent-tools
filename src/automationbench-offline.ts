@@ -2,8 +2,8 @@
  * automationbench-offline — a local, synthetic, offline evaluator + importer
  * for ONE reachable AutomationBench subset: `simple`/`api`.
  *
- * The fixture is ranking-sized rather than illustrative: 12 task families x 6
- * instances = 72 tasks (train 48 / dev 12 / holdout 12), spread across three
+ * The fixture is ranking-sized rather than illustrative: 16 task families x 18
+ * instances = 288 tasks (train 192 / dev 48 / holdout 48), spread across three
  * difficulty bands (single-write, discovery, multi-write) so a run separates
  * models instead of saturating.
  *
@@ -65,7 +65,7 @@ export const AUTOMATIONBENCH_SUBSET = {
   subset: "simple/api",
   source_ref: "zapier/AutomationBench",
   /** Synthetic re-implementation — offline fixtures, never the upstream dataset. */
-  fixture_id: "automationbench-simple-api-offline-v1",
+  fixture_id: "automationbench-simple-api-offline-v2",
   /** verifiers.v1 commit pin already used by this repo's generated packages. */
   verifiers_version_pin: "ab65b6e8d34b03d162408d4bcb854430a86809e6",
   /** Frozen split seed (seed-7 convention used across the verifier-handoff stages). */
@@ -191,6 +191,15 @@ const PERSONAS: Persona[] = [
   { name: "Mary Jackson", email: "mary.jackson@example.test" },
   { name: "Andrew Yao", email: "andrew.yao@example.test" },
   { name: "Ruth Teitelbaum", email: "ruth.teitelbaum@example.test" },
+  { name: "Katherine Johnson", email: "katherine.johnson@example.test" },
+  { name: "Dorothy Vaughan", email: "dorothy.vaughan@example.test" },
+  { name: "Melba Roy", email: "melba.roy@example.test" },
+  { name: "Evelyn Berezin", email: "evelyn.berezin@example.test" },
+  { name: "Nellie Bly", email: "nellie.bly@example.test" },
+  { name: "Chien-Shiung Wu", email: "chien-shiung.wu@example.test" },
+  { name: "Mae Jemison", email: "mae.jemison@example.test" },
+  { name: "Maryam Mirzakhani", email: "maryam.mirzakhani@example.test" },
+  { name: "Fei-Fei Li", email: "fei-fei.li@example.test" },
 ];
 
 /**
@@ -207,6 +216,18 @@ const NAME_COLLISIONS: { target: Persona; decoy: Persona }[] = [
   { target: { name: "Karen Jones", email: "karen.jones@example.test" }, decoy: { name: "Karen Uhlenbeck", email: "karen.uhlenbeck@example.test" } },
   { target: { name: "Bob Kahn", email: "bob.kahn@example.test" }, decoy: { name: "Bob Metcalfe", email: "bob.metcalfe@example.test" } },
   { target: { name: "Peter Naur", email: "peter.naur@example.test" }, decoy: { name: "Peter Chen", email: "peter.chen@example.test" } },
+  { target: { name: "Alex Morgan", email: "alex.morgan@example.test" }, decoy: { name: "Alex Smith", email: "alex.smith@example.test" } },
+  { target: { name: "Taylor Reed", email: "taylor.reed@example.test" }, decoy: { name: "Taylor Green", email: "taylor.green@example.test" } },
+  { target: { name: "Jordan Bell", email: "jordan.bell@example.test" }, decoy: { name: "Jordan Lee", email: "jordan.lee@example.test" } },
+  { target: { name: "Morgan Ellis", email: "morgan.ellis@example.test" }, decoy: { name: "Morgan Fox", email: "morgan.fox@example.test" } },
+  { target: { name: "Casey Rivera", email: "casey.rivera@example.test" }, decoy: { name: "Casey Stone", email: "casey.stone@example.test" } },
+  { target: { name: "Riley Adams", email: "riley.adams@example.test" }, decoy: { name: "Riley Brooks", email: "riley.brooks@example.test" } },
+  { target: { name: "Jamie Carter", email: "jamie.carter@example.test" }, decoy: { name: "Jamie Davis", email: "jamie.davis@example.test" } },
+  { target: { name: "Drew Wilson", email: "drew.wilson@example.test" }, decoy: { name: "Drew Evans", email: "drew.evans@example.test" } },
+  { target: { name: "Robin Patel", email: "robin.patel@example.test" }, decoy: { name: "Robin Shah", email: "robin.shah@example.test" } },
+  { target: { name: "Sam Rivera", email: "sam.rivera@example.test" }, decoy: { name: "Sam Taylor", email: "sam.taylor@example.test" } },
+  { target: { name: "Cameron Blake", email: "cameron.blake@example.test" }, decoy: { name: "Cameron Cook", email: "cameron.cook@example.test" } },
+  { target: { name: "Devon Price", email: "devon.price@example.test" }, decoy: { name: "Devon Ward", email: "devon.ward@example.test" } },
 ];
 
 const CLOSE_CONTEXTS = [
@@ -216,6 +237,18 @@ const CLOSE_CONTEXTS = [
   "returned the signed quote",
   "approved the renewal terms",
   "committed after the security review",
+  "accepted the final implementation plan",
+  "approved the expansion budget",
+  "signed after the legal review",
+  "confirmed the launch date",
+  "finished the vendor assessment",
+  "authorized the annual subscription",
+  "completed the board approval",
+  "selected the enterprise package",
+  "agreed to the implementation schedule",
+  "confirmed the purchase order",
+  "approved the services addendum",
+  "ratified the master agreement",
 ];
 
 const LOST_CONTEXTS = [
@@ -225,13 +258,25 @@ const LOST_CONTEXTS = [
   "consolidated vendors after an acquisition",
   "cancelled the evaluation",
   "declined the renewal",
+  "went with an internal build",
+  "paused the project indefinitely",
+  "failed to secure executive approval",
+  "closed the initiative after reprioritization",
+  "selected a bundled alternative",
+  "stopped responding after the trial",
+  "lost the budget to another program",
+  "rejected the commercial terms",
+  "deferred the decision to next year",
+  "ended the project after a merger",
+  "chose not to expand the pilot",
+  "withdrew after the final review",
 ];
 
-const NEW_OWNERS = ["u-2", "u-4", "u-5", "u-6", "u-7", "u-8"];
-const MIDDLE_INITIALS = ["B", "C", "D", "E", "F", "G"];
-const SUBJECTS = ["Welcome", "Onboarding plan", "Renewal options", "Pricing update", "Kickoff agenda", "Security review"];
-const REVISED_SUBJECTS = ["Welcome (revised)", "Onboarding plan v2", "Renewal options final", "Pricing update 2026", "Kickoff agenda updated", "Security review packet"];
-const STALE_SUBJECTS = ["Old pricing sheet", "Superseded agenda", "Legacy renewal note", "Duplicate quote", "Outdated onboarding", "Archived kickoff"];
+const NEW_OWNERS = ["u-2", "u-4", "u-5", "u-6", "u-7", "u-8", "u-9", "u-10", "u-11", "u-12", "u-13", "u-14", "u-15", "u-16", "u-17", "u-18", "u-19", "u-20"];
+const MIDDLE_INITIALS = ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S"];
+const SUBJECTS = ["Welcome", "Onboarding plan", "Renewal options", "Pricing update", "Kickoff agenda", "Security review", "Implementation brief", "Expansion proposal", "Contract checklist", "Quarterly review", "Launch readiness", "Usage summary", "Executive update", "Support handoff", "Compliance notes", "Roadmap preview", "Billing details", "Account plan"];
+const REVISED_SUBJECTS = ["Welcome (revised)", "Onboarding plan v2", "Renewal options final", "Pricing update 2026", "Kickoff agenda updated", "Security review packet", "Implementation brief v2", "Expansion proposal final", "Contract checklist updated", "Quarterly review revised", "Launch readiness notes", "Usage summary corrected", "Executive update final", "Support handoff v2", "Compliance notes revised", "Roadmap preview updated", "Billing details final", "Account plan revised"];
+const STALE_SUBJECTS = ["Old pricing sheet", "Superseded agenda", "Legacy renewal note", "Duplicate quote", "Outdated onboarding", "Archived kickoff", "Old implementation brief", "Superseded expansion plan", "Legacy contract checklist", "Old quarterly review", "Stale launch notes", "Outdated usage report", "Old executive memo", "Superseded support plan", "Legacy compliance note", "Archived roadmap", "Old billing note", "Stale account plan"];
 
 // --- World construction ------------------------------------------------------
 
@@ -294,12 +339,12 @@ type Family = {
   build: (instance: number, offset: number) => CaseDraft;
 };
 
-const DEFAULT_OWNERS = ["u-1", "u-2", "u-3", "u-1"];
+const DEFAULT_OWNERS = ["u-1", "u-2", "u-3", "u-4", "u-5", "u-6", "u-7", "u-8"];
 
 /**
- * Twelve families. Each contributes six instances (four train, one dev, one
- * holdout), so every family is represented in every split and no split is a
- * skill the others never see.
+ * Sixteen families. Each contributes eighteen instances (twelve train, three
+ * dev, three holdout), so every family is represented in every split and no
+ * split is a skill the others never see.
  */
 const FAMILIES: Family[] = [
   {
@@ -477,6 +522,25 @@ const FAMILIES: Family[] = [
     },
   },
   {
+    slug: "crm-status-sweep",
+    band: "multi-write",
+    label: "resolve every open contact for one rep",
+    build: (instance, offset) => {
+      const owners = ["u-3", "u-4", "u-3", "u-5", "u-3", "u-6", "u-3", "u-7"];
+      const seeds = contactSeeds(offset, owners);
+      const rep = "u-3";
+      const outcome = instance % 2 === 0 ? "lost" : "won";
+      const targets = seeds.filter((seed) => seed.owner === rep && seed.status === "open");
+      return {
+        prompt: `Every contact owned by rep ${rep} that is still open must be recorded as ${outcome}. Update exactly those contacts and leave all other contacts unchanged.`,
+        state: world(seeds, []),
+        assertions: targets.map((target) => ({ kind: "equals", path: `crm.contacts.${target.id}.status`, equals: outcome }) as Assertion),
+        allowedWrites: targets.map((target) => `crm.contacts.${target.id}`),
+        oracle: [LIST_CONTACTS, ...targets.map((target) => patchContact(target.id, { status: outcome }))],
+      };
+    },
+  },
+  {
     slug: "crm-disambiguate",
     band: "multi-write",
     label: "pick the right contact when first names collide",
@@ -546,21 +610,107 @@ const FAMILIES: Family[] = [
       };
     },
   },
+  {
+    slug: "mail-purge",
+    band: "multi-write",
+    label: "discard each stale draft",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const subjects = [STALE_SUBJECTS[instance], STALE_SUBJECTS[(instance + 1) % STALE_SUBJECTS.length]];
+      const drafts: DraftSeed[] = [
+        { to: seeds[0].email, subject: subjects[0] },
+        { to: seeds[1].email, subject: SUBJECTS[instance] },
+        { to: seeds[2].email, subject: subjects[1] },
+        { to: seeds[3].email, subject: REVISED_SUBJECTS[instance] },
+        { to: seeds[4].email, subject: SUBJECTS[(instance + 2) % SUBJECTS.length] },
+      ];
+      const targets = ["d-1", "d-3"];
+      return {
+        prompt: `There are five drafts. The stale subjects are "${subjects[0]}" and "${subjects[1]}". Mark each draft with one of those exact subjects as discarded, and leave every other draft untouched.`,
+        state: world(seeds, drafts),
+        assertions: targets.map((id) => ({ kind: "equals", path: `mail.drafts.${id}.status`, equals: "discarded" }) as Assertion),
+        allowedWrites: targets.map((id) => `mail.drafts.${id}`),
+        oracle: [LIST_DRAFTS, ...targets.map((id) => patchDraft(id, { status: "discarded" }))],
+      };
+    },
+  },
+  {
+    slug: "crm-close-and-notify",
+    band: "multi-write",
+    label: "close, reassign, and notify the right contact",
+    build: (instance, offset) => {
+      const pair = NAME_COLLISIONS[instance];
+      const filler = contactSeeds(offset, ["u-1", "u-2", "u-3", "u-4", "u-5", "u-6"]);
+      const seeds: ContactSeed[] = [
+        { id: "c-1", name: pair.decoy.name, email: pair.decoy.email, status: "open", owner: "u-1" },
+        { id: "c-2", name: filler[0].name, email: filler[0].email, status: "open", owner: "u-2" },
+        { id: "c-3", name: pair.target.name, email: pair.target.email, status: "open", owner: "u-3" },
+        { id: "c-4", name: filler[1].name, email: filler[1].email, status: "open", owner: "u-4" },
+        { id: "c-5", name: filler[2].name, email: filler[2].email, status: "open", owner: "u-5" },
+        { id: "c-6", name: filler[3].name, email: filler[3].email, status: "open", owner: "u-6" },
+      ];
+      const outcome = instance % 2 === 0 ? "won" : "lost";
+      const owner = NEW_OWNERS[instance];
+      const subject = REVISED_SUBJECTS[instance];
+      return {
+        prompt: `${pair.target.name} ${outcome === "won" ? CLOSE_CONTEXTS[instance] : LOST_CONTEXTS[instance]}. Record the deal as ${outcome} on the contact with email ${pair.target.email}, reassign that contact to rep ${owner}, and create a draft to them with subject "${subject}". Another contact shares the same first name; do not touch the wrong record.`,
+        state: world(seeds, []),
+        assertions: [
+          { kind: "equals", path: "crm.contacts.c-3.status", equals: outcome },
+          { kind: "equals", path: "crm.contacts.c-3.owner", equals: owner },
+          { kind: "exists", collection: "mail.drafts", match: { to: pair.target.email, subject, status: "draft" } },
+        ],
+        allowedWrites: ["crm.contacts.c-3", "mail.drafts", "mail.sequence"],
+        oracle: [LIST_CONTACTS, patchContact("c-3", { status: outcome }), patchContact("c-3", { owner }), createDraft({ to: pair.target.email, subject })],
+      };
+    },
+  },
+  {
+    slug: "mail-needle-send",
+    band: "discovery",
+    label: "send the exact draft among near matches",
+    build: (instance, offset) => {
+      const seeds = contactSeeds(offset, DEFAULT_OWNERS);
+      const recipient = seeds[instance % seeds.length];
+      const other = seeds[(instance + 1) % seeds.length];
+      const subject = SUBJECTS[instance];
+      const drafts: DraftSeed[] = [
+        { to: recipient.email, subject: `${subject} (old)` },
+        { to: other.email, subject: "General update" },
+        { to: recipient.email, subject },
+        { to: recipient.email, subject: `${subject} final` },
+        { to: recipient.email, subject: `${subject} (draft)` },
+      ];
+      return {
+        prompt: `Several drafts are addressed to ${recipient.email}. Send exactly the draft whose title is "${subject}". Do not send the similarly titled drafts, and leave all other drafts untouched.`,
+        state: world(seeds, drafts),
+        assertions: [
+          { kind: "exists", collection: "mail.messages", match: { to: recipient.email, subject, sent: true } },
+          { kind: "absent", collection: "mail.drafts", match: { to: recipient.email, subject } },
+        ],
+        allowedWrites: ["mail.messages", "mail.sequence", "mail.drafts.d-3"],
+        oracle: [LIST_DRAFTS, sendDraft("d-3")],
+      };
+    },
+  },
 ];
 
-const INSTANCES_PER_FAMILY = 6;
+const INSTANCES_PER_FAMILY = 18;
 
 /**
- * Split assignment is positional, not hashed: instances 1-4 of every family are
- * train, instance 5 is dev, instance 6 is holdout. Family-stratified rather
- * than family-held-out, so dev/holdout measure generalization to unseen
- * entities and parameters within a known skill.
+ * Split assignment is positional, not hashed: instances 1-12 of every family
+ * are train, instances 13-15 are dev, and instances 16-18 are holdout.
+ * Family-stratified rather than family-held-out, so dev/holdout measure
+ * generalization to unseen entities and parameters within a known skill.
  */
-const SPLIT_BY_INSTANCE: Split[] = ["train", "train", "train", "train", "dev", "holdout"];
+const SPLIT_BY_INSTANCE: Split[] = [
+  "train", "train", "train", "train", "train", "train", "train", "train", "train", "train", "train", "train",
+  "dev", "dev", "dev", "holdout", "holdout", "holdout",
+];
 
 /**
- * The frozen synthetic subset: 12 families x 6 instances = 72 tasks under the
- * seed-7 split boundary (train 48 / dev 12 / holdout 12). Generated by pure,
+ * The frozen synthetic subset: 16 families x 18 instances = 288 tasks under
+ * the seed-7 split boundary (train 192 / dev 48 / holdout 48). Generated by pure,
  * index-driven construction — no RNG, no wall clock, no I/O — so the fixture
  * hash is a function of this source file alone.
  */
@@ -1040,7 +1190,7 @@ export function importSubset(options: ImportOptions): ImportResult {
     schema_version: "understudy.benchmark.v1",
     benchmark_id: AUTOMATIONBENCH_SUBSET.benchmark_id,
     name: "AutomationBench simple/api (offline synthetic subset)",
-    description: "Local, synthetic, offline re-implementation of the AutomationBench simple/api subset: 12 task families x 6 instances across three difficulty bands. No upstream dataset, no provider calls.",
+    description: "Local, synthetic, offline re-implementation of the AutomationBench simple/api subset: 16 task families x 18 instances across three difficulty bands. No upstream dataset, no provider calls.",
     provenance: {
       origin: "imported",
       source_refs: [],

@@ -67,21 +67,21 @@ describe("subset pin", () => {
     // Hash must be stable across calls; a fixture edit is expected to change it.
     assert.equal(fixtureSha256(), fixtureSha256());
     assert.match(fixtureSha256(), /^[0-9a-f]{64}$/);
-    assert.deepEqual(splitCounts(), { train: 48, dev: 12, holdout: 12 });
-    assert.equal(TASKS.length, 72);
+    assert.deepEqual(splitCounts(), { train: 192, dev: 48, holdout: 48 });
+    assert.equal(TASKS.length, 288);
   });
 
-  it("stratifies every family across the splits at 4 train / 1 dev / 1 holdout", () => {
+  it("stratifies every family across the splits at 12 train / 3 dev / 3 holdout", () => {
     const bands = taskBands();
     const families = Object.keys(bands);
-    assert.equal(families.length, 12);
+    assert.equal(families.length, 16);
     for (const family of families) {
       const instancePattern = new RegExp(`^simple-api-${family}-\\d{2}$`);
       const instances = TASKS.filter((task) => instancePattern.test(task.taskId));
-      assert.equal(instances.length, 6, `${family} must contribute 6 instances`);
+      assert.equal(instances.length, 18, `${family} must contribute 18 instances`);
       assert.deepEqual(
         instances.reduce((counts, task) => ({ ...counts, [task.split]: (counts[task.split] ?? 0) + 1 }), {}),
-        { train: 4, dev: 1, holdout: 1 },
+        { train: 12, dev: 3, holdout: 3 },
         `${family} must appear in every split`,
       );
     }
@@ -114,10 +114,11 @@ describe("reachability", () => {
 
   it("exposes contact ids, emails, and draft ids through the read-only listings", () => {
     const { handle } = reset("simple-api-mail-send-01");
+    const targetEmail = getTask("simple-api-mail-send-01").initialState.mail.drafts["d-1"].to;
     const search = step(handle, { name: "api_search", arguments: { query: "mail draft" } });
     assert.match(search.obs.messages.at(-1).content, /\/mail\/drafts/);
     const contacts = step(handle, { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } });
-    assert.match(contacts.obs.messages.at(-1).content, /barbara\.liskov@example\.test/);
+    assert.match(contacts.obs.messages.at(-1).content, new RegExp(targetEmail));
     const drafts = step(handle, { name: "api_fetch", arguments: { method: "GET", url: "/mail/drafts" } });
     assert.match(drafts.obs.messages.at(-1).content, /d-1/);
   });
@@ -150,7 +151,7 @@ describe("deterministic reset", () => {
 describe("terminal partial_credit reward", () => {
   it("pays nothing before the episode terminates and the fraction at the end", () => {
     const { handle } = reset("simple-api-mail-draft-01");
-    const first = step(handle, { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "radia.perlman@example.test", subject: "Welcome" } } });
+    const first = step(handle, { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "maryam.mirzakhani@example.test", subject: "Welcome" } } });
     assert.equal(first.reward, 0, "reward is terminal, not per-step");
     assert.equal(first.done, false);
     assert.equal(finish(handle).reward, 1);
@@ -166,7 +167,7 @@ describe("terminal partial_credit reward", () => {
     // An extra draft shifts the id sequence; the exists-assertion still matches.
     const { handle } = reset("simple-api-mail-draft-01");
     step(handle, { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "someone.else@example.test", subject: "Scratch" } } });
-    step(handle, { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "radia.perlman@example.test", subject: "Welcome" } } });
+    step(handle, { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body: { to: "maryam.mirzakhani@example.test", subject: "Welcome" } } });
     assert.equal(finish(handle).reward, 1);
   });
 
@@ -195,7 +196,7 @@ describe("scripted oracle", () => {
   });
 
   it("scores 1.0 on the frozen holdout when the frozen hash is supplied", () => {
-    assert.equal(HOLDOUT_TASKS.length, 12);
+    assert.equal(HOLDOUT_TASKS.length, 48);
     for (const task of HOLDOUT_TASKS) {
       const result = rollout(task.taskId, oraclePolicy(task.taskId));
       assert.equal(result.reward, 1, `oracle must solve ${task.taskId}`);
@@ -289,7 +290,7 @@ describe("frozen-holdout refusal", () => {
   it("refuses the holdout pool without the frozen hash and on a hash mismatch", () => {
     assert.throws(() => taskPool({ split: "holdout" }), /frozen-holdout refusal/);
     assert.throws(() => taskPool({ split: "holdout", frozenHoldoutSha256: "0".repeat(64) }), /hash mismatch/);
-    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: splitSha256("holdout") }).length, 12);
+    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: splitSha256("holdout") }).length, 48);
   });
 
   it("keeps train, dev, and holdout task ids disjoint", () => {
@@ -304,7 +305,7 @@ describe("frozen-holdout refusal", () => {
   });
 
   it("refuses to import a holdout result row without the frozen hash", () => {
-    const nativeExport = { meta: { model: "offline-scripted" }, tasks: [{ name: "simple-api-crm-close-06", passed: true, score: 1 }] };
+    const nativeExport = { meta: { model: "offline-scripted" }, tasks: [{ name: "simple-api-crm-close-16", passed: true, score: 1 }] };
     assert.throws(() => importSubset({ runId: "run-1", nativeExport }), /frozen-holdout refusal/);
     const allowed = importSubset({ runId: "run-1", nativeExport, frozenHoldoutSha256: splitSha256("holdout") });
     assert.equal(allowed.rows.length, 1);
@@ -315,7 +316,7 @@ describe("evaluator rows", () => {
   it("emits schema-valid eval_result.v1 rows stamped with harness and split hashes", () => {
     const rows = evaluateSplit({ split: "train", runId: "run-oracle", policy: oraclePolicy, model: "offline-scripted-oracle" });
     assert.deepEqual(validateEvalRows(rows), []);
-    assert.equal(rows.length, 48);
+    assert.equal(rows.length, 192);
     for (const row of rows) {
       assert.equal(row.score, 1);
       assert.equal(row.provenance.harness_sha256, fixtureSha256());
@@ -324,8 +325,8 @@ describe("evaluator rows", () => {
     }
   });
 
-  it("emits 12 dev rows and refuses the holdout split without the frozen hash", () => {
-    assert.equal(evaluateSplit({ split: "dev", runId: "run-dev", policy: oraclePolicy }).length, 12);
+  it("emits 48 dev rows and refuses the holdout split without the frozen hash", () => {
+    assert.equal(evaluateSplit({ split: "dev", runId: "run-dev", policy: oraclePolicy }).length, 48);
     assert.throws(() => evaluateSplit({ split: "holdout", runId: "run-x", policy: oraclePolicy }), /frozen-holdout refusal/);
   });
 });
@@ -339,8 +340,8 @@ describe("importer", () => {
     assert.equal(manifest.environment.package_sha256, fixtureSha256());
     assert.equal(manifest.verifier.dense_metric, "partial_credit");
     assert.equal(manifest.splits.contamination, "none");
-    assert.equal(manifest.tasks.length, 72);
-    assert.match(manifest.splits.boundary, /train 48 \/ dev 12 \/ holdout 12/);
+    assert.equal(manifest.tasks.length, 288);
+    assert.match(manifest.splits.boundary, /train 192 \/ dev 48 \/ holdout 48/);
   });
 
   it("projects a native export onto rows and refuses unknown task ids", () => {
@@ -359,7 +360,7 @@ describe("importer", () => {
     assert.equal(descriptor.reward.shaping, null);
     assert.equal(descriptor.reward.scorer_ref, "src/automationbench-offline.ts#partialCredit");
     assert.equal(descriptor.executable, false);
-    assert.equal(descriptor.taskset.task_ids.length, 60);
+    assert.equal(descriptor.taskset.task_ids.length, 240);
     for (const task of HOLDOUT_TASKS) assert.ok(!descriptor.taskset.task_ids.includes(task.taskId), "holdout never enters the packaged task pool");
   });
 });
