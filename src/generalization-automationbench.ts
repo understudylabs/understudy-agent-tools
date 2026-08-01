@@ -31,7 +31,11 @@ export function automationbenchFrozenHoldoutSha256(): string {
 export type AutomationBenchArmRowsOptions = {
   runId: string;
   splits?: Split[];
-  policy: Policy | ((taskId: string) => Policy);
+  /**
+   * Policy factory, matching `evaluateSplit`. A task-independent policy is
+   * passed as `() => sentinelPolicy()`; `oraclePolicy` is already a factory.
+   */
+  policy: (taskId: string) => Policy;
   model?: string | null;
   frozenHoldoutSha256?: string;
 };
@@ -43,21 +47,11 @@ export function automationbenchArmRows({
   model,
   frozenHoldoutSha256,
 }: AutomationBenchArmRowsOptions): EvalRow[] {
-  const policyForTask = (taskId: string): Policy => {
-    if (policy === null) return () => null;
-    try {
-      const selected = (policy as ((taskId: string) => Policy))(taskId);
-      if (typeof selected === "function") return selected;
-    } catch {
-      // A direct observation policy is not callable with a task ID; use it below.
-    }
-    return policy as Policy;
-  };
   return splits.flatMap((split) =>
     evaluateSplit({
       runId,
       split,
-      policy: policyForTask,
+      policy,
       model,
       frozenHoldoutSha256,
     }),

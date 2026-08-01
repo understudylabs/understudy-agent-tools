@@ -156,7 +156,7 @@ test("binds the real offline AutomationBench evaluator as group A", () => {
   const baseline = automationbenchArmRows({
     runId: "automationbench-baseline",
     splits: ["train", "holdout"],
-    policy: sentinelPolicy(),
+    policy: () => sentinelPolicy(),
     model: "sentinel",
     frozenHoldoutSha256,
   });
@@ -192,7 +192,7 @@ test("real offline AutomationBench holdout rows reject a wrong manifest hash", (
   const rows = automationbenchArmRows({
     runId: "automationbench-holdout",
     splits: ["holdout"],
-    policy: sentinelPolicy(),
+    policy: () => sentinelPolicy(),
     frozenHoldoutSha256: automationbenchFrozenHoldoutSha256(),
   });
   const group = automationbenchGroup();
