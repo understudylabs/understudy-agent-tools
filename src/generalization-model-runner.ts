@@ -13,12 +13,14 @@ export type TransportRequest = {
   messages: ChatMessage[];
   maxTokens: number;
   temperature: 0;
+  reasoningEffort?: "low";
 };
 
 export type TransportResponse = {
   content: string;
   usage: TokenUsage;
   status: number;
+  rawPayload?: unknown;
 };
 
 export type Transport = (request: TransportRequest) => Promise<TransportResponse>;
@@ -81,6 +83,7 @@ export type ModelRunOptions = {
   price: PriceTable;
   budget: BudgetLedger;
   receiptsPath?: string;
+  debugTranscriptsPath?: string;
   maxTokens?: number;
   maxSteps?: number;
   transport?: Transport;
@@ -88,16 +91,38 @@ export type ModelRunOptions = {
 
 function instruction(): string {
   return [
+    "Available tools: api_search searches the in-memory app catalog with arguments {query}; api_fetch reads or writes an in-memory endpoint with arguments {method,url,body}.",
+    "api_fetch arguments must contain method, url, and body (use {} when no body is needed).",
+    'Worked example (irrelevant to this task): {"tool":"api_fetch","arguments":{"method":"GET","url":"/example","body":{}}}.',
     "Reply with exactly one JSON object per turn and no prose.",
     'For a tool call use {"tool":"api_search","arguments":{...}} or {"tool":"api_fetch","arguments":{...}}.',
     'To finish use {"tool":"finish"}.',
   ].join(" ");
 }
 
-function parseAction(content: string): { tool: string; arguments: Record<string, unknown> } | null {
-  const trimmed = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+export function parseAction(content: string): { tool: string; arguments: Record<string, unknown> } | null {
+  const extract = (input: string): string | null => {
+    const start = input.indexOf("{");
+    if (start < 0) return null;
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < input.length; index += 1) {
+      const character = input[index]!;
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') quoted = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}" && --depth === 0) return input.slice(start, index + 1);
+    }
+    return null;
+  };
   try {
-    const value = JSON.parse(trimmed) as unknown;
+    const value = JSON.parse(extract(content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()) ?? "") as unknown;
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
     const tool = typeof record.tool === "string" ? record.tool : null;
@@ -136,13 +161,29 @@ async function defaultTransport(request: TransportRequest): Promise<TransportRes
     const key = process.env.FIREWORKS_API_KEY;
     if (!key) throw new Error("FIREWORKS_API_KEY is not set");
     headers.authorization = `Bearer ${key}`;
-    body = { model: request.model, messages: request.messages, temperature: 0, max_tokens: request.maxTokens, stream: false };
+    body = {
+      model: request.model,
+      messages: request.messages.map((message) => message.role === "tool"
+        ? { role: "user", content: `Tool result: ${message.content}` }
+        : message),
+      temperature: 0,
+      max_tokens: request.maxTokens,
+      stream: false,
+      ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
+      ...(request.model.includes("gpt-oss") ? { response_format: { type: "json_object" } } : {}),
+    };
   }
   const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-  const value = await response.json() as Record<string, unknown>;
+  const responseText = await response.text();
+  let value: Record<string, unknown> = {};
+  try {
+    value = JSON.parse(responseText) as Record<string, unknown>;
+  } catch {
+    // Preserve the body snippet in the transport error below.
+  }
   if (!response.ok) {
-    const error = value.error && typeof value.error === "object" ? JSON.stringify(value.error) : `HTTP ${response.status}`;
-    throw Object.assign(new Error(error), { status: response.status });
+    const error = value.error && typeof value.error === "object" ? JSON.stringify(value.error) : responseText.slice(0, 400);
+    throw Object.assign(new Error(error || `HTTP ${response.status}`), { status: response.status, bodySnippet: responseText.slice(0, 400) });
   }
   const usage = (value.usage && typeof value.usage === "object" ? value.usage : {}) as Record<string, unknown>;
   const prompt = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
@@ -150,7 +191,7 @@ async function defaultTransport(request: TransportRequest): Promise<TransportRes
   const content = request.provider === "anthropic"
     ? (((Array.isArray(value.content) ? value.content[0] : null) as Record<string, unknown> | null)?.text ?? "")
     : (((value.choices as Array<Record<string, unknown>> | undefined)?.[0]?.message as Record<string, unknown> | undefined)?.content ?? "");
-  return { content: String(content), usage: { prompt, completion }, status: response.status };
+  return { content: String(content), usage: { prompt, completion }, status: response.status, rawPayload: value };
 }
 
 function isRetryable(error: unknown): boolean {
@@ -175,8 +216,8 @@ async function callWithRetry(request: TransportRequest, transport: Transport): P
 export async function runModelRows(options: ModelRunOptions): Promise<Record<string, unknown>[]> {
   const transport = options.transport ?? defaultTransport;
   const rows: Record<string, unknown>[] = [];
-  const maxSteps = options.maxSteps ?? 8;
-  const maxTokens = options.maxTokens ?? 256;
+  const maxSteps = options.maxSteps ?? 12;
+  const maxTokens = options.maxTokens ?? 640;
   const taskIds = options.adapter.taskIds({ split: options.split, frozenHoldoutSha256: options.frozenHoldoutSha256 });
   if (options.receiptsPath) mkdirSync(dirname(options.receiptsPath), { recursive: true });
   for (const taskId of taskIds) {
@@ -190,13 +231,30 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
     let totalCompletion = 0;
     let totalUsd = 0;
     let totalLatency = 0;
+    const transcript: Record<string, unknown>[] = [];
+    let repairUsed = false;
     for (let step = 0; step < maxSteps; step += 1) {
       const started = performance.now();
       let response: TransportResponse;
+      const requestMessages = messages.map((message) => ({ ...message }));
       try {
-        response = await callWithRetry({ provider: options.provider, model: options.model, messages, maxTokens, temperature: 0 }, transport);
+        response = await callWithRetry({
+          provider: options.provider,
+          model: options.model,
+          messages: requestMessages,
+          maxTokens,
+          temperature: 0,
+          ...(options.provider === "fireworks" && options.model.includes("gpt-oss") ? { reasoningEffort: "low" as const } : {}),
+        }, transport);
       } catch (error) {
         transportError = error instanceof Error ? error : new Error(String(error));
+        if (options.receiptsPath) appendFileSync(options.receiptsPath, `${JSON.stringify({
+          run_id: options.runId, task_id: taskId, step, model: options.model,
+          tokens: { prompt: 0, completion: 0 }, usd: 0, latency_ms: Math.round(performance.now() - started),
+          http_status: Number((error as { status?: number })?.status ?? 0),
+          error: transportError.message.slice(0, 400),
+          error_body: String((error as { bodySnippet?: string })?.bodySnippet ?? transportError.message).slice(0, 400),
+        })}\n`);
         break;
       }
       const latency = Math.round(performance.now() - started);
@@ -208,12 +266,21 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
       if (options.receiptsPath) appendFileSync(options.receiptsPath, `${JSON.stringify({
         run_id: options.runId, task_id: taskId, step, model: options.model,
         tokens: response.usage, usd, latency_ms: latency, http_status: response.status,
+        raw_reply: response.content.slice(0, 400),
+        ...(response.content.length === 0 ? { raw_payload: response.rawPayload } : {}),
       })}\n`);
+      transcript.push({ step, request: requestMessages, response: response.content, raw_payload: response.rawPayload, usage: response.usage, http_status: response.status });
       finalContent = response.content;
       if (episode.isFinalContent?.(response.content)) break;
       const action = parseAction(response.content);
       if (!action) {
         parseFailures += 1;
+        if (!repairUsed) {
+          repairUsed = true;
+          messages.push({ role: "assistant", content: response.content });
+          messages.push({ role: "user", content: "Your previous reply was not a single JSON object. Reply with only the JSON object and no prose." });
+          continue;
+        }
         break;
       }
       messages.push({ role: "assistant", content: response.content });
@@ -225,6 +292,12 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
       const applied = episode.applyToolCall(action.tool, action.arguments);
       messages.push({ role: "tool", content: JSON.stringify(applied.result) });
       if (applied.done) break;
+    }
+    if (options.debugTranscriptsPath) {
+      mkdirSync(dirname(options.debugTranscriptsPath), { recursive: true });
+      appendFileSync(options.debugTranscriptsPath, `${JSON.stringify({
+        run_id: options.runId, task_id: taskId, model: options.model, split: episode.split, messages, transcript,
+      })}\n`);
     }
     const result = transportError
       ? { score: null, status: "error" as const, subscores: { parse_failures: parseFailures } }

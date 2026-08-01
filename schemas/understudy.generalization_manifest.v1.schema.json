@@ -62,6 +62,22 @@
         "properties": {
           "arm_id": { "type": "string", "minLength": 1 },
           "train_groups": { "type": "array", "items": { "type": "string" } },
+          "eval_splits": {
+            "oneOf": [
+              { "type": "array", "items": { "enum": ["train", "dev", "holdout"] }, "minItems": 1 },
+              {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "array",
+                  "items": { "enum": ["train", "dev", "holdout"] },
+                  "minItems": 1
+                }
+              }
+            ]
+          },
+          "mechanism_demo": { "type": "boolean" },
+          "exclude_from_score": { "type": "boolean" },
           "baseline": {
             "type": "object",
             "required": ["rows"],

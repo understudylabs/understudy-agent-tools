@@ -1,6 +1,6 @@
 {
   "schema_version": "understudy.generalization_report.v1",
-  "generated_at": "2026-08-01T22:01:50.758Z",
+  "generated_at": "2026-08-01T22:20:29.011Z",
   "manifest": {
     "schema_version": "understudy.generalization_manifest.v1",
     "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
@@ -19,6 +19,7 @@
         },
         "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
         "expected_task_counts": {
+          "train": 48,
           "dev": 12,
           "holdout": 12
         }
@@ -56,6 +57,22 @@
       {
         "arm_id": "zeroshot-haiku-vs-gptoss",
         "train_groups": [],
+        "eval_splits": {
+          "automationbench-simple-api": [
+            "dev",
+            "holdout"
+          ],
+          "event-categorizer": [
+            "train",
+            "dev",
+            "holdout"
+          ],
+          "synthetic-workflow-shapes": [
+            "train",
+            "dev",
+            "holdout"
+          ]
+        },
         "baseline": {
           "rows": "gpt-oss-20b-rows.jsonl",
           "model": "accounts/fireworks/models/gpt-oss-20b"
@@ -69,17 +86,22 @@
       {
         "arm_id": "mechanism-demo",
         "train_groups": [
-          "automationbench-simple-api",
-          "event-categorizer",
-          "synthetic-workflow-shapes"
+          "automationbench-simple-api"
         ],
+        "eval_splits": [
+          "train",
+          "dev",
+          "holdout"
+        ],
+        "mechanism_demo": true,
+        "exclude_from_score": true,
         "baseline": {
           "rows": "mechanism-demo-baseline.jsonl",
-          "model": "sentinel"
+          "model": "weak-scripted"
         },
         "candidate": {
           "rows": "mechanism-demo-candidate.jsonl",
-          "model": "oracle",
+          "model": "oracle-and-degraded-scripted",
           "receipt": "mechanism-demo-scripted.jsonl"
         }
       }
@@ -91,6 +113,22 @@
     {
       "arm_id": "zeroshot-haiku-vs-gptoss",
       "train_groups": [],
+      "eval_splits": {
+        "automationbench-simple-api": [
+          "dev",
+          "holdout"
+        ],
+        "event-categorizer": [
+          "train",
+          "dev",
+          "holdout"
+        ],
+        "synthetic-workflow-shapes": [
+          "train",
+          "dev",
+          "holdout"
+        ]
+      },
       "baseline_model": "accounts/fireworks/models/gpt-oss-20b",
       "candidate_model": "claude-haiku-4-5-20251001",
       "receipt": "haiku-4-5-receipts.jsonl",
@@ -98,88 +136,88 @@
         {
           "task_id": "simple-api-crm-bulk-owner-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 0.5,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "regressed"
         },
         {
           "task_id": "simple-api-crm-bulk-owner-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 0.5,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "regressed"
         },
         {
           "task_id": "simple-api-crm-close-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "unchanged"
         },
         {
           "task_id": "simple-api-crm-close-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-crm-disambiguate-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-crm-disambiguate-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -194,8 +232,8 @@
         {
           "task_id": "simple-api-crm-lost-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -210,40 +248,8 @@
         {
           "task_id": "simple-api-crm-lost-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
-          "candidate_n_rollouts": 1,
-          "baseline_status_counts": {
-            "error": 1
-          },
-          "candidate_status_counts": {
-            "ok": 1
-          },
-          "outcome": "unscored"
-        },
-        {
-          "task_id": "simple-api-crm-mail-churn-05",
-          "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
-          "candidate_n_rollouts": 1,
-          "baseline_status_counts": {
-            "error": 1
-          },
-          "candidate_status_counts": {
-            "ok": 1
-          },
-          "outcome": "unscored"
-        },
-        {
-          "task_id": "simple-api-crm-mail-churn-06",
-          "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -256,26 +262,58 @@
           "outcome": "unchanged"
         },
         {
-          "task_id": "simple-api-crm-owner-05",
+          "task_id": "simple-api-crm-mail-churn-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-06",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-crm-owner-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-crm-owner-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -290,24 +328,24 @@
         {
           "task_id": "simple-api-crm-rename-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "unchanged"
         },
         {
           "task_id": "simple-api-crm-rename-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -323,8 +361,8 @@
           "task_id": "simple-api-mail-discard-05",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -333,30 +371,30 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-discard-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
-            "error": 1
+            "ok": 1
           },
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unscored"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-draft-05",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -365,14 +403,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-draft-06",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -381,13 +419,13 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-revise-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -402,8 +440,8 @@
         {
           "task_id": "simple-api-mail-revise-06",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -418,8 +456,8 @@
         {
           "task_id": "simple-api-mail-send-05",
           "group_id": "automationbench-simple-api",
-          "baseline_mean": 0,
-          "candidate_mean": 0,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -435,8 +473,8 @@
           "task_id": "simple-api-mail-send-06",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -445,14 +483,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-send-and-close-05",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.6666666666666666,
+          "delta": 0.6666666666666666,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -461,14 +499,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "simple-api-mail-send-and-close-06",
           "group_id": "automationbench-simple-api",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.6666666666666666,
+          "delta": 0.6666666666666666,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -477,14 +515,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-001",
           "group_id": "event-categorizer",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.7,
+          "delta": 0.7,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -493,14 +531,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-002",
           "group_id": "event-categorizer",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -509,14 +547,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-003",
           "group_id": "event-categorizer",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.7,
+          "delta": 0.7,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -525,14 +563,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-004",
           "group_id": "event-categorizer",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 1,
+          "delta": 1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -541,7 +579,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-005",
@@ -562,8 +600,8 @@
         {
           "task_id": "evt-006",
           "group_id": "event-categorizer",
-          "baseline_mean": 1,
-          "candidate_mean": 1,
+          "baseline_mean": 0,
+          "candidate_mean": 0,
           "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
@@ -579,8 +617,8 @@
           "task_id": "evt-007",
           "group_id": "event-categorizer",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.7,
+          "delta": 0.7,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -589,7 +627,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "evt-008",
@@ -611,8 +649,8 @@
           "task_id": "evt-009",
           "group_id": "event-categorizer",
           "baseline_mean": 1,
-          "candidate_mean": 1,
-          "delta": 0,
+          "candidate_mean": 0,
+          "delta": -1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -621,7 +659,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-010",
@@ -643,8 +681,8 @@
           "task_id": "evt-011",
           "group_id": "event-categorizer",
           "baseline_mean": 1,
-          "candidate_mean": 1,
-          "delta": 0,
+          "candidate_mean": 0,
+          "delta": -1,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -653,7 +691,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-012",
@@ -706,25 +744,9 @@
         {
           "task_id": "saw-doc-001",
           "group_id": "synthetic-workflow-shapes",
-          "baseline_mean": null,
-          "candidate_mean": 0,
-          "delta": null,
-          "baseline_n_rollouts": 0,
-          "candidate_n_rollouts": 1,
-          "baseline_status_counts": {
-            "error": 1
-          },
-          "candidate_status_counts": {
-            "ok": 1
-          },
-          "outcome": "unscored"
-        },
-        {
-          "task_id": "saw-doc-002",
-          "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -733,7 +755,23 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "saw-doc-002",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
         },
         {
           "task_id": "saw-email-001",
@@ -787,8 +825,8 @@
           "task_id": "saw-orch-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -797,7 +835,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "unchanged"
+          "outcome": "fixed"
         },
         {
           "task_id": "saw-record-001",
@@ -820,22 +858,22 @@
         {
           "group_id": "automationbench-simple-api",
           "in_domain": false,
-          "n_tasks": 14,
-          "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
-          "fixed": 0,
-          "regressed": 0,
-          "unchanged": 14,
+          "n_tasks": 24,
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.9097222222222223,
+          "delta": 0.40972222222222215,
+          "fixed": 12,
+          "regressed": 2,
+          "unchanged": 10,
           "error_rate": 0,
-          "baseline_error_rate": 0.4166666666666667,
+          "baseline_error_rate": 0,
           "error_rate_by_split": {
             "dev": 0,
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0
+            0.19444444444444445,
+            0.6041666666666666
           ],
           "status": "scored"
         },
@@ -843,12 +881,12 @@
           "group_id": "event-categorizer",
           "in_domain": false,
           "n_tasks": 12,
-          "baseline_mean": 0.5,
-          "candidate_mean": 0.5833333333333334,
-          "delta": 0.08333333333333333,
-          "fixed": 1,
-          "regressed": 0,
-          "unchanged": 11,
+          "baseline_mean": 0.4166666666666667,
+          "candidate_mean": 0.6750000000000002,
+          "delta": 0.2583333333333333,
+          "fixed": 6,
+          "regressed": 2,
+          "unchanged": 4,
           "error_rate": 0,
           "baseline_error_rate": 0,
           "error_rate_by_split": {
@@ -857,45 +895,61 @@
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0.25
+            -0.10833333333333334,
+            0.625
           ],
           "status": "scored"
         },
         {
           "group_id": "synthetic-workflow-shapes",
           "in_domain": false,
-          "n_tasks": 8,
+          "n_tasks": 9,
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
-          "fixed": 0,
+          "candidate_mean": 0.14814814814814814,
+          "delta": 0.14814814814814814,
+          "fixed": 3,
           "regressed": 0,
-          "unchanged": 8,
+          "unchanged": 6,
           "error_rate": 0,
-          "baseline_error_rate": 0.1111111111111111,
+          "baseline_error_rate": 0,
           "error_rate_by_split": {
             "train": 0,
             "dev": 0,
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0
+            0.037037037037037035,
+            0.31481481481481477
           ],
           "status": "scored"
         }
-      ]
+      ],
+      "score": {
+        "in_domain_gain": null,
+        "transfer_gain": 0.31703703703703695,
+        "transfer_ratio": null,
+        "forgetting": 0.14814814814814814,
+        "regressed_groups": [],
+        "generalization_score": null,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0
+      }
     },
     {
       "arm_id": "mechanism-demo",
       "train_groups": [
-        "automationbench-simple-api",
-        "event-categorizer",
-        "synthetic-workflow-shapes"
+        "automationbench-simple-api"
       ],
-      "baseline_model": "sentinel",
-      "candidate_model": "oracle",
+      "eval_splits": [
+        "train",
+        "dev",
+        "holdout"
+      ],
+      "mechanism_demo": true,
+      "exclude_from_score": true,
+      "baseline_model": "weak-scripted",
+      "candidate_model": "oracle-and-degraded-scripted",
       "receipt": "mechanism-demo-scripted.jsonl",
       "task_deltas": [
         {
@@ -2053,9 +2107,9 @@
         {
           "task_id": "evt-001",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2064,14 +2118,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-002",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2080,14 +2134,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-003",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2096,14 +2150,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-004",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2112,14 +2166,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-005",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2128,14 +2182,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-006",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2144,14 +2198,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-007",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2160,14 +2214,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-008",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2176,14 +2230,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-009",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2192,14 +2246,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-010",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2208,14 +2262,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-011",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2224,14 +2278,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "evt-012",
           "group_id": "event-categorizer",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.3,
+          "delta": -0.39999999999999997,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2240,14 +2294,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "saw-analysis-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2256,14 +2310,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-analysis-002",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2272,14 +2326,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-doc-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2288,14 +2342,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-doc-002",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2304,14 +2358,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-email-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2320,14 +2374,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-email-002",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2336,14 +2390,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-meeting-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2352,14 +2406,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         },
         {
           "task_id": "saw-orch-001",
           "group_id": "synthetic-workflow-shapes",
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "baseline_mean": 0.6666666666666666,
+          "candidate_mean": 0,
+          "delta": -0.6666666666666666,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2368,14 +2422,14 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "regressed"
         },
         {
           "task_id": "saw-record-001",
           "group_id": "synthetic-workflow-shapes",
           "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
+          "candidate_mean": 0,
+          "delta": 0,
           "baseline_n_rollouts": 1,
           "candidate_n_rollouts": 1,
           "baseline_status_counts": {
@@ -2384,7 +2438,7 @@
           "candidate_status_counts": {
             "ok": 1
           },
-          "outcome": "fixed"
+          "outcome": "unchanged"
         }
       ],
       "matrix": [
@@ -2413,13 +2467,13 @@
         },
         {
           "group_id": "event-categorizer",
-          "in_domain": true,
+          "in_domain": false,
           "n_tasks": 12,
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
-          "fixed": 12,
-          "regressed": 0,
+          "baseline_mean": 0.7000000000000001,
+          "candidate_mean": 0.29999999999999993,
+          "delta": -0.39999999999999997,
+          "fixed": 0,
+          "regressed": 12,
           "unchanged": 0,
           "error_rate": 0,
           "baseline_error_rate": 0,
@@ -2429,21 +2483,21 @@
             "holdout": 0
           },
           "paired_ci": [
-            1,
-            1
+            -0.39999999999999997,
+            -0.39999999999999997
           ],
           "status": "scored"
         },
         {
           "group_id": "synthetic-workflow-shapes",
-          "in_domain": true,
+          "in_domain": false,
           "n_tasks": 9,
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
-          "fixed": 9,
-          "regressed": 0,
-          "unchanged": 0,
+          "baseline_mean": 0.07407407407407407,
+          "candidate_mean": 0,
+          "delta": -0.07407407407407407,
+          "fixed": 0,
+          "regressed": 1,
+          "unchanged": 8,
           "error_rate": 0,
           "baseline_error_rate": 0,
           "error_rate_by_split": {
@@ -2452,12 +2506,26 @@
             "holdout": 0
           },
           "paired_ci": [
-            1,
-            1
+            -0.2222222222222222,
+            0
           ],
           "status": "scored"
         }
-      ]
+      ],
+      "score": {
+        "in_domain_gain": 1,
+        "transfer_gain": -0.26031746031746034,
+        "transfer_ratio": -0.26031746031746034,
+        "forgetting": -0.39999999999999997,
+        "regressed_groups": [
+          "event-categorizer",
+          "synthetic-workflow-shapes"
+        ],
+        "generalization_score": 0,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 1
+      }
     }
   ],
   "matrix": [
@@ -2468,22 +2536,22 @@
         {
           "group_id": "automationbench-simple-api",
           "in_domain": false,
-          "n_tasks": 14,
-          "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
-          "fixed": 0,
-          "regressed": 0,
-          "unchanged": 14,
+          "n_tasks": 24,
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.9097222222222223,
+          "delta": 0.40972222222222215,
+          "fixed": 12,
+          "regressed": 2,
+          "unchanged": 10,
           "error_rate": 0,
-          "baseline_error_rate": 0.4166666666666667,
+          "baseline_error_rate": 0,
           "error_rate_by_split": {
             "dev": 0,
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0
+            0.19444444444444445,
+            0.6041666666666666
           ],
           "status": "scored"
         },
@@ -2491,12 +2559,12 @@
           "group_id": "event-categorizer",
           "in_domain": false,
           "n_tasks": 12,
-          "baseline_mean": 0.5,
-          "candidate_mean": 0.5833333333333334,
-          "delta": 0.08333333333333333,
-          "fixed": 1,
-          "regressed": 0,
-          "unchanged": 11,
+          "baseline_mean": 0.4166666666666667,
+          "candidate_mean": 0.6750000000000002,
+          "delta": 0.2583333333333333,
+          "fixed": 6,
+          "regressed": 2,
+          "unchanged": 4,
           "error_rate": 0,
           "baseline_error_rate": 0,
           "error_rate_by_split": {
@@ -2505,31 +2573,31 @@
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0.25
+            -0.10833333333333334,
+            0.625
           ],
           "status": "scored"
         },
         {
           "group_id": "synthetic-workflow-shapes",
           "in_domain": false,
-          "n_tasks": 8,
+          "n_tasks": 9,
           "baseline_mean": 0,
-          "candidate_mean": 0,
-          "delta": 0,
-          "fixed": 0,
+          "candidate_mean": 0.14814814814814814,
+          "delta": 0.14814814814814814,
+          "fixed": 3,
           "regressed": 0,
-          "unchanged": 8,
+          "unchanged": 6,
           "error_rate": 0,
-          "baseline_error_rate": 0.1111111111111111,
+          "baseline_error_rate": 0,
           "error_rate_by_split": {
             "train": 0,
             "dev": 0,
             "holdout": 0
           },
           "paired_ci": [
-            0,
-            0
+            0.037037037037037035,
+            0.31481481481481477
           ],
           "status": "scored"
         }
@@ -2538,9 +2606,7 @@
     {
       "arm_id": "mechanism-demo",
       "train_groups": [
-        "automationbench-simple-api",
-        "event-categorizer",
-        "synthetic-workflow-shapes"
+        "automationbench-simple-api"
       ],
       "cells": [
         {
@@ -2568,13 +2634,13 @@
         },
         {
           "group_id": "event-categorizer",
-          "in_domain": true,
+          "in_domain": false,
           "n_tasks": 12,
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
-          "fixed": 12,
-          "regressed": 0,
+          "baseline_mean": 0.7000000000000001,
+          "candidate_mean": 0.29999999999999993,
+          "delta": -0.39999999999999997,
+          "fixed": 0,
+          "regressed": 12,
           "unchanged": 0,
           "error_rate": 0,
           "baseline_error_rate": 0,
@@ -2584,21 +2650,21 @@
             "holdout": 0
           },
           "paired_ci": [
-            1,
-            1
+            -0.39999999999999997,
+            -0.39999999999999997
           ],
           "status": "scored"
         },
         {
           "group_id": "synthetic-workflow-shapes",
-          "in_domain": true,
+          "in_domain": false,
           "n_tasks": 9,
-          "baseline_mean": 0,
-          "candidate_mean": 1,
-          "delta": 1,
-          "fixed": 9,
-          "regressed": 0,
-          "unchanged": 0,
+          "baseline_mean": 0.07407407407407407,
+          "candidate_mean": 0,
+          "delta": -0.07407407407407407,
+          "fixed": 0,
+          "regressed": 1,
+          "unchanged": 8,
           "error_rate": 0,
           "baseline_error_rate": 0,
           "error_rate_by_split": {
@@ -2607,8 +2673,8 @@
             "holdout": 0
           },
           "paired_ci": [
-            1,
-            1
+            -0.2222222222222222,
+            0
           ],
           "status": "scored"
         }
@@ -2616,12 +2682,12 @@
     }
   ],
   "score": {
-    "in_domain_gain": 1,
-    "transfer_gain": 0.029411764705882353,
-    "transfer_ratio": 0.029411764705882353,
-    "forgetting": 0,
+    "in_domain_gain": null,
+    "transfer_gain": 0.31703703703703695,
+    "transfer_ratio": null,
+    "forgetting": 0.14814814814814814,
     "regressed_groups": [],
-    "generalization_score": 0.029411764705882353,
+    "generalization_score": null,
     "weighting": "task-weighted",
     "regression_threshold": 0.05,
     "forgetting_penalty": 0

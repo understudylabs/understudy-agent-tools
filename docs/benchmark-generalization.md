@@ -97,6 +97,8 @@ The input schema is
 - optional `epsilon` and `regression_threshold`
 - optional `require_content_hashes` and `require_all_groups_scored`
 - per-group `frozen_split_sha256` and `expected_task_counts`
+- per-arm `eval_splits` (an array, or a group-to-splits map when an arm covers
+  different scopes)
 
 Explicit `task_ids` take precedence over match predicates. Otherwise each row
 must match zero or one group; matching two groups is a hard error, while
@@ -234,10 +236,18 @@ The rendered report is
 
 | Arm | AutomationBench | Event Categorizer | Synthetic workflows |
 | --- | ---: | ---: | ---: |
-| zeroshot-haiku-vs-gptoss | +0.000 (n=14) | +0.083 (n=12) | +0.000 (n=8) |
-| mechanism-demo | +1.000 (n=72) | +1.000 (n=12) | +1.000 (n=9) |
+| zeroshot-haiku-vs-gptoss | +0.410 (n=24) | +0.258 (n=12) | +0.148 (n=9) |
+| mechanism-demo | +1.000 (n=72) | -0.400 (n=12) | -0.074 (n=9) |
 
-The mechanism row is deliberately a scripted oracle-versus-sentinel
-mechanism demonstration, not a model result. Receipts record estimated
-provider cost using the explicit caller-supplied list-price assumptions; they
-are not billing statements.
+The mechanism row is deliberately a weak-scripted baseline versus an
+oracle-on-A/degraded-on-B-and-C candidate. It exercises negative transfer and
+the forgetting penalty; it is not a model result and is excluded from the
+top-level score. Scores are reported per arm before the aggregate, so a
+mechanism demo cannot contaminate the zero-shot headline.
+
+The corrected run uses a group-specific zero-shot scope: AutomationBench
+dev+holdout, Event Categorizer all splits, and Synthetic Workflow all splits.
+The manifest records this as an `eval_splits` map while the registry's full
+expected counts remain authoritative for every declared split. Receipts record
+estimated provider cost using the explicit caller-supplied list-price
+assumptions; they are not billing statements.

@@ -16,6 +16,7 @@
       },
       "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
       "expected_task_counts": {
+        "train": 48,
         "dev": 12,
         "holdout": 12
       }
@@ -53,6 +54,22 @@
     {
       "arm_id": "zeroshot-haiku-vs-gptoss",
       "train_groups": [],
+      "eval_splits": {
+        "automationbench-simple-api": [
+          "dev",
+          "holdout"
+        ],
+        "event-categorizer": [
+          "train",
+          "dev",
+          "holdout"
+        ],
+        "synthetic-workflow-shapes": [
+          "train",
+          "dev",
+          "holdout"
+        ]
+      },
       "baseline": {
         "rows": "gpt-oss-20b-rows.jsonl",
         "model": "accounts/fireworks/models/gpt-oss-20b"
@@ -66,17 +83,22 @@
     {
       "arm_id": "mechanism-demo",
       "train_groups": [
-        "automationbench-simple-api",
-        "event-categorizer",
-        "synthetic-workflow-shapes"
+        "automationbench-simple-api"
       ],
+      "eval_splits": [
+        "train",
+        "dev",
+        "holdout"
+      ],
+      "mechanism_demo": true,
+      "exclude_from_score": true,
       "baseline": {
         "rows": "mechanism-demo-baseline.jsonl",
-        "model": "sentinel"
+        "model": "weak-scripted"
       },
       "candidate": {
         "rows": "mechanism-demo-candidate.jsonl",
-        "model": "oracle",
+        "model": "oracle-and-degraded-scripted",
         "receipt": "mechanism-demo-scripted.jsonl"
       }
     }

@@ -4,6 +4,7 @@ import {
   TASKS,
   taskPool,
   splitSha256,
+  fixtureSha256,
   scoreCompletion,
   taskContentHashes,
   type Split,
@@ -52,7 +53,7 @@ export function eventCategorizerArmRows(options: EventCategorizerArmRowsOptions)
       benchmark_id: EVENT_CATEGORIZER_SUBSET.benchmark_id,
       subscores: result.subscores,
       provenance: {
-        harness_sha256: splitSha256("train"),
+        harness_sha256: fixtureSha256(),
         split_sha256: splitSha256(split),
         task_content_hashes: {
           ...taskContentHashes(task.task_id),

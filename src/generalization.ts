@@ -46,6 +46,9 @@ export type GeneralizationManifest = {
 export type GeneralizationArm = {
   arm_id: string;
   train_groups: string[];
+  eval_splits?: string[] | Record<string, string[]>;
+  mechanism_demo?: boolean;
+  exclude_from_score?: boolean;
   baseline: { rows: string; model?: string };
   candidate: { rows: string; model?: string; receipt?: string };
 };
@@ -90,6 +93,10 @@ export type GeneralizationReport = {
     baseline_model?: string;
     candidate_model?: string;
     receipt?: string;
+    eval_splits?: string[] | Record<string, string[]>;
+    mechanism_demo?: boolean;
+    exclude_from_score?: boolean;
+    score: GeneralizationScore;
     task_deltas: TaskDelta[];
     matrix: MatrixCell[];
   }>;
@@ -98,17 +105,7 @@ export type GeneralizationReport = {
     train_groups: string[];
     cells: MatrixCell[];
   }>;
-  score: {
-    in_domain_gain: number | null;
-    transfer_gain: number | null;
-    transfer_ratio: number | null;
-    forgetting: number | null;
-    regressed_groups: string[];
-    generalization_score: number | null;
-    weighting: "task-weighted";
-    regression_threshold: number;
-    forgetting_penalty: number | null;
-  };
+  score: GeneralizationScore;
   coverage: {
     groups: Array<{
       group_id: string;
@@ -119,6 +116,18 @@ export type GeneralizationReport = {
     unassigned_task_ids: string[];
   };
   warnings: string[];
+};
+
+export type GeneralizationScore = {
+  in_domain_gain: number | null;
+  transfer_gain: number | null;
+  transfer_ratio: number | null;
+  forgetting: number | null;
+  regressed_groups: string[];
+  generalization_score: number | null;
+  weighting: "task-weighted";
+  regression_threshold: number;
+  forgetting_penalty: number | null;
 };
 
 type SideSummary = {
@@ -353,6 +362,58 @@ export type GeneralizationAnalysisOptions = {
   bootstrap_iterations?: number;
 };
 
+function emptyScore(regressionThreshold: number): GeneralizationScore {
+  return {
+    in_domain_gain: null,
+    transfer_gain: null,
+    transfer_ratio: null,
+    forgetting: null,
+    regressed_groups: [],
+    generalization_score: null,
+    weighting: "task-weighted",
+    regression_threshold: regressionThreshold,
+    forgetting_penalty: null,
+  };
+}
+
+function scoreArms(
+  arms: Array<{ train_groups: string[]; task_deltas: TaskDelta[]; matrix: MatrixCell[] }>,
+  regressionThreshold: number,
+): GeneralizationScore[] {
+  const diagonalDeltas = arms.flatMap((arm) => arm.task_deltas
+    .filter((task) => task.delta !== null && arm.train_groups.includes(task.group_id ?? ""))
+    .map((task) => task.delta!));
+  const transferDeltas = arms.flatMap((arm) => arm.task_deltas
+    .filter((task) => task.delta !== null && !arm.train_groups.includes(task.group_id ?? ""))
+    .map((task) => task.delta!));
+  const scoredTransfer = arms.flatMap((arm) => arm.matrix.filter((cell) => !cell.in_domain && cell.status === "scored"));
+  const inDomainGain = mean(diagonalDeltas);
+  const transferGain = mean(transferDeltas);
+  const transferRatio = inDomainGain !== null && inDomainGain > 0 && transferGain !== null
+    ? transferGain / inDomainGain
+    : null;
+  const regressedGroups = scoredTransfer
+    .filter((cell) => cell.delta !== null && cell.delta < -regressionThreshold)
+    .map((cell) => cell.group_id)
+    .filter((groupId, index, ids) => ids.indexOf(groupId) === index)
+    .sort();
+  const forgetting = scoredTransfer
+    .flatMap((cell) => cell.delta === null ? [] : [cell.delta])
+    .reduce<number | null>((minimum, delta) => minimum === null ? delta : Math.min(minimum, delta), null);
+  const forgettingPenalty = forgetting === null ? null : clamp(Math.max(0, -forgetting / regressionThreshold), 0, 1);
+  return [{
+    in_domain_gain: inDomainGain,
+    transfer_gain: transferGain,
+    transfer_ratio: transferRatio,
+    forgetting,
+    regressed_groups: regressedGroups,
+    generalization_score: transferRatio === null ? null : clamp(transferRatio, 0, 1) * (1 - (forgettingPenalty ?? 0)),
+    weighting: "task-weighted",
+    regression_threshold: regressionThreshold,
+    forgetting_penalty: forgettingPenalty,
+  }];
+}
+
 export function deriveGeneralizationReport(
   manifestInput: GeneralizationManifest,
   rowsByArm: Record<string, { baseline: EvalRow[]; candidate: EvalRow[] }>,
@@ -375,7 +436,6 @@ export function deriveGeneralizationReport(
   }
   const epsilon = manifestInput.epsilon ?? DEFAULT_EPSILON;
   const regressionThreshold = manifestInput.regression_threshold ?? DEFAULT_REGRESSION_THRESHOLD;
-  const splits = new Set(manifestInput.eval_splits ?? ["holdout"]);
   const seed = options.bootstrap_seed ?? DEFAULT_BOOTSTRAP_SEED;
   const iterations = options.bootstrap_iterations ?? DEFAULT_BOOTSTRAP_ITERATIONS;
   if (!Number.isInteger(iterations) || iterations < 1) throw new Error("bootstrap_iterations must be a positive integer");
@@ -404,6 +464,20 @@ export function deriveGeneralizationReport(
     const input = rowsByArm[arm.arm_id]!;
     const baseline = input.baseline.map(tagRow);
     const candidate = input.candidate.map(tagRow);
+    const declaredForGroup = (groupId: string | null): Set<string> => {
+      if (!arm.eval_splits) return new Set(manifestInput.eval_splits ?? ["holdout"]);
+      if (Array.isArray(arm.eval_splits)) return new Set(arm.eval_splits);
+      return new Set(arm.eval_splits[groupId ?? ""] ?? []);
+    };
+    if (arm.eval_splits) {
+      for (const row of [...baseline, ...candidate]) {
+        const allowed = declaredForGroup(row.__group_id);
+        if (!allowed.has(String(row.split))) {
+          throw new Error(`arm ${arm.arm_id} row ${rowTaskId(row)} contains undeclared split ${String(row.split)}`);
+        }
+      }
+    }
+    const splits = new Set([...baseline, ...candidate].map((row) => String(row.split)));
     const baselineGroups = groupRows(baseline, splits);
     const candidateGroups = groupRows(candidate, splits);
     const taskDeltas: TaskDelta[] = [];
@@ -419,7 +493,9 @@ export function deriveGeneralizationReport(
         );
       }
       if (group.expected_task_counts) {
-        for (const [split, expected] of Object.entries(group.expected_task_counts)) {
+        for (const split of declaredForGroup(group.group_id)) {
+          const expected = group.expected_task_counts[split as "train" | "dev" | "holdout"];
+          if (expected === undefined) continue;
           const bCount = [...bTasks.values()].flat().filter((row) => row.split === split).length;
           const cCount = [...cTasks.values()].flat().filter((row) => row.split === split).length;
           if (bCount !== expected || cCount !== expected) {
@@ -450,35 +526,23 @@ export function deriveGeneralizationReport(
     return {
       arm_id: arm.arm_id,
       train_groups: arm.train_groups,
+      ...(arm.eval_splits ? { eval_splits: arm.eval_splits } : {}),
+      ...(arm.mechanism_demo ? { mechanism_demo: true } : {}),
+      ...(arm.exclude_from_score ? { exclude_from_score: true } : {}),
       baseline_model: arm.baseline.model,
       candidate_model: arm.candidate.model,
       receipt: arm.candidate.receipt,
       task_deltas: taskDeltas,
       matrix,
+      score: emptyScore(regressionThreshold),
     };
   });
 
-  const scoredTransfer = byArm.flatMap((arm) => arm.matrix.filter((cell) => !cell.in_domain && cell.status === "scored"));
-  const diagonalDeltas = byArm.flatMap((arm) => arm.task_deltas
-    .filter((task) => task.delta !== null && arm.train_groups.includes(task.group_id ?? ""))
-    .map((task) => task.delta!));
-  const transferDeltas = byArm.flatMap((arm) => arm.task_deltas
-    .filter((task) => task.delta !== null && !arm.train_groups.includes(task.group_id ?? ""))
-    .map((task) => task.delta!));
-  const inDomainGain = mean(diagonalDeltas);
-  const transferGain = mean(transferDeltas);
-  const transferRatio = inDomainGain !== null && inDomainGain > 0 && transferGain !== null ? transferGain / inDomainGain : null;
-  const regressedGroups = scoredTransfer.filter((cell) => cell.delta !== null && cell.delta < -regressionThreshold)
-    .map((cell) => cell.group_id)
-    .filter((groupId, index, ids) => ids.indexOf(groupId) === index)
-    .sort();
-  const forgetting = scoredTransfer
-    .flatMap((cell) => cell.delta === null ? [] : [cell.delta])
-    .reduce<number | null>((minimum, delta) => minimum === null ? delta : Math.min(minimum, delta), null);
-  const forgettingPenalty = forgetting === null ? null : clamp(Math.max(0, -forgetting / regressionThreshold), 0, 1);
-  const generalizationScore = transferRatio === null
-    ? null
-    : clamp(transferRatio, 0, 1) * (1 - (forgettingPenalty ?? 0));
+  for (const arm of byArm) {
+    arm.score = scoreArms([arm], regressionThreshold)[0]!;
+  }
+  const includedArms = byArm.filter((arm) => !arm.exclude_from_score);
+  const score = scoreArms(includedArms, regressionThreshold)[0] ?? emptyScore(regressionThreshold);
   const coverage: GeneralizationReport["coverage"]["groups"] = manifestInput.groups.map((group) => {
     const cells = byArm.flatMap((arm) => arm.matrix.filter((cell) => cell.group_id === group.group_id));
     const taskCount = new Set(byArm.flatMap((arm) => arm.task_deltas
@@ -494,17 +558,7 @@ export function deriveGeneralizationReport(
     manifest: manifestInput,
     arms: byArm,
     matrix: byArm.map((arm) => ({ arm_id: arm.arm_id, train_groups: arm.train_groups, cells: arm.matrix })),
-    score: {
-      in_domain_gain: inDomainGain,
-      transfer_gain: transferGain,
-      transfer_ratio: transferRatio,
-      forgetting,
-      regressed_groups: regressedGroups,
-      generalization_score: generalizationScore,
-      weighting: "task-weighted",
-      regression_threshold: regressionThreshold,
-      forgetting_penalty: forgettingPenalty,
-    },
+    score,
     coverage: { groups: coverage, unassigned_task_ids: [...unassigned].sort() },
     warnings,
   };
@@ -524,6 +578,10 @@ export function renderGeneralizationReport(report: GeneralizationReport): string
     "## Transfer matrix",
     "",
   ];
+  for (const arm of report.arms) {
+    lines.push(`- ${arm.arm_id} score${arm.exclude_from_score ? " (excluded)" : ""}: ${formatNumber(arm.score.generalization_score)}`);
+  }
+  lines.push("");
   const groups = report.manifest.groups;
   lines.push(`| Arm | ${groups.map((group) => group.label ?? group.group_id).join(" | ")} |`);
   lines.push(`| --- | ${groups.map(() => "---").join(" | ")} |`);

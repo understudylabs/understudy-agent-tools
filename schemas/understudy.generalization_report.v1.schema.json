@@ -20,6 +20,15 @@
           "baseline_model": { "type": "string" },
           "candidate_model": { "type": "string" },
           "receipt": { "type": "string" },
+          "eval_splits": {
+            "oneOf": [
+              { "type": "array", "items": { "type": "string" } },
+              { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+            ]
+          },
+          "mechanism_demo": { "type": "boolean" },
+          "exclude_from_score": { "type": "boolean" },
+          "score": { "$ref": "#/$defs/score" },
           "task_deltas": { "type": "array" },
           "matrix": { "type": "array" }
         },
@@ -68,5 +77,23 @@
       "additionalProperties": false
     },
     "warnings": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "score": {
+      "type": "object",
+      "required": ["in_domain_gain", "transfer_gain", "transfer_ratio", "forgetting", "regressed_groups", "generalization_score"],
+      "properties": {
+        "in_domain_gain": { "type": ["number", "null"] },
+        "transfer_gain": { "type": ["number", "null"] },
+        "transfer_ratio": { "type": ["number", "null"] },
+        "forgetting": { "type": ["number", "null"] },
+        "regressed_groups": { "type": "array", "items": { "type": "string" } },
+        "generalization_score": { "type": ["number", "null"] },
+        "weighting": { "const": "task-weighted" },
+        "regression_threshold": { "type": "number" },
+        "forgetting_penalty": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    }
   }
 }

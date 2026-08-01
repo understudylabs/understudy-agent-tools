@@ -58,6 +58,11 @@ export function buildGeneralizationManifest(options: {
   require_content_hashes?: boolean;
   require_all_groups_scored?: boolean;
 }): GeneralizationManifest {
+  for (const arm of options.arms) {
+    if (!arm.eval_splits || (Array.isArray(arm.eval_splits) ? !arm.eval_splits.length : !Object.keys(arm.eval_splits).length)) {
+      throw new Error(`arm ${arm.arm_id} must declare eval_splits`);
+    }
+  }
   const groups = Object.values(GENERALIZATION_GROUPS).map((entry) => entry.group);
   return {
     schema_version: "understudy.generalization_manifest.v1",

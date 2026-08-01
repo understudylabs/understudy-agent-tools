@@ -231,10 +231,11 @@ export function registerBenchmarksCommand(program: Command): void {
     .requiredOption("--budget-usd <n>", "Hard USD cap")
     .requiredOption("--price-input <n>", "USD per one million input tokens")
     .requiredOption("--price-output <n>", "USD per one million output tokens")
+    .option("--debug-transcripts <path>", "Write full episode transcripts as JSONL")
     .option("--run-id <id>", "Run id", `generalization-${Date.now()}`)
     .action(async (options: {
       group: string; model: string; provider: string; splits: string; out: string; receipts: string;
-      budgetUsd: string; priceInput: string; priceOutput: string; runId: string;
+      budgetUsd: string; priceInput: string; priceOutput: string; runId: string; debugTranscripts?: string;
     }) => {
       const { mkdirSync, appendFileSync, writeFileSync } = await import("node:fs");
       const path = await import("node:path");
@@ -269,6 +270,7 @@ export function registerBenchmarksCommand(program: Command): void {
           price: { inputUsdPerMillion: Number(options.priceInput), outputUsdPerMillion: Number(options.priceOutput) },
           budget,
           receiptsPath: receipts,
+          debugTranscriptsPath: options.debugTranscripts ? path.resolve(options.debugTranscripts) : undefined,
         });
         allRows.push(...rows);
       }
