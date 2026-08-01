@@ -379,7 +379,7 @@ function emptyScore(regressionThreshold: number): GeneralizationScore {
 function scoreArms(
   arms: Array<{ train_groups: string[]; task_deltas: TaskDelta[]; matrix: MatrixCell[] }>,
   regressionThreshold: number,
-): GeneralizationScore[] {
+): GeneralizationScore {
   const diagonalDeltas = arms.flatMap((arm) => arm.task_deltas
     .filter((task) => task.delta !== null && arm.train_groups.includes(task.group_id ?? ""))
     .map((task) => task.delta!));
@@ -401,7 +401,7 @@ function scoreArms(
     .flatMap((cell) => cell.delta === null ? [] : [cell.delta])
     .reduce<number | null>((minimum, delta) => minimum === null ? delta : Math.min(minimum, delta), null);
   const forgettingPenalty = forgetting === null ? null : clamp(Math.max(0, -forgetting / regressionThreshold), 0, 1);
-  return [{
+  return {
     in_domain_gain: inDomainGain,
     transfer_gain: transferGain,
     transfer_ratio: transferRatio,
@@ -411,7 +411,7 @@ function scoreArms(
     weighting: "task-weighted",
     regression_threshold: regressionThreshold,
     forgetting_penalty: forgettingPenalty,
-  }];
+  };
 }
 
 export function deriveGeneralizationReport(
@@ -469,17 +469,24 @@ export function deriveGeneralizationReport(
       if (Array.isArray(arm.eval_splits)) return new Set(arm.eval_splits);
       return new Set(arm.eval_splits[groupId ?? ""] ?? []);
     };
-    if (arm.eval_splits) {
-      for (const row of [...baseline, ...candidate]) {
-        const allowed = declaredForGroup(row.__group_id);
-        if (!allowed.has(String(row.split))) {
-          throw new Error(`arm ${arm.arm_id} row ${rowTaskId(row)} contains undeclared split ${String(row.split)}`);
-        }
+    const allowedSplits = new Set<string>();
+    if (arm.eval_splits && Array.isArray(arm.eval_splits)) {
+      for (const split of arm.eval_splits) allowedSplits.add(split);
+    } else if (arm.eval_splits) {
+      for (const splitsForGroup of Object.values(arm.eval_splits)) {
+        for (const split of splitsForGroup) allowedSplits.add(split);
+      }
+    } else {
+      for (const split of manifestInput.eval_splits ?? ["holdout"]) allowedSplits.add(split);
+    }
+    for (const row of [...baseline, ...candidate]) {
+      const allowed = declaredForGroup(row.__group_id);
+      if (!allowed.has(String(row.split))) {
+        throw new Error(`arm ${arm.arm_id} row ${rowTaskId(row)} contains undeclared split ${String(row.split)}`);
       }
     }
-    const splits = new Set([...baseline, ...candidate].map((row) => String(row.split)));
-    const baselineGroups = groupRows(baseline, splits);
-    const candidateGroups = groupRows(candidate, splits);
+    const baselineGroups = groupRows(baseline, allowedSplits);
+    const candidateGroups = groupRows(candidate, allowedSplits);
     const taskDeltas: TaskDelta[] = [];
     for (const group of manifestInput.groups) {
       const bTasks = baselineGroups.get(group.group_id) ?? new Map<string, EvalRow[]>();
@@ -539,10 +546,10 @@ export function deriveGeneralizationReport(
   });
 
   for (const arm of byArm) {
-    arm.score = scoreArms([arm], regressionThreshold)[0]!;
+    arm.score = scoreArms([arm], regressionThreshold);
   }
   const includedArms = byArm.filter((arm) => !arm.exclude_from_score);
-  const score = scoreArms(includedArms, regressionThreshold)[0] ?? emptyScore(regressionThreshold);
+  const score = includedArms.length ? scoreArms(includedArms, regressionThreshold) : emptyScore(regressionThreshold);
   const coverage: GeneralizationReport["coverage"]["groups"] = manifestInput.groups.map((group) => {
     const cells = byArm.flatMap((arm) => arm.matrix.filter((cell) => cell.group_id === group.group_id));
     const taskCount = new Set(byArm.flatMap((arm) => arm.task_deltas

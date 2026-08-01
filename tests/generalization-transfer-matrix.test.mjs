@@ -162,3 +162,20 @@ test("arm eval_splits gate rejects undeclared and incomplete splits", () => {
     a: { baseline: [row("t", "train")], candidate: [row("t", "train")] },
   }), /undeclared split/);
 });
+
+test("manifest-level eval_splits restrict arms without an arm declaration", () => {
+  const row = {
+    run_id: "r", task_id: "t", split: "dev", score: 0, status: "ok", benchmark_id: "b",
+    provenance: { split_sha256: "devhash", task_content_hashes: { env_sha256: "e", verifier_sha256: "v" } },
+  };
+  const manifest = {
+    schema_version: "understudy.generalization_manifest.v1",
+    frozen_split_sha256: "frozen",
+    eval_splits: ["holdout"],
+    groups: [{ group_id: "g", expected_task_counts: { holdout: 1 }, frozen_split_sha256: "frozen", match: { benchmark_id: "b" } }],
+    arms: [{ arm_id: "a", train_groups: [], baseline: { rows: "b" }, candidate: { rows: "c" } }],
+  };
+  assert.throws(() => deriveGeneralizationReport(manifest, {
+    a: { baseline: [row], candidate: [row] },
+  }), /contains undeclared split dev/);
+});
