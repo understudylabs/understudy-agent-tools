@@ -50,7 +50,19 @@ is secondary to the local evaluator; both paths feed
 
 ### B: Existing verifier environments
 
-The existing reusable environment/scoring spine is:
+The offline Group B adapter is the synthetic Event Categorizer verifier
+example in
+`skills/design-simulated-environment/examples/event-categorizer/`. Its
+`tasks.jsonl` contains 12 invented tasks and `playbook.md` is the system
+prompt. `src/event-categorizer-offline.ts` loads that fixture directly in
+TypeScript, assigns the seed-7 positional split (8 train / 2 dev / 2 holdout),
+and exports `scoreCompletion`, `taskPool`, `splitSha256`, and `fixtureSha256`.
+The primary score is the Python example's `category_correct` rubric
+(category 0.7 plus priority 0.3); `structured_output_ok` and `nonempty_ok`
+are reported as subscores. No Python process, network, or live tool execution
+is needed.
+
+Other existing verifier spines remain separate:
 
 - `src/trace-foundry.ts`: generated subprocess Verifiers environments,
   `writeVerifiersEnvironment`, `scoreContract`, `scoreState`, and replay/oracle
@@ -68,10 +80,10 @@ The existing reusable environment/scoring spine is:
 
 ### C: Sanitized partner synthetic fixtures
 
-The forthcoming sanitized partner synthetic fixture family is represented in a generalization manifest as
-`{status: "planned"}` with a prefix or pattern match. A planned group with no
-rows is first-class and produces `planned` matrix cells and coverage metadata,
-not fabricated zero scores.
+The merged `src/synthetic-workflow-offline.ts` fixture is Group C:
+`synthetic-workflow-shapes-offline`, nine invented tasks split 5 train / 2 dev /
+2 holdout. It supplies the same deterministic reset/step/rollout API as Group A
+and is registered by `src/generalization-registry.ts`.
 
 ## Manifest and report
 
@@ -83,6 +95,8 @@ The input schema is
 - groups, by explicit task IDs or match predicates
 - one or more training arms, each with baseline and candidate row paths
 - optional `epsilon` and `regression_threshold`
+- optional `require_content_hashes` and `require_all_groups_scored`
+- per-group `frozen_split_sha256` and `expected_task_counts`
 
 Explicit `task_ids` take precedence over match predicates. Otherwise each row
 must match zero or one group; matching two groups is a hard error, while
@@ -96,8 +110,9 @@ components, coverage, warnings, and candidate receipt paths.
 ## Frozen holdout and content rules
 
 Every holdout row must carry
-`provenance.split_sha256 === manifest.frozen_split_sha256`. Missing or
-mismatched hashes stop the whole analysis with the run ID and task ID. This
+`provenance.split_sha256 === group.frozen_split_sha256` when the group declares
+one, otherwise the manifest-level hash. Missing or mismatched hashes stop the
+whole analysis with the run ID and task ID. This
 prevents a result from being presented as a score on a different or mutable
 holdout.
 
@@ -173,3 +188,56 @@ hashes where available.
 The candidate manifest may record a Tinker manifest or Fireworks/train-api
 workflow receipt in `candidate.receipt`. The harness records that path for
 provenance only; it never parses provider receipts for scores.
+
+## Provider-neutral model runner
+
+`src/generalization-model-runner.ts` drives all three groups with the same
+text-only protocol. The prompt requires one JSON object per turn:
+
+```json
+{"tool":"api_search","arguments":{}}
+{"tool":"api_fetch","arguments":{}}
+{"tool":"finish"}
+```
+
+The supported direct transports are Anthropic Messages
+(`ANTHROPIC_API_KEY`) and Fireworks OpenAI-compatible chat completions
+(`FIREWORKS_API_KEY`). Temperature is fixed at zero. Transport retries are
+bounded to three attempts for 429/5xx responses. A `BudgetLedger` reserves
+estimated cost before accepting each response and throws before exceeding the
+caller-provided cap. Receipts contain one JSONL record per call with run/task
+identity, token counts, latency, status, and estimated USD; a final summary
+record contains aggregate calls, tokens, and cost.
+
+The thin CLI entry point is:
+
+```text
+understudy benchmarks generalization-run \
+  --group event-categorizer --model <id> --provider anthropic \
+  --splits train,dev,holdout --out rows.jsonl --receipts receipts.jsonl \
+  --budget-usd 15 --price-input 1 --price-output 5
+```
+
+`src/generalization-registry.ts` is the canonical group registry and manifest
+builder. A tuned arm only needs to provide a rows file, model ID, and optional
+receipt; its rows must use the same task IDs and task-content hashes as the
+baseline.
+
+## Current zero-shot matrix
+
+The checked-in synthetic-task run is under
+`experiments/generalization-transfer-matrix/`. It compares
+`accounts/fireworks/models/gpt-oss-20b` with
+`claude-haiku-4-5-20251001` over A dev+holdout, B all splits, and C all splits.
+The rendered report is
+`experiments/generalization-transfer-matrix/report.md`; the current cells are:
+
+| Arm | AutomationBench | Event Categorizer | Synthetic workflows |
+| --- | ---: | ---: | ---: |
+| zeroshot-haiku-vs-gptoss | +0.000 (n=14) | +0.083 (n=12) | +0.000 (n=8) |
+| mechanism-demo | +1.000 (n=72) | +1.000 (n=12) | +1.000 (n=9) |
+
+The mechanism row is deliberately a scripted oracle-versus-sentinel
+mechanism demonstration, not a model result. Receipts record estimated
+provider cost using the explicit caller-supplied list-price assumptions; they
+are not billing statements.

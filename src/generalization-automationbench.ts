@@ -1,4 +1,6 @@
 import type { EvalRow, GeneralizationGroup } from "./generalization.js";
+import { BudgetLedger, runModelRows, type ModelRunOptions, type PriceTable, type Provider } from "./generalization-model-runner.js";
+import { groupAAdapter } from "./generalization-group-adapters.js";
 import {
   AUTOMATIONBENCH_SUBSET,
   evaluateSplit,
@@ -59,3 +61,14 @@ export function automationbenchArmRows({
 }
 
 export { oraclePolicy, sentinelPolicy };
+
+export type AutomationBenchModelRowsOptions = Omit<ModelRunOptions, "adapter" | "split"> & {
+  split: Split;
+};
+
+export async function automationbenchModelRows(options: AutomationBenchModelRowsOptions): Promise<EvalRow[]> {
+  return runModelRows({ ...options, adapter: groupAAdapter() }) as Promise<EvalRow[]>;
+}
+
+export { BudgetLedger };
+export type { PriceTable, Provider };

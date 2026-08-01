@@ -763,6 +763,10 @@ export function evaluateSplit(options: EvaluateOptions): EvalRow[] {
         artifact_refs: [
           `fixture://${SYNTHETIC_WORKFLOW_SUBSET.fixture_id}`,
         ],
+        task_content_hashes: {
+          env_sha256: sha256({ initial_state: task.initialState, prompt: task.prompt, tools: TOOL_CATALOG }),
+          verifier_sha256: sha256({ assertions: task.assertions, allowed_writes: task.allowedWrites }),
+        },
       },
     };
   });

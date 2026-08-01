@@ -971,7 +971,15 @@ export function evaluateSplit(options: EvaluateOptions): EvalRow[] {
       cost: { usd: 0, basis: "local-zero-marginal-cost" },
       benchmark_id: AUTOMATIONBENCH_SUBSET.benchmark_id,
       subscores: { forbidden_effects: result.forbiddenEffects.length, steps: result.steps },
-      provenance: { harness_sha256: harnessSha, split_sha256: splitSha, artifact_refs: [`fixture://${AUTOMATIONBENCH_SUBSET.fixture_id}`] },
+      provenance: {
+        harness_sha256: harnessSha,
+        split_sha256: splitSha,
+        artifact_refs: [`fixture://${AUTOMATIONBENCH_SUBSET.fixture_id}`],
+        task_content_hashes: {
+          env_sha256: sha256({ initial_state: task.initialState, prompt: task.prompt, tools: TOOL_CATALOG }),
+          verifier_sha256: sha256({ assertions: task.assertions, allowed_writes: task.allowedWrites }),
+        },
+      },
     };
   });
 }

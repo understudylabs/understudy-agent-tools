@@ -220,6 +220,64 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("generalization-run")
+    .description("Run one registered generalization group with one provider model")
+    .requiredOption("--group <id>", "Registered group id")
+    .requiredOption("--model <id>", "Provider model id")
+    .requiredOption("--provider <provider>", "anthropic or fireworks")
+    .requiredOption("--splits <splits>", "Comma-separated train,dev,holdout")
+    .requiredOption("--out <path>", "Rows JSONL output")
+    .requiredOption("--receipts <path>", "Per-call receipts JSONL output")
+    .requiredOption("--budget-usd <n>", "Hard USD cap")
+    .requiredOption("--price-input <n>", "USD per one million input tokens")
+    .requiredOption("--price-output <n>", "USD per one million output tokens")
+    .option("--run-id <id>", "Run id", `generalization-${Date.now()}`)
+    .action(async (options: {
+      group: string; model: string; provider: string; splits: string; out: string; receipts: string;
+      budgetUsd: string; priceInput: string; priceOutput: string; runId: string;
+    }) => {
+      const { mkdirSync, appendFileSync, writeFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      const { BudgetLedger, runModelRows } = await import("../generalization-model-runner.js");
+      const { groupAAdapter } = await import("../generalization-group-adapters.js");
+      const { groupBAdapter } = await import("../generalization-group-adapters.js");
+      const { groupCAdapter } = await import("../generalization-group-adapters.js");
+      const adapters: Record<string, () => import("../generalization-model-runner.js").ModelTaskAdapter> = {
+        "automationbench-simple-api": groupAAdapter,
+        "event-categorizer": groupBAdapter,
+        "synthetic-workflow-shapes": groupCAdapter,
+      };
+      const makeAdapter = adapters[options.group];
+      if (!makeAdapter) throw new Error(`unknown generalization group ${options.group}`);
+      if (options.provider !== "anthropic" && options.provider !== "fireworks") throw new Error("--provider must be anthropic or fireworks");
+      const budget = new BudgetLedger(Number(options.budgetUsd));
+      const output = path.resolve(options.out);
+      const receipts = path.resolve(options.receipts);
+      mkdirSync(path.dirname(output), { recursive: true });
+      mkdirSync(path.dirname(receipts), { recursive: true });
+      writeFileSync(output, "", { mode: 0o600 });
+      writeFileSync(receipts, "", { mode: 0o600 });
+      const allRows = [];
+      for (const split of options.splits.split(",").map((value) => value.trim()).filter(Boolean)) {
+        const rows = await runModelRows({
+          adapter: makeAdapter(),
+          split,
+          frozenHoldoutSha256: split === "holdout" ? makeAdapter().splitSha256("holdout") : undefined,
+          runId: options.runId,
+          model: options.model,
+          provider: options.provider,
+          price: { inputUsdPerMillion: Number(options.priceInput), outputUsdPerMillion: Number(options.priceOutput) },
+          budget,
+          receiptsPath: receipts,
+        });
+        allRows.push(...rows);
+      }
+      for (const row of allRows) appendFileSync(output, `${JSON.stringify(row)}\n`);
+      appendFileSync(receipts, `${JSON.stringify({ type: "run_summary", run_id: options.runId, group: options.group, model: options.model, ...budget.summary() })}\n`);
+      console.log(JSON.stringify({ rows: allRows.length, output, receipts, summary: budget.summary() }, null, 2));
+    });
+
+  benchmarks
     .command("build-scorecard <config>")
     .description("Render the Prime-native interactive scorecard from a reviewed benchmark import config")
     .action(async (config: string) => {

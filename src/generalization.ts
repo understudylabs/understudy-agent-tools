@@ -20,6 +20,8 @@ export type GeneralizationGroup = {
   group_id: string;
   label?: string;
   status?: "present" | "planned";
+  frozen_split_sha256?: string;
+  expected_task_counts?: Partial<Record<"train" | "dev" | "holdout", number>>;
   task_ids?: string[];
   match?: {
     task_id_prefix?: string;
@@ -37,6 +39,8 @@ export type GeneralizationManifest = {
   arms: GeneralizationArm[];
   epsilon?: number;
   regression_threshold?: number;
+  require_content_hashes?: boolean;
+  require_all_groups_scored?: boolean;
 };
 
 export type GeneralizationArm = {
@@ -185,9 +189,15 @@ function contentHash(row: EvalRow, key: "env_sha256" | "verifier_sha256"): strin
 }
 
 function validateRows(manifest: GeneralizationManifest, rows: EvalRow[]): void {
-  const expected = manifest.frozen_split_sha256;
   for (const row of rows) {
+    if (manifest.require_content_hashes &&
+      (!contentHash(row, "env_sha256") || !contentHash(row, "verifier_sha256"))) {
+      throw new Error(`row ${rowRunId(row)}/${rowTaskId(row)} is missing required task content hashes`);
+    }
     if (row.split !== "holdout") continue;
+    const groupId = resolveGroup(manifest.groups, row);
+    const group = manifest.groups.find((candidate) => candidate.group_id === groupId);
+    const expected = group?.frozen_split_sha256 ?? manifest.frozen_split_sha256;
     const actual = rowSplitHash(row);
     if (actual !== expected) {
       throw new Error(
@@ -408,6 +418,17 @@ export function deriveGeneralizationReport(
           `arm ${arm.arm_id} group ${group.group_id} coverage mismatch: missing candidate [${missing.join(", ")}], extra candidate [${extra.join(", ")}]`,
         );
       }
+      if (group.expected_task_counts) {
+        for (const [split, expected] of Object.entries(group.expected_task_counts)) {
+          const bCount = [...bTasks.values()].flat().filter((row) => row.split === split).length;
+          const cCount = [...cTasks.values()].flat().filter((row) => row.split === split).length;
+          if (bCount !== expected || cCount !== expected) {
+            throw new Error(
+              `arm ${arm.arm_id} group ${group.group_id} expected ${expected} ${split} task rows, got baseline ${bCount}, candidate ${cCount}`,
+            );
+          }
+        }
+      }
       for (const taskId of [...allTaskIds].sort()) {
         const bRows = bTasks.get(taskId)!;
         const cRows = cTasks.get(taskId)!;
@@ -420,6 +441,9 @@ export function deriveGeneralizationReport(
       const bRows = [...(baselineGroups.get(group.group_id) ?? new Map()).values()].flatMap((rows) => rows);
       const cRows = [...(candidateGroups.get(group.group_id) ?? new Map()).values()].flatMap((rows) => rows);
       if (group.status === "planned") return cell(group.group_id, arm.train_groups.includes(group.group_id), [], [], [], epsilon, seed + groupIndex, iterations, "planned");
+      if (manifestInput.require_all_groups_scored && !groupDeltas.length) {
+        throw new Error(`arm ${arm.arm_id} group ${group.group_id} has no scored rows`);
+      }
       if (!groupDeltas.length) return cell(group.group_id, arm.train_groups.includes(group.group_id), [], [], [], epsilon, seed + groupIndex, iterations, "no_rows");
       return cell(group.group_id, arm.train_groups.includes(group.group_id), groupDeltas, [...bRows], [...cRows], epsilon, seed + groupIndex, iterations);
     });

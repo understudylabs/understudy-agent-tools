@@ -15,6 +15,8 @@
     },
     "epsilon": { "type": "number", "minimum": 0 },
     "regression_threshold": { "type": "number", "exclusiveMinimum": 0 },
+    "require_content_hashes": { "type": "boolean" },
+    "require_all_groups_scored": { "type": "boolean" },
     "groups": {
       "type": "array",
       "minItems": 1,
@@ -26,6 +28,16 @@
           "group_id": { "type": "string", "minLength": 1 },
           "label": { "type": "string" },
           "status": { "enum": ["present", "planned"] },
+          "frozen_split_sha256": { "type": "string", "minLength": 1 },
+          "expected_task_counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "train": { "type": "integer", "minimum": 0 },
+              "dev": { "type": "integer", "minimum": 0 },
+              "holdout": { "type": "integer", "minimum": 0 }
+            }
+          },
           "task_ids": { "type": "array", "items": { "type": "string" } },
           "match": {
             "type": "object",
@@ -49,7 +61,7 @@
         "required": ["arm_id", "train_groups", "baseline", "candidate"],
         "properties": {
           "arm_id": { "type": "string", "minLength": 1 },
-          "train_groups": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "train_groups": { "type": "array", "items": { "type": "string" } },
           "baseline": {
             "type": "object",
             "required": ["rows"],
