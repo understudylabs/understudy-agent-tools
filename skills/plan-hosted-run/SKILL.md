@@ -155,6 +155,7 @@ have quota/credits here." Match the job shape to the lead provider;
 | **RL training** (GRPO, multi-turn/agentic, reusable env) | **Prime Intellect** | `verifiers` env + `prime-rl` + Environments Hub + hosted Lab; scales 1→1000s GPUs | Fireworks if you want it fully managed |
 | **Managed RFT** (reward fn → trained policy → served), least friction | **Fireworks** | self-serve GRPO RFT + reward-kit + one-click train→serve | — |
 | **SFT / LoRA / DPO** then serve | **Fireworks or Together** | both do LoRA+full+DPO at ~$0.50/1M tok (≤16B), serve on same platform | — |
+| **Cheap first LoRA probe** on an open-weight model, weights in hand | **Tinker** | per-token training API, no GPU-hour floor, downloadable adapter/merged weights | Fireworks when the result must be hosted on the same platform |
 | **Raw GPU clusters** / run your own training/rollout engine at scale | **Together** (InfiniBand, up to 4,000+ GPUs) | bare-metal scale under one vendor | Prime Intellect marketplace (spot), or **Azure/GCP** if you hold quota/credits |
 | **Serverless per-token inference** of open models | **Together / Fireworks / Lilac** | comparable OpenAI-compatible endpoints | — |
 | **Hyperscaler** with existing quota/credits, Foundry/Vertex, data-residency | **Azure or GCP** | you manage the stack; good when already invested there | purpose-built RL/RFT providers |

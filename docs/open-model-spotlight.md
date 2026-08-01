@@ -84,6 +84,9 @@ and picks wrong tools. Same harness: Gemma 4 26B-A4B 8/10, Qwen3.6-35B-A3B
 (RLM-style REPL with tools as functions) than through native tool-call
 schemas — pair it with `recursive-language-model`, not raw tool use.
 
+Fine-tuning Nemotron 3 (which supplier trains which variant, exact model ids, tool
+templates, eval surfaces, cost): [`nemotron-3-tinker-vs-fireworks.md`](nemotron-3-tinker-vs-fireworks.md).
+
 **Via Understudy** — remote: `nemotron-3-nano`, `nemotron-3-super`,
 `nemotron-3-ultra`. Local (`run-local-model-lab`): Nano **4B** (smallest, dense —
 laptop/edge) or Nano **30B-A3B** (MoE, ~4B speed; Nano-Omni adds multimodal).

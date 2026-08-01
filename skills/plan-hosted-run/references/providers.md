@@ -17,6 +17,7 @@ implies no commercial relationship.
 | **Lilac** (getlilac) | Gemma 4 31B $0.11 in / $0.35 out per 1M [V] | — | No | No |
 | **Together AI** | Llama 3 8B Lite $0.14/$0.14; Llama 3.3 70B $1.04/$1.04 [V] | H100 $5.49 (cluster) – $6.49 (dedicated) [V] | No self-serve RFT [V] | **Yes — InfiniBand, up to 4,000+ GPUs** [V] |
 | **Fireworks AI** | per-token rates not on pricing page [U] | H100 $7.00 on-demand [V] | **Yes — GRPO RFT** [V] | No (managed platform) [V] |
+| **Tinker** (Thinking Machines) | training-API sampling only, e.g. Nemotron-3-Nano $0.495/1M out [V] | — (per-token, no GPU rental) | LoRA SFT + RL via the training API; you write the loop [V] | No |
 | **Prime Intellect** | — (compute/training, not a serverless catalog) | **H100 $2.43 on-demand / $0.94 spot** [V] | **Yes — verifiers + prime-rl + Lab** [V] | Yes — marketplace, 1–256 GPUs [V] |
 | **GCP** | — (hyperscaler IaaS / Vertex) | A100/L4/H100 via Compute + Vertex (see GCP pricing) | Vertex custom jobs (you bring the recipe) | Yes (you manage) |
 | **Azure / Microsoft Foundry** | Foundry/OpenAI model endpoints | NCads H100 v5 (see Azure pricing calculator) [V] | Foundry SFT/DPO/RFT by model [V] | Yes (you manage) |
@@ -37,7 +38,10 @@ verify-before-quoting; pricing especially.
 | Prime Intellect stack + H100 $2.43/$0.94 | primary (site + repos) | primeintellect.ai · github.com/PrimeIntellect-ai | 2026-06-07 |
 | Prime renderers | primary | primeintellect.ai/blog/renderers · github.com/PrimeIntellect-ai/renderers | 2026-06-07 |
 | Prime A100 $/hr | **unverified** | — | 2026-06-07 |
-| Fireworks GPU $ / FT $ | primary | fireworks.ai/pricing | 2026-06-07 |
+| Fireworks GPU $ / FT $ | primary | fireworks.ai/pricing | 2026-08-01 |
+| Fireworks live training-shape catalog (per-model SFT/DPO eligibility) | primary | docs.fireworks.ai/fine-tuning/models | 2026-08-01 |
+| Tinker models, IDs, per-token prices | primary | tinker-docs.thinkingmachines.ai/tinker/models/ (+ models.json) | 2026-08-01 |
+| Tinker renderers / weight export support matrix | primary (repo) | github.com/thinking-machines-lab/tinker-cookbook | 2026-08-01 |
 | Fireworks RFT (GRPO, reward-kit) | primary | fireworks.ai/reinforcement-fine-tuning | 2026-06-07 |
 | Fireworks RPM / 429 / autoscale | primary | docs.fireworks.ai (account-quotas, billing-scaling) | 2026-06-07 |
 | Fireworks per-token serverless rates | **unverified** (not on pricing page) | docs.fireworks.ai | 2026-06-07 |
@@ -141,6 +145,46 @@ the least assembly.
 Sources: https://fireworks.ai/pricing · https://fireworks.ai/reinforcement-fine-tuning
 · https://fireworks.ai/blog/fireworks-rft · https://docs.fireworks.ai/fine-tuning/reinforcement-fine-tuning-models
 · https://docs.fireworks.ai/tools-sdks/openai-compatibility
+
+---
+
+## Tinker — thinkingmachines.ai/tinker
+
+**Core offering [V]:** a *training* API, not a hosting platform. You write the training
+loop (SFT, DPO, RL) against a Python SDK; Tinker runs forward/backward passes and
+sampling on managed infrastructure and bills **per token** (prefill / sample / train)
+with no GPU rental and no idle cost. **LoRA only — no full fine-tuning**, by design;
+default rank 32. Checkpoints are downloadable (`build_hf_model` merge or
+`build_lora_adapter` PEFT export) so the trained model can be served anywhere,
+typically vLLM.
+
+**Catalog [V]:** ~28 open-weight models 1B–1T+, incl. NVIDIA **Nemotron 3** (Nano
+30B-A3B, Super 120B-A12B, Ultra 550B-A55B — all BF16), Qwen3/3.5/3.6, Kimi K2.6,
+DeepSeek V3.1, GPT-OSS, and Thinking Machines' own Inkling. Exact IDs and prices:
+`tinker-docs.thinkingmachines.ai/tinker/models.json`.
+
+**Inference [V]:** serverless inference is **beta and Inkling-only**; for every other
+model, evaluation runs through the per-token `SamplingClient`, which is the cheap part —
+no deployment to provision or leave running. The cookbook ships a benchmark harness
+(`gsm8k`, `ifeval`, `bfcl` function-calling, `tau2_bench`, `swe_bench`, …) usable in-loop.
+
+**Rendering [V]:** per-family renderers that are token-exact against the HF chat
+template, including tool declarations and thinking-mode variants — worth noting because
+managed platforms usually pin rendering for you (Fireworks Training V2 rejects a custom
+Jinja template).
+
+**Route to Tinker when** you want a cheap, controllable **supervised-LoRA or RL probe**
+on an open-weight model — especially a first pilot where a negative result should cost
+single-digit dollars — or when you need the adapter/merged weights in hand. Route
+elsewhere when you want the trained model *hosted* on the same platform.
+
+For the Nemotron-3 supplier comparison (Tinker vs Fireworks: exact IDs, LoRA support,
+tool templates, eval surfaces, adapter portability), see
+[`docs/nemotron-3-tinker-vs-fireworks.md`](../../../docs/nemotron-3-tinker-vs-fireworks.md).
+
+Sources: https://tinker-docs.thinkingmachines.ai/tinker/ · https://tinker-docs.thinkingmachines.ai/tinker/models/
+· https://tinker-docs.thinkingmachines.ai/tinker/lora-primer/ · https://tinker-docs.thinkingmachines.ai/cookbook/eval/
+· https://github.com/thinking-machines-lab/tinker-cookbook
 
 ---
 
