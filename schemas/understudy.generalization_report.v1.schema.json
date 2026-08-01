@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.generalization_report.v1.schema.json",
+  "title": "understudy.generalization_report.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "manifest", "arms", "matrix", "score", "coverage", "warnings"],
+  "properties": {
+    "schema_version": { "const": "understudy.generalization_report.v1" },
+    "generated_at": { "type": "string" },
+    "manifest": { "$ref": "understudy.generalization_manifest.v1.schema.json" },
+    "arms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["arm_id", "train_groups", "task_deltas", "matrix"],
+        "properties": {
+          "arm_id": { "type": "string" },
+          "train_groups": { "type": "array", "items": { "type": "string" } },
+          "baseline_model": { "type": "string" },
+          "candidate_model": { "type": "string" },
+          "receipt": { "type": "string" },
+          "task_deltas": { "type": "array" },
+          "matrix": { "type": "array" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "matrix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["arm_id", "train_groups", "cells"],
+        "properties": {
+          "arm_id": { "type": "string" },
+          "train_groups": { "type": "array", "items": { "type": "string" } },
+          "cells": { "type": "array" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "score": {
+      "type": "object",
+      "required": ["in_domain_gain", "transfer_gain", "transfer_ratio", "forgetting", "regressed_groups", "generalization_score"],
+      "properties": {
+        "in_domain_gain": { "type": ["number", "null"] },
+        "transfer_gain": { "type": ["number", "null"] },
+        "transfer_ratio": { "type": ["number", "null"] },
+        "forgetting": {
+          "type": ["number", "null"],
+          "description": "Minimum delta across scored off-diagonal matrix cells; group-level forgetting, not a single-task minimum."
+        },
+        "regressed_groups": { "type": "array", "items": { "type": "string" } },
+        "generalization_score": { "type": ["number", "null"] },
+        "weighting": { "const": "task-weighted" },
+        "regression_threshold": { "type": "number" },
+        "forgetting_penalty": { "type": ["number", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["groups", "unassigned_task_ids"],
+      "properties": {
+        "groups": { "type": "array" },
+        "unassigned_task_ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

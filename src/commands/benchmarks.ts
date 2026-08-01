@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { Command } from "commander";
+import type { EvalRow } from "../generalization.js";
 
 /**
  * `understudy benchmarks …` — the agent-operator surface over the file-based
@@ -174,6 +176,47 @@ export function registerBenchmarksCommand(program: Command): void {
     .action(async (dir: string, options: { baseline: string; candidate: string }) => {
       const { comparePrimeModels } = await import("../prime-benchmark-compare.js");
       console.log(JSON.stringify(comparePrimeModels(dir, options.baseline, options.candidate), null, 2));
+    });
+
+  benchmarks
+    .command("generalization")
+    .description("Compare baseline/candidate eval rows across task groups without running models")
+    .requiredOption("--manifest <path>", "Generalization manifest JSON")
+    .option("--out <path.json>", "Write the JSON report to this path")
+    .option("--markdown <path.md>", "Write the Markdown report to this path")
+    .action(async (options: { manifest: string; out?: string; markdown?: string }) => {
+      const { readJsonlFile } = await import("../benchmark-artifacts.js");
+      const { deriveGeneralizationReport, renderGeneralizationReport } =
+        await import("../generalization.js");
+      const manifestPath = resolve(options.manifest);
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      const manifestDir = dirname(manifestPath);
+      const rowsByArm: Record<string, { baseline: EvalRow[]; candidate: EvalRow[] }> = {};
+      for (const arm of manifest.arms ?? []) {
+        const loadRows = (file: string): EvalRow[] => {
+          const rowPath = resolve(manifestDir, file);
+          if (!existsSync(rowPath)) throw new Error(`rows file not found: ${rowPath}`);
+          const parsed = readJsonlFile<EvalRow>(rowPath);
+          if (parsed.skipped > 0) throw new Error(`rows file ${rowPath} contains ${parsed.skipped} malformed line(s)`);
+          return parsed.items;
+        };
+        rowsByArm[arm.arm_id] = {
+          baseline: loadRows(arm.baseline.rows),
+          candidate: loadRows(arm.candidate.rows),
+        };
+      }
+      const report = deriveGeneralizationReport(manifest, rowsByArm);
+      if (options.out) {
+        const target = resolve(options.out);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+      }
+      if (options.markdown) {
+        const target = resolve(options.markdown);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, renderGeneralizationReport(report), { mode: 0o600 });
+      }
+      console.log(JSON.stringify(report, null, 2));
     });
 
   benchmarks

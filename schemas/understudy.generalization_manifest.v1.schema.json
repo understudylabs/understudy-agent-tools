@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.generalization_manifest.v1.schema.json",
+  "title": "understudy.generalization_manifest.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "frozen_split_sha256", "groups", "arms"],
+  "properties": {
+    "schema_version": { "const": "understudy.generalization_manifest.v1" },
+    "frozen_split_sha256": { "type": "string", "minLength": 1 },
+    "eval_splits": {
+      "type": "array",
+      "items": { "enum": ["train", "dev", "holdout"] },
+      "minItems": 1
+    },
+    "epsilon": { "type": "number", "minimum": 0 },
+    "regression_threshold": { "type": "number", "exclusiveMinimum": 0 },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["group_id"],
+        "properties": {
+          "group_id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string" },
+          "status": { "enum": ["present", "planned"] },
+          "task_ids": { "type": "array", "items": { "type": "string" } },
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "task_id_prefix": { "type": "string" },
+              "task_id_pattern": { "type": "string" },
+              "benchmark_id": { "type": "string" },
+              "category_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "arms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["arm_id", "train_groups", "baseline", "candidate"],
+        "properties": {
+          "arm_id": { "type": "string", "minLength": 1 },
+          "train_groups": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "baseline": {
+            "type": "object",
+            "required": ["rows"],
+            "properties": { "rows": { "type": "string", "minLength": 1 }, "model": { "type": "string" } },
+            "additionalProperties": true
+          },
+          "candidate": {
+            "type": "object",
+            "required": ["rows"],
+            "properties": {
+              "rows": { "type": "string", "minLength": 1 },
+              "model": { "type": "string" },
+              "receipt": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  }
+}
