@@ -1,0 +1,140 @@
+{
+  "checkpoints": [
+    {
+      "epoch": 1,
+      "sampler_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch1"
+    },
+    {
+      "epoch": 2,
+      "sampler_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch2"
+    },
+    {
+      "epoch": 3,
+      "sampler_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch3"
+    },
+    {
+      "epoch": 4,
+      "sampler_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/weights/sft-epoch4-state"
+    }
+  ],
+  "epochs": 4,
+  "learning_rate": 0.0001,
+  "lora_rank": 32,
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "step_logs": [
+    {
+      "batch": 1,
+      "batch_tokens": 8961,
+      "elapsed_seconds": 14.950329468999826,
+      "epoch": 1,
+      "global_step": 1,
+      "learning_rate": 0.0001,
+      "loss": 0.16490547358989716
+    },
+    {
+      "batch": 2,
+      "batch_tokens": 7251,
+      "elapsed_seconds": 19.09444378199987,
+      "epoch": 1,
+      "global_step": 2,
+      "learning_rate": 9.090909090909092e-05,
+      "loss": 0.12502777576446533
+    },
+    {
+      "batch": 3,
+      "batch_tokens": 9976,
+      "elapsed_seconds": 23.007304122999813,
+      "epoch": 1,
+      "global_step": 3,
+      "learning_rate": 8.181818181818182e-05,
+      "loss": 0.0839276984333992
+    },
+    {
+      "batch": 1,
+      "batch_tokens": 8961,
+      "elapsed_seconds": 29.72330352599988,
+      "epoch": 2,
+      "global_step": 4,
+      "learning_rate": 7.272727272727273e-05,
+      "loss": 0.07721488922834396
+    },
+    {
+      "batch": 2,
+      "batch_tokens": 7251,
+      "elapsed_seconds": 36.089532942999995,
+      "epoch": 2,
+      "global_step": 5,
+      "learning_rate": 6.363636363636364e-05,
+      "loss": 0.04036372900009155
+    },
+    {
+      "batch": 3,
+      "batch_tokens": 9976,
+      "elapsed_seconds": 40.044118535999814,
+      "epoch": 2,
+      "global_step": 6,
+      "learning_rate": 5.4545454545454546e-05,
+      "loss": 0.03203687444329262
+    },
+    {
+      "batch": 1,
+      "batch_tokens": 8961,
+      "elapsed_seconds": 67.54344388599998,
+      "epoch": 3,
+      "global_step": 7,
+      "learning_rate": 4.545454545454546e-05,
+      "loss": 0.05234305560588837
+    },
+    {
+      "batch": 2,
+      "batch_tokens": 7251,
+      "elapsed_seconds": 71.45503799999983,
+      "epoch": 3,
+      "global_step": 8,
+      "learning_rate": 3.6363636363636364e-05,
+      "loss": 0.012477736920118332
+    },
+    {
+      "batch": 3,
+      "batch_tokens": 9976,
+      "elapsed_seconds": 78.65620466999985,
+      "epoch": 3,
+      "global_step": 9,
+      "learning_rate": 2.7272727272727273e-05,
+      "loss": 0.016545208171010017
+    },
+    {
+      "batch": 1,
+      "batch_tokens": 8961,
+      "elapsed_seconds": 91.13577987999997,
+      "epoch": 4,
+      "global_step": 10,
+      "learning_rate": 1.818181818181818e-05,
+      "loss": 0.04440995305776596
+    },
+    {
+      "batch": 2,
+      "batch_tokens": 7251,
+      "elapsed_seconds": 95.0160560559998,
+      "epoch": 4,
+      "global_step": 11,
+      "learning_rate": 9.090909090909094e-06,
+      "loss": 0.006679191719740629
+    },
+    {
+      "batch": 3,
+      "batch_tokens": 9976,
+      "elapsed_seconds": 98.90087191099997,
+      "epoch": 4,
+      "global_step": 12,
+      "learning_rate": 0.0,
+      "loss": 0.013831089250743389
+    }
+  ],
+  "steps_per_epoch": 3,
+  "tokens_seen": 104752,
+  "total_steps": 12,
+  "wall_clock_seconds": 119.01496680699984
+}

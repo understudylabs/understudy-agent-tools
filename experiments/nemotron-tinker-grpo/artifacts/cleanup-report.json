@@ -1,0 +1,48 @@
+{
+  "arm_training_runs": [
+    {
+      "run": "e3e3d392...:train:0",
+      "purpose": "SFT epoch 1-4",
+      "checkpoint_expiry": "all reported expires_at null",
+      "deleted": false
+    },
+    {
+      "run": "91eac422...:train:0",
+      "purpose": "GRPO Stage 1 trial",
+      "checkpoint_expiry": "all reported expires_at null",
+      "deleted": false
+    },
+    {
+      "run": "efb1352d...:train:0",
+      "purpose": "GRPO Stage 2, 40 steps",
+      "checkpoint_expiry": {
+        "steps_5_35": "2026-08-08 (provider-reported)",
+        "step_40_and_final": "null (provider-reported)",
+        "selected_step_20_state": "2026-08-08T22:45:38Z",
+        "selected_step_20_sampler": "2026-08-08T22:45:40Z"
+      },
+      "deleted": false
+    }
+  ],
+  "list_sessions": {
+    "limit": 100,
+    "returned": 100,
+    "note": "Response was limited to the requested page size."
+  },
+  "always_on_serving_resource": false,
+  "sampling_clients_ephemeral": true,
+  "node_service_processes_remaining": 0,
+  "listening_ports_remaining": 0,
+  "checkpoints_deleted": [],
+  "would_delete_if_requested": [
+    "SFT epoch 1-4 sampler checkpoints and epoch-4 resumable state",
+    "GRPO Stage 1 final sampler and state",
+    "GRPO Stage 2 checkpoints at steps 5, 10, 15, 20, 25, 30, 35, 40, and final (sampler and state)"
+  ],
+  "billing_retry": {
+    "event_count": 28,
+    "event_token_total": 575178,
+    "dollar_amount_available": false,
+    "note": "Provider returned events but no dollar amounts."
+  }
+}
