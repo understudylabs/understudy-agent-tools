@@ -1,0 +1,37 @@
+{
+  "grpo_checkpoints": [
+    {
+      "mean_reward": 0.9444444444444445,
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000010",
+      "step": 10,
+      "strict_pass_rate": 0.9166666666666666,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-step10-dev.summary.json"
+    },
+    {
+      "mean_reward": 1.0,
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "step": 20,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-step20-dev.summary.json"
+    },
+    {
+      "mean_reward": 1.0,
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000030",
+      "step": 30,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-step30-dev.summary.json"
+    },
+    {
+      "mean_reward": 1.0,
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/final",
+      "step": 40,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-step40-dev.summary.json"
+    }
+  ],
+  "sft_epoch4": {
+    "mean_reward": 0.9444444444444445,
+    "strict_pass_rate": 0.9166666666666666,
+    "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/sft-epoch4-dev.summary.json"
+  }
+}

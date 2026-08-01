@@ -1,0 +1,456 @@
+{
+  "constant_group_fraction": 0.60625,
+  "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
+  "dataset_seed": 7,
+  "exemplar": {
+    "messages": [
+      {
+        "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "role": "system"
+      },
+      {
+        "content": "The account for Alan Turing moves to rep u-5. Update the CRM owner for that contact.",
+        "role": "user"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"barbara.liskov@example.test\",\"name\":\"Barbara Liskov\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"owner\":\"u-5\"}}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contact\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-5\",\"status\":\"open\"},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+        "role": "assistant"
+      }
+    ],
+    "reward": 1.0,
+    "step": 0,
+    "task_id": "simple-api-crm-owner-03"
+  },
+  "group_size": 8,
+  "groups_per_batch": 8,
+  "load_checkpoint_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/weights/sft-epoch4-state",
+  "lora_rank": 32,
+  "max_steps": 40,
+  "max_tokens": 192,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "remove_constant_reward_groups": true,
+  "renderer": "nemotron3_disable_thinking",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node AutomationBench service is the verifier; its terminal reward is literally partialCredit from src/automationbench-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "stage": "2",
+  "steps": [
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.8619791666666666,
+      "prompt_tokens": 102002,
+      "sampled_tokens": 5282,
+      "step": 0,
+      "wall_clock_seconds": 29.91273146200001
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.8046875,
+      "prompt_tokens": 102388,
+      "sampled_tokens": 5694,
+      "step": 1,
+      "wall_clock_seconds": 36.058378170000196
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.84375,
+      "prompt_tokens": 109700,
+      "sampled_tokens": 5796,
+      "step": 2,
+      "wall_clock_seconds": 45.20556229600015
+    },
+    {
+      "constant_group_fraction": 0.25,
+      "constant_groups": 2,
+      "groups": 8,
+      "mean_group_reward": 0.7760416666666666,
+      "prompt_tokens": 99651,
+      "sampled_tokens": 5491,
+      "step": 3,
+      "wall_clock_seconds": 31.40508662100001
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.9296875,
+      "prompt_tokens": 97891,
+      "sampled_tokens": 5582,
+      "step": 4,
+      "wall_clock_seconds": 34.16331007200006
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.875,
+      "prompt_tokens": 92406,
+      "sampled_tokens": 5076,
+      "step": 5,
+      "wall_clock_seconds": 26.092375563000132
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.8515625,
+      "prompt_tokens": 107216,
+      "sampled_tokens": 5748,
+      "step": 6,
+      "wall_clock_seconds": 24.33966578699983
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.8802083333333334,
+      "prompt_tokens": 97694,
+      "sampled_tokens": 5331,
+      "step": 7,
+      "wall_clock_seconds": 23.093665992000297
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.9140625,
+      "prompt_tokens": 111614,
+      "sampled_tokens": 5614,
+      "step": 8,
+      "wall_clock_seconds": 36.67101216000037
+    },
+    {
+      "constant_group_fraction": 0.0,
+      "constant_groups": 0,
+      "groups": 8,
+      "mean_group_reward": 0.7682291666666666,
+      "prompt_tokens": 119263,
+      "sampled_tokens": 6765,
+      "step": 9,
+      "wall_clock_seconds": 25.50798277900003
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.921875,
+      "prompt_tokens": 86511,
+      "sampled_tokens": 4861,
+      "step": 10,
+      "wall_clock_seconds": 14.097161514000163
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9270833333333334,
+      "prompt_tokens": 97104,
+      "sampled_tokens": 5152,
+      "step": 11,
+      "wall_clock_seconds": 26.75435090899964
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.8671875,
+      "prompt_tokens": 94925,
+      "sampled_tokens": 5519,
+      "step": 12,
+      "wall_clock_seconds": 34.23690294500011
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.8671875,
+      "prompt_tokens": 124675,
+      "sampled_tokens": 6888,
+      "step": 13,
+      "wall_clock_seconds": 32.371110374999716
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.96875,
+      "prompt_tokens": 91024,
+      "sampled_tokens": 4799,
+      "step": 14,
+      "wall_clock_seconds": 20.018563230999916
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9322916666666666,
+      "prompt_tokens": 88529,
+      "sampled_tokens": 4803,
+      "step": 15,
+      "wall_clock_seconds": 17.45055028700017
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9192708333333334,
+      "prompt_tokens": 116167,
+      "sampled_tokens": 6189,
+      "step": 16,
+      "wall_clock_seconds": 53.033334232000016
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.9375,
+      "prompt_tokens": 85028,
+      "sampled_tokens": 4691,
+      "step": 17,
+      "wall_clock_seconds": 29.902313662000324
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9192708333333334,
+      "prompt_tokens": 109357,
+      "sampled_tokens": 5839,
+      "step": 18,
+      "wall_clock_seconds": 60.42044621700006
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9765625,
+      "prompt_tokens": 89462,
+      "sampled_tokens": 5075,
+      "step": 19,
+      "wall_clock_seconds": 33.185667642000226
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 80926,
+      "sampled_tokens": 4520,
+      "step": 20,
+      "wall_clock_seconds": 43.01838150200001
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.890625,
+      "prompt_tokens": 107573,
+      "sampled_tokens": 5907,
+      "step": 21,
+      "wall_clock_seconds": 62.34772680299966
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9427083333333334,
+      "prompt_tokens": 98206,
+      "sampled_tokens": 5202,
+      "step": 22,
+      "wall_clock_seconds": 49.564462129000276
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.9427083333333334,
+      "prompt_tokens": 90620,
+      "sampled_tokens": 4882,
+      "step": 23,
+      "wall_clock_seconds": 143.6932384820002
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9791666666666666,
+      "prompt_tokens": 88477,
+      "sampled_tokens": 4784,
+      "step": 24,
+      "wall_clock_seconds": 17.776956863000123
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.9348958333333334,
+      "prompt_tokens": 101877,
+      "sampled_tokens": 5689,
+      "step": 25,
+      "wall_clock_seconds": 23.875132013999973
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 78396,
+      "sampled_tokens": 4321,
+      "step": 26,
+      "wall_clock_seconds": 19.216472995000004
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9375,
+      "prompt_tokens": 89048,
+      "sampled_tokens": 5107,
+      "step": 27,
+      "wall_clock_seconds": 26.63004075400022
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.9114583333333334,
+      "prompt_tokens": 110898,
+      "sampled_tokens": 5895,
+      "step": 28,
+      "wall_clock_seconds": 30.530554088999452
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 101166,
+      "sampled_tokens": 5322,
+      "step": 29,
+      "wall_clock_seconds": 26.820241544000055
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 88382,
+      "sampled_tokens": 4685,
+      "step": 30,
+      "wall_clock_seconds": 75.05539902599958
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.9296875,
+      "prompt_tokens": 94372,
+      "sampled_tokens": 5267,
+      "step": 31,
+      "wall_clock_seconds": 23.29218554400086
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9739583333333334,
+      "prompt_tokens": 89935,
+      "sampled_tokens": 4871,
+      "step": 32,
+      "wall_clock_seconds": 85.08183673200074
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 75022,
+      "sampled_tokens": 4219,
+      "step": 33,
+      "wall_clock_seconds": 12.840257322999605
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9375,
+      "prompt_tokens": 109340,
+      "sampled_tokens": 5803,
+      "step": 34,
+      "wall_clock_seconds": 27.753085686000304
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9765625,
+      "prompt_tokens": 98195,
+      "sampled_tokens": 5570,
+      "step": 35,
+      "wall_clock_seconds": 53.01155952099998
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.9114583333333334,
+      "prompt_tokens": 90044,
+      "sampled_tokens": 5154,
+      "step": 36,
+      "wall_clock_seconds": 17.617945748999773
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 88542,
+      "sampled_tokens": 4886,
+      "step": 37,
+      "wall_clock_seconds": 20.44721244900029
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.96875,
+      "prompt_tokens": 78632,
+      "sampled_tokens": 4406,
+      "step": 38,
+      "wall_clock_seconds": 14.565152886999385
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 73695,
+      "sampled_tokens": 4230,
+      "step": 39,
+      "wall_clock_seconds": 16.61187155099924
+    }
+  ],
+  "total_constant_groups": 194,
+  "total_groups": 320,
+  "wall_clock_seconds": 1773.1187640140001
+}

@@ -1,0 +1,76 @@
+{
+  "constant_group_fraction": 0.25,
+  "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
+  "dataset_seed": 7,
+  "exemplar": {
+    "messages": [
+      {
+        "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "role": "system"
+      },
+      {
+        "content": "The signed contract lists the legal name Anita E. Borg for the contact recorded as Anita Borg. Correct that CRM contact's name to the legal name exactly.",
+        "role": "user"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita Borg\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"leslie.lamport@example.test\",\"name\":\"Leslie Lamport\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"name\":\"Anita E. Borg\"}}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contact\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita E. Borg\",\"owner\":\"u-2\",\"status\":\"open\"},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+        "role": "assistant"
+      }
+    ],
+    "reward": 1.0,
+    "step": 0,
+    "task_id": "simple-api-crm-rename-04"
+  },
+  "group_size": 8,
+  "groups_per_batch": 8,
+  "load_checkpoint_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/weights/sft-epoch4-state",
+  "lora_rank": 32,
+  "max_steps": 2,
+  "max_tokens": 192,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "remove_constant_reward_groups": true,
+  "renderer": "nemotron3_disable_thinking",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node AutomationBench service is the verifier; its terminal reward is literally partialCredit from src/automationbench-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "stage": "1",
+  "steps": [
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.7708333333333334,
+      "prompt_tokens": 106074,
+      "sampled_tokens": 5419,
+      "step": 0,
+      "wall_clock_seconds": 28.197138246000122
+    },
+    {
+      "constant_group_fraction": 0.125,
+      "constant_groups": 1,
+      "groups": 8,
+      "mean_group_reward": 0.8203125,
+      "prompt_tokens": 95944,
+      "sampled_tokens": 5782,
+      "step": 1,
+      "wall_clock_seconds": 26.03415994199986
+    }
+  ],
+  "total_constant_groups": 4,
+  "total_groups": 16,
+  "wall_clock_seconds": 113.47591729900023
+}
