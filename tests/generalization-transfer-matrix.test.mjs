@@ -5,6 +5,8 @@ import { scoreCompletion, TASKS as eventTasks } from "../dist/event-categorizer-
 import { BudgetLedger, parseAction, runModelRows } from "../dist/generalization-model-runner.js";
 import { groupAAdapter } from "../dist/generalization-group-adapters.js";
 import { deriveGeneralizationReport } from "../dist/generalization.js";
+import { ACTION_PROTOCOL_SYSTEM_PROMPT } from "../dist/automationbench-rl-service.js";
+import { GROUP_A_PROTOCOL_SYSTEM_PROMPT } from "../dist/generalization-transfer-prompts.js";
 
 test("AutomationBench frozen holdout hash is pinned", () => {
   assert.equal(
@@ -84,6 +86,39 @@ test("model runner emits rows and enforces its budget with a stub transport", as
     }),
     /budget exceeded/,
   );
+});
+
+test("Tinker Group A protocol is byte-identical to the training protocol", () => {
+  assert.equal(GROUP_A_PROTOCOL_SYSTEM_PROMPT, ACTION_PROTOCOL_SYSTEM_PROMPT);
+});
+
+test("Tinker transport uses the sampler contract and preserves tool observations", async () => {
+  const base = groupAAdapter();
+  const adapter = { ...base, taskIds: (options) => base.taskIds(options).slice(0, 1) };
+  const requests = [];
+  const rows = await runModelRows({
+    adapter,
+    split: "dev",
+    runId: "tinker-stub",
+    model: "tinker://stub",
+    provider: "tinker",
+    tinkerSamplerUrl: "http://127.0.0.1:1234",
+    instructionOverride: GROUP_A_PROTOCOL_SYSTEM_PROMPT,
+    price: { inputUsdPerMillion: 1, outputUsdPerMillion: 1 },
+    budget: new BudgetLedger(1),
+    transport: async (request) => {
+      requests.push(request);
+      return {
+        content: JSON.stringify({ tool: "finish", arguments: {} }),
+        usage: { prompt: 10, completion: 3 },
+        status: 200,
+        rawPayload: { prompt_cache_hit_tokens: 0 },
+      };
+    },
+  });
+  assert.equal(rows[0].route, "tinker-sampling");
+  assert.equal(requests[0].samplerUrl, "http://127.0.0.1:1234");
+  assert.equal(requests[0].messages[0].content, ACTION_PROTOCOL_SYSTEM_PROMPT);
 });
 
 test("model action parser extracts embedded JSON and repairs only after a second failure", () => {

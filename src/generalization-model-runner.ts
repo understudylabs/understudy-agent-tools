@@ -2,7 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { performance } from "node:perf_hooks";
 
-export type Provider = "anthropic" | "fireworks";
+export type Provider = "anthropic" | "fireworks" | "tinker";
 export type ChatMessage = { role: "system" | "user" | "assistant" | "tool"; content: string };
 export type PriceTable = { inputUsdPerMillion: number; outputUsdPerMillion: number };
 export type TokenUsage = { prompt: number; completion: number };
@@ -14,6 +14,7 @@ export type TransportRequest = {
   maxTokens: number;
   temperature: 0;
   reasoningEffort?: "low";
+  samplerUrl?: string;
 };
 
 export type TransportResponse = {
@@ -86,6 +87,8 @@ export type ModelRunOptions = {
   debugTranscriptsPath?: string;
   maxTokens?: number;
   maxSteps?: number;
+  instructionOverride?: string;
+  tinkerSamplerUrl?: string;
   transport?: Transport;
 };
 
@@ -137,7 +140,9 @@ export function parseAction(content: string): { tool: string; arguments: Record<
 async function defaultTransport(request: TransportRequest): Promise<TransportResponse> {
   const url = request.provider === "anthropic"
     ? "https://api.anthropic.com/v1/messages"
-    : "https://api.fireworks.ai/inference/v1/chat/completions";
+    : request.provider === "fireworks"
+      ? "https://api.fireworks.ai/inference/v1/chat/completions"
+      : `${request.samplerUrl ?? process.env.TINKER_SAMPLER_URL ?? "http://127.0.0.1:8790"}/sample`;
   const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
   let body: Record<string, unknown>;
   if (request.provider === "anthropic") {
@@ -157,7 +162,7 @@ async function defaultTransport(request: TransportRequest): Promise<TransportRes
       temperature: 0,
       max_tokens: request.maxTokens,
     };
-  } else {
+  } else if (request.provider === "fireworks") {
     const key = process.env.FIREWORKS_API_KEY;
     if (!key) throw new Error("FIREWORKS_API_KEY is not set");
     headers.authorization = `Bearer ${key}`;
@@ -171,6 +176,12 @@ async function defaultTransport(request: TransportRequest): Promise<TransportRes
       stream: false,
       ...(request.reasoningEffort ? { reasoning_effort: request.reasoningEffort } : {}),
       ...(request.model.includes("gpt-oss") ? { response_format: { type: "json_object" } } : {}),
+    };
+  } else {
+    body = {
+      messages: request.messages,
+      max_tokens: request.maxTokens,
+      temperature: request.temperature,
     };
   }
   const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
@@ -186,11 +197,13 @@ async function defaultTransport(request: TransportRequest): Promise<TransportRes
     throw Object.assign(new Error(error || `HTTP ${response.status}`), { status: response.status, bodySnippet: responseText.slice(0, 400) });
   }
   const usage = (value.usage && typeof value.usage === "object" ? value.usage : {}) as Record<string, unknown>;
-  const prompt = Number(usage.input_tokens ?? usage.prompt_tokens ?? 0);
-  const completion = Number(usage.output_tokens ?? usage.completion_tokens ?? 0);
+  const prompt = Number(usage.input_tokens ?? usage.prompt_tokens ?? usage.prompt ?? 0);
+  const completion = Number(usage.output_tokens ?? usage.completion_tokens ?? usage.completion ?? 0);
   const content = request.provider === "anthropic"
     ? (((Array.isArray(value.content) ? value.content[0] : null) as Record<string, unknown> | null)?.text ?? "")
-    : (((value.choices as Array<Record<string, unknown>> | undefined)?.[0]?.message as Record<string, unknown> | undefined)?.content ?? "");
+    : request.provider === "fireworks"
+      ? (((value.choices as Array<Record<string, unknown>> | undefined)?.[0]?.message as Record<string, unknown> | undefined)?.content ?? "")
+      : (value.content ?? "");
   return { content: String(content), usage: { prompt, completion }, status: response.status, rawPayload: value };
 }
 
@@ -223,7 +236,10 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
   for (const taskId of taskIds) {
     const episode = options.adapter.start(taskId);
     const messages: ChatMessage[] = episode.messages.map((message) => ({ ...message }));
-    messages[0] = { role: "system", content: `${messages[0]?.content ?? ""}\n\n${instruction()}` };
+    messages[0] = {
+      role: "system",
+      content: options.instructionOverride ?? `${messages[0]?.content ?? ""}\n\n${instruction()}`,
+    };
     let finalContent = "";
     let parseFailures = 0;
     let transportError: Error | null = null;
@@ -245,6 +261,7 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
           maxTokens,
           temperature: 0,
           ...(options.provider === "fireworks" && options.model.includes("gpt-oss") ? { reasoningEffort: "low" as const } : {}),
+          ...(options.provider === "tinker" ? { samplerUrl: options.tinkerSamplerUrl } : {}),
         }, transport);
       } catch (error) {
         transportError = error instanceof Error ? error : new Error(String(error));
@@ -290,7 +307,12 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
         break;
       }
       const applied = episode.applyToolCall(action.tool, action.arguments);
-      messages.push({ role: "tool", content: JSON.stringify(applied.result) });
+      messages.push({
+        role: "tool",
+        content: options.provider === "tinker" && typeof applied.result === "string"
+          ? applied.result
+          : JSON.stringify(applied.result),
+      });
       if (applied.done) break;
     }
     if (options.debugTranscriptsPath) {
@@ -310,7 +332,11 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
       score: result.score,
       status: result.status,
       model: options.model,
-      route: options.provider === "anthropic" ? "anthropic-api" : "fireworks-openai-compat",
+      route: options.provider === "anthropic"
+        ? "anthropic-api"
+        : options.provider === "fireworks"
+          ? "fireworks-openai-compat"
+          : "tinker-sampling",
       tokens: { prompt: totalPrompt, completion: totalCompletion },
       cost: { usd: totalUsd, basis: "estimated, caller-supplied price table" },
       latency_ms: totalLatency,
