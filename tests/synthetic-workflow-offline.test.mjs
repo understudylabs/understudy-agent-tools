@@ -32,6 +32,7 @@ import { validateBenchmarkManifest } from "../dist/benchmark.js";
 const SOURCE_FILES = [
   "src/synthetic-workflow-offline.ts",
   "src/fixtures/synthetic-workflow-shapes.ts",
+  "docs/synthetic-workflow-fixtures.md",
 ];
 const allSource = SOURCE_FILES.map((path) => readFileSync(path, "utf8")).join("\n");
 const holdoutHash = splitSha256("holdout");
@@ -302,7 +303,10 @@ describe("evaluator and importer", () => {
 
 describe("identity and domain denylist", () => {
   it("contains no identity tokens, credential prefixes, or non-test domains", () => {
+    // Each token is split so the literal never appears in this file and
+    // therefore cannot match itself.
     const blocked = [
+      ["ce", "dar"].join(""),
       ["workload-", "00"].join(""),
       ["o", "rg_01"].join(""),
       ["pro", "j_0"].join(""),
