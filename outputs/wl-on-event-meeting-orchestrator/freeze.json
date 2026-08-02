@@ -1,0 +1,29 @@
+{
+  "fixture_id": "meeting-orchestrator-shapes-offline-v1",
+  "fixture_sha256": "a33a00404a9d271662228ab330c116b3cc1722d13d3cb67df58a979da6f12e61",
+  "split_sha256": {
+    "train": "edfa0f4ec6419df5ca836da0601dc10ef43b732383064f0893e84619619676ff",
+    "dev": "10b1b065d0aa86d87c2ff21150ebfc560a9eeb5fa662f5a10c0c6f3b9a170c21",
+    "holdout": "b2af83e5743fec33ec3e21cfedac21f2e4b251a898ecc834673fb362189400ae"
+  },
+  "counts": {
+    "train": 48,
+    "dev": 16,
+    "holdout": 32
+  },
+  "task_count": 96,
+  "band_counts": {
+    "single-write": 12,
+    "discovery": 12,
+    "conditional": 24,
+    "multi-write": 24,
+    "no-op-guard": 12,
+    "long-chain": 12
+  },
+  "gates": {
+    "oracle_mean": 1,
+    "sentinel_max": 0,
+    "lazy_max": 0,
+    "failures": []
+  }
+}

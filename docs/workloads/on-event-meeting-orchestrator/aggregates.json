@@ -1,0 +1,60 @@
+{
+  "schema": "understudy.workload_aggregates.v1",
+  "workload_name": "on-event-meeting-orchestrator",
+  "window": { "start": "2026-06-03", "end": "2026-08-02", "days": 60 },
+  "scope": "gateway outer spans, one pilot project",
+  "privacy": "aggregates only; no raw rows, prompts, completions, or tenant identifiers",
+  "totals": {
+    "requests": 8447,
+    "share_of_project_requests_pct": 0.92,
+    "customer_cost_usd": 473.57,
+    "upstream_cost_usd": 472.43,
+    "share_of_project_cost_pct": 1.51,
+    "usd_per_request": 0.0561,
+    "usd_per_1k_output_tokens": 0.1422,
+    "streaming_pct": 0.0,
+    "distinct_payload_hash_pct": 100.0
+  },
+  "tokens": {
+    "uncached_input": 54571736,
+    "cache_read_input": 186867589,
+    "cache_creation_input": 64878607,
+    "input_total": 306317932,
+    "output_incl_reasoning": 3331010,
+    "reasoning_output": 0,
+    "cache_read_share_of_input_pct": 61.0
+  },
+  "served_models": [
+    { "provider": "anthropic", "served_model": "claude-sonnet-4-6", "requests": 6187, "output_p50": 327, "output_p90": 724, "output_p95": 904, "output_p99": 1197, "output_max": 1852, "output_mean": 388.4, "input_p50": 32791, "input_p95": 59148 },
+    { "provider": "anthropic", "served_model": "claude-sonnet-5", "requests": 2230, "output_p50": 305, "output_p90": 892, "output_p95": 1203, "output_p99": 2141, "output_max": 4096, "output_mean": 403.8, "input_p50": 37420, "input_p95": 68306 },
+    { "provider": "fireworks", "served_model": "glm-5p2", "requests": 19, "output_p50": 452, "output_p90": 2709, "output_p95": 4639, "output_p99": 4639, "output_max": 4639, "output_mean": 986.1, "input_p50": 28009, "input_p95": 71857 },
+    { "provider": "lilac", "served_model": "glm-5.2", "requests": 11, "output_p50": 373, "output_p90": 1700, "output_p95": 3519, "output_p99": 3519, "output_max": 3519, "output_mean": 793.0, "input_p50": 28308, "input_p95": 33338 }
+  ],
+  "output_length_bands": [
+    { "band": "A", "range": "<=256", "requests": 2665, "pct_requests": 31.5, "customer_cost_usd": 106.64, "pct_cost": 22.5, "output_tokens": 379934 },
+    { "band": "B", "range": "257-512", "requests": 3899, "pct_requests": 46.2, "customer_cost_usd": 225.70, "pct_cost": 47.7, "output_tokens": 1384846 },
+    { "band": "C", "range": "513-1024", "requests": 1560, "pct_requests": 18.5, "customer_cost_usd": 114.14, "pct_cost": 24.1, "output_tokens": 1109053 },
+    { "band": "D", "range": "1025-2048", "requests": 291, "pct_requests": 3.4, "customer_cost_usd": 23.41, "pct_cost": 4.9, "output_tokens": 368354 },
+    { "band": "E", "range": ">2048", "requests": 32, "pct_requests": 0.4, "customer_cost_usd": 3.68, "pct_cost": 0.8, "output_tokens": 88823 }
+  ],
+  "outcomes": [
+    { "outcome": "success", "status_code": 200, "error_origin": null, "response_source": "upstream", "requests": 7211, "customer_cost_usd": 407.06 },
+    { "outcome": "success", "status_code": 200, "error_origin": null, "response_source": null, "requests": 923, "customer_cost_usd": 66.50 },
+    { "outcome": "error", "status_code": 529, "error_origin": "provider", "response_source": "gateway_synthetic", "requests": 196, "customer_cost_usd": 0 },
+    { "outcome": "error", "status_code": 400, "error_origin": "provider", "response_source": "upstream", "requests": 111, "customer_cost_usd": 0 },
+    { "outcome": "error", "status_code": 503, "error_origin": "provider", "response_source": "gateway_synthetic", "requests": 5, "customer_cost_usd": 0 },
+    { "outcome": "error", "status_code": 502, "error_origin": "provider", "response_source": "gateway_synthetic", "requests": 1, "customer_cost_usd": 0 }
+  ],
+  "weekly": [
+    { "week_of": "2026-05-31", "requests": 158, "customer_cost_usd": 10.24, "mean_ms": 8728, "p95_ms": 16795 },
+    { "week_of": "2026-06-07", "requests": 445, "customer_cost_usd": 26.70, "mean_ms": 9910, "p95_ms": 17509 },
+    { "week_of": "2026-06-14", "requests": 202, "customer_cost_usd": 18.38, "mean_ms": 10084, "p95_ms": 22803 },
+    { "week_of": "2026-06-21", "requests": 179, "customer_cost_usd": 17.51, "mean_ms": 10276, "p95_ms": 21272 },
+    { "week_of": "2026-06-28", "requests": 72, "customer_cost_usd": 6.20, "mean_ms": 11831, "p95_ms": 30098 },
+    { "week_of": "2026-07-05", "requests": 467, "customer_cost_usd": 45.96, "mean_ms": 10500, "p95_ms": 23989 },
+    { "week_of": "2026-07-12", "requests": 1402, "customer_cost_usd": 111.90, "mean_ms": 9584, "p95_ms": 23199 },
+    { "week_of": "2026-07-19", "requests": 2498, "customer_cost_usd": 126.48, "mean_ms": 9211, "p95_ms": 20705 },
+    { "week_of": "2026-07-26", "requests": 3018, "customer_cost_usd": 109.79, "mean_ms": 7334, "p95_ms": 18591 },
+    { "week_of": "2026-08-02", "requests": 6, "customer_cost_usd": 0.41, "mean_ms": 7491, "p95_ms": 16448, "partial": true }
+  ]
+}
