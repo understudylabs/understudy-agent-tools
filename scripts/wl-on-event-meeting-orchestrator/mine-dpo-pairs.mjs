@@ -49,14 +49,25 @@ function parseEffectiveAction(content) {
 }
 const effectiveSequence = (row) => {
   const messages = assistantMessages(row) ?? [];
-  return canonical(messages.map((message) => parseEffectiveAction(message.content)));
+  return messages.map((message) => parseEffectiveAction(message.content));
 };
-const promptConversation = (row, task) => {
-  const messages = Array.isArray(row.trajectory)
-    ? row.trajectory.filter((message) => message?.role === "system" || message?.role === "user").slice(0, 2)
-    : null;
-  return messages?.length ? messages : [{ role: "user", content: task.prompt }];
-};
+function firstDivergence(chosen, rejected) {
+  const chosenMessages = assistantMessages(chosen) ?? [];
+  const rejectedMessages = assistantMessages(rejected) ?? [];
+  const length = Math.max(chosenMessages.length, rejectedMessages.length);
+  for (let index = 0; index < length; index += 1) {
+    if (canonical(parseEffectiveAction(chosenMessages[index]?.content ?? "")) !==
+        canonical(parseEffectiveAction(rejectedMessages[index]?.content ?? ""))) {
+      return {
+        index,
+        chosen: chosenMessages[index] ?? null,
+        rejected: rejectedMessages[index] ?? null,
+        prompt: chosen.trajectory.slice(0, chosen.trajectory.indexOf(chosenMessages[index])),
+      };
+    }
+  }
+  return null;
+}
 
 const byTask = new Map();
 for (const row of run.rows) {
@@ -79,14 +90,17 @@ for (const [taskId, rows] of byTask) {
   const task = getTask(taskId);
   for (const winner of chosen) {
     for (const loser of rejected) {
-      if (effectiveSequence(winner) === effectiveSequence(loser)) {
+      if (canonical(effectiveSequence(winner)) === canonical(effectiveSequence(loser))) {
         droppedCosmetic += 1;
         continue;
       }
+      const divergence = firstDivergence(winner, loser);
+      if (!divergence?.chosen || !divergence.rejected) continue;
       candidates.push({
         task,
         chosen: winner,
         rejected: loser,
+        divergence,
         band: task.band,
       });
     }
@@ -117,14 +131,14 @@ while (progress) {
   }
 }
 
-const lines = selected.map(({ task, chosen, rejected }) => JSON.stringify({
+const lines = selected.map(({ task, divergence }) => JSON.stringify({
   task_id: task.taskId,
   family: task.family,
   band: task.band,
   split: task.split,
-  prompt_conversation: promptConversation(chosen, task),
-  chosen: assistantMessages(chosen),
-  rejected: assistantMessages(rejected),
+  prompt_conversation: divergence.prompt,
+  chosen: [divergence.chosen],
+  rejected: [divergence.rejected],
 }));
 const body = `${lines.length ? `${lines.join("\n")}\n` : ""}`;
 const pairsSha256 = createHash("sha256").update(body).digest("hex");

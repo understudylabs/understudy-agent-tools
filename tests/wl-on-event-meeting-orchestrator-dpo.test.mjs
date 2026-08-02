@@ -106,4 +106,51 @@ describe("outcome-changing DPO mining", () => {
     const mined = readFileSync(outPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     assert.notEqual(mined[0].chosen[0].content, mined[0].rejected[0].content);
   });
+
+  it("aligns at the first divergent turn and preserves prior tool observations", () => {
+    const dir = mkdtempSync(join(tmpdir(), "wl-meeting-turn-mine-"));
+    const runPath = join(dir, "run.json");
+    const outPath = join(dir, "pairs.jsonl");
+    const manifestPath = join(dir, "manifest.json");
+    const rollout = (thirdAction) => [
+      { role: "system", content: "system" },
+      { role: "user", content: trainTask.prompt },
+      { role: "assistant", content: '{"tool":"api_fetch","arguments":{"method":"GET","url":"/conversations/conv"}}' },
+      { role: "tool", content: '{"status":200}' },
+      { role: "assistant", content: '{"tool":"api_fetch","arguments":{"method":"GET","url":"/meetings"}}' },
+      { role: "tool", content: '{"meetings":{}}' },
+      { role: "assistant", content: thirdAction },
+    ];
+    writeFileSync(runPath, JSON.stringify({
+      split: "train",
+      fixture_id: MEETING_ORCHESTRATOR_SUBSET.fixture_id,
+      split_sha256: FROZEN_TRAIN_SHA256,
+      rows: [
+        {
+          task_id: trainTask.taskId,
+          sample_index: 0,
+          score: 1,
+          forbidden_effects: 0,
+          trajectory: rollout('{"tool":"api_fetch","arguments":{"method":"POST","url":"/meetings"}}'),
+        },
+        {
+          task_id: trainTask.taskId,
+          sample_index: 1,
+          score: 0.5,
+          forbidden_effects: 0,
+          trajectory: rollout('{"tool":"finish"}'),
+        },
+      ],
+    }));
+    const result = spawnSync(process.execPath, [MINER, "--run", runPath, "--out", outPath, "--manifest", manifestPath], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const mined = readFileSync(outPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(mined.length, 1);
+    assert.equal(mined[0].prompt_conversation.length, 6);
+    assert.equal(mined[0].prompt_conversation.at(-1).content, '{"meetings":{}}');
+    assert.equal(mined[0].chosen.length, 1);
+    assert.equal(mined[0].rejected.length, 1);
+    assert.match(mined[0].chosen[0].content, /POST/);
+    assert.match(mined[0].rejected[0].content, /finish/);
+  });
 });
