@@ -25,14 +25,21 @@ The executor interface is:
 --operation submit|inspect|cancel|reconcileUsage
 ```
 
+The implementation conforms to the canonical TypeScript executor surface in
+[`src/executor-contract.ts`](../../src/executor-contract.ts), including the
+strict submit, job-reference, status, cancellation, and usage schemas. The
+Python layer is isolated runtime glue; TypeScript owns the contract.
+
 `submit` is keyed by the deterministic SHA-256 of
 `(experimentId, candidateId, attempt)`. It returns an executor job reference
 and persists the redacted mapping as a content-addressed artifact under
 `artifacts/`. Repeating the same submission rebinds the existing reference
 instead of opening another session. `inspect` is intentionally a direct
-inspection operation; it does not poll. `reconcileUsage` reports the
-client-side token ledger as an upper bound because prefill is priced at the
-uncached rate. The executor permits at most one live Fireworks training
+inspection operation; it does not poll. `reconcileUsage` reports
+`evidence_scope: "run_exclusive"` with measured request/token fields and an
+`upper_bound_usd`; the receipt note explains that this is a client-side ledger
+with uncached-prefill pricing, not provider-authoritative billing. The executor
+permits at most one live Fireworks training
 session per process; final receipts record the observed concurrency-related
 404 characterization.
 

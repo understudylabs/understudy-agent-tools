@@ -23,10 +23,9 @@ interface is intended to be consumed by that Workflow.
 
 ## Executor submit conformance
 
-The submit payload is validated against this repository's copy of the
-authoritative experiment-controller schema,
-[`schemas/understudy.executor-submit.v1.schema.json`](../schemas/understudy.executor-submit.v1.schema.json),
-which is byte-identical to the controller head at `c299ca4`. It contains only:
+The executor implements the canonical TypeScript surface in
+[`src/executor-contract.ts`](../src/executor-contract.ts). Its strict
+`ExecutorSubmitRequestSchema` contains only:
 
 - experiment identity and attempt;
 - candidate identity, executor, model, and hashed policy reference;
@@ -42,9 +41,21 @@ payload field. Provider session/run identifiers, snapshots, retry state, and
 status belong to executor receipts/job references, not the canonical submit
 request.
 
-`cancel` emits an adapter-scoped cancellation receipt. `reconcileUsage`
-explicitly reports client-side token counts with uncached-prefill pricing as an
-upper bound, never provider-authoritative billing.
+The Python adapter's emitted submit request is validated against
+`ExecutorSubmitRequestSchema` directly in the provider-free contract tests.
+The repository JSON schema remains covered as a wire/schema regression guard;
+the TypeScript surface is the source of truth for job references, statuses,
+cancellation receipts, and usage receipts. `ExecutorJobRefSchema` is where the
+deterministic idempotency key lives; it remains absent from the strict submit
+request.
+
+`cancel` emits an `ExecutorCancellationReceiptSchema` receipt after invoking
+the adapter cancellation path. `reconcileUsage` emits an
+`ExecutorUsageReceiptSchema` with `evidence_scope: "run_exclusive"`,
+`actual_usd: null`, `estimated_usd: null`, and the client-side number in
+`upper_bound_usd`. The accompanying note says that the ledger uses client-side
+token counts and uncached-prefill pricing and is not provider-authoritative
+billing.
 
 ## Session concurrency finding
 

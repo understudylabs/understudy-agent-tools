@@ -149,6 +149,10 @@ def idempotency_key(experiment_id: str, candidate_id: str, attempt: int) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def observed_at() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def submit_request(args) -> dict[str, Any]:
     required = {
         "--policy-ref": args.policy_ref,
@@ -202,8 +206,30 @@ def submit_request(args) -> dict[str, Any]:
     }
 
 
+def canonical_job_ref(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "executor": result["job"]["executor"],
+        "job_id": result["job"]["job_id"],
+        "idempotency_key": result["job"]["idempotency_key"],
+        "submitted_at": result["job"]["submitted_at"],
+    }
+
+
+def canonical_status(result: dict[str, Any]) -> dict[str, Any]:
+    status = result.get("job_status", {})
+    output = {
+        "state": status.get("state", "queued"),
+        "observed_at": observed_at(),
+    }
+    if status.get("artifact_refs"):
+        output["artifact_refs"] = status["artifact_refs"]
+    if status.get("failure_code"):
+        output["failure_code"] = status["failure_code"]
+    return output
+
+
 def cancel_adapter_job(result: dict[str, Any], args) -> dict[str, Any]:
-    job = result["job"]
+    job = canonical_job_ref(result)
     disposition = "already_terminal"
     if _ACTIVE_SERVICE is not None and result.get("training_session_id") == getattr(_ACTIVE_SERVICE, "training_session_id", None):
         close_training_service(_ACTIVE_SERVICE)
@@ -211,12 +237,14 @@ def cancel_adapter_job(result: dict[str, Any], args) -> dict[str, Any]:
     receipt = {
         "job": job,
         "disposition": disposition,
-        "observed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "observed_at": observed_at(),
+    }
+    result["cancellation_receipt"] = receipt
+    result["cancellation_adapter"] = {
         "adapter": "fireworks",
         "adapter_invoked": True,
         "note": "A persisted job reference is terminal unless the owning adapter handle remains in this process.",
     }
-    result["cancellation_receipt"] = receipt
     return result
 
 
@@ -234,39 +262,51 @@ def executor_operation(args) -> None:
         stats = RetryStats()
         service, training = attach_training(args, stats)
         request = submit_request(args)
-        submitted_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        submitted_at = observed_at()
+        job_id = getattr(training, "run_id", None) or getattr(service, "training_session_id", None)
+        if not job_id:
+            raise RuntimeError("Fireworks adapter did not return a job identifier")
         job = {
             "executor": "fireworks",
-            "job_id": getattr(training, "run_id", None) or getattr(service, "training_session_id", None),
+            "job_id": job_id,
             "idempotency_key": key,
             "submitted_at": submitted_at,
         }
         result = {
-            "schema_version": "understudy.executor-job-ref.v1",
             "submit_request": request,
-            "idempotency_key": key,
             "job": job,
             "training_session_id": getattr(service, "training_session_id", None),
             "run_id": getattr(training, "run_id", None),
             "snapshots": [],
-            "status": "submitted",
+            "job_status": {"state": "queued", "observed_at": submitted_at},
             "retry": {"attempts": stats.attempts, "failures": stats.failures},
         }
         mapping_path.write_text(json.dumps(result, indent=2) + "\n")
         close_training_service(service)
         emit_event(events_path, "candidate", {"candidate": args.candidate_id, "status": "submitted"})
-        print(json.dumps(result))
+        print(json.dumps(canonical_job_ref(result)))
         return
     if not mapping_path.exists():
         raise SystemExit(f"job reference not found for idempotency key {key}")
     result = json.loads(mapping_path.read_text())
     if args.operation == "inspect":
-        result["status"] = result.get("status", "submitted")
+        if "job_status" not in result:
+            result["job_status"] = {
+                "state": "cancelled" if result.get("status") == "cancelled" else "queued",
+                "observed_at": observed_at(),
+            }
+        print(json.dumps(canonical_status(result)))
+        return
     elif args.operation == "cancel":
         result = cancel_adapter_job(result, args)
-        result["status"] = "cancelled"
+        result["job_status"] = {
+            "state": "cancelled",
+            "observed_at": result["cancellation_receipt"]["observed_at"],
+        }
         mapping_path.write_text(json.dumps(result, indent=2) + "\n")
         emit_event(events_path, "run", {"status": "cancelled"})
+        print(json.dumps(result["cancellation_receipt"]))
+        return
     elif args.operation == "reconcileUsage":
         receipt_path = Path(args.receipt) if args.receipt else None
         usage = (
@@ -274,14 +314,23 @@ def executor_operation(args) -> None:
             if receipt_path and receipt_path.exists()
             else {}
         )
-        result = {
-            "schema_version": "understudy.executor-usage-receipt.v1",
-            "job_ref": artifact_ref(mapping_path, "executor_job_ref"),
-            "usage": usage,
-            "evidence_scope": "client-side token counts, uncached prefill upper bound; not provider-authoritative billing",
+        tokens = usage.get("tokens", {})
+        usage_receipt = {
+            "evidence_scope": "run_exclusive",
+            "requests": usage.get("requests"),
+            "input_tokens": int(tokens.get("prefill", 0)) + int(tokens.get("cached", 0)),
+            "output_tokens": int(tokens.get("sample", 0)),
+            "actual_usd": None,
+            "estimated_usd": None,
+            "upper_bound_usd": float(usage.get("usd", 0.0)),
+            "observed_at": observed_at(),
         }
+        result["usage_receipt"] = usage_receipt
+        result["usage_evidence_note"] = "Client-side token counts; prefill priced at the uncached rate as an upper bound; not provider-authoritative billing."
         emit_event(events_path, "usage", {"upper_bound_usd": usage.get("usd", 0.0)})
-    print(json.dumps(result))
+        print(json.dumps(usage_receipt))
+        return
+    raise SystemExit(f"unsupported executor operation: {args.operation}")
 
 
 class DryTokenizer:

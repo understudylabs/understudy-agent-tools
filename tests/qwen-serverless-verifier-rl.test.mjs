@@ -7,6 +7,14 @@ import { join } from "node:path";
 import test from "node:test";
 import { z } from "zod";
 
+import {
+  ExecutorCancellationReceiptSchema,
+  ExecutorJobRefSchema,
+  ExecutorJobStatusSchema,
+  ExecutorSubmitRequestSchema,
+  ExecutorUsageReceiptSchema,
+} from "../dist/executor-contract.js";
+
 const root = process.cwd();
 
 test("qwen verifier-RL dry run exercises protocol, masking, advantages, and reward wiring", (t) => {
@@ -136,6 +144,48 @@ test("canonical executor submit payload has no holdout or extra fields", () => {
   }).success, false);
 });
 
+test("Python submit builder and executor outputs conform to the TypeScript contract without provider calls", (t) => {
+  if (!existsSync("/usr/bin/python3") && !existsSync("/bin/python3")) {
+    t.skip("python3 unavailable; skipping executor contract smoke");
+    return;
+  }
+  const python = `
+import importlib.util, json, sys
+from types import SimpleNamespace
+spec = importlib.util.spec_from_file_location("verifier_rl", "experiments/qwen-serverless-verifier-rl/verifier_rl.py")
+module = importlib.util.module_from_spec(spec)
+sys.modules["verifier_rl"] = module
+spec.loader.exec_module(module)
+args = SimpleNamespace(
+  policy_ref="outputs/qwen-serverless-verifier-rl/policy.json",
+  policy_sha256="a" * 64,
+  dataset_manifest_ref="outputs/qwen-serverless-verifier-rl/fixture-manifest.json",
+  dataset_manifest_sha256="b" * 64,
+  train_manifest_ref="outputs/qwen-serverless-verifier-rl/train-manifest.json",
+  train_manifest_sha256="c" * 64,
+  dev_manifest_ref="outputs/qwen-serverless-verifier-rl/dev-manifest.json",
+  dev_manifest_sha256="d" * 64,
+  verifier_environment="automationbench-offline-v2",
+  verifier_revision="verifier-v2",
+  candidate_id="candidate",
+  base_model="accounts/fireworks/models/qwen3p6-27b",
+  model_revision=None,
+  experiment_id="contract-test",
+  workload_id="automationbench-simple-api-offline-v2",
+  attempt=0,
+  max_usd=45,
+  max_concurrent_candidates=1,
+  max_concurrent_requests_per_candidate=1,
+  max_rollouts=128,
+  max_runtime_seconds=604800,
+)
+print(json.dumps(module.submit_request(args)))
+`;
+  const payload = JSON.parse(execFileSync("python3", ["-c", python], { cwd: root, encoding: "utf8" }));
+  assert.doesNotThrow(() => ExecutorSubmitRequestSchema.parse(payload));
+  assert.equal(JSON.stringify(payload).toLowerCase().includes("holdout"), false);
+});
+
 test("executor cancellation and usage receipts are adapter-scoped without provider calls", (t) => {
   if (!existsSync("/usr/bin/python3") && !existsSync("/bin/python3")) {
     t.skip("python3 unavailable; skipping executor contract smoke");
@@ -149,8 +199,6 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
   const mappingPath = join(mappingDir, `job-ref-${key}.json`);
   mkdirSync(mappingDir, { recursive: true });
   writeFileSync(mappingPath, JSON.stringify({
-    schema_version: "understudy.executor-job-ref.v1",
-    idempotency_key: key,
     job: {
       executor: "fireworks",
       job_id: "run-contract",
@@ -158,9 +206,11 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       submitted_at: "2026-01-01T00:00:00Z",
     },
     training_session_id: "ts-contract",
-    status: "submitted",
+    job_status: { state: "queued", observed_at: "2026-01-01T00:00:00Z" },
   }));
   try {
+    const persisted = JSON.parse(readFileSync(mappingPath, "utf8"));
+    assert.doesNotThrow(() => ExecutorJobRefSchema.parse(persisted.job));
     const cancel = execFileSync("python3", [
       "experiments/qwen-serverless-verifier-rl/verifier_rl.py",
       "--operation", "cancel",
@@ -169,8 +219,19 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       "--attempt", attempt,
     ], { cwd: root, encoding: "utf8" });
     const cancelled = JSON.parse(cancel);
-    assert.equal(cancelled.cancellation_receipt.adapter, "fireworks");
-    assert.equal(cancelled.cancellation_receipt.adapter_invoked, true);
+    assert.doesNotThrow(() => ExecutorCancellationReceiptSchema.parse(cancelled));
+    assert.equal(cancelled.disposition, "already_terminal");
+    const cancellationMapping = JSON.parse(readFileSync(mappingPath, "utf8"));
+    assert.equal(cancellationMapping.cancellation_adapter.adapter, "fireworks");
+    assert.equal(cancellationMapping.cancellation_adapter.adapter_invoked, true);
+    const inspected = execFileSync("python3", [
+      "experiments/qwen-serverless-verifier-rl/verifier_rl.py",
+      "--operation", "inspect",
+      "--experiment-id", experimentId,
+      "--candidate-id", candidateId,
+      "--attempt", attempt,
+    ], { cwd: root, encoding: "utf8" });
+    assert.doesNotThrow(() => ExecutorJobStatusSchema.parse(JSON.parse(inspected)));
     const usage = execFileSync("python3", [
       "experiments/qwen-serverless-verifier-rl/verifier_rl.py",
       "--operation", "reconcileUsage",
@@ -178,8 +239,12 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       "--candidate-id", candidateId,
       "--attempt", attempt,
     ], { cwd: root, encoding: "utf8" });
-    assert.equal(JSON.parse(usage).evidence_scope,
-      "client-side token counts, uncached prefill upper bound; not provider-authoritative billing");
+    const usageReceipt = JSON.parse(usage);
+    assert.doesNotThrow(() => ExecutorUsageReceiptSchema.parse(usageReceipt));
+    assert.equal(usageReceipt.evidence_scope, "run_exclusive");
+    assert.equal(usageReceipt.actual_usd, null);
+    assert.equal(usageReceipt.estimated_usd, null);
+    assert.equal(usageReceipt.upper_bound_usd, 0);
   } finally {
     rmSync(mappingPath, { force: true });
   }
