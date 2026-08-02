@@ -532,6 +532,7 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
 }
 
 export function renderRepairReport(queue: RepairQueue): string {
+  const formatCount = (value: number): string => Math.round(value).toLocaleString();
   const lines = [
     "# Repair target queue",
     "",
@@ -553,7 +554,7 @@ export function renderRepairReport(queue: RepairQueue): string {
     const optimistic = row.projected_savings_usd.optimistic === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.optimistic.toFixed(2)}`;
     const pricingFlag = row.raw.unpriced_request_share > 0 ? " ⚠" : "";
     const confidenceFlag = row.raw.confidence < 0.5 ? " ⚠" : "";
-    lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${row.raw.request_count} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} |`);
+    lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${formatCount(row.raw.request_count)} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} |`);
   });
   if (queue.missing_rate_models.length) lines.push("", `⚠ Missing rate-card entries: ${queue.missing_rate_models.join(", ")}. Savings are withheld for affected rows.`);
   lines.push("", "Scores are aggregates only. ROI is the product of volume, repeatability, incumbent-headroom heuristic prior, and serving-cost delta. Savings are projections, not billing statements.");
