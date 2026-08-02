@@ -1,7 +1,7 @@
 ---
-title: Spark self-host serving access and preflight
-status: paused
-scope: private Spark access preflight; no launch performed
+title: Spark self-host serving access, runtime, and multi-LoRA attempt
+status: executed
+scope: private Spark access preflight, userspace runtime, base serving, multi-LoRA attempt
 ---
 
 # Objective and scope
@@ -80,7 +80,11 @@ Both nodes reported:
 - Listing or reading protected content, including the environment file, was
   denied with `Permission denied`.
 
-# Runtime blockers
+# Runtime blockers (superseded — see "Runtime, resolved" below)
+
+The first four items below were recorded during the read-only preflight and
+have since been cleared by building a userspace runtime. They are kept because
+they describe the starting state, not the current one.
 
 - No importable vLLM package or `vllm` executable was available to `devin` on
   either node.
@@ -110,11 +114,107 @@ maximum model length `65536` fits comfortably on Alpha based on its observed
 headroom. `nvidia-smi` reports GPU memory as `Not Supported` on GB10; `free -g`
 is the usable headroom measurement for this preflight.
 
+# Runtime, resolved
+
+The "no runtime" and "no weights" blockers were self-inflicted by assuming the
+container path. As the unprivileged `devin` account on Alpha, with no sudo and
+no Docker:
+
+- `uv` installs `vllm==0.26.0` with `torch==2.11.0+cu130` from prebuilt aarch64
+  wheels into `~devin/vllm-venv`. CUDA is available, device capability `(12, 1)`,
+  and a GPU matmul succeeds.
+- `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` (revision
+  `2d59de1cbd51c0adf384eb906b766d1aee0e0517`, 58.82 GiB) downloads to
+  `~devin/models` against ~2.4 TB of free disk.
+- The base model serves on the Alpha tailnet address, port 5153, and answers
+  `/v1/models` and `/v1/chat/completions`.
+
+The full recipe, including the non-obvious parts (Python headers without root,
+`ninja` on `PATH`, and leaving `TRITON_CACHE_DIR` alone), is in
+[`docs/spark-userspace-vllm.md`](../../docs/spark-userspace-vllm.md). Only the
+container path still needs an administrator, and nothing here needs it.
+
+# Multi-LoRA outcome
+
+Two separate results, and they must not be conflated.
+
+**The serving path works.** One base plus two LoRA adapters serve concurrently
+from a single loaded model on Alpha, launched by
+[`serve-nemotron-multilora.sh`](serve-nemotron-multilora.sh):
+
+```text
+MoE model detected. Using fused MoE LoRA implementation.
+Model loading took 62.35 GiB memory and 329.474158 seconds
+Loaded new LoRA adapter: name 'adapter-a-vllm-partial'
+Loaded new LoRA adapter: name 'adapter-b-vllm-partial'
+Starting vLLM server on http://100.109.118.78:5153
+```
+
+`/v1/models` lists `nemotron3-nano-base`, `adapter-a-vllm-partial` and
+`adapter-b-vllm-partial`. An interleaved round-robin over four prompts at
+temperature 0 completed 12/12 requests, and three parallel requests — one per
+model id — all returned in ~7.35 s, confirming the adapters are served against
+the same resident base rather than swapped in and out. Each adapter's output
+differed from the base on all four prompts, so the loaded weights are doing
+something. Raw evidence:
+[`artifacts/interleaved-multi-adapter.json`](artifacts/interleaved-multi-adapter.json).
+
+**The adapters being served are not the trained adapters.** The PR #408 Tinker
+adapters cannot be served faithfully on vLLM 0.26.0: trained with
+`target_modules: "all-linear"`, they carry Mamba `gate_proj`/`x_proj` factors
+and stacked routed-expert tensors with no representation in vLLM's Nemotron-H
+LoRA surface. Loading them unmodified fails with a target-module `ValueError`.
+[`convert_nemotron_lora_to_vllm.py`](convert_nemotron_lora_to_vllm.py) maps only
+the supported subset and records what it drops
+([`artifacts/adapter-a-conversion_report.json`](artifacts/adapter-a-conversion_report.json),
+[`artifacts/adapter-b-conversion_report.json`](artifacts/adapter-b-conversion_report.json)):
+
+```text
+source tensors 418 -> mapped 188, dropped 230
+dropped_parameter_fraction 0.9419029027329825
+```
+
+**94.2% of the trained low-rank parameters are discarded**, so the `*-vllm-partial`
+artifacts exercise the serving path and say nothing about the behaviour of the
+adapters PR #408 measured. No score was computed from them, because any such
+number would have to be disclaimed into meaninglessness. The reasoning is in
+[`docs/nemotron-h-lora-vllm-compatibility.md`](../../docs/nemotron-h-lora-vllm-compatibility.md);
+this is a property of the adapters' target-module choice, not of the Spark, the
+userspace runtime, or the account's privileges.
+
+# DPO'd adapter: not delivered
+
+No DPO-derived adapter was served, and none exists to serve. PR #408's two
+adapters are RLVR/GRPO (A) and SFT-LoRA (B); neither is DPO. Training one
+through the repository's sanitized synthetic lane
+([`docs/synthetic-offline-dpo-nemotron.md`](../../docs/synthetic-offline-dpo-nemotron.md))
+would produce another `all-linear` Tinker adapter and therefore hit exactly the
+incompatibility above. The prerequisite is a DPO run whose `target_modules` are
+constrained to vLLM-servable projections at training time; until that exists,
+the DPO arm belongs on Tinker's own sampling path.
+
+# Operating the node responsibly
+
+Alpha is shared. Two mistakes made during this work, both recorded so they are
+not repeated:
+
+- Serving at `--gpu-memory-utilization 0.80` with a 32k context, and then
+  instantiating a second copy of the model for inspection while that server was
+  live, consumed 120 of 121 GiB and pushed the one-minute load average above
+  230. Use `0.70` with a 16k context, and never build a second model instance
+  alongside a running server.
+- The first launch passed the API key as `--api-key`, which is visible to every
+  account on the host through `ps`. That key was rotated; the replacement lives
+  only in `~devin/.vllm-key` (mode `0600`) and is passed via `VLLM_API_KEY`.
+
 # NOT EXECUTED — pre-staging commands for the admin
 
 Nothing in this section was run during the preflight. These are the exact
 commands reserved for an administrator who later supplies the required
 runtime access and weights:
+
+Neither command is required for the userspace path above; they remain relevant
+only to the container recipe.
 
 ```bash
 export MODEL='nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4'

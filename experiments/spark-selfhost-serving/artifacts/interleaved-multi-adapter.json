@@ -1,0 +1,808 @@
+{
+  "temperature": 0,
+  "max_tokens": 96,
+  "models": [
+    "nemotron3-nano-base",
+    "adapter-a-vllm-partial",
+    "adapter-b-vllm-partial"
+  ],
+  "interleaved_round_robin_order": [
+    "nemotron3-nano-base",
+    "adapter-a-vllm-partial",
+    "adapter-b-vllm-partial",
+    "nemotron3-nano-base",
+    "adapter-a-vllm-partial",
+    "adapter-b-vllm-partial",
+    "nemotron3-nano-base",
+    "adapter-a-vllm-partial",
+    "adapter-b-vllm-partial",
+    "nemotron3-nano-base",
+    "adapter-a-vllm-partial",
+    "adapter-b-vllm-partial"
+  ],
+  "interleaved_requests": [
+    {
+      "model": "nemotron3-nano-base",
+      "prompt": "Explain why the sky appears blue in two concise sentences.",
+      "status": 200,
+      "latency_ms": 3673.3,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-b3e544ebbef7f543",
+        "object": "chat.completion",
+        "created": 1785645794,
+        "model": "nemotron3-nano-base",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "User wants explanation why sky appears blue in two concise sentences. Provide two sentences, concise. Should be accurate: Rayleigh scattering, shorter wavelengths scatter more. Provide two sentences.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight more efficiently than longer\u2011wavelength (red) light, a process called Rayleigh scattering. This preferential scattering sends blue light in all directions, making the whole sky appear blue to our eyes.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 123,
+          "completion_tokens": 95,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "User wants explanation why sky appears blue in two concise sentences. Provide two sentences, concise. Should be accurate: Rayleigh scattering, shorter wavelengths scatter more. Provide two sentences.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight more efficiently than longer\u2011wavelength (red) light, a process called Rayleigh scattering. This preferential scattering sends blue light in all directions, making the whole sky appear blue to our eyes."
+    },
+    {
+      "model": "adapter-a-vllm-partial",
+      "prompt": "Explain why the sky appears blue in two concise sentences.",
+      "status": 200,
+      "latency_ms": 3665.8,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-a9b21eed72fcadef",
+        "object": "chat.completion",
+        "created": 1785645797,
+        "model": "adapter-a-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "User wants explanation why sky appears blue in two concise sentences. Provide two sentences, concise. Should be accurate: Rayleigh scattering, shorter wavelengths scatter more. Provide two sentences.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight far more efficiently than longer\u2011wavelength (red) light. This Rayleigh scattering redirects blue light toward our eyes from all directions, making the whole sky appear blue.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 118,
+          "completion_tokens": 90,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "User wants explanation why sky appears blue in two concise sentences. Provide two sentences, concise. Should be accurate: Rayleigh scattering, shorter wavelengths scatter more. Provide two sentences.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight far more efficiently than longer\u2011wavelength (red) light. This Rayleigh scattering redirects blue light toward our eyes from all directions, making the whole sky appear blue."
+    },
+    {
+      "model": "adapter-b-vllm-partial",
+      "prompt": "Explain why the sky appears blue in two concise sentences.",
+      "status": 200,
+      "latency_ms": 3270.3,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-82546c829f9585b9",
+        "object": "chat.completion",
+        "created": 1785645801,
+        "model": "adapter-b-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to answer: explain why sky appears blue in two concise sentences. Provide concise answer, exactly two sentences. Should be clear.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight more efficiently than longer\u2011wavelength (red) light. This Rayleigh scattering redirects blue light toward our eyes from all directions, making the sky appear blue.",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "stop",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 108,
+          "completion_tokens": 80,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to answer: explain why sky appears blue in two concise sentences. Provide concise answer, exactly two sentences. Should be clear.\n</think>\nThe sky looks blue because molecules in the atmosphere scatter shorter\u2011wavelength (blue) sunlight more efficiently than longer\u2011wavelength (red) light. This Rayleigh scattering redirects blue light toward our eyes from all directions, making the sky appear blue."
+    },
+    {
+      "model": "nemotron3-nano-base",
+      "prompt": "Write a four-line haiku about a quiet mountain lake.",
+      "status": 200,
+      "latency_ms": 3706.5,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-85b9a56c42106e37",
+        "object": "chat.completion",
+        "created": 1785645804,
+        "model": "nemotron3-nano-base",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. Could be a variation. Probably they want a short poem with four lines, maybe each line not necessarily 5-7-5 but overall haiku vibe. Provide four lines describing quiet mountain lake. Let's craft something poetic. Ensure it's four lines. Provide maybe 5-7-5-",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. Could be a variation. Probably they want a short poem with four lines, maybe each line not necessarily 5-7-5 but overall haiku vibe. Provide four lines describing quiet mountain lake. Let's craft something poetic. Ensure it's four lines. Provide maybe 5-7-5-"
+    },
+    {
+      "model": "adapter-a-vllm-partial",
+      "prompt": "Write a four-line haiku about a quiet mountain lake.",
+      "status": 200,
+      "latency_ms": 3898.3,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-b38a0322ea237428",
+        "object": "chat.completion",
+        "created": 1785645808,
+        "model": "adapter-a-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. So maybe a variant: four lines, maybe 5-7-5-? Could be a short poem with four lines, but still about a quiet mountain lake. We'll produce four lines, maybe with syllable counts: 5,7,5,? Could be 5-7-5-",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. So maybe a variant: four lines, maybe 5-7-5-? Could be a short poem with four lines, but still about a quiet mountain lake. We'll produce four lines, maybe with syllable counts: 5,7,5,? Could be 5-7-5-"
+    },
+    {
+      "model": "adapter-b-vllm-partial",
+      "prompt": "Write a four-line haiku about a quiet mountain lake.",
+      "status": 200,
+      "latency_ms": 3977.5,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-9f8e926bc6229243",
+        "object": "chat.completion",
+        "created": 1785645812,
+        "model": "adapter-b-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. So maybe a variant: four lines, maybe 5-7-5-? Could be a short poem with four lines, but still about a quiet mountain lake. We'll produce four lines, maybe with syllable counts: 5,7,5,? Could be 5-7-5-",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to write a four-line haiku about a quiet mountain lake. Haiku traditionally 5-7-5 syllable structure, but they ask for four lines. So maybe a variant: four lines, maybe 5-7-5-? Could be a short poem with four lines, but still about a quiet mountain lake. We'll produce four lines, maybe with syllable counts: 5,7,5,? Could be 5-7-5-"
+    },
+    {
+      "model": "nemotron3-nano-base",
+      "prompt": "Give three practical tips for debugging a flaky network connection.",
+      "status": 200,
+      "latency_ms": 3716.8,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-91392ccc294b20b9",
+        "object": "chat.completion",
+        "created": 1785645816,
+        "model": "nemotron3-nano-base",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\n**Three practical tips for debugging a flaky network connection**\n\n1. **Capture and analyze traffic at both ends**  \n   - Use tools like\u202fWireshark, tcpdump, or built\u2011in OS packet captures to log traffic during the \u201cgood\u201d and \u201c",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\n**Three practical tips for debugging a flaky network connection**\n\n1. **Capture and analyze traffic at both ends**  \n   - Use tools like\u202fWireshark, tcpdump, or built\u2011in OS packet captures to log traffic during the \u201cgood\u201d and \u201c"
+    },
+    {
+      "model": "adapter-a-vllm-partial",
+      "prompt": "Give three practical tips for debugging a flaky network connection.",
+      "status": 200,
+      "latency_ms": 3903.5,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-b7fa5cc02b816e15",
+        "object": "chat.completion",
+        "created": 1785645820,
+        "model": "adapter-a-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\n**Three practical tips for debugging a flaky network connection**\n\n1. **Capture and analyze traffic at both ends**  \n   - Use tools like\u202fWireshark, tcpdump, or built\u2011in OS packet captures to log traffic when the connection drops.  \n",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\n**Three practical tips for debugging a flaky network connection**\n\n1. **Capture and analyze traffic at both ends**  \n   - Use tools like\u202fWireshark, tcpdump, or built\u2011in OS packet captures to log traffic when the connection drops.  \n"
+    },
+    {
+      "model": "adapter-b-vllm-partial",
+      "prompt": "Give three practical tips for debugging a flaky network connection.",
+      "status": 200,
+      "latency_ms": 3892.6,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-82370262d9b4cac1",
+        "object": "chat.completion",
+        "created": 1785645823,
+        "model": "adapter-b-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\nHere are three practical steps you can take to track down and fix a flaky network connection:\n\n| # | Tip | Why it helps | Quick way to do it |\n|---|-----|--------------|--------------------|\n| **1** | **Capture and inspect traffic at both",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 28,
+          "total_tokens": 124,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "The user asks: \"Give three practical tips for debugging a flaky network connection.\" Straightforward. Provide three tips. Should be concise, practical. No disallowed content. Provide answer.\n</think>\nHere are three practical steps you can take to track down and fix a flaky network connection:\n\n| # | Tip | Why it helps | Quick way to do it |\n|---|-----|--------------|--------------------|\n| **1** | **Capture and inspect traffic at both"
+    },
+    {
+      "model": "nemotron3-nano-base",
+      "prompt": "What is the difference between a compiler and an interpreter?",
+      "status": 200,
+      "latency_ms": 3698.7,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-bba69d139cf2e2b3",
+        "object": "chat.completion",
+        "created": 1785645827,
+        "model": "nemotron3-nano-base",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to answer the question: difference between compiler and interpreter. Provide explanation, maybe examples, pros/cons, process, translation, execution, memory, error handling, etc. Should be clear. Probably no special constraints. Provide thorough answer.\n</think>\n**Short answer**\n\n- **Compiler** \u2013 translates the whole source program into native machine code (or an intermediate representation) **before** it is run. The resulting executable can be executed directly by the hardware/OS, and",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 27,
+          "total_tokens": 123,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to answer the question: difference between compiler and interpreter. Provide explanation, maybe examples, pros/cons, process, translation, execution, memory, error handling, etc. Should be clear. Probably no special constraints. Provide thorough answer.\n</think>\n**Short answer**\n\n- **Compiler** \u2013 translates the whole source program into native machine code (or an intermediate representation) **before** it is run. The resulting executable can be executed directly by the hardware/OS, and"
+    },
+    {
+      "model": "adapter-a-vllm-partial",
+      "prompt": "What is the difference between a compiler and an interpreter?",
+      "status": 200,
+      "latency_ms": 3918.6,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-951ccb4136482fce",
+        "object": "chat.completion",
+        "created": 1785645831,
+        "model": "adapter-a-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "We need to answer the question: difference between compiler and interpreter. Provide explanation, maybe examples, pros/cons, process, translation, execution, memory, error handling, etc. Should be clear.\n</think>\n**Short answer**\n\n- **Compiler** \u2013 translates the whole source program into native machine code (or an intermediate representation) **before** it is run. The resulting binary can be executed directly by the hardware (or a virtual machine) and usually runs faster because the translation",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 27,
+          "total_tokens": 123,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "We need to answer the question: difference between compiler and interpreter. Provide explanation, maybe examples, pros/cons, process, translation, execution, memory, error handling, etc. Should be clear.\n</think>\n**Short answer**\n\n- **Compiler** \u2013 translates the whole source program into native machine code (or an intermediate representation) **before** it is run. The resulting binary can be executed directly by the hardware (or a virtual machine) and usually runs faster because the translation"
+    },
+    {
+      "model": "adapter-b-vllm-partial",
+      "prompt": "What is the difference between a compiler and an interpreter?",
+      "status": 200,
+      "latency_ms": 3885.8,
+      "error": null,
+      "raw_response": {
+        "id": "chatcmpl-a1685c3d0b3a59b0",
+        "object": "chat.completion",
+        "created": 1785645835,
+        "model": "adapter-b-vllm-partial",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "The user asks: \"What is the difference between a compiler and an interpreter?\" Provide explanation. Should be concise but thorough. Probably mention translation process, execution, error handling, memory usage, etc. Provide examples. Use plain language.\n</think>\n**Short answer:**  \nA **compiler** translates the entire source program into machine code (or an intermediate representation) **before** it is run, while an **interpreter** reads and executes the source program **line\u2011",
+              "refusal": null,
+              "annotations": null,
+              "audio": null,
+              "function_call": null,
+              "reasoning": null
+            },
+            "logprobs": null,
+            "finish_reason": "length",
+            "stop_reason": null,
+            "token_ids": null,
+            "routed_experts": null
+          }
+        ],
+        "service_tier": null,
+        "system_fingerprint": "vllm-0.26.0-nohash",
+        "usage": {
+          "prompt_tokens": 27,
+          "total_tokens": 123,
+          "completion_tokens": 96,
+          "prompt_tokens_details": null
+        },
+        "prompt_logprobs": null,
+        "prompt_token_ids": null,
+        "prompt_text": null,
+        "kv_transfer_params": null,
+        "ec_transfer_params": null,
+        "metrics": null
+      },
+      "content": "The user asks: \"What is the difference between a compiler and an interpreter?\" Provide explanation. Should be concise but thorough. Probably mention translation process, execution, error handling, memory usage, etc. Provide examples. Use plain language.\n</think>\n**Short answer:**  \nA **compiler** translates the entire source program into machine code (or an intermediate representation) **before** it is run, while an **interpreter** reads and executes the source program **line\u2011"
+    }
+  ],
+  "per_prompt_summary": [
+    {
+      "prompt": "Explain why the sky appears blue in two concise sentences.",
+      "verdict": {
+        "base_vs_a": "different",
+        "base_vs_b": "different",
+        "a_vs_b": "different"
+      },
+      "latency_ms": {
+        "nemotron3-nano-base": 3673.3,
+        "adapter-a-vllm-partial": 3665.8,
+        "adapter-b-vllm-partial": 3270.3
+      },
+      "errors": {}
+    },
+    {
+      "prompt": "Write a four-line haiku about a quiet mountain lake.",
+      "verdict": {
+        "base_vs_a": "different",
+        "base_vs_b": "different",
+        "a_vs_b": "byte-identical"
+      },
+      "latency_ms": {
+        "nemotron3-nano-base": 3706.5,
+        "adapter-a-vllm-partial": 3898.3,
+        "adapter-b-vllm-partial": 3977.5
+      },
+      "errors": {}
+    },
+    {
+      "prompt": "Give three practical tips for debugging a flaky network connection.",
+      "verdict": {
+        "base_vs_a": "different",
+        "base_vs_b": "different",
+        "a_vs_b": "different"
+      },
+      "latency_ms": {
+        "nemotron3-nano-base": 3716.8,
+        "adapter-a-vllm-partial": 3903.5,
+        "adapter-b-vllm-partial": 3892.6
+      },
+      "errors": {}
+    },
+    {
+      "prompt": "What is the difference between a compiler and an interpreter?",
+      "verdict": {
+        "base_vs_a": "different",
+        "base_vs_b": "different",
+        "a_vs_b": "different"
+      },
+      "latency_ms": {
+        "nemotron3-nano-base": 3698.7,
+        "adapter-a-vllm-partial": 3918.6,
+        "adapter-b-vllm-partial": 3885.8
+      },
+      "errors": {}
+    }
+  ],
+  "concurrent_test": {
+    "requests": [
+      {
+        "model": "nemotron3-nano-base",
+        "prompt": "In one paragraph, explain one important tradeoff when using neural networks.",
+        "status": 200,
+        "latency_ms": 7347.6,
+        "error": null,
+        "raw_response": {
+          "id": "chatcmpl-a9c932036096158d",
+          "object": "chat.completion",
+          "created": 1785645839,
+          "model": "nemotron3-nano-base",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically learn rich feature representations from raw data, they often require large amounts of labeled training data, extensive hyper\u2011parameter tuning, and",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "reasoning": null
+              },
+              "logprobs": null,
+              "finish_reason": "length",
+              "stop_reason": null,
+              "token_ids": null,
+              "routed_experts": null
+            }
+          ],
+          "service_tier": null,
+          "system_fingerprint": "vllm-0.26.0-nohash",
+          "usage": {
+            "prompt_tokens": 30,
+            "total_tokens": 126,
+            "completion_tokens": 96,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "prompt_text": null,
+          "kv_transfer_params": null,
+          "ec_transfer_params": null,
+          "metrics": null
+        },
+        "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically learn rich feature representations from raw data, they often require large amounts of labeled training data, extensive hyper\u2011parameter tuning, and"
+      },
+      {
+        "model": "adapter-a-vllm-partial",
+        "prompt": "In one paragraph, explain one important tradeoff when using neural networks.",
+        "status": 200,
+        "latency_ms": 7355.2,
+        "error": null,
+        "raw_response": {
+          "id": "chatcmpl-bbecddc7fcc978e2",
+          "object": "chat.completion",
+          "created": 1785645839,
+          "model": "adapter-a-vllm-partial",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically learn rich feature representations from raw data, they often require large amounts of labeled training data, extensive hyper\u2011parameter tuning, and",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "reasoning": null
+              },
+              "logprobs": null,
+              "finish_reason": "length",
+              "stop_reason": null,
+              "token_ids": null,
+              "routed_experts": null
+            }
+          ],
+          "service_tier": null,
+          "system_fingerprint": "vllm-0.26.0-nohash",
+          "usage": {
+            "prompt_tokens": 30,
+            "total_tokens": 126,
+            "completion_tokens": 96,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "prompt_text": null,
+          "kv_transfer_params": null,
+          "ec_transfer_params": null,
+          "metrics": null
+        },
+        "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically learn rich feature representations from raw data, they often require large amounts of labeled training data, extensive hyper\u2011parameter tuning, and"
+      },
+      {
+        "model": "adapter-b-vllm-partial",
+        "prompt": "In one paragraph, explain one important tradeoff when using neural networks.",
+        "status": 200,
+        "latency_ms": 7354.7,
+        "error": null,
+        "raw_response": {
+          "id": "chatcmpl-9b2196bf671e6106",
+          "object": "chat.completion",
+          "created": 1785645839,
+          "model": "adapter-b-vllm-partial",
+          "choices": [
+            {
+              "index": 0,
+              "message": {
+                "role": "assistant",
+                "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically discover intricate feature hierarchies, they often require large amounts of data, extensive training time, and significant hardware resources, making them",
+                "refusal": null,
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "reasoning": null
+              },
+              "logprobs": null,
+              "finish_reason": "length",
+              "stop_reason": null,
+              "token_ids": null,
+              "routed_experts": null
+            }
+          ],
+          "service_tier": null,
+          "system_fingerprint": "vllm-0.26.0-nohash",
+          "usage": {
+            "prompt_tokens": 30,
+            "total_tokens": 126,
+            "completion_tokens": 96,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null,
+          "prompt_token_ids": null,
+          "prompt_text": null,
+          "kv_transfer_params": null,
+          "ec_transfer_params": null,
+          "metrics": null
+        },
+        "content": "We need to answer: \"In one paragraph, explain one important tradeoff when using neural networks.\" Provide a concise paragraph. Should be one paragraph. No extra formatting. Just answer.\n</think>\nA key tradeoff in using neural networks is the balance between expressive power and computational efficiency: while deep architectures can model highly complex, non\u2011linear relationships and automatically discover intricate feature hierarchies, they often require large amounts of data, extensive training time, and significant hardware resources, making them"
+      }
+    ],
+    "summary": {
+      "prompt": "In one paragraph, explain one important tradeoff when using neural networks.",
+      "models": [
+        "nemotron3-nano-base",
+        "adapter-a-vllm-partial",
+        "adapter-b-vllm-partial"
+      ],
+      "all_completed": true,
+      "errors": {},
+      "latency_ms": {
+        "nemotron3-nano-base": 7347.6,
+        "adapter-a-vllm-partial": 7355.2,
+        "adapter-b-vllm-partial": 7354.7
+      },
+      "contents_byte_identical": false
+    }
+  }
+}

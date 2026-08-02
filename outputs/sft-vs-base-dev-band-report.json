@@ -1,0 +1,122 @@
+{
+  "comparison": {
+    "base": "outputs/base-nemotron3-nano-dev-mt1024.json",
+    "candidate": "outputs/sft-nemotron3-nano-dev-mt1024.json",
+    "overall": {
+      "mean_score": 0.14748677248677255,
+      "malformed_rate": -0.3888888888888889,
+      "mean_steps": -2.2777777777777777,
+      "forbidden_effects": 2
+    },
+    "by_band": {
+      "aggregation": {
+        "n": {
+          "base": 2,
+          "candidate": 2
+        },
+        "mean_score": 0,
+        "exact_1_rate": -0.5,
+        "zero_rate": -0.5,
+        "malformed_rate": -0.5,
+        "mean_steps": -5,
+        "forbidden_effects": 0
+      },
+      "cascade": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0.125,
+        "exact_1_rate": 0,
+        "zero_rate": 0,
+        "malformed_rate": -1,
+        "mean_steps": -2.5,
+        "forbidden_effects": 0
+      },
+      "conditional": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": -0.125,
+        "exact_1_rate": 0,
+        "zero_rate": 0.25,
+        "malformed_rate": -0.25,
+        "mean_steps": -2.5,
+        "forbidden_effects": 2
+      },
+      "cross-record": {
+        "n": {
+          "base": 6,
+          "candidate": 6
+        },
+        "mean_score": 0.08333333333333337,
+        "exact_1_rate": 0.16666666666666663,
+        "zero_rate": 0,
+        "malformed_rate": -0.16666666666666666,
+        "mean_steps": -2.3333333333333335,
+        "forbidden_effects": 0
+      },
+      "discovery": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0.25,
+        "exact_1_rate": 0.25,
+        "zero_rate": -0.25,
+        "malformed_rate": 0,
+        "mean_steps": -1.25,
+        "forbidden_effects": 0
+      },
+      "long-chain": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0.45238095238095244,
+        "exact_1_rate": 1,
+        "zero_rate": 0,
+        "malformed_rate": -0.5,
+        "mean_steps": -1,
+        "forbidden_effects": 0
+      },
+      "multi-hop": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0.25,
+        "exact_1_rate": 0.5,
+        "zero_rate": 0,
+        "malformed_rate": -1,
+        "mean_steps": -4.5,
+        "forbidden_effects": 0
+      },
+      "multi-write": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0.25,
+        "exact_1_rate": 0.25,
+        "zero_rate": -0.25,
+        "malformed_rate": -0.25,
+        "mean_steps": -1.75,
+        "forbidden_effects": 0
+      },
+      "single-write": {
+        "n": {
+          "base": 4,
+          "candidate": 4
+        },
+        "mean_score": 0,
+        "exact_1_rate": 0,
+        "zero_rate": 0,
+        "malformed_rate": 0,
+        "mean_steps": -1,
+        "forbidden_effects": 0
+      }
+    }
+  }
+}
