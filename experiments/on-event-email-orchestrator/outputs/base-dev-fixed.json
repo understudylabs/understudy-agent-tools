@@ -1,0 +1,283 @@
+{
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "split": "dev",
+  "fixture": "wl07-email-orchestration-offline-v1",
+  "split_sha256": "96ea61ca795a7e67f52481d82e96ab5bd5d9bcdab7d82b5e5f59b6283f20fcd0",
+  "pool_size": 12,
+  "sampled": 12,
+  "scored": 12,
+  "errors": 0,
+  "mean_score": 0.5833333333333334,
+  "exact_1_rate": 0.5833333333333334,
+  "zero_rate": 0.4166666666666667,
+  "mean_by_band": {
+    "discovery": 0,
+    "single-write": 0,
+    "conditional": 1,
+    "multi-hop": 0.5,
+    "cross-record": 1,
+    "cascade": 1
+  },
+  "over_acting_episodes": 0,
+  "forbidden_writes": 0,
+  "malformed_rate": 0.25,
+  "prompt_tokens": 61692,
+  "completion_tokens": 25771,
+  "wall_clock_s": 168,
+  "rows": [
+    {
+      "task_id": "wl07-email-orchestration-event-cascade-bounded-07",
+      "family": "event-cascade-bounded",
+      "band": "cascade",
+      "split": "dev",
+      "score": 1,
+      "steps": 8,
+      "ended": "finish",
+      "malformed": 1,
+      "forbidden_effects": 0,
+      "prompt_tokens": 16731,
+      "completion_tokens": 4770,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"contacts tickets drafts\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/crm/contacts\"}}",
+        "We need to mark Leslie Lamport contact lost, set both drafts addressed to them to status discarded, and set the ticket they opened to status closed. Also leave Adele Goldberg unchanged.\n\nWe have contact list with c-2 and c-8 both have email leslie.lamport@example.test (duplicate?). Probably there are two contacts for Leslie? Might be two entries. We need to mark that contact lost. Probably we need to update the contact status? There's no explicit endpoint to update contact status; we have GET, PATCH on /crm/contacts/{id}. So we can PATCH to set status maybe? The summary says \"Read or update a CRM contact.\" Likely we can PATCH with fields. We need to set status to \"lost\"? Not sure. The instruction: \"Mark that contact lost\". Probably set status to \"lost\". We'll need to find the id(s). From response, c-2 and c-8 are Leslie Lamport. Which one is the correct? Possibly both? Might be duplicate; but we can pick one? The request: \"Mark that contact lost\". Probably refer to the contact (maybe unique). Since there are two entries, maybe they represent same person with different IDs? Could be a mistake. We'll need to update both? But maybe we should use the one with status \"open\". Both are open. We'll need to patch each to set status \"lost\"? Or maybe set a field \"lost_reason\"? Not defined. We'll assume we can set \"status\": \"lost\". We'll patch both c-2 and c-8.\n\nNext: \"set both drafts addressed to them to status discarded\". Drafts are in /mail/drafts. Need to find drafts addressed to Leslie Lamport. Likely drafts have a \"to\" field referencing contact email or ID. We need to fetch drafts list then patch them. We can GET /mail/drafts to list drafts. Then find those where \"to\" matches leslie.lamport@example.test. Then PATCH each draft to set status \"discarded\". The endpoint /mail/drafts/{id} supports PATCH to mark discarded? The summary: \"Read a mail draft, retitle it, or mark it discarded.\" So we can PATCH with maybe \"status\":\"discarded\". We'll need to get list first.\n\nThen: \"set the ticket they opened to status closed\". Need to find support tickets opened by Leslie Lamport. Use /support/tickets list, filter by requester email leslie.lamport@example.test. Then patch that ticket to set status \"closed\". Probably PATCH with \"status\":\"closed\". The endpoint /support/tickets/{id} supports PATCH.\n\nWe must do minimal set of writes. Steps:\n\n1. Patch contact(s) to mark lost. Use PATCH /crm/contacts/c-2 and c-8? Might need both. But maybe only one ID corresponds to the contact we need. The request: \"Mark that contact lost\". Could be ambiguous; we can patch both to be safe.\n\n2. Find drafts addressed to that email. We'll GET /mail/drafts. Then identify draft IDs where \"to\" matches leslie.lamport@example.test. Then PATCH each to set status discarded.\n\n3. Find ticket opened by that email. GET /support/tickets, find ticket ID where requester email matches leslie.lamport@example.test. Then PATCH that ticket to set status closed.\n\nWe need to output exactly one JSON object with tool and arguments. But we can only do one tool call per response. However we can chain? The instruction: \"Reply with EXACTLY ONE JSON object and nothing else\". So we need to choose a tool call now. Probably we need to first search for drafts and tickets. Could use api_search to find relevant endpoints? But we already have endpoints. We could directly PATCH contact, but we also need to find drafts and ticket IDs. Might need to first GET list of drafts and tickets. We can do GET /mail/drafts and GET /support/tickets in separate calls, but we can only output one JSON. We could combine? Not allowed. So we need to decide next step: maybe we should fetch drafts list first. Or fetch tickets list. Which is smaller? Both similar. Perhaps fetch drafts first, then later patch. But we also need to patch contact. Could do contact patch first; that's a write. That satisfies marking contact lost. Then we still need to handle drafts and ticket. But we can do them later. The instruction: \"list the relevant collections first, then make the smallest set of writes that satisfies the request.\" So we should first list relevant collections (we already did search). Now we need to make writes. The smallest set of writes: we need to patch contact (maybe one call), patch draft(s) (maybe one call if only one draft?), patch ticket",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/mail/drafts\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/mail/drafts/d-1\", \"body\": {\"status\": \"discarded\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/support/tickets\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/support/tickets/t-1\", \"body\": {\"status\": \"closed\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/crm/contacts/c-2\", \"body\": {\"status\": \"lost\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/mail/drafts/d-2\", \"body\": {\"status\": \"discarded\"}}}",
+        "{\"tool\": \"finish\", \"arguments\": {}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-cascade-bounded-08",
+      "family": "event-cascade-bounded",
+      "band": "cascade",
+      "split": "dev",
+      "score": 1,
+      "steps": 8,
+      "ended": "finish",
+      "malformed": 1,
+      "forbidden_effects": 0,
+      "prompt_tokens": 15252,
+      "completion_tokens": 4043,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"Evelyn Boyd\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/crm/contacts\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/mail/drafts\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/support/tickets\"}}",
+        "We need to perform updates:\n\n- Mark Evelyn Boyd contact lost: set status? The instruction: \"Mark that contact lost, set both drafts addressed to them to status discarded, and set the ticket they opened to status closed.\"\n\nWe have contact c-3 with email evelyn.boyd@example.test. Likely we need to update its status to \"lost\"? The API for CRM contacts supports PATCH to update a contact. We need to PATCH /crm/contacts/{id} with body maybe {\"status\":\"lost\"}? The contact's status currently \"open\". We need to mark lost. So we need to fetch its ID: from earlier contacts list, c-3 is Evelyn Boyd. So we need to PATCH that contact with status \"lost\". Also set both drafts addressed to them (d-1 and d-2) to status discarded. Those drafts are in mail/drafts with ids d-1 and d-2. We need to PATCH each draft to set status \"discarded\". The API for mail drafts: /mail/drafts/{id} supports PATCH to mark discarded. So we need to PATCH each with body {\"status\":\"discarded\"}.\n\nAnd set the ticket they opened to status closed. Ticket t-1 is the one with requester evelyn.boyd@example.test, subject \"Security review\". Its ID is t-1. We need to PATCH /support/tickets/{id} with status \"closed\". Possibly also set other fields? Just status.\n\nWe must do these updates. The instruction: \"Leave ruth.teitelbaum@example.test's draft and ticket unchanged.\" So we only modify the ones related to Evelyn Boyd.\n\nThus we need to make three PATCH calls: update contact, update draft d-1, update draft d-2, update ticket t-1. That's four patches. However the rule: \"apply ONE API call\" per api_fetch? Actually api_fetch applies ONE API call. But we can only issue one tool call per response. We need to decide how to accomplish all required changes with minimal set of writes. Possibly we can combine multiple updates? The API endpoints are separate, cannot combine. But we could possibly use a single PATCH to update contact and also maybe update drafts? No, different URLs.\n\nBut the instruction: \"Writing to a record the request did not ask you to change scores zero for the whole task.\" Not relevant.\n\nWe need to produce exactly one JSON object with tool and arguments. But we have multiple updates needed. Perhaps we can chain? The system may allow multiple tool calls sequentially; we have to output one tool call now, then after response we can do another. The instruction: \"Reply with EXACTLY ONE JSON object and nothing else\". So we can only output one tool call now. But we need to complete the whole task eventually. Usually we can output a series of tool calls across multiple turns. So we should now perform the first necessary update, maybe the contact status. Then later update drafts and ticket.\n\nBut the request: \"Mark that contact lost, set both drafts addressed to them to status discarded, and set the ticket they opened to status closed.\" We could do all in one go by using multiple API calls? But we can only output one tool call. Perhaps we can use api_fetch with method PATCH and url that can update multiple resources? Not likely. So we need to do stepwise.\n\nWe could choose to update the contact first. Then later update drafts and ticket. But the instruction: \"list the relevant collections first, then make the smallest set of writes that satisfies the request.\" We already listed collections. Now we need to make writes. The smallest set of writes that satisfies request: we need to update contact, drafts (2), ticket (1) => 4 writes. But maybe we can combine updating drafts status in one call? The mail drafts collection maybe supports PATCH with multiple IDs? Not indicated. Probably not.\n\nBut maybe we can use a single PATCH to update the ticket and also something else? No.\n\nThus the minimal set is 4 writes. But we can only do one per response. So we should choose one write now. Which one? Possibly update the contact status to \"lost\". That's one write. Then later we can update drafts and ticket.\n\nBut the request also wants to set both drafts to discarded. Could we update both drafts in a single call? The endpoint is /mail/drafts/{id}, so each is separate. So we need two calls for drafts. So total 3 calls (contact, ticket, maybe one draft? but need both). Actually we need two drafts, so two calls. So total 3 calls? Wait contact is one, ticket is one, drafts are two => total 4. But maybe we can combine updating both drafts by using a list? The API might support PATCH /mail/drafts with",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/crm/contacts/c-3\", \"body\": {\"status\": \"lost\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/support/tickets/t-1\", \"body\": {\"status\": \"closed\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/mail/drafts/d-1\", \"body\": {\"status\": \"discarded\"}}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/mail/drafts/d-2\", \"body\": {\"status\": \"discarded\"}}}",
+        "{\"tool\": \"finish\", \"arguments\": {}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-conditional-noop-07",
+      "family": "event-conditional-noop",
+      "band": "conditional",
+      "split": "dev",
+      "score": 1,
+      "steps": 3,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2058,
+      "completion_tokens": 915,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"Export notice\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/support/tickets\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/support/tickets/t-1\", \"body\": {\"assignee\": \"u-5\"}}}",
+        "{\"tool\": \"finish\", \"arguments\": {}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-conditional-noop-08",
+      "family": "event-conditional-noop",
+      "band": "conditional",
+      "split": "dev",
+      "score": 1,
+      "steps": 5,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2992,
+      "completion_tokens": 1349,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"title:\\\"Security review\\\" AND NOT title:\\\"Security review — duplicate\\\"\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/support/tickets?title=Security%20review\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/support/tickets\"}}",
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"update support ticket endpoint\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/support/tickets/t-1\", \"body\": {\"assignee\": \"u-6\"}}}",
+        "{\"tool\": \"finish\", \"arguments\": {}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-field-update-07",
+      "family": "event-field-update",
+      "band": "single-write",
+      "split": "dev",
+      "score": 0,
+      "steps": 3,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2545,
+      "completion_tokens": 1488,
+      "error": null,
+      "completion_messages": [
+        "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"radia.perlman@example.test\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/crm/contacts\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"PATCH\",\n    \"url\": \"/crm/contacts/c-4\",\n    \"body\": {\n      \"outcome\": \"won\"\n    }\n  }\n}",
+        "{\n  \"tool\": \"finish\",\n  \"arguments\": {}\n}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-field-update-08",
+      "family": "event-field-update",
+      "band": "single-write",
+      "split": "dev",
+      "score": 0,
+      "steps": 3,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2451,
+      "completion_tokens": 1446,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"anita.borg@example.test\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-5\",\"body\":{\"outcome\":\"lost\"}}}",
+        "{\"tool\":\"finish\",\"arguments\":{}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-multi-hop-07",
+      "family": "event-multi-hop",
+      "band": "multi-hop",
+      "split": "dev",
+      "score": 0,
+      "steps": 3,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2465,
+      "completion_tokens": 2268,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\": \"api_search\", \"arguments\": {\"query\": \"Radia Perlman radia.perlman@example.test\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"GET\", \"url\": \"/crm/contacts\"}}",
+        "{\"tool\": \"api_fetch\", \"arguments\": {\"method\": \"PATCH\", \"url\": \"/crm/contacts/c-6\", \"body\": {\"won\": true}}}",
+        "{\"tool\": \"finish\", \"arguments\": {}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-multi-hop-08",
+      "family": "event-multi-hop",
+      "band": "multi-hop",
+      "split": "dev",
+      "score": 1,
+      "steps": 3,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 2441,
+      "completion_tokens": 1592,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Radia Perlman radia.perlman@example.test\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"lost\"}}}",
+        "{\"tool\":\"finish\",\"arguments\":{}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-reply-draft-07",
+      "family": "event-reply-draft",
+      "band": "discovery",
+      "split": "dev",
+      "score": 0,
+      "steps": 0,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 243,
+      "completion_tokens": 504,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\":\"finish\",\"arguments\":{}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-reply-draft-08",
+      "family": "event-reply-draft",
+      "band": "discovery",
+      "split": "dev",
+      "score": 0,
+      "steps": 0,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 242,
+      "completion_tokens": 744,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\":\"finish\",\"arguments\":{}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-route-07",
+      "family": "event-route",
+      "band": "cross-record",
+      "split": "dev",
+      "score": 1,
+      "steps": 5,
+      "ended": "finish",
+      "malformed": 1,
+      "forbidden_effects": 0,
+      "prompt_tokens": 9817,
+      "completion_tokens": 3254,
+      "error": null,
+      "completion_messages": [
+        "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"subject:Export notice from:radia.perlman@example.test\"}}",
+        "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"subject:Export notice from:radia.perlman@example.test\"}}",
+        "We need to process the request: \"Export notice\" from radia.perlman@example.test. Route the matching ticket to the CRM owner of its sender and move it to in_progress. Leave the near-match ticket untouched.\n\nWe need to find the ticket(s) that match that inbound message. Likely there is a ticket with subject \"Export notice\" and from that email. We need to get the ticket ID, find the CRM owner of the sender (i.e., the contact associated with that email). Then update the ticket: assign to that CRM owner (maybe set assignee?) and change status to in_progress.\n\nWe have API endpoints: /support/tickets (list) and /support/tickets/{id} (read/update). Also /crm/contacts (list) and /crm/contacts/{id} (read/update). We need to find the ticket. Use api_search? But we already used it; results show we can list support tickets with requester email, assignee, status, priority. So we can GET /support/tickets to list tickets, then find the one with requester email radia.perlman@example.test and subject \"Export notice\"? The list may include subject? The summary says \"List support tickets with requester email, assignee, status, and priority.\" It doesn't mention subject, but maybe the response includes more fields. Could also use search query? Not sure. We can maybe filter via query param? Not indicated. Might need to fetch all tickets and find matching one.\n\nSimplify: Use GET /support/tickets to get list, then find ticket with requester email radia.perlman@example.test and maybe subject contains \"Export notice\". Then get its ID. Then need to find CRM contact for that email: GET /crm/contacts?email=radia.perlman@example.test maybe? Not sure if filter supported. Could GET /crm/contacts and then find matching email.\n\nThen we need to update the ticket: PATCH /support/tickets/{id} with assignee set to the CRM contact's owner? Actually \"CRM owner of its sender\" likely means the CRM user that owns that contact. Maybe the contact has an owner field. We might need to get the contact's owner ID from the contact record. Then set ticket's assignee to that owner? Or maybe set a field \"owner_id\"? Not sure. The API for ticket update may allow updating fields like \"assignee\" or \"status\". We need to move it to in_progress, so set status to \"in_progress\". Also route to CRM owner: maybe set \"assignee\" to the owner's user ID.\n\nThus steps:\n\n1. GET /support/tickets to list tickets.\n2. Find ticket with requester email radia.perlman@example.test and subject \"Export notice\". Assume there is exactly one.\n3. Extract ticket ID.\n4. GET /crm/contacts to list contacts, find contact with email radia.perlman@example.test, get its \"owner_id\" (or \"user_id\") field.\n5. PATCH /support/tickets/{ticket_id} with body: {\"status\": \"in_progress\", \"assignee\": <owner_id>} (or maybe \"owner\" field). The exact field name unknown; but likely \"assignee\" or \"owner\". Could be \"owner_id\". We need to guess. The API summary: \"Read or update one support ticket.\" No details on fields. Might need to set \"status\" and \"assignee\". We'll assume we can set \"status\" to \"in_progress\" and \"assignee\" to the owner ID.\n\nWe need to output a single JSON with tool and arguments. We need to perform the smallest set of writes that satisfies request. So we need to first fetch tickets, then contacts, then update ticket. That's multiple calls. But we can only output one JSON per turn. The instruction: \"Reply with EXACTLY ONE JSON object and nothing else\". So we need to choose a tool call now. Probably we need to search for the ticket first: api_search with query specifying subject and email. That will return maybe ticket(s). Then we can fetch details. But we already attempted api_search with that query and got results list of API definitions, not ticket data. Actually earlier we called api_search with that query and got the list of API definitions. That didn't return ticket data. Maybe api_search can search across tickets? The description: \"read-only endpoint discovery.\" It seems it just returns API definitions, not actual data. So maybe we need to use api_fetch to get ticket list. But we need to first discover the ticket ID. Could use GET /support/tickets?email=radia.perlman@example.test maybe? Not sure if filter supported. Could just fetch all tickets and then process, but we need to do it stepwise.\n\nGiven we need to output exactly one JSON, we",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/support/tickets\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/support/tickets/t-2\",\"body\":{\"assignee\":\"u-2\",\"status\":\"in_progress\"}}}",
+        "{\"tool\":\"finish\",\"arguments\":{}}"
+      ]
+    },
+    {
+      "task_id": "wl07-email-orchestration-event-route-08",
+      "family": "event-route",
+      "band": "cross-record",
+      "split": "dev",
+      "score": 1,
+      "steps": 6,
+      "ended": "finish",
+      "malformed": 0,
+      "forbidden_effects": 0,
+      "prompt_tokens": 4455,
+      "completion_tokens": 3398,
+      "error": null,
+      "completion_messages": [
+        "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"tickets email:anita.borg@example.test\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/support/tickets\"\n  }\n}",
+        "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"contacts email:anita.borg@example.test\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/crm/contacts?email=anita.borg@example.test\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/crm/contacts\"\n  }\n}",
+        "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"PATCH\",\n    \"url\": \"/support/tickets/t-2\",\n    \"body\": {\n      \"assignee\": \"u-3\",\n      \"status\": \"in_progress\"\n    }\n  }\n}",
+        "{\n  \"tool\": \"finish\",\n  \"arguments\": {}\n}"
+      ]
+    }
+  ]
+}

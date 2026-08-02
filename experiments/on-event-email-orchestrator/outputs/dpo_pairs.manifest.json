@@ -1,0 +1,7 @@
+{
+  "source": "synthetic WL-07 fixture and synthetic model rollouts",
+  "split": "train",
+  "train_split_sha256": "8da73d592c6b0365e0538354175420c236b314754085cc266fb544dbe3ec78a7",
+  "pairs_sha256": "fa3f2d3bb688eb0dbde3caf4fa246f02d7aa7431adcfe48703f61b453de4b5cb",
+  "pair_count": 6
+}
