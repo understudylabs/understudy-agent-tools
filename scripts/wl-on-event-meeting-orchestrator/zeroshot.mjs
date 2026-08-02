@@ -40,13 +40,14 @@ if (!model) throw new Error("--model is required");
 const split = argValue("--split", "dev");
 const limit = Number(argValue("--limit", "0")) || 0;
 const stride = Number(argValue("--stride", "1")) || 1;
-const concurrency = Number(argValue("--concurrency", "6"));
+const concurrency = Math.min(4, Math.max(1, Number(argValue("--concurrency", "4")) || 4));
 const maxTurns = Number(argValue("--max-turns", "14"));
 const temperature = Number(argValue("--temperature", "0"));
 // A malformed emission is always rejected (never executed); this only bounds how
 // many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "512"));
+const requestTimeoutMs = 180_000;
 const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
@@ -113,26 +114,43 @@ function parseAction(text) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function chat(messages, attempt = 0) {
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
-  });
-  if (!response.ok) {
-    const detail = (await response.text()).slice(0, 300);
-    // Serverless rate limits are a throughput artefact, not a benchmark signal.
-    if ((response.status === 429 || response.status >= 500) && attempt < 6) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 300);
+      // Serverless rate limits and local transport failures are not benchmark signals.
+      if ((response.status === 429 || response.status >= 500) && attempt < 6) {
+        await sleep(2000 * 2 ** attempt + Math.floor(Math.random() * 500));
+        return chat(messages, attempt + 1);
+      }
+      throw new Error(`chat failed ${response.status}: ${detail}`);
+    }
+    const payload = await response.json();
+    return {
+      text: payload.choices?.[0]?.message?.content ?? "",
+      promptTokens: payload.usage?.prompt_tokens ?? 0,
+      completionTokens: payload.usage?.completion_tokens ?? 0,
+    };
+  } catch (cause) {
+    const retryable = controller.signal.aborted ||
+      cause?.name === "AbortError" ||
+      /fetch failed|socket|ECONNRESET|ETIMEDOUT/i.test(String(cause?.message ?? cause));
+    if (retryable && attempt < 6) {
       await sleep(2000 * 2 ** attempt + Math.floor(Math.random() * 500));
       return chat(messages, attempt + 1);
     }
-    throw new Error(`chat failed ${response.status}: ${detail}`);
+    if (controller.signal.aborted) throw new Error(`chat timed out after ${requestTimeoutMs / 1000}s`);
+    throw cause;
+  } finally {
+    clearTimeout(timeout);
   }
-  const payload = await response.json();
-  return {
-    text: payload.choices?.[0]?.message?.content ?? "",
-    promptTokens: payload.usage?.prompt_tokens ?? 0,
-    completionTokens: payload.usage?.completion_tokens ?? 0,
-  };
 }
 
 async function runTask(task, sampleIndex) {

@@ -44,3 +44,10 @@ true at reset, gives an empty remaining-assertion set a terminal score of one,
 rejects forbidden writes, pins reset seed 7, and refuses holdout access unless
 the exact frozen holdout hash is supplied. The no-op guard remains
 discriminative because any attempted calendar write is forbidden.
+
+Reasoning-model scoring uses the same completion cap for the runner and local
+shim. Use `--max-tokens 2048` with the shim's `--max-tokens 2048` when measuring
+the Nemotron reasoning base or any tuned descendant; a lower cap can truncate
+the reasoning block before the JSON action and inflate malformed counts. The
+workload runner caps concurrency at four and aborts/retries stalled local
+requests after 180 seconds.
