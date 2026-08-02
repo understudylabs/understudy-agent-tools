@@ -38,7 +38,9 @@ function confirmedWave2Node(node, rankProtocol) {
     && (node.stage === "promoted" || node.stage === "completed")
     && node.score !== null
     && node.score !== undefined
-    && canonicalProtocolMatch(node, rankProtocol);
+    && canonicalProtocolMatch(node, rankProtocol)
+    && ((node.provenance?.confirm_consumed > 0)
+      || (node.provenance?.confirmation_receipt != null));
 }
 
 function completedEpisodes(budget) {
@@ -51,6 +53,34 @@ function completedEpisodes(budget) {
   );
   if (stageA === undefined && stageB === undefined) return null;
   return Number(stageA || 0) + Number(stageB || 0);
+}
+
+function evidenceStateOf(manifest, nodes, rankProtocol) {
+  if (nodes.some((node) => node.wave === "wave2" && confirmedWave2Node(node, rankProtocol))) {
+    return "confirmed";
+  }
+  const budget = manifest?.totals?.budget;
+  const branches = budget?.branches;
+  const stageACapReached = budget
+    && budget.stage_a_completed === budget.stage_a_global_cap;
+  const wave2 = nodes.filter((node) => node.wave === "wave2");
+  const terminalStages = new Set(["completed", "promoted", "rejected", "failed"]);
+  const allNodesTerminal = wave2.length > 0 && wave2.every((node) => terminalStages.has(node.stage));
+  const branchEntries = branches && typeof branches === "object"
+    ? Object.values(branches) : [];
+  const wave2ByBranch = new Map(wave2.map((node) => [node.branch_id, node]));
+  const allBranchesTerminal = branchEntries.length > 0
+    ? Object.entries(branches).every(([branchId, branch]) =>
+      terminalStages.has(branch.stage || branch.status)
+      || terminalStages.has(wave2ByBranch.get(branchId)?.stage))
+    : allNodesTerminal;
+  const noConfirmationSpend = branchEntries.length > 0
+    && branchEntries.every((branch) => (branch.confirm_consumed || 0) === 0)
+    && !nodes.some((node) => node.provenance?.confirmation_receipt != null);
+  if (stageACapReached && allBranchesTerminal && noConfirmationSpend) {
+    return "complete_no_improvement";
+  }
+  return "preview";
 }
 
 export function summarizeManifest(manifest) {
@@ -68,6 +98,7 @@ export function summarizeManifest(manifest) {
   } : null;
   const winner = firstDefined(totals.selected_winner, manifest?.selected_winner, null);
 
+  const evidenceState = evidenceStateOf(manifest, nodes, rankProtocol);
   return {
     headlineHighScore: manifest?.headline?.high_score ?? null,
     rankProtocol: manifest?.rank_protocol ? { ...manifest.rank_protocol } : null,
@@ -92,8 +123,8 @@ export function summarizeManifest(manifest) {
     holdoutUntouched: manifest?.holdout_untouched === undefined
       ? null
       : manifest.holdout_untouched === true,
-    isPreview: !nodes.some((node) =>
-      node.wave === "wave2" && confirmedWave2Node(node, rankProtocol)),
+    evidenceState,
+    isPreview: evidenceState === "preview",
   };
 }
 
@@ -113,8 +144,12 @@ export function renderSummaryHTML(summary) {
       `<span>${escapeHTML(node.stage)}</span> ${scoreText(node.score)}</li>`).join("");
     return `<section><h3>${escapeHTML(wave)}</h3><ul>${nodes || "<li>none</li>"}</ul></section>`;
   }).join("");
-  const preview = summary.isPreview
+  const evidence = summary.evidenceState || (summary.isPreview ? "preview" : "confirmed");
+  const preview = evidence === "preview"
     ? '<div class="monitor-panel__preview">PREVIEW — not yet backed by canonical confirm receipts</div>'
+    : "";
+  const completeNoImprovement = evidence === "complete_no_improvement"
+    ? '<div class="monitor-panel__complete">COMPLETE — no new candidate; Wave-1 remains incumbent</div>'
     : "";
   const holdout = summary.holdoutUntouched === true
     ? '<span class="monitor-panel__holdout-ok">holdout untouched</span>'
@@ -122,6 +157,7 @@ export function renderSummaryHTML(summary) {
   return `<div class="monitor-panel__inner">
     <div class="monitor-panel__title">Overall experiment</div>
     ${preview}
+    ${completeNoImprovement}
     <div class="monitor-panel__headline">${scoreText(summary.headlineHighScore)}
       <small>canonical k=${escapeHTML(protocol.samples_per_task ?? "—")}</small></div>
     <div class="monitor-panel__facts">

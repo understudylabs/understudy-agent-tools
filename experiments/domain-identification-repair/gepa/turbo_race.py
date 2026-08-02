@@ -435,6 +435,108 @@ def select_winner(confirmations):
     )
 
 
+def build_final_manifest(*, em, experiment_id, dev_sha, rank_protocol,
+                         baseline_nodes, branches, results, confirmations,
+                         reference_lines, branch_max_episodes, budget, winner,
+                         wall_clock_s=0):
+    """Build the final protocol-safe manifest, distinguishing new confirmations
+    from cached Stage-B deduplications."""
+    nodes = list(baseline_nodes)
+    for bid, _seed, _subset, _run_id in branches:
+        rec = results.get(bid, {})
+        conf = next((c for c in confirmations if c["branch_id"] == bid), {})
+        confirm_consumed = conf.get("confirm_consumed") or 0
+        deduped = (
+            conf.get("deduped") is True
+            or confirm_consumed == 0
+            or conf.get("winner_prompt_sha256") == rec.get("seeded_from_prompt_sha256")
+        )
+        if rec.get("status") == "completed" and conf.get("confirmed") and deduped:
+            provenance = {
+                "outcome": "no_improvement_deduplicated",
+                "deduped": True,
+                "confirm_consumed": 0,
+                "confirmation_receipt": None,
+                "dedup_of": "wave1-winner",
+                "winner_prompt_sha256": conf.get("winner_prompt_sha256"),
+                "screening_best_score": rec.get("screening_best_score"),
+                "candidates_tried": rec.get("candidates_tried"),
+            }
+            nodes.append(em.make_node(
+                node_id=f"wave2-{bid}",
+                label=f"Wave-2 {bid} — no improvement (deduped -> wave1 winner)",
+                wave="wave2", stage="completed", protocol=rank_protocol, score=None,
+                rank_eligible=False, branch_id=bid, parent="wave1-winner",
+                episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
+                episodes_expected=branch_max_episodes, provenance=provenance,
+            ))
+            continue
+
+        if (rec.get("status") == "completed" and conf.get("confirmed")
+                and confirm_consumed > 0
+                and (conf.get("confirmation_receipt") or conf.get("out_path"))):
+            stage = "promoted" if winner and winner["branch_id"] == bid else "completed"
+            score = conf.get("mean_score")
+            extra = {}
+            if conf.get("malformed_rate") is not None:
+                extra["malformed_rate"] = conf["malformed_rate"]
+            if conf.get("predictions") is not None:
+                extra["predictions"] = conf["predictions"]
+            provenance = {
+                "outcome": "confirmed",
+                "deduped": False,
+                "confirm_consumed": confirm_consumed,
+                "confirmation_receipt": conf.get("out_path"),
+                "winner_prompt_sha256": conf.get("winner_prompt_sha256"),
+                "screening_best_score": rec.get("screening_best_score"),
+                "candidates_tried": rec.get("candidates_tried"),
+            }
+            nodes.append(em.make_node(
+                node_id=f"wave2-{bid}", label=f"Wave-2 {bid} (canonical k=3)",
+                wave="wave2", stage=stage, protocol=rank_protocol, score=score,
+                branch_id=bid, parent="wave1-winner",
+                episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
+                episodes_expected=branch_max_episodes, extra=(extra or None),
+                provenance=provenance,
+            ))
+            continue
+
+        nodes.append(em.make_node(
+            node_id=f"wave2-{bid}",
+            label=f"Wave-2 {bid} (canonical k=3)",
+            wave="wave2", stage="failed", protocol=rank_protocol, score=None,
+            branch_id=bid, parent="wave1-winner",
+            episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
+            episodes_expected=branch_max_episodes,
+            provenance={"outcome": "failed", "confirm_consumed": confirm_consumed or 0},
+        ))
+
+    selected = dict(winner) if winner else None
+    if selected:
+        deduped_winner = selected.get("deduped") is True or selected.get("confirm_consumed") == 0
+        selected.update({
+            "node_id": "wave1-winner" if deduped_winner else f"wave2-{selected['branch_id']}",
+            "new_model_lift": not deduped_winner,
+            "reuses": "wave1-winner" if deduped_winner else None,
+        })
+        if deduped_winner:
+            selected["branch_id"] = None
+    totals = {
+        "wall_clock_s": wall_clock_s,
+        "budget": budget.snapshot(),
+        "branches": {bid: results.get(bid, {}).get("status") for bid, *_ in branches},
+        "selected_winner": selected["node_id"] if selected else None,
+        "selected_winner_detail": selected,
+        "new_model_lift": selected.get("new_model_lift") if selected else False,
+        "reuses": selected.get("reuses") if selected else None,
+    }
+    return em.build_manifest(
+        experiment=experiment_id, dev_split_sha256=dev_sha, rank_protocol=rank_protocol,
+        nodes=nodes, reference_lines=reference_lines, totals=totals,
+        holdout_untouched=True,
+    ), selected
+
+
 # ---------------------------------------------------------------------------
 # Orchestration.
 # ---------------------------------------------------------------------------
@@ -633,13 +735,14 @@ def main():
             budget.release_confirmation(bid)  # winner deduped: release its unused escrow
             confirmations.append({
                 "branch_id": bid, "confirmed": True, "deduped": True,
+                "confirm_consumed": 0, "confirmation_receipt": None,
                 "mean_score": cached["mean_score"], "malformed_rate": cached.get("malformed_rate"),
                 "wall_clock_s": cached.get("wall_clock_s"), "winner_prompt_sha256": prompt_sha,
                 "predictions": em.predictions_from_canonical(cached, examples),
             })
             continue
         # Consume this branch's up-front reservation; release is now illegal.
-        budget.mark_confirmation_dispatched(bid)
+        confirm_consumed = budget.mark_confirmation_dispatched(bid)
         out_path = manifest_dir / f"confirm-{bid}-dev.json"
         res = confirm_canonical(prompt_path=prompt_path, out_path=out_path,
                                 sidecar_base_url=args.base_url, model=args.model,
@@ -647,6 +750,7 @@ def main():
         canonical_cache[prompt_sha] = {**res, "system_file_sha256": prompt_sha}
         confirmations.append({
             "branch_id": bid, "confirmed": True, "deduped": False,
+            "confirm_consumed": confirm_consumed, "confirmation_receipt": str(out_path),
             "mean_score": res["mean_score"], "malformed_rate": res.get("malformed_rate"),
             "wall_clock_s": res.get("wall_clock_s"), "winner_prompt_sha256": prompt_sha,
             "out_path": str(out_path),
@@ -655,51 +759,16 @@ def main():
 
     winner = select_winner(confirmations)
 
-    # ---- Combined experiment manifest (protocol-safe) ------------------------
-    # Baseline/wave1 nodes come from the shared builder used by the live view.
-    nodes = _baseline_wave1_nodes()
-    for bid, seed, subset, run_id in branches:
-        rec = results.get(bid, {})
-        conf = next((c for c in confirmations if c["branch_id"] == bid), {})
-        if rec.get("status") == "completed" and conf.get("confirmed"):
-            stage = "promoted" if (winner and winner["branch_id"] == bid) else "completed"
-            score = conf.get("mean_score")
-        elif rec.get("status") == "completed":
-            stage, score = "evaluating", None
-        else:
-            stage, score = "failed", None
-        wave2_extra = {}
-        if conf.get("malformed_rate") is not None:
-            wave2_extra["malformed_rate"] = conf.get("malformed_rate")
-        if conf.get("predictions") is not None:
-            wave2_extra["predictions"] = conf.get("predictions")
-        nodes.append(em.make_node(
-            node_id=f"wave2-{bid}", label=f"Wave-2 {bid} (canonical k=3)",
-            wave="wave2", stage=stage, protocol=rank_protocol, score=score,
-            branch_id=bid, parent="wave1-winner",
-            episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
-            episodes_expected=args.branch_max_episodes,
-            extra=(wave2_extra or None),
-            provenance={
-                "subset_sha256": rec.get("subset_sha256"),
-                "subset_task_ids": rec.get("subset_task_ids"),
-                "run_dir": rec.get("run_dir"),
-                "screening_best_score": rec.get("screening_best_score"),
-            }))
-
     reference_lines = _reference_lines()
-
-    totals = {
-        "wall_clock_s": round(time.time() - started),
-        "budget": budget.snapshot(),
-        "branches": {bid: results.get(bid, {}).get("status") for bid, *_ in branches},
-        "selected_winner": (winner or {}).get("branch_id"),
-    }
-    manifest = em.build_manifest(
-        experiment=experiment_id, dev_split_sha256=dev_sha, rank_protocol=rank_protocol,
-        nodes=nodes, reference_lines=reference_lines, totals=totals, holdout_untouched=True)
+    manifest, selected_winner = build_final_manifest(
+        em=em, experiment_id=experiment_id, dev_sha=dev_sha,
+        rank_protocol=rank_protocol, baseline_nodes=_baseline_wave1_nodes(),
+        branches=branches, results=results, confirmations=confirmations,
+        reference_lines=reference_lines, branch_max_episodes=args.branch_max_episodes,
+        budget=budget, winner=winner, wall_clock_s=round(time.time() - started),
+    )
     em.write_manifest(manifest, manifest_path)
-    status = em.publish_manifest(manifest, args.ingest_url)
+    status = em.publish_run_shaped(manifest, examples, args.ingest_url)
 
     receipt = {
         "schema_version": "understudy.turbo_receipt.v1",
@@ -709,7 +778,7 @@ def main():
         "gepa_holdout_executed": False,
         "branches": results,
         "confirmations": confirmations,
-        "selected_winner": winner,
+        "selected_winner": selected_winner,
         "budget": budget.snapshot(),
         "manifest_path": str(manifest_path),
         "manifest_digest": em.manifest_digest(manifest),

@@ -32,6 +32,7 @@ function manifest(wave2 = { stage: "confirming", score: null }) {
     totals: {
       budget: {
         max_total_episodes: 120,
+        stage_a_global_cap: 72,
         max_total_reflections: 8,
         stage_a_completed: 17,
         total_reflections: 4,
@@ -55,6 +56,7 @@ test("projects canonical headline and keeps incumbent reference-only", () => {
 test("surfaces preview, progress, active stages, and holdout status", () => {
   const summary = summarizeManifest(manifest());
   assert.equal(summary.isPreview, true);
+  assert.equal(summary.evidenceState, "preview");
   assert.deepEqual(summary.episodes, { completed: 17, cap: 120 });
   assert.deepEqual(summary.reflections, { completed: 4, cap: 8 });
   assert.equal(summary.elapsedS, 91);
@@ -66,8 +68,10 @@ test("surfaces preview, progress, active stages, and holdout status", () => {
 test("clears preview after a finalized wave2 score", () => {
   const summary = summarizeManifest(manifest({
     stage: "promoted", score: 0.85, protocol,
+    provenance: { confirm_consumed: 24, confirmation_receipt: "synthetic-receipt" },
   }));
   assert.equal(summary.isPreview, false);
+  assert.equal(summary.evidenceState, "confirmed");
   assert.doesNotMatch(renderSummaryHTML(summary), /PREVIEW/);
 });
 
@@ -76,6 +80,17 @@ test("rejected and failed wave2 nodes never clear preview", () => {
     const summary = summarizeManifest(manifest({ stage, score: null, protocol }));
     assert.equal(summary.isPreview, true, `${stage} remains preview`);
   }
+});
+
+test("deduped wave2 score without confirmation evidence remains preview", () => {
+  const summary = summarizeManifest(manifest({
+    stage: "completed",
+    score: 0.729,
+    protocol,
+    provenance: { outcome: "no_improvement_deduplicated", confirm_consumed: 0 },
+  }));
+  assert.equal(summary.evidenceState, "preview");
+  assert.equal(summary.isPreview, true);
 });
 
 test("missing budget caps and progress render em dashes without invented caps", () => {
@@ -102,6 +117,7 @@ test("canonical protocol and rank eligibility are required to clear preview", ()
     stage: "completed",
     score: 0.85,
     protocol: { ...protocol, samples_per_task: 1 },
+    provenance: { confirm_consumed: 24 },
   }));
   assert.equal(mismatched.isPreview, true);
   const ineligible = summarizeManifest(manifest({
@@ -109,8 +125,29 @@ test("canonical protocol and rank eligibility are required to clear preview", ()
     score: 0.85,
     protocol,
     rank_eligible: false,
+    provenance: { confirm_consumed: 24 },
   }));
   assert.equal(ineligible.isPreview, true);
+});
+
+test("finished deduplicated race is complete without preview", () => {
+  const finished = manifest({
+    stage: "completed",
+    score: null,
+    rank_eligible: false,
+    provenance: { outcome: "no_improvement_deduplicated", confirm_consumed: 0 },
+  });
+  finished.totals.budget.stage_a_completed = 72;
+  finished.totals.budget.branches = {
+    A: { stage: "completed", confirm_consumed: 0, confirm_released: 24 },
+    B: { stage: "completed", confirm_consumed: 0, confirm_released: 24 },
+  };
+  const summary = summarizeManifest(finished);
+  assert.equal(summary.evidenceState, "complete_no_improvement");
+  assert.equal(summary.isPreview, false);
+  const html = renderSummaryHTML(summary);
+  assert.match(html, /COMPLETE — no new candidate; Wave-1 remains incumbent/);
+  assert.doesNotMatch(html, /PREVIEW — not yet backed by canonical confirm receipts/);
 });
 
 test("holdout status is fail-closed unless explicitly true", () => {

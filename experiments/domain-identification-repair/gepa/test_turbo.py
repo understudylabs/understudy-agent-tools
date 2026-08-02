@@ -17,6 +17,7 @@ import experiment_manifest as em  # noqa: E402
 from turbo_race import (  # noqa: E402
     GlobalBudget,
     STAGE_B_EPISODES_PER_WINNER,
+    build_final_manifest,
     select_winner,
     stratified_screening_subsets,
     subset_hash,
@@ -504,6 +505,96 @@ def test_run_shaped_bridge_active_and_terminal_transition():
           set(run_active["candidates"]) == set(run_done["candidates"]))
 
 
+def test_final_manifest_deduped_stage_b_is_no_improvement():
+    rankp = proto("canonical_rollout", 3)
+    baseline = [
+        em.make_node(node_id="baseline-seed", label="seed", wave="baseline",
+                     stage="completed", protocol=rankp, score=0.5),
+        em.make_node(node_id="wave1-winner", label="wave1", wave="wave1",
+                     stage="completed", protocol=rankp, score=0.729),
+    ]
+    budget = new_budget()
+    budget.reserve_confirmation("A")
+    budget.reserve_confirmation("B")
+    budget.release_confirmation("A")
+    budget.release_confirmation("B")
+    branches = [("A", 1, {}, "run-A"), ("B", 2, {}, "run-B")]
+    results = {
+        bid: {
+            "status": "completed",
+            "seeded_from_prompt_sha256": "seed-sha",
+            "winner_prompt_sha256": "seed-sha",
+            "screening_best_score": 0.729,
+            "candidates_tried": 3,
+            "fuses": {"episodes_completed": 4},
+        } for bid, *_ in branches
+    }
+    confirmations = [{
+        "branch_id": bid, "confirmed": True, "deduped": True,
+        "confirm_consumed": 0, "confirmation_receipt": None,
+        "mean_score": 0.729, "winner_prompt_sha256": "seed-sha",
+    } for bid, *_ in branches]
+    winner = select_winner(confirmations)
+    manifest, selected = build_final_manifest(
+        em=em, experiment_id="synthetic-race", dev_sha=DEV_SHA,
+        rank_protocol=rankp, baseline_nodes=baseline, branches=branches,
+        results=results, confirmations=confirmations, reference_lines=[],
+        branch_max_episodes=36, budget=budget, winner=winner, wall_clock_s=1,
+    )
+    deduped = manifest["nodes"][-1]
+    check("deduped wave2 node is completed", deduped["stage"] == "completed")
+    check("deduped wave2 node is not rank eligible", deduped["rank_eligible"] is False)
+    check("deduped wave2 node has no score", deduped["score"] is None)
+    check("deduped wave2 node has no predictions", deduped.get("predictions") is None)
+    check("deduped outcome is explicit",
+          deduped["provenance"]["outcome"] == "no_improvement_deduplicated")
+    check("headline remains the wave1 canonical score", manifest["headline"]["high_score"] == 0.729)
+    check("deduped selection reuses wave1 without new lift",
+          selected["node_id"] == "wave1-winner"
+          and selected["new_model_lift"] is False
+          and selected["reuses"] == "wave1-winner")
+    check("deduped selection is never a branch id",
+          selected["node_id"] not in {"A", "B"} and selected.get("branch_id") is None)
+    projected = em.run_shaped_from_manifest(manifest, [{"task_id": "fam-alpha-01"}])
+    check("run-shaped projection has examples and candidates",
+          "examples" in projected and "candidates" in projected)
+    check("run-shaped projection omits combined nodes", "nodes" not in projected)
+    candidate = projected["candidates"][deduped["node_id"]]
+    check("deduped candidate projects completed with null score/predictions",
+          candidate["status"] == "completed"
+          and candidate["score"] is None
+          and candidate["predictions"] is None)
+
+
+def test_final_manifest_confirmed_stage_b_is_rankable():
+    rankp = proto("canonical_rollout", 3)
+    baseline = [em.make_node(node_id="wave1-winner", label="wave1", wave="wave1",
+                             stage="completed", protocol=rankp, score=0.729)]
+    budget = new_budget()
+    budget.reserve_confirmation("A")
+    consumed = budget.mark_confirmation_dispatched("A")
+    branches = [("A", 1, {}, "run-A")]
+    results = {"A": {"status": "completed", "screening_best_score": 0.8,
+                     "candidates_tried": 4, "fuses": {"episodes_completed": 4}}}
+    confirmations = [{
+        "branch_id": "A", "confirmed": True, "deduped": False,
+        "confirm_consumed": consumed, "confirmation_receipt": "synthetic-receipt",
+        "out_path": "synthetic-receipt", "mean_score": 0.833,
+        "winner_prompt_sha256": "new-sha",
+        "predictions": [{"prediction": {}, "score": 1.0}],
+    }]
+    manifest, _selected = build_final_manifest(
+        em=em, experiment_id="synthetic-race", dev_sha=DEV_SHA,
+        rank_protocol=rankp, baseline_nodes=baseline, branches=branches,
+        results=results, confirmations=confirmations, reference_lines=[],
+        branch_max_episodes=36, budget=budget, winner=confirmations[0], wall_clock_s=1,
+    )
+    node = manifest["nodes"][-1]
+    check("confirmed wave2 node is rank eligible", node["rank_eligible"] is True)
+    check("confirmed wave2 node carries score and predictions",
+          node["score"] == 0.833 and node["predictions"] is not None)
+
+
 def test_predictions_from_canonical_real_and_aligned():
     # 2 dev tasks, k=3 -> 6 rows with REAL 0/1 scores. The helper aggregates to
     # one cell per example, aligned to examples order, using real per-task means
@@ -550,6 +641,8 @@ def main():
         test_canonical_k1_cannot_rank_against_k3,
         test_manifest_requires_provenance_and_holdout_untouched,
         test_run_shaped_bridge_active_and_terminal_transition,
+        test_final_manifest_deduped_stage_b_is_no_improvement,
+        test_final_manifest_confirmed_stage_b_is_rankable,
         test_predictions_from_canonical_real_and_aligned,
         test_no_holdout_identifiers_in_fixtures,
     ]
