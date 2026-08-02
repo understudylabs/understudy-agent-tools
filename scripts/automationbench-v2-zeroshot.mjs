@@ -20,7 +20,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../dist/automationbench-offline.js";
-import { V2_TASKS, v2SplitSha256, v2TaskBands, v2TaskPool } from "../dist/automationbench-v2.js";
+import { V2_TASKS, v2FixtureSha256, v2SplitSha256, v2TaskBands, v2TaskPool } from "../dist/automationbench-v2.js";
+import { OEE_TASKS, oeeFixtureSha256, oeeSplitSha256, oeeTaskBands, oeeTaskPool, WORKLOAD_OEE } from "../dist/workload-on-event-execution.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -32,6 +33,8 @@ function argValue(name, fallback = null) {
 
 const model = argValue("--model");
 if (!model) throw new Error("--model is required");
+const fixture = argValue("--fixture", "v2");
+if (fixture !== "v2" && fixture !== "on-event-execution") throw new Error("--fixture must be v2 or on-event-execution");
 const split = argValue("--split", "dev");
 const limit = Number(argValue("--limit", "0")) || 0;
 const stride = Number(argValue("--stride", "1")) || 1;
@@ -51,9 +54,27 @@ const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(base
 const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
 if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
 
-const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
+const fixtureConfig =
+  fixture === "v2"
+    ? {
+        fixtureId: "automationbench-simple-api-offline-v2",
+        tasks: V2_TASKS,
+        bands: v2TaskBands(),
+        fixtureSha: v2FixtureSha256,
+        splitHash: v2SplitSha256,
+        pool: v2TaskPool,
+      }
+    : {
+        fixtureId: WORKLOAD_OEE.fixture_id,
+        tasks: OEE_TASKS,
+        bands: oeeTaskBands(),
+        fixtureSha: oeeFixtureSha256,
+        splitHash: oeeSplitSha256,
+        pool: oeeTaskPool,
+      };
+const pool = fixtureConfig.pool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 // Reporting-only difficulty band per family; scoring never reads it.
-const BANDS = v2TaskBands();
+const BANDS = fixtureConfig.bands;
 const strided = pool.filter((_task, index) => index % stride === 0);
 const tasks = limit > 0 ? strided.slice(0, limit) : strided;
 
@@ -171,12 +192,15 @@ async function runTask(task) {
   }
 
   const score = handle.done ? partialCredit(handle) : finish(handle).reward;
-  const family = task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
+  const family =
+    fixture === "on-event-execution"
+      ? task.taskId.replace(/^oee-/, "").replace(/-\d{2}$/, "")
+      : task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   return {
     task_id: task.taskId,
     family,
     band: BANDS[family] ?? "unknown",
-    tier: task.taskId.startsWith("hard-") ? "hard" : "v1",
+    tier: fixture === "on-event-execution" ? "oee" : task.taskId.startsWith("hard-") ? "hard" : "v1",
     split: task.split,
     score: error ? null : score,
     steps: handle.step,
@@ -216,9 +240,11 @@ async function main() {
   const report = {
     model,
     split,
-    fixture: "automationbench-simple-api-offline-v2",
-    split_sha256: v2SplitSha256(split),
-    pool_size: V2_TASKS.filter((task) => task.split === split).length,
+    fixture,
+    fixture_id: fixtureConfig.fixtureId,
+    fixture_sha256: fixtureConfig.fixtureSha(),
+    split_sha256: fixtureConfig.splitHash(split),
+    pool_size: fixtureConfig.tasks.filter((task) => task.split === split).length,
     sampled: tasks.length,
     scored: scored.length,
     errors: rows.length - scored.length,

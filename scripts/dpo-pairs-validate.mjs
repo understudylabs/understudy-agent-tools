@@ -28,6 +28,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { V2_TASKS, v2SplitSha256, v2TaskBands } from "../dist/automationbench-v2.js";
+import { OEE_TASKS, oeeSplitSha256, oeeTaskBands, WORKLOAD_OEE } from "../dist/workload-on-event-execution.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -39,13 +40,20 @@ function argValue(name, fallback = null) {
 
 const pairsPath = argValue("--pairs");
 const manifestPath = argValue("--manifest");
+const fixture = argValue("--fixture", "v2");
+if (fixture !== "v2" && fixture !== "on-event-execution") throw new Error("--fixture must be v2 or on-event-execution");
 if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
 
-const BANDS = v2TaskBands();
-const SPLIT_BY_TASK = new Map(V2_TASKS.map((task) => [task.taskId, task.split]));
+const fixtureConfig =
+  fixture === "v2"
+    ? { fixtureId: "automationbench-simple-api-offline-v2", tasks: V2_TASKS, bands: v2TaskBands(), splitHash: v2SplitSha256 }
+    : { fixtureId: WORKLOAD_OEE.fixture_id, tasks: OEE_TASKS, bands: oeeTaskBands(), splitHash: oeeSplitSha256 };
+const BANDS = fixtureConfig.bands;
+const SPLIT_BY_TASK = new Map(fixtureConfig.tasks.map((task) => [task.taskId, task.split]));
+const fixtureLabel = fixture === "v2" ? "v2 fixture" : "on-event-execution fixture";
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -71,7 +79,8 @@ if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== v2SplitSha256("train")) {
+if (manifest.fixture_id && manifest.fixture_id !== fixtureConfig.fixtureId) fail(0, `manifest fixture_id ${manifest.fixture_id} does not match ${fixtureConfig.fixtureId}`);
+if (manifest.train_split_sha256 && manifest.train_split_sha256 !== fixtureConfig.splitHash("train")) {
   fail(0, "manifest train_split_sha256 does not match this fixture's frozen train split");
 }
 
@@ -116,7 +125,7 @@ lines.forEach((line, index) => {
   }
   const split = SPLIT_BY_TASK.get(taskId);
   if (!split) {
-    fail(lineNumber, `task_id ${taskId} is not in the v2 fixture`);
+    fail(lineNumber, `task_id ${taskId} is not in the ${fixtureLabel}`);
     return;
   }
   splitCounts[split] = (splitCounts[split] ?? 0) + 1;
@@ -140,7 +149,10 @@ lines.forEach((line, index) => {
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
   seen.add(key);
 
-  const family = taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
+  const family =
+    fixture === "on-event-execution"
+      ? taskId.replace(/^oee-/, "").replace(/-\d{2}$/, "")
+      : taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   const band = BANDS[family] ?? "unknown";
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
   normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
@@ -150,6 +162,7 @@ if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" 
 
 const report = {
   schema_version: "understudy.dpo_pairs_validation.v1",
+  fixture: fixtureConfig.fixtureId,
   generated_at: new Date().toISOString(),
   pairs_path: pairsPath,
   manifest_path: manifestPath,
@@ -160,8 +173,8 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
-  holdout_split_sha256: v2SplitSha256("holdout"),
-  train_split_sha256: v2SplitSha256("train"),
+  holdout_split_sha256: fixtureConfig.splitHash("holdout"),
+  train_split_sha256: fixtureConfig.splitHash("train"),
   failures: failures.slice(0, 50),
   verdict: failures.length === 0 ? "pass" : "fail",
 };

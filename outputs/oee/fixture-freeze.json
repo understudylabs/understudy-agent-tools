@@ -1,0 +1,62 @@
+{
+  "fixture": {
+    "fixture_id": "on-event-execution-offline-v1",
+    "seed": 7,
+    "counts": {
+      "train": 56,
+      "dev": 16,
+      "holdout": 24
+    },
+    "fixture_sha256": "8cfffb5500f40c03a8394d3f244b3277a20a4815faead4def326236a7e511190",
+    "train_sha256": "9f14b02edf307ca215ecbc70d716786d55794bc2332727abe71d142ec5e764c7",
+    "dev_sha256": "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5",
+    "holdout_sha256": "ff1438e7c257bb39a8880220b8d2c1787f360d01010f7b1d39f960fa58aed868",
+    "splits_sha256": "b2bc1bcc31db1992dca6fc5e38879750980b6b1a8cf58a0a4ff4cbc092d57c4c",
+    "families": [
+      {
+        "slug": "oee-bounded-ack",
+        "band": "bounded",
+        "count": 30,
+        "label": "single event acknowledgement with one or two direct writes"
+      },
+      {
+        "slug": "oee-bounded-route",
+        "band": "bounded",
+        "count": 30,
+        "label": "event routing through a ticket-requester contact join"
+      },
+      {
+        "slug": "oee-extended-chain",
+        "band": "extended",
+        "count": 24,
+        "label": "ticket resolution with create-then-act mail delivery"
+      },
+      {
+        "slug": "oee-variable-fanout",
+        "band": "variable",
+        "count": 12,
+        "label": "disambiguated fanout across CRM, mail, and support"
+      }
+    ]
+  },
+  "counts": {
+    "train": 56,
+    "dev": 16,
+    "holdout": 24
+  },
+  "totals": {
+    "tasks": 96,
+    "holdout_tasks": 24
+  },
+  "per_band": {
+    "bounded": 60,
+    "extended": 24,
+    "variable": 12
+  },
+  "gates": {
+    "oracle_mean": 1,
+    "sentinel_max": 0,
+    "failures": []
+  },
+  "fixture_sha256": "8cfffb5500f40c03a8394d3f244b3277a20a4815faead4def326236a7e511190"
+}

@@ -79,6 +79,7 @@ function summarize(run) {
   return {
     model: run.model,
     split: run.split,
+    fixture_id: run.fixture_id ?? run.fixture ?? null,
     split_sha256: run.split_sha256,
     tasks: run.rows.length,
     mean_score: mean(scored.map((row) => row.score)),
@@ -98,6 +99,9 @@ if (candidate && base.split !== candidate.split) {
 if (candidate && base.split_sha256 !== candidate.split_sha256) {
   throw new Error("split hash mismatch: the two runs did not score the same frozen split");
 }
+if (candidate && base.fixture_id && candidate.fixture_id && base.fixture_id !== candidate.fixture_id) {
+  throw new Error(`fixture mismatch: base=${base.fixture_id} candidate=${candidate.fixture_id}`);
+}
 
 const delta = (a, b) => (typeof a === "number" && typeof b === "number" ? b - a : null);
 
@@ -105,6 +109,7 @@ const report = {
   schema_version: "understudy.automationbench_band_report.v1",
   generated_at: new Date().toISOString(),
   split: base.split,
+  fixture_id: base.fixture_id,
   split_sha256: base.split_sha256,
   base,
   candidate,
