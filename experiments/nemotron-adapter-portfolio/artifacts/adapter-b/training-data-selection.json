@@ -1,0 +1,28 @@
+{
+  "band": "single-write",
+  "lora_rank": 8,
+  "renderer": "nemotron3_disable_thinking",
+  "row_count": 16,
+  "source": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-adapter-portfolio/artifacts/adapter-b/oracle-train.jsonl",
+  "split": "train",
+  "task_ids": [
+    "simple-api-crm-close-01",
+    "simple-api-crm-close-02",
+    "simple-api-crm-close-03",
+    "simple-api-crm-close-04",
+    "simple-api-crm-lost-01",
+    "simple-api-crm-lost-02",
+    "simple-api-crm-lost-03",
+    "simple-api-crm-lost-04",
+    "simple-api-crm-owner-01",
+    "simple-api-crm-owner-02",
+    "simple-api-crm-owner-03",
+    "simple-api-crm-owner-04",
+    "simple-api-crm-rename-01",
+    "simple-api-crm-rename-02",
+    "simple-api-crm-rename-03",
+    "simple-api-crm-rename-04"
+  ],
+  "total_model_input_tokens": 8961,
+  "training_guard": "only split=train and band=single-write rows are reachable"
+}

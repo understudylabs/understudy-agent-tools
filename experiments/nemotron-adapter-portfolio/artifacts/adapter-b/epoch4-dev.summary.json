@@ -1,0 +1,64 @@
+{
+  "groups": [
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-05"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 12,
+      "holdout": 12,
+      "train": 48
+    },
+    "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+    "split_sha256": {
+      "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+      "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+      "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+    }
+  },
+  "label": "adapter-b-epoch4-dev",
+  "lora_rank": 8,
+  "mean_model_turns": 3.0,
+  "mean_reward": 1.0,
+  "model": "tinker://241bbbca-80e4-57db-bcee-1213b6f04e8e:train:0/sampler_weights/adapter-b-epoch4",
+  "model_path": "tinker://241bbbca-80e4-57db-bcee-1213b6f04e8e:train:0/sampler_weights/adapter-b-epoch4",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "single-write": {
+      "count": 4,
+      "mean_reward": 1.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 4,
+  "samples_per_task": 1,
+  "split": "dev",
+  "strict_pass_rate": 1.0,
+  "task_count": 4,
+  "temperature": 0.0,
+  "total_prompt_tokens": 4831,
+  "total_sampled_tokens": 258
+}
