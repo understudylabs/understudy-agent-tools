@@ -666,6 +666,15 @@ export function authorFamilyCase(slug: string, instance: number, offset: number)
   return family.build(instance, offset);
 }
 
+/** Authoritative difficulty band for one registered task id. */
+export function taskBandForId(taskId: string): Family["band"] {
+  if (!TASKS.some((task) => task.taskId === taskId)) throw new Error(`unknown task_id: ${taskId}`);
+  const familySlug = /^simple-api-(.+)-\d{2}$/.exec(taskId)?.[1];
+  const family = FAMILIES.find((candidate) => candidate.slug === familySlug);
+  if (!family) throw new Error(`task has no band metadata: ${taskId}`);
+  return family.band;
+}
+
 /** Task counts per split, computed from the fixture rather than hard-coded. */
 export function splitCounts(): Record<Split, number> {
   return TASKS.reduce(

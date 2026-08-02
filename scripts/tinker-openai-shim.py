@@ -1,20 +1,34 @@
 #!/usr/bin/env python3
 """Minimal OpenAI-compatible /v1/chat/completions shim in front of a Tinker
 sampling client, so the Node AutomationBench runner can score Tinker base models
-without a dedicated deployment.
+and Tinker-trained checkpoints without a dedicated deployment.
 
 Tinker's `tools=` path raises NotImplementedError, so tool calls are driven
 through plain sampling with the model's own renderer, exactly as the RL arms do.
 
   TINKER_API_KEY=... python scripts/tinker-openai-shim.py \
       --base-model nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 --renderer nemotron3 --port 8099
+
+Pass `--model-path tinker://...` to serve a trained checkpoint (a LoRA adapter
+over the same base) instead of the base weights; everything else is unchanged,
+so base and tuned runs are scored through one identical sampling path.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# pyqwest (the Rust HTTP backend tinker prefers) carries its own root store and
+# rejects otherwise-valid certificates on some Linux hosts. Opt in to httpx's
+# system trust store when that happens; the wire protocol is identical.
+if os.environ.get("TINKER_DISABLE_PYQWEST") == "1":
+    import httpx
+    import tinker._base_client as _tinker_base_client
+
+    _tinker_base_client._default_pyqwest_transport = lambda: httpx.AsyncHTTPTransport(retries=2)
 
 import tinker
 from tinker_cookbook.renderers import get_renderer
@@ -23,12 +37,17 @@ from tinker_cookbook.tokenizer_utils import get_tokenizer
 parser = argparse.ArgumentParser()
 parser.add_argument("--base-model", required=True)
 parser.add_argument("--renderer", required=True)
+parser.add_argument("--model-path", default=None, help="tinker:// checkpoint to serve over the base weights")
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
 args = parser.parse_args()
 
 service = tinker.ServiceClient()
-sampler = service.create_sampling_client(base_model=args.base_model)
+sampler = (
+    service.create_sampling_client(model_path=args.model_path, base_model=args.base_model)
+    if args.model_path
+    else service.create_sampling_client(base_model=args.base_model)
+)
 renderer = get_renderer(args.renderer, get_tokenizer(args.base_model))
 pool = ThreadPoolExecutor(max_workers=16)
 

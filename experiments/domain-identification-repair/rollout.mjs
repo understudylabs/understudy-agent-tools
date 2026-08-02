@@ -1,26 +1,37 @@
 #!/usr/bin/env node
 /**
- * Zero-shot difficulty probe for the AutomationBench v2 offline fixture.
+ * Rollout runner for the `domain-identification` synthetic slice.
  *
- * Drives a base model through the in-process offline environment over an
- * OpenAI-compatible chat endpoint (Fireworks serverless by default — no
- * dedicated deployment, no GPU quota). Tool calls are driven through the
- * sampling path: the model emits ONE JSON object per turn and a malformed
- * emission is rejected rather than repaired, so the score reflects the model's
- * own tool-call discipline.
+ * Drives a model through the in-process offline environment over an
+ * OpenAI-compatible chat endpoint — the same sampling path the AutomationBench
+ * v2 zero-shot probe uses, so base and tuned runs differ only in the weights
+ * behind the endpoint. Tool calls go through plain sampling (Tinker's `tools=`
+ * path raises NotImplementedError) and a malformed emission is REJECTED, never
+ * repaired, so the score reflects the model's own tool-call discipline.
  *
- * This script only measures. It never trains, never selects on holdout, and
- * refuses the holdout split unless the frozen hash is supplied.
+ * Two modes:
+ *   --samples 1 --temperature 0   scoring run (one deterministic episode/task)
+ *   --samples N --temperature T   pair-mining run (N sampled episodes/task,
+ *                                 transcripts kept so near-hit pairs can be
+ *                                 mined from siblings of the SAME task)
  *
- * Usage:
- *   FIREWORKS_API_KEY=... node scripts/automationbench-v2-zeroshot.mjs \
- *     --model accounts/fireworks/models/gpt-oss-20b --split dev --limit 20 --out outputs/x.json
+ * It only measures. It never trains, never selects on holdout, and refuses the
+ * holdout split unless the frozen hash is supplied.
+ *
+ *   node experiments/domain-identification-repair/rollout.mjs \
+ *     --model nemotron-3-nano --base-url http://localhost:8099/v1 \
+ *     --split dev --out experiments/domain-identification-repair/outputs/base-dev.json
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { finish, partialCredit, reset, step } from "../dist/automationbench-offline.js";
-import { V2_TASKS, v2SplitSha256, v2TaskBands, v2TaskPool } from "../dist/automationbench-v2.js";
+import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
+import {
+  DOMAIN_ID_TASKS,
+  domainIdSplitSha256,
+  domainIdTaskBands,
+  domainIdTaskPool,
+} from "../../dist/domain-identification-slice.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -34,28 +45,23 @@ const model = argValue("--model");
 if (!model) throw new Error("--model is required");
 const split = argValue("--split", "dev");
 const limit = Number(argValue("--limit", "0")) || 0;
-const stride = Number(argValue("--stride", "1")) || 1;
+const samples = Number(argValue("--samples", "1")) || 1;
 const concurrency = Number(argValue("--concurrency", "6"));
-const maxTurns = Number(argValue("--max-turns", "14"));
+const maxTurns = Number(argValue("--max-turns", "10"));
 const temperature = Number(argValue("--temperature", "0"));
-// A malformed emission is always rejected (never executed); this only bounds how
-// many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
-const maxTokens = Number(argValue("--max-tokens", "512"));
-const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
+const maxTokens = Number(argValue("--max-tokens", "384"));
+const baseUrl = argValue("--base-url", "http://localhost:8099/v1");
 const outPath = argValue("--out");
+const transcriptPath = argValue("--transcripts");
 const frozenHoldout = argValue("--frozen-holdout");
-// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
-// which authenticates to Tinker itself and ignores the bearer token.
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
 const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
-if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
+if (!apiKey) throw new Error("FIREWORKS_API_KEY is required for a remote endpoint (never hard-code it)");
 
-const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
-// Reporting-only difficulty band per family; scoring never reads it.
-const BANDS = v2TaskBands();
-const strided = pool.filter((_task, index) => index % stride === 0);
-const tasks = limit > 0 ? strided.slice(0, limit) : strided;
+const pool = domainIdTaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
+const BANDS = domainIdTaskBands();
+const tasks = limit > 0 ? pool.slice(0, limit) : pool;
 
 const SYSTEM = [
   "You operate business apps through two tools.",
@@ -73,7 +79,6 @@ const SYSTEM = [
 
 /** Strict parse: one JSON object naming a known tool. No repair, no salvage of prose. */
 function parseAction(text) {
-  // Reasoning bases emit a think block before the call; it is scratch, not a tool call.
   const visible = String(text ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "");
   const trimmed = visible.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const start = trimmed.indexOf("{");
@@ -111,7 +116,6 @@ async function chat(messages, attempt = 0) {
   });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
-    // Serverless rate limits are a throughput artefact, not a benchmark signal.
     if ((response.status === 429 || response.status >= 500) && attempt < 6) {
       await sleep(2000 * 2 ** attempt + Math.floor(Math.random() * 500));
       return chat(messages, attempt + 1);
@@ -126,7 +130,7 @@ async function chat(messages, attempt = 0) {
   };
 }
 
-async function runTask(task) {
+async function runEpisode(task, sampleIndex) {
   const { handle } = reset(task.taskId);
   const messages = [
     { role: "system", content: SYSTEM },
@@ -171,12 +175,12 @@ async function runTask(task) {
   }
 
   const score = handle.done ? partialCredit(handle) : finish(handle).reward;
-  const family = task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
+  const family = task.taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
   return {
     task_id: task.taskId,
+    sample: sampleIndex,
     family,
     band: BANDS[family] ?? "unknown",
-    tier: task.taskId.startsWith("hard-") ? "hard" : "v1",
     split: task.split,
     score: error ? null : score,
     steps: handle.step,
@@ -186,18 +190,23 @@ async function runTask(task) {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     error,
+    transcript: messages,
   };
 }
 
 async function main() {
   const started = Date.now();
+  const jobs = [];
+  for (const task of tasks) {
+    for (let sampleIndex = 0; sampleIndex < samples; sampleIndex += 1) jobs.push({ task, sampleIndex });
+  }
   const rows = [];
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < tasks.length) {
-      const task = tasks[cursor++];
-      rows.push(await runTask(task));
-      process.stderr.write(`\r${rows.length}/${tasks.length} done`);
+  const workers = Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+    while (cursor < jobs.length) {
+      const job = jobs[cursor++];
+      rows.push(await runEpisode(job.task, job.sampleIndex));
+      process.stderr.write(`\r${rows.length}/${jobs.length} episodes`);
     }
   });
   await Promise.all(workers);
@@ -205,43 +214,54 @@ async function main() {
 
   const scored = rows.filter((row) => typeof row.score === "number");
   const mean = (values) => (values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length);
-  const byTier = {};
-  const byFamily = {};
   const byBand = {};
+  const byFamily = {};
   for (const row of scored) {
-    (byTier[row.tier] ??= []).push(row.score);
-    (byFamily[row.family] ??= []).push(row.score);
     (byBand[row.band] ??= []).push(row.score);
+    (byFamily[row.family] ??= []).push(row.score);
   }
+
   const report = {
+    schema_version: "understudy.slice_rollout.v1",
     model,
     split,
-    fixture: "automationbench-simple-api-offline-v2",
-    split_sha256: v2SplitSha256(split),
-    pool_size: V2_TASKS.filter((task) => task.split === split).length,
-    sampled: tasks.length,
+    temperature,
+    samples,
+    fixture: "domain-identification-offline-v1",
+    split_sha256: domainIdSplitSha256(split),
+    pool_size: DOMAIN_ID_TASKS.filter((task) => task.split === split).length,
+    episodes: rows.length,
     scored: scored.length,
     errors: rows.length - scored.length,
     mean_score: mean(scored.map((row) => row.score)),
     exact_1_rate: scored.length === 0 ? null : scored.filter((row) => row.score === 1).length / scored.length,
     zero_rate: scored.length === 0 ? null : scored.filter((row) => row.score === 0).length / scored.length,
-    mean_by_tier: Object.fromEntries(Object.entries(byTier).map(([key, values]) => [key, mean(values)])),
-    mean_by_family: Object.fromEntries(Object.entries(byFamily).map(([key, values]) => [key, mean(values)])),
     mean_by_band: Object.fromEntries(Object.entries(byBand).map(([key, values]) => [key, mean(values)])),
+    mean_by_family: Object.fromEntries(Object.entries(byFamily).map(([key, values]) => [key, mean(values)])),
     // Over-action guard: a policy that writes outside `allowedWrites` scores 0 for
     // that episode, so the raw counts matter even when the rate rounds to zero.
     over_acting_episodes: rows.filter((row) => (row.forbidden_effects ?? 0) > 0).length,
     forbidden_writes: rows.reduce((sum, row) => sum + (row.forbidden_effects ?? 0), 0),
-    forbidden_effect_rate: scored.length === 0 ? null : scored.filter((row) => row.forbidden_effects > 0).length / scored.length,
     malformed_rate: rows.length === 0 ? null : rows.filter((row) => row.malformed > 0).length / rows.length,
+    mean_completion_tokens: mean(rows.map((row) => row.completion_tokens)),
     prompt_tokens: rows.reduce((sum, row) => sum + row.prompt_tokens, 0),
     completion_tokens: rows.reduce((sum, row) => sum + row.completion_tokens, 0),
     wall_clock_s: Math.round((Date.now() - started) / 1000),
-    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id)),
+    rows: rows
+      .map(({ transcript: _transcript, ...rest }) => rest)
+      .sort((a, b) => a.task_id.localeCompare(b.task_id) || a.sample - b.sample),
   };
+
   if (outPath) {
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
+  }
+  if (transcriptPath) {
+    mkdirSync(dirname(transcriptPath), { recursive: true });
+    writeFileSync(
+      transcriptPath,
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    );
   }
   const { rows: _rows, ...summary } = report;
   console.log(JSON.stringify(summary, null, 2));

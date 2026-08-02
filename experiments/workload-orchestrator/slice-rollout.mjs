@@ -1,26 +1,23 @@
 #!/usr/bin/env node
 /**
- * Zero-shot difficulty probe for the AutomationBench v2 offline fixture.
+ * Score a model on the WL-OR slice of the synthetic workflow fixture, over an
+ * OpenAI-compatible chat endpoint. One JSON tool call per turn; a malformed
+ * emission is rejected, never repaired.
  *
- * Drives a base model through the in-process offline environment over an
- * OpenAI-compatible chat endpoint (Fireworks serverless by default — no
- * dedicated deployment, no GPU quota). Tool calls are driven through the
- * sampling path: the model emits ONE JSON object per turn and a malformed
- * emission is rejected rather than repaired, so the score reflects the model's
- * own tool-call discipline.
- *
- * This script only measures. It never trains, never selects on holdout, and
- * refuses the holdout split unless the frozen hash is supplied.
+ * The same script serves two jobs, so base and tuned runs share one code path:
+ *   --samples 1 --temperature 0   scoring (dev, or holdout with the frozen hash)
+ *   --samples N --temperature T   rollout mining on train, with transcripts
  *
  * Usage:
- *   FIREWORKS_API_KEY=... node scripts/automationbench-v2-zeroshot.mjs \
- *     --model accounts/fireworks/models/gpt-oss-20b --split dev --limit 20 --out outputs/x.json
+ *   node experiments/workload-orchestrator/slice-rollout.mjs \
+ *     --model nemotron-3-nano --base-url http://localhost:8099/v1 \
+ *     --split dev --out experiments/workload-orchestrator/artifacts/base-dev.json
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { finish, partialCredit, reset, step } from "../dist/automationbench-offline.js";
-import { V2_TASKS, v2SplitSha256, v2TaskBands, v2TaskPool } from "../dist/automationbench-v2.js";
+import { finish, partialCredit, reset, step } from "../../dist/synthetic-workflow-offline.js";
+import { SLICE, SLICE_BANDS, sliceCounts, slicePool, sliceSplitSha256 } from "./slice.mjs";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -33,47 +30,38 @@ function argValue(name, fallback = null) {
 const model = argValue("--model");
 if (!model) throw new Error("--model is required");
 const split = argValue("--split", "dev");
-const limit = Number(argValue("--limit", "0")) || 0;
-const stride = Number(argValue("--stride", "1")) || 1;
+const samples = Number(argValue("--samples", "1")) || 1;
+const temperature = Number(argValue("--temperature", "0"));
 const concurrency = Number(argValue("--concurrency", "6"));
 const maxTurns = Number(argValue("--max-turns", "14"));
-const temperature = Number(argValue("--temperature", "0"));
-// A malformed emission is always rejected (never executed); this only bounds how
-// many consecutive rejections an episode survives before it is abandoned.
-const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "512"));
-const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
+const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
+const baseUrl = argValue("--base-url", "http://localhost:8099/v1");
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
-// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
-// which authenticates to Tinker itself and ignores the bearer token.
+const keepTranscripts = process.argv.includes("--transcripts");
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
 const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
 if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
 
-const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
-// Reporting-only difficulty band per family; scoring never reads it.
-const BANDS = v2TaskBands();
-const strided = pool.filter((_task, index) => index % stride === 0);
-const tasks = limit > 0 ? strided.slice(0, limit) : strided;
+const pool = slicePool(split, frozenHoldout ?? undefined);
 
 const SYSTEM = [
-  "You operate business apps through two tools.",
+  "You operate workflow apps through two tools.",
   'api_search — read-only endpoint discovery. arguments: {"query": string}',
   'api_fetch  — apply ONE API call. arguments: {"method": string, "url": string, "body": object}',
   "",
   "Reply with EXACTLY ONE JSON object and nothing else — no prose, no code fences, no second object:",
   '  {"tool": "api_search", "arguments": {"query": "..."}}',
-  '  {"tool": "api_fetch", "arguments": {"method": "GET", "url": "/crm/contacts"}}',
+  '  {"tool": "api_fetch", "arguments": {"method": "GET", "url": "/conversations"}}',
   '  {"tool": "finish", "arguments": {}}   <- when the requested change is complete',
   "",
-  "Read before you write: list the relevant collections first, then make the smallest set of writes that satisfies the request.",
+  "Read before you write, then make the smallest set of writes that satisfies the request.",
   "Writing to a record the request did not ask you to change scores zero for the whole task.",
 ].join("\n");
 
 /** Strict parse: one JSON object naming a known tool. No repair, no salvage of prose. */
 function parseAction(text) {
-  // Reasoning bases emit a think block before the call; it is scratch, not a tool call.
   const visible = String(text ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "");
   const trimmed = visible.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const start = trimmed.indexOf("{");
@@ -111,7 +99,6 @@ async function chat(messages, attempt = 0) {
   });
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 300);
-    // Serverless rate limits are a throughput artefact, not a benchmark signal.
     if ((response.status === 429 || response.status >= 500) && attempt < 6) {
       await sleep(2000 * 2 ** attempt + Math.floor(Math.random() * 500));
       return chat(messages, attempt + 1);
@@ -126,7 +113,7 @@ async function chat(messages, attempt = 0) {
   };
 }
 
-async function runTask(task) {
+async function runEpisode(task, sampleIndex) {
   const { handle } = reset(task.taskId);
   const messages = [
     { role: "system", content: SYSTEM },
@@ -138,6 +125,7 @@ async function runTask(task) {
   let consecutiveMalformed = 0;
   let ended = "budget";
   let error = null;
+  const turns = [];
 
   try {
     for (let turn = 0; turn < maxTurns && !handle.done; turn += 1) {
@@ -146,6 +134,7 @@ async function runTask(task) {
       completionTokens += reply.completionTokens;
       messages.push({ role: "assistant", content: reply.text || "(empty)" });
       const parsed = parseAction(reply.text);
+      turns.push({ assistant: reply.text, rejected: parsed.error ?? null });
       if (parsed.finish) {
         ended = "finish";
         break;
@@ -157,12 +146,16 @@ async function runTask(task) {
           ended = "malformed";
           break;
         }
-        messages.push({ role: "user", content: `rejected: ${parsed.error}. Reply with exactly one JSON tool object.` });
+        const note = `rejected: ${parsed.error}. Reply with exactly one JSON tool object.`;
+        messages.push({ role: "user", content: note });
+        turns.at(-1).observation = note;
         continue;
       }
       consecutiveMalformed = 0;
       const result = step(handle, parsed.action);
-      messages.push({ role: "user", content: result.obs.messages.at(-1).content.slice(0, 4000) });
+      const observation = result.obs.messages.at(-1).content.slice(0, 4000);
+      messages.push({ role: "user", content: observation });
+      turns.at(-1).observation = observation;
       if (result.done) ended = "budget";
     }
   } catch (cause) {
@@ -171,12 +164,11 @@ async function runTask(task) {
   }
 
   const score = handle.done ? partialCredit(handle) : finish(handle).reward;
-  const family = task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   return {
     task_id: task.taskId,
-    family,
-    band: BANDS[family] ?? "unknown",
-    tier: task.taskId.startsWith("hard-") ? "hard" : "v1",
+    sample: sampleIndex,
+    family: task.family,
+    band: task.band,
     split: task.split,
     score: error ? null : score,
     steps: handle.step,
@@ -186,58 +178,64 @@ async function runTask(task) {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     error,
+    ...(keepTranscripts ? { system: SYSTEM, prompt: task.prompt, turns } : {}),
   };
 }
 
 async function main() {
   const started = Date.now();
+  const jobs = [];
+  for (const task of pool) {
+    for (let sample = 0; sample < samples; sample += 1) jobs.push({ task, sample });
+  }
   const rows = [];
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < tasks.length) {
-      const task = tasks[cursor++];
-      rows.push(await runTask(task));
-      process.stderr.write(`\r${rows.length}/${tasks.length} done`);
-    }
-  });
-  await Promise.all(workers);
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+      while (cursor < jobs.length) {
+        const job = jobs[cursor++];
+        rows.push(await runEpisode(job.task, job.sample));
+        process.stderr.write(`\r${rows.length}/${jobs.length} done`);
+      }
+    }),
+  );
   process.stderr.write("\n");
 
   const scored = rows.filter((row) => typeof row.score === "number");
   const mean = (values) => (values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length);
-  const byTier = {};
   const byFamily = {};
   const byBand = {};
   for (const row of scored) {
-    (byTier[row.tier] ??= []).push(row.score);
     (byFamily[row.family] ??= []).push(row.score);
     (byBand[row.band] ??= []).push(row.score);
   }
   const report = {
+    schema_version: "understudy.workload_slice_rollout.v1",
     model,
+    slice_id: SLICE.slice_id,
+    workload_code: SLICE.workload_code,
+    fixture: SLICE.fixture_id,
     split,
-    fixture: "automationbench-simple-api-offline-v2",
-    split_sha256: v2SplitSha256(split),
-    pool_size: V2_TASKS.filter((task) => task.split === split).length,
-    sampled: tasks.length,
+    split_sha256: sliceSplitSha256(split),
+    pool_size: sliceCounts()[split],
+    samples_per_task: samples,
+    temperature,
+    episodes: rows.length,
     scored: scored.length,
     errors: rows.length - scored.length,
     mean_score: mean(scored.map((row) => row.score)),
     exact_1_rate: scored.length === 0 ? null : scored.filter((row) => row.score === 1).length / scored.length,
     zero_rate: scored.length === 0 ? null : scored.filter((row) => row.score === 0).length / scored.length,
-    mean_by_tier: Object.fromEntries(Object.entries(byTier).map(([key, values]) => [key, mean(values)])),
-    mean_by_family: Object.fromEntries(Object.entries(byFamily).map(([key, values]) => [key, mean(values)])),
     mean_by_band: Object.fromEntries(Object.entries(byBand).map(([key, values]) => [key, mean(values)])),
-    // Over-action guard: a policy that writes outside `allowedWrites` scores 0 for
-    // that episode, so the raw counts matter even when the rate rounds to zero.
+    mean_by_family: Object.fromEntries(Object.entries(byFamily).map(([key, values]) => [key, mean(values)])),
+    bands: SLICE_BANDS,
     over_acting_episodes: rows.filter((row) => (row.forbidden_effects ?? 0) > 0).length,
     forbidden_writes: rows.reduce((sum, row) => sum + (row.forbidden_effects ?? 0), 0),
-    forbidden_effect_rate: scored.length === 0 ? null : scored.filter((row) => row.forbidden_effects > 0).length / scored.length,
     malformed_rate: rows.length === 0 ? null : rows.filter((row) => row.malformed > 0).length / rows.length,
     prompt_tokens: rows.reduce((sum, row) => sum + row.prompt_tokens, 0),
     completion_tokens: rows.reduce((sum, row) => sum + row.completion_tokens, 0),
     wall_clock_s: Math.round((Date.now() - started) / 1000),
-    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id)),
+    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id) || a.sample - b.sample),
   };
   if (outPath) {
     mkdirSync(dirname(outPath), { recursive: true });
