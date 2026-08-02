@@ -227,9 +227,8 @@ def _train(
             "epoch": epoch,
             "sampler_path": sampler_path,
         }
-        if epoch == epochs:
-            state_response = training_client.save_state(name=f"sft-epoch{epoch}-state").result()
-            checkpoint["state_path"] = _extract_path(state_response)
+        state_response = training_client.save_state(name=f"sft-epoch{epoch}-state").result()
+        checkpoint["state_path"] = _extract_path(state_response)
         checkpoints.append(checkpoint)
         print(json.dumps({"sft_checkpoint": checkpoint}, sort_keys=True), flush=True)
     metrics = {
@@ -364,6 +363,7 @@ def main() -> None:
             {
                 "epoch": epoch,
                 "sampler_path": checkpoint["sampler_path"],
+                "state_path": checkpoint["state_path"],
                 "mean_reward": summary["mean_reward"],
                 "strict_pass_rate": summary["strict_pass_rate"],
                 "summary_path": str(ARTIFACT_DIR / f"sft-epoch{epoch}-dev.summary.json"),
@@ -455,11 +455,11 @@ def main() -> None:
                 "per_epoch_dev": dev_results,
                 "selected_epoch": selected["epoch"],
                 "selected_sampler_path": selected_path,
-                "selected_state_path": checkpoints[-1].get("state_path"),
+                "selected_state_path": selected.get("state_path"),
                 "selection_rationale": (
-                    "Epoch 3 and epoch 4 tie on dev reward. Prefer the latest tied "
-                    "epoch, because RL initializes from its saved LoRA state; epoch "
-                    "4 is the tied checkpoint with the resumable state artifact."
+                    "Select the highest dev reward with earliest-epoch tie-break; "
+                    "every epoch now has a resumable state so GRPO starts from the "
+                    "same dev-selected checkpoint as the reported SFT arm."
                 ),
                 "selected_train_summary": selected_train,
                 "selected_dev_summary": selected_dev,
