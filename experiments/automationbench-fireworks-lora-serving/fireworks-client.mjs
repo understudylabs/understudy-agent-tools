@@ -1,6 +1,19 @@
 // Experiment notes, receipts, and reproduction commands: ./README.md
 
 const DEFAULT_BASE_URL = "https://api.fireworks.ai/inference";
+const OUTGOING_MESSAGE_KEYS = new Set([
+  "role",
+  "content",
+  "name",
+  "tool_calls",
+  "tool_call_id",
+]);
+
+export function sanitizeOutgoingMessages(messages) {
+  return messages.map((message) => Object.fromEntries(
+    Object.entries(message).filter(([key]) => OUTGOING_MESSAGE_KEYS.has(key)),
+  ));
+}
 
 export function fireworksCallModel({
   model,
@@ -27,7 +40,7 @@ export function fireworksCallModel({
         signal: AbortSignal.timeout(timeoutMs),
         body: JSON.stringify({
           model,
-          messages,
+          messages: sanitizeOutgoingMessages(messages),
           tools,
           tool_choice: toolChoice,
           temperature,
