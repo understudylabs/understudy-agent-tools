@@ -15,11 +15,10 @@ import "../../../moodboard/moodboard.css";
 import "../flows.css";
 import { AMBER, BAD, CAND_C, GOOD, INC_C } from "../lib";
 import { createEngine, type Camera, type Engine } from "./engine";
-import { buildRealWorld, realTotals } from "./real";
 import { buildWorkflowWorld, type WorkflowEvent } from "./live";
 import { generateRun, MAX_STEP, type World } from "./run";
 
-type DataSrc = "synthetic" | "und289" | "workflow";
+type DataSrc = "synthetic" | "workflow";
 
 const SPEED = 7; // outer steps per second during replay
 
@@ -157,7 +156,7 @@ export default function OrchardFlow() {
   const [liveEvents, setLiveEvents] = useState<WorkflowEvent[]>([]);
   const [liveStatus, setLiveStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
   const world = useMemo(
-    () => src === "und289" ? buildRealWorld() : src === "workflow" ? buildWorkflowWorld(liveEvents) : generateRun(),
+    () => src === "workflow" ? buildWorkflowWorld(liveEvents) : generateRun(),
     [src, liveEvents],
   );
   const geom = useMemo(() => makeGeom(world), [world]);
@@ -198,7 +197,6 @@ export default function OrchardFlow() {
       searches: world.searches.length,
       nodes: world.nodeCount,
       survived: world.records.length - 1,
-      real: src === "und289" ? realTotals() : null,
     }),
     [world, src]
   );
@@ -629,21 +627,6 @@ export default function OrchardFlow() {
             white running · mint passed · red failed · cursor refresh 1s
           </span>
         </>
-      ) : totals.real ? (
-        <>
-          <span className="fx-cap">{totals.real.campaign}</span>
-          <b style={{ fontFamily: "var(--font-mono)", fontSize: 15 }}>
-            {totals.real.scored} runs scored · {totals.survived} moved the record
-          </b>
-          <span className="fx-cap">
-            {totals.real.failed} failed · {totals.real.stopped} stopped · ${totals.real.spend.toFixed(0)} spent ·{" "}
-            {world.frontierByStep[0]?.toFixed(4)} → {world.frontierByStep[world.evals.length - 1]?.toFixed(4)} on the{" "}
-            {totals.real.primaryBench}-row dev set
-          </span>
-          <span className="fx-cap" style={{ marginLeft: "auto", color: "var(--dim2)" }}>
-            live campaign · snapshot {totals.real.asOf.slice(11, 16)}z
-          </span>
-        </>
       ) : (
         <>
           <span className="fx-cap">the run</span>
@@ -816,7 +799,6 @@ export default function OrchardFlow() {
             {(
               [
                 ["synthetic", "synthetic"],
-                ["und289", "und-289 · real"],
                 ["workflow", "workflow · live"],
               ] as [DataSrc, string][]
             ).map(([id, label]) => (

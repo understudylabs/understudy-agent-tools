@@ -1,11 +1,9 @@
-/* 20 · orchard — real data. Derek's UND-289 campaign (replace the
- * Instacart shopper pipeline) rendered as the field: every scored Modal
- * run is a dot in true launch order, records walk the spine when a run
- * raises the best score on the frozen 559-row dev set, and failed
- * proposals orbit the run they actually built on (parent_run_id — real
- * lineage, not decoration). Runs on other benchmarks (1103 full
- * pipeline, smoke sets) appear with their honest scores but never set
- * records — different denominators don't compare.
+/* 20 · orchard — canonical experiment records rendered as a field.
+ * Every scored run is a dot in launch order, records walk the spine when
+ * a run raises the best score on the frozen dev set, and failed proposals
+ * orbit the run they actually built on (parent_run_id — real lineage, not
+ * decoration). Runs on other benchmarks appear with their honest scores
+ * but never set records — different denominators do not compare.
  *
  * One search dot per run carries its architecture. Where a run's own
  * artifact carries per-case grades (input_id/expected/predicted/correct
@@ -15,11 +13,9 @@
  * across runs. No grades in the artifact → no nodes; nothing is
  * inferred.
  *
- * Snapshot: app/cedar/flows/orchard/und289.json — refresh with
- * scripts/export-und289.py (reads the orchestrator sqlite read-only).
+ * Data is supplied by the redacted Workflow event projection in live.ts.
  */
 
-import raw from "./und289.json";
 import {
   AMBER,
   BAND_EVAL,
@@ -80,35 +76,8 @@ export type OrchardRunSet = {
   runs: OrchardRun[];
 };
 
-export const UND289 = raw as OrchardRunSet;
-
-export type RealTotals = {
-  campaign: string;
-  asOf: string;
-  scored: number;
-  failed: number;
-  stopped: number;
-  running: number;
-  spend: number;
-  primaryBench: number;
-};
-
-export function realTotals(): RealTotals {
-  const by = (s: string) => UND289.runs.filter((r) => r.status === s).length;
-  return {
-    campaign: UND289.campaign,
-    asOf: UND289.as_of,
-    scored: UND289.runs.filter((r) => r.acc !== null).length,
-    failed: by("failed"),
-    stopped: by("stopped"),
-    running: by("running"),
-    spend: UND289.spend_usd ?? 0,
-    primaryBench: UND289.primary_bench,
-  };
-}
-
 export function buildRealWorld(
-  data: OrchardRunSet = UND289,
+  data: OrchardRunSet,
   options: { includeUnscored?: boolean } = {},
 ): World {
   const rand = mulberry32(289);
