@@ -1,0 +1,34 @@
+{
+  "model": "nemotron-3-nano-base",
+  "split": "train",
+  "fixture": "aop-selection-offline-v1",
+  "split_sha256": "f8e8dde2cbab6db7a7f1f6b400d954467a6743b15f41a93d81b372361835c6d1",
+  "pool_size": 36,
+  "sampled": 36,
+  "samples_per_task": 4,
+  "temperature": 1,
+  "scored": 36,
+  "errors": 0,
+  "mean_score": 0.6944444444444444,
+  "exact_1_rate": 0.2777777777777778,
+  "zero_rate": 0.05555555555555555,
+  "mean_by_band": {
+    "direct": 0.6875,
+    "restraint": 0.7708333333333334,
+    "disambiguation": 0.625
+  },
+  "mean_by_family": {
+    "catalog-lookup": 0.625,
+    "declined-option": 0.7916666666666666,
+    "named-option": 0.75,
+    "near-match-target": 0.375,
+    "scoped-write": 0.75,
+    "superseded-option": 0.875
+  },
+  "over_acting_episodes": 0,
+  "forbidden_writes": 0,
+  "malformed_rate": 0.9166666666666666,
+  "prompt_tokens": 1062077,
+  "completion_tokens": 279420,
+  "wall_clock_s": 959
+}

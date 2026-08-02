@@ -1,0 +1,133 @@
+{
+  "schema_version": "understudy.wl_au.dpo_lift.v1",
+  "experiment_id": "wl-au-near-hit-dpo",
+  "candidate_id": "nemotron3-nano-near-hit-dpo",
+  "workload_code": "WL-AU",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3",
+  "checkpoint": "tinker://52938c3d-7df8-5187-88dc-4c60c5826e97:train:0/sampler_weights/final",
+  "pairs_sha256": "d38e46efd9ccdac7bcf7b4ee8071e97e44896538e1445863af1d52a8281dd58d",
+  "pairs": 126,
+  "limits": {
+    "budget_usd": 0,
+    "max_concurrent_candidates": 1,
+    "max_concurrent_requests_per_candidate": 64,
+    "max_rollouts": 2000,
+    "max_runtime_seconds": 43200
+  },
+  "protocol": {
+    "scoring_max_tokens": 1024,
+    "greedy": { "temperature": 0, "samples_per_task": 1, "episodes_per_arm": 36 },
+    "sampled": { "temperature": 0.7, "samples_per_task": 4, "episodes_per_arm": 144 },
+    "note": "The sampled protocol is the primary evidence; the greedy pass is a single draw per task and is reported only for continuity with earlier runs."
+  },
+  "dev_sampled": {
+    "episodes_per_arm": 144,
+    "base": { "mean_score": 0.803, "exact_1_rate": 0.7153, "zero_rate": 0.125, "malformed_rate": 0.4444, "over_acting_episodes": 0, "forbidden_effects": 5 },
+    "dpo": { "mean_score": 0.8219, "exact_1_rate": 0.7292, "zero_rate": 0.1042, "malformed_rate": 0.4792, "over_acting_episodes": 0, "forbidden_effects": 3 },
+    "paired_delta_mean": 0.0189,
+    "paired_delta_ci95": [-0.0514, 0.0898],
+    "paired_wins": 11,
+    "paired_losses": 11,
+    "paired_ties": 14,
+    "sign_test_p": 1.0,
+    "significant": false
+  },
+  "dev_greedy": {
+    "episodes_per_arm": 36,
+    "base": { "mean_score": 0.8247, "exact_1_rate": 0.7222, "zero_rate": 0.0833, "malformed_rate": 0.4722, "over_acting_episodes": 1, "forbidden_writes": 1 },
+    "dpo": { "mean_score": 0.8535, "exact_1_rate": 0.75, "zero_rate": 0.0833, "malformed_rate": 0.4167, "over_acting_episodes": 0, "forbidden_writes": 0 },
+    "paired_delta_mean": 0.0288,
+    "paired_delta_ci95": [-0.1101, 0.1677],
+    "sign_test_p": 0.7539,
+    "significant": false
+  },
+  "dev_by_band_sampled": {
+    "single-write": { "tasks": 4, "base": 0.75, "dpo": 1.0, "delta": 0.25 },
+    "discovery": { "tasks": 4, "base": 0.875, "dpo": 0.875, "delta": 0.0 },
+    "multi-write": { "tasks": 4, "base": 0.802, "dpo": 0.719, "delta": -0.083 },
+    "cross-record": { "tasks": 6, "base": 0.875, "dpo": 0.896, "delta": 0.021 },
+    "multi-hop": { "tasks": 4, "base": 0.531, "dpo": 0.625, "delta": 0.094 },
+    "cascade": { "tasks": 4, "base": 0.953, "dpo": 0.812, "delta": -0.141 },
+    "long-chain": { "tasks": 4, "base": 0.565, "dpo": 0.679, "delta": 0.113 },
+    "conditional": { "tasks": 4, "base": 0.938, "dpo": 0.969, "delta": 0.031 },
+    "aggregation": { "tasks": 2, "base": 1.0, "dpo": 0.75, "delta": -0.25 }
+  },
+  "holdout_base_only": {
+    "note": "Read once with the frozen hash, base weights only, before the directive to stop executing the holdout. The candidate was never scored on it, so this is a reference point and not a lift measurement.",
+    "episodes": 60,
+    "base": { "mean_score": 0.8056, "exact_1_rate": 0.7167, "zero_rate": 0.1167, "malformed_rate": 0.4333, "over_acting_episodes": 2, "forbidden_writes": 2 }
+  },
+  "result": {
+    "schema_version": "understudy.experiment-result.v1",
+    "experiment_id": "wl-au-near-hit-dpo",
+    "state": "holdout_locked",
+    "verifier_environment": "automationbench-simple-api-offline-v2",
+    "verifier_revision": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split_manifest_refs": {
+      "train": "file://experiments/workload-automation/pairs.manifest.json",
+      "dev": "file://experiments/workload-automation/dev.manifest.json",
+      "holdout": "file://experiments/workload-automation/gate-validation.json#/split_sha256/holdout"
+    },
+    "split_manifest_sha256": {
+      "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+      "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+      "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9"
+    },
+    "baseline_metrics": {
+      "dev_mean_score": 0.803,
+      "dev_exact_1_rate": 0.7153,
+      "dev_zero_rate": 0.125,
+      "dev_forbidden_effects": 5,
+      "dev_over_acting_episodes": 0
+    },
+    "optimized_metrics": {
+      "dev_mean_score": 0.8219,
+      "dev_exact_1_rate": 0.7292,
+      "dev_zero_rate": 0.1042,
+      "dev_forbidden_effects": 3,
+      "dev_over_acting_episodes": 0,
+      "dev_paired_delta_mean": 0.0189,
+      "dev_paired_delta_ci95_low": -0.0514,
+      "dev_paired_delta_ci95_high": 0.0898
+    },
+    "holdout_executed": true,
+    "holdout_clean": false,
+    "budget_usd": 0,
+    "usage": {
+      "evidence_scope": "unknown",
+      "requests": 2926,
+      "input_tokens": 4928494,
+      "output_tokens": 1610726,
+      "actual_usd": null,
+      "estimated_usd": null,
+      "upper_bound_usd": null,
+      "observed_at": "2026-08-02T05:40:00Z"
+    },
+    "request_isolation_proven": false,
+    "quality_evidence": {
+      "status": "measured",
+      "reason": "Paired dev comparison over 144 episodes per arm. The mean delta is +0.019 with a 95% bootstrap interval of [-0.051, +0.090] and 11 wins against 11 losses, so the lift is not distinguishable from zero at this sample size.",
+      "required_calibration": "A dev split of 36 tasks cannot resolve a two-point effect. Widening the synthetic dev split, or repeating the arm across seeds, is required before any lift claim.",
+      "calibration_artifact_refs": [
+        "file://experiments/workload-automation/scores/dev-sampled-summary.json"
+      ]
+    },
+    "failure_clusters": [
+      { "cluster": "malformed emission: reasoning preamble consumes the token budget before the tool call", "count": 69 },
+      { "cluster": "chained-band shortfall: long-chain and multi-hop terminal states left incomplete", "count": 21 },
+      { "cluster": "forbidden effect: write outside the task's permitted record set", "count": 3 }
+    ],
+    "cancellation_receipts": [],
+    "artifact_refs": [
+      "file://experiments/workload-automation/gate-validation.json",
+      "file://experiments/workload-automation/aggregates.json",
+      "file://experiments/workload-automation/candidate-policy.json",
+      "file://experiments/workload-automation/pairs.manifest.json",
+      "file://experiments/workload-automation/pairs.validation.json",
+      "file://experiments/workload-automation/train-receipt.json",
+      "file://experiments/workload-automation/scores/"
+    ],
+    "claim_boundary": "Claims cover one Nemotron-3-Nano candidate on the synthetic AutomationBench v2 fixture only. No lift is claimed: the dev delta is within noise. The holdout was read once for the base model and never for the candidate, so no held-out comparison exists. Nothing here is evidence about the production workload's live traffic, which contributed aggregate counts only. Provider spend was not metered by this arm."
+  }
+}

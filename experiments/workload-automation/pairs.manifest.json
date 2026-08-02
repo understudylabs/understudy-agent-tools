@@ -1,0 +1,31 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "generated_at": "2026-08-02T02:53:58.223Z",
+  "source": "synthetic offline fixture automationbench-simple-api-offline-v2 (index-generated records; no customer data)",
+  "workload": "WL-AU",
+  "split": "train",
+  "train_split_sha256": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+  "sampler": {
+    "model": "nemotron-3-nano",
+    "base_url_kind": "local-shim",
+    "temperature": 0.9,
+    "samples_per_task": 8,
+    "max_turns": 14,
+    "max_tokens": 1024
+  },
+  "tasks": 120,
+  "rollouts": 960,
+  "pairs": 126,
+  "pairs_by_band": {
+    "single-write": 11,
+    "discovery": 9,
+    "multi-write": 20,
+    "cross-record": 22,
+    "multi-hop": 18,
+    "cascade": 18,
+    "long-chain": 16,
+    "conditional": 9,
+    "aggregation": 3
+  },
+  "pairs_sha256": "d38e46efd9ccdac7bcf7b4ee8071e97e44896538e1445863af1d52a8281dd58d"
+}
