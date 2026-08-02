@@ -39,29 +39,39 @@ export const ExperimentSubmitRequestSchema = z.object({
 export type ExperimentSubmitRequest = z.infer<typeof ExperimentSubmitRequestSchema>;
 export type ExperimentRequest = Omit<ExperimentSubmitRequest, "schema_version">;
 
-export type ExperimentJob = {
-  jobId: string;
-  idempotencyKey: string;
-  status: string;
-};
+export const ExperimentJobSchema = z.object({
+  job: z.string().min(1),
+  status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+}).strict();
 
-export type UsageEvidence = "run-exclusive" | "estimated";
+export type ExperimentJob = z.infer<typeof ExperimentJobSchema>;
 
-export type ExperimentUsage = {
-  evidence_scope: UsageEvidence;
-  gpuSeconds: number | null;
-  actual_usd?: number | null;
-  estimated_usd?: number | null;
-};
+export const ExperimentCancellationSchema = z.object({
+  job: z.string().min(1),
+  disposition: z.literal("cancelled"),
+  observed_at: z.string().min(1),
+}).strict();
+
+export type ExperimentCancellation = z.infer<typeof ExperimentCancellationSchema>;
+
+export type UsageEvidence = "run_exclusive" | "account_window" | "unknown";
+
+export const ExperimentUsageSchema = z.object({
+  job: z.string().min(1),
+  evidence_scope: z.enum(["run_exclusive", "account_window", "unknown"]),
+  actual_usd: z.number().nullable(),
+  estimated_usd: z.number().nullable(),
+  requests: z.number().nullable(),
+  tokens: z.number().nullable(),
+  gpu_seconds: z.number().nullable(),
+}).strict();
+
+export type ExperimentUsage = z.infer<typeof ExperimentUsageSchema>;
 
 export interface ExperimentExecutor {
   submit(request: ExperimentRequest): Promise<ExperimentJob>;
   inspect(jobId: string): Promise<ExperimentJob>;
-  cancel(jobId: string): Promise<{
-    jobId: string;
-    status: "cancelled";
-    cancelledAt: string;
-  }>;
+  cancel(jobId: string): Promise<ExperimentCancellation>;
   reconcileUsage(jobId: string): Promise<ExperimentUsage>;
 }
 
@@ -82,27 +92,19 @@ export class ModalExperimentExecutor implements ExperimentExecutor {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(body),
-    }) as Promise<ExperimentJob>;
+    }, ExperimentJobSchema);
   }
 
   async inspect(jobId: string): Promise<ExperimentJob> {
     return this.request(`/experiments/${encodeURIComponent(jobId)}`, {
       method: "GET",
-    }) as Promise<ExperimentJob>;
+    }, ExperimentJobSchema);
   }
 
-  async cancel(jobId: string): Promise<{
-    jobId: string;
-    status: "cancelled";
-    cancelledAt: string;
-  }> {
+  async cancel(jobId: string): Promise<ExperimentCancellation> {
     return this.request(`/experiments/${encodeURIComponent(jobId)}`, {
       method: "DELETE",
-    }) as Promise<{
-      jobId: string;
-      status: "cancelled";
-      cancelledAt: string;
-    }>;
+    }, ExperimentCancellationSchema);
   }
 
   async reconcileUsage(
@@ -110,10 +112,14 @@ export class ModalExperimentExecutor implements ExperimentExecutor {
   ): Promise<ExperimentUsage> {
     return this.request(`/experiments/${encodeURIComponent(jobId)}/usage`, {
       method: "GET",
-    }) as Promise<ExperimentUsage>;
+    }, ExperimentUsageSchema);
   }
 
-  private async request(path: string, init: RequestInit): Promise<unknown> {
+  private async request<T>(
+    path: string,
+    init: RequestInit,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("content-type", "application/json");
     if (this.apiKey) headers.set("authorization", `Bearer ${this.apiKey}`);
@@ -124,6 +130,9 @@ export class ModalExperimentExecutor implements ExperimentExecutor {
     if (!response.ok) {
       throw new Error(`experiment executor request failed: ${response.status}`);
     }
-    return response.status === 204 ? undefined : response.json();
+    if (response.status === 204) {
+      throw new Error("experiment executor returned an empty response");
+    }
+    return schema.parse(await response.json());
   }
 }

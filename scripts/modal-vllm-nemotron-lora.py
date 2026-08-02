@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import hashlib
+import hmac
 import subprocess
 import time
 from typing import Any
@@ -27,6 +28,7 @@ AUTH_SECRET = "understudy-nemotron-vllm-auth"
 EXECUTOR_IDEMPOTENCY_DICT = "understudy-nemotron-experiment-idempotency"
 EXECUTOR_JOB_DICT = "understudy-nemotron-experiment-jobs"
 H200_PRICE_PER_HOUR = 4.54
+EXECUTOR_AUTH_ENV = "VLLM_API_KEY"
 
 app = modal.App(APP_NAME)
 model_cache = modal.Volume.from_name(MODEL_CACHE_VOLUME, create_if_missing=True)
@@ -115,6 +117,26 @@ def deterministic_job_id(idempotency_key: str) -> str:
     return f"job-{digest}"
 
 
+def authorization_valid(authorization: str | None, expected_token: str) -> bool:
+    if not authorization or not expected_token:
+        return False
+    scheme, separator, token = authorization.partition(" ")
+    return (
+        separator == " "
+        and hmac.compare_digest(scheme, "Bearer")
+        and bool(token)
+        and hmac.compare_digest(token, expected_token)
+    )
+
+
+def submission_action(record: dict[str, Any] | None) -> str:
+    if record is None:
+        return "create_record"
+    if record.get("functionCallId"):
+        return "return_existing"
+    return "spawn"
+
+
 def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
     import json
     from fastapi import HTTPException
@@ -140,23 +162,34 @@ def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
 def execute_experiment(job_id: str, request: dict[str, Any]) -> None:
     started = time.time()
     job = dict(job_store.get(job_id, {}))
-    job.update({"status": "running", "startedAt": started})
-    job_store.put(job_id, job)
+    if job.get("status") != "cancelled":
+        job.update({"status": "running", "startedAt": started})
+        job_store.put(job_id, job)
     try:
         # The deployed executor is intentionally a thin paid-work boundary.
         # Workflow code submits immutable artifact references; it does not run
         # a poller or embed provider orchestration here.
-        job.update({"status": "succeeded"})
+        job = dict(job_store.get(job_id, job))
+        if job.get("status") != "cancelled":
+            job.update({"status": "succeeded"})
     except Exception as error:
-        job.update({"status": "failed", "error": type(error).__name__})
+        job = dict(job_store.get(job_id, job))
+        if job.get("status") != "cancelled":
+            job.update({"status": "failed", "error": type(error).__name__})
         raise
     finally:
         finished = time.time()
-        job.update({"finishedAt": finished, "durationSeconds": finished - started})
-        job_store.put(job_id, job)
+        job = dict(job_store.get(job_id, job))
+        if job.get("status") != "cancelled":
+            job.update({"finishedAt": finished, "durationSeconds": finished - started})
+            job_store.put(job_id, job)
 
 
-@app.function(image=image, timeout=60 * 60)
+@app.function(
+    image=image,
+    timeout=60 * 60,
+    secrets=[modal.Secret.from_name(AUTH_SECRET)],
+)
 @modal.asgi_app()
 def executor_api() -> Any:
     from fastapi import FastAPI, Header, HTTPException
@@ -165,8 +198,12 @@ def executor_api() -> Any:
 
     @api.post("/experiments")
     async def submit_experiment(
-        body: dict[str, Any], idempotency_key: str | None = Header(default=None, alias="Idempotency-Key")
+        body: dict[str, Any],
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+        authorization: str | None = Header(default=None),
     ) -> dict[str, Any]:
+        if not authorization_valid(authorization, os.environ.get(EXECUTOR_AUTH_ENV, "")):
+            raise HTTPException(status_code=401, detail="unauthorized")
         if not idempotency_key:
             raise HTTPException(status_code=400, detail="Idempotency-Key is required")
         request = _artifact_request(body)
@@ -181,41 +218,48 @@ def executor_api() -> Any:
         claimed = await idempotency_store.put.aio(
             idempotency_key, job_id, skip_if_exists=True
         )
-        if not claimed:
-            existing_job_id = await idempotency_store.get.aio(idempotency_key)
-            if existing_job_id:
-                return dict(
-                    await job_store.get.aio(
-                        existing_job_id, {"jobId": existing_job_id}
-                    )
-                )
-        record = {
-            "jobId": job_id,
-            "idempotencyKey": idempotency_key,
-            "status": "queued",
-            "request": request,
-        }
-        await job_store.put.aio(job_id, record, skip_if_exists=True)
+        existing_job_id = await idempotency_store.get.aio(idempotency_key)
+        if existing_job_id:
+            job_id = existing_job_id
+        record = await job_store.get.aio(job_id)
+        action = submission_action(record)
+        if action == "return_existing":
+            return {"job": job_id, "status": record.get("status", "queued")}
+        if action == "create_record":
+            record = {
+                "job": job_id,
+                "idempotencyKey": idempotency_key,
+                "status": "queued",
+                "request": request,
+            }
+            await job_store.put.aio(job_id, record, skip_if_exists=True)
+            record = await job_store.get.aio(job_id, record)
+        if submission_action(record) == "return_existing":
+            return {"job": job_id, "status": record.get("status", "queued")}
         call = execute_experiment.spawn(job_id, request)
         record["functionCallId"] = call.object_id
         await job_store.put.aio(job_id, record)
-        return {
-            "jobId": job_id,
-            "idempotencyKey": idempotency_key,
-            "status": "queued",
-        }
+        return {"job": job_id, "status": "queued"}
 
     @api.get("/experiments/{job_id}")
-    async def inspect_experiment(job_id: str) -> dict[str, Any]:
+    async def inspect_experiment(
+        job_id: str, authorization: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        if not authorization_valid(authorization, os.environ.get(EXECUTOR_AUTH_ENV, "")):
+            raise HTTPException(status_code=401, detail="unauthorized")
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
         public = dict(record)
         public.pop("request", None)
-        return public
+        return {"job": job_id, "status": public.get("status", "unknown")}
 
     @api.delete("/experiments/{job_id}")
-    async def cancel_experiment(job_id: str) -> dict[str, Any]:
+    async def cancel_experiment(
+        job_id: str, authorization: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        if not authorization_valid(authorization, os.environ.get(EXECUTOR_AUTH_ENV, "")):
+            raise HTTPException(status_code=401, detail="unauthorized")
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
@@ -227,13 +271,17 @@ def executor_api() -> Any:
         record["cancelledAt"] = cancelled_at
         await job_store.put.aio(job_id, record)
         return {
-            "jobId": job_id,
-            "status": "cancelled",
-            "cancelledAt": cancelled_at,
+            "job": job_id,
+            "disposition": "cancelled",
+            "observed_at": cancelled_at,
         }
 
     @api.get("/experiments/{job_id}/usage")
-    async def reconcile_usage(job_id: str) -> dict[str, Any]:
+    async def reconcile_usage(
+        job_id: str, authorization: str | None = Header(default=None)
+    ) -> dict[str, Any]:
+        if not authorization_valid(authorization, os.environ.get(EXECUTOR_AUTH_ENV, "")):
+            raise HTTPException(status_code=401, detail="unauthorized")
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
@@ -242,14 +290,22 @@ def executor_api() -> Any:
             duration = max(0.0, time.time() - record["startedAt"])
         if duration is None:
             return {
+                "job": job_id,
+                "evidence_scope": "unknown",
                 "estimated_usd": None,
-                "gpuSeconds": None,
-                "evidence_scope": "estimated",
+                "actual_usd": None,
+                "requests": None,
+                "tokens": None,
+                "gpu_seconds": None,
             }
         return {
+            "job": job_id,
+            "evidence_scope": "unknown",
             "estimated_usd": duration / 3600 * H200_PRICE_PER_HOUR,
-            "gpuSeconds": duration,
-            "evidence_scope": "estimated",
+            "actual_usd": None,
+            "requests": None,
+            "tokens": None,
+            "gpu_seconds": duration,
         }
 
     return api

@@ -54,15 +54,14 @@ test("submit sends matching idempotency header and body with bearer auth", async
   const restore = withFetch(async (url, init) => {
     captured = { url, init, body: JSON.parse(init.body) };
     return new Response(JSON.stringify({
-      jobId: "job-1",
-      idempotencyKey: "exp-1:candidate-a:2",
+      job: "job-1",
       status: "queued",
     }), { status: 200, headers: { "content-type": "application/json" } });
   });
   try {
     const client = new ModalExperimentExecutor("https://executor.example/", "secret");
     const result = await client.submit(request);
-    assert.equal(result.jobId, "job-1");
+    assert.equal(result.job, "job-1");
     assert.equal(captured.url, "https://executor.example/experiments");
     assert.equal(captured.init.headers.get("authorization"), "Bearer secret");
     assert.equal(captured.init.headers.get("idempotency-key"), "exp-1:candidate-a:2");
@@ -79,18 +78,18 @@ test("cancel returns a receipt-shaped response", async () => {
     assert.equal(init.method, "DELETE");
     assert.equal(url, "https://executor.example/experiments/job-1");
     return new Response(JSON.stringify({
-      jobId: "job-1",
-      status: "cancelled",
-      cancelledAt: "2026-08-02T00:00:00Z",
+      job: "job-1",
+      disposition: "cancelled",
+      observed_at: "2026-08-02T00:00:00Z",
     }), { status: 200 });
   });
   try {
     assert.deepEqual(
       await new ModalExperimentExecutor("https://executor.example").cancel("job-1"),
       {
-        jobId: "job-1",
-        status: "cancelled",
-        cancelledAt: "2026-08-02T00:00:00Z",
+        job: "job-1",
+        disposition: "cancelled",
+        observed_at: "2026-08-02T00:00:00Z",
       },
     );
   } finally {
@@ -100,17 +99,40 @@ test("cancel returns a receipt-shaped response", async () => {
 
 test("reconcileUsage carries evidence", async () => {
   const restore = withFetch(async () => new Response(JSON.stringify({
+    job: "job-1",
     estimated_usd: 1.23,
-    gpuSeconds: 975,
-    evidence_scope: "estimated",
+    actual_usd: null,
+    requests: null,
+    tokens: null,
+    gpu_seconds: 975,
+    evidence_scope: "unknown",
   }), { status: 200 }));
   try {
     const usage = await new ModalExperimentExecutor("https://executor.example").reconcileUsage("job-1");
     assert.deepEqual(usage, {
+      job: "job-1",
       estimated_usd: 1.23,
-      gpuSeconds: 975,
-      evidence_scope: "estimated",
+      actual_usd: null,
+      requests: null,
+      tokens: null,
+      gpu_seconds: 975,
+      evidence_scope: "unknown",
     });
+  } finally {
+    restore();
+  }
+});
+
+test("client rejects malformed response bodies", async () => {
+  const restore = withFetch(async () => new Response(JSON.stringify({
+    job: "job-1",
+    status: "not-a-real-status",
+  }), { status: 200 }));
+  try {
+    await assert.rejects(
+      new ModalExperimentExecutor("https://executor.example").inspect("job-1"),
+      /Invalid option/,
+    );
   } finally {
     restore();
   }
