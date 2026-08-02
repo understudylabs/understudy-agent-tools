@@ -110,6 +110,24 @@ test("unparseable timestamps are counted rather than silently dropped", () => {
   assert.equal(queue.parameters.total_captures_ranked, 1);
 });
 
+test("population scaling changes counts and dollars, not sample statistics", () => {
+  const captures = readRepairCaptures(writeFixture(Array.from({ length: 4 }, (_, index) => capture(String(index), "classify"))));
+  const base = rankRepairTargets(captures, rateCard, { now: new Date("2026-01-02T00:00:00Z") });
+  const scaled = rankRepairTargets(captures, rateCard, {
+    now: new Date("2026-01-02T00:00:00Z"),
+    populationScale: 10,
+    samplingMethod: "uniform random sample stratified by day; fixed seed",
+  });
+  assert.equal(scaled.sampling.population_scale, 10);
+  assert.equal(scaled.sampling.sampled_captures, 4);
+  assert.equal(scaled.workloads[0].raw.sampled_request_count, 4);
+  assert.equal(scaled.workloads[0].raw.request_count, base.workloads[0].raw.request_count * 10);
+  assert.equal(scaled.workloads[0].factors.repeatability, base.workloads[0].factors.repeatability);
+  assert.equal(scaled.workloads[0].raw.structured_output_share, base.workloads[0].raw.structured_output_share);
+  assert.equal(scaled.workloads[0].projected_savings_usd.optimistic, base.workloads[0].projected_savings_usd.optimistic * 10);
+  assert.match(renderRepairReport(scaled), /projected from an 10\.000% uniform sample/);
+});
+
 test("repair-targets CLI writes the queue and markdown artifacts", () => {
   const dir = mkdtempSync(join(tmpdir(), "repair-roi-cli-"));
   const captures = writeFixture([capture("cli-1", "classify this order", { ts: new Date().toISOString() })]);

@@ -43,6 +43,18 @@ addressable repeated-task clusters; optimistic savings apply to all traffic.
 Missing token counts use a character/4 estimate and are marked
 `token_source: "estimated"`.
 
+## Sampling
+
+For large corpora, pass `--population-scale <n>` after taking a uniform random
+sample (preferably stratified by day with a fixed seed). The queue records the
+sample size, scale, and method. Population quantities — request counts,
+requests/day, incumbent and candidate costs, and savings bands — are
+multiplied by `n`. Share-based factors remain sample statistics: HHI,
+addressable share, structured-output share, error rate, and medians are not
+scaled. Confidence still reflects the sampled request count, so small sampled
+workloads are flagged in Markdown even when their population projection is
+large.
+
 Toy example: suppose a workload is the largest in a corpus, so its volume
 factor is `1.0`; its task HHI is `0.50`; its headroom prior is `0.80`; and the
 candidate is 40% cheaper on the observed token mix, giving a cost-delta factor

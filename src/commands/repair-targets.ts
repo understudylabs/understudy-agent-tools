@@ -15,6 +15,7 @@ export function registerRepairTargetsCommand(program: Command): void {
     .requiredOption("--rate-card <path>", "Reviewed repair rate-card JSON.")
     .option("--out <dir>", "Output directory.", ".understudy/repair-targets")
     .option("--window-days <n>", "Lookback window.", "30")
+    .option("--population-scale <n>", "Extrapolate population quantities by this sample scale.", "1")
     .option("--min-cluster-size <n>", "Minimum repeated-task cluster size.", "20")
     .option("--headroom-brevity-weight <n>", "Headroom prior weight for output brevity.", "0.35")
     .option("--headroom-structured-weight <n>", "Headroom prior weight for structured output.", "0.35")
@@ -23,13 +24,15 @@ export function registerRepairTargetsCommand(program: Command): void {
     .option("--anonymize", "Use stable workload aliases (default).", true)
     .option("--no-anonymize", "Write workload names in local output.")
     .option("--json", "Print the complete queue JSON.")
-    .action((options: { captures: string; rateCard: string; out: string; windowDays: string; minClusterSize: string; headroomBrevityWeight: string; headroomStructuredWeight: string; headroomContextWeight: string; headroomErrorsWeight: string; anonymize: boolean; json?: boolean }) => {
+    .action((options: { captures: string; rateCard: string; out: string; windowDays: string; populationScale: string; minClusterSize: string; headroomBrevityWeight: string; headroomStructuredWeight: string; headroomContextWeight: string; headroomErrorsWeight: string; anonymize: boolean; json?: boolean }) => {
       const batch = readRepairCaptureBatch(options.captures);
       const now = new Date();
       const rankedCaptures = filterRepairCapturesToWindow(batch.captures, now, Number(options.windowDays));
       const aliases = deriveRepairAliases(rankedCaptures);
       const queue = rankRepairTargets(batch.captures, readRepairRateCard(options.rateCard), {
         windowDays: Number(options.windowDays),
+        populationScale: Number(options.populationScale),
+        samplingMethod: Number(options.populationScale) > 1 ? "uniform random sample stratified by day; fixed seed" : "none",
         minClusterSize: Number(options.minClusterSize),
         anonymize: options.anonymize,
         now,

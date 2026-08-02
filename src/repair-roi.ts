@@ -62,6 +62,8 @@ export type RepairRankOptions = {
     };
   };
   aliases?: RepairAliasMap;
+  populationScale?: number;
+  samplingMethod?: string;
   headroomWeights?: {
     brevity?: number;
     structured?: number;
@@ -91,6 +93,11 @@ export type RepairQueue = {
     invalid_timestamp: number;
   };
   missing_rate_models: string[];
+  sampling: {
+    population_scale: number;
+    sampled_captures: number;
+    sampling_method: string;
+  };
   anonymized: boolean;
   workloads: RepairWorkload[];
 };
@@ -110,6 +117,7 @@ export type RepairWorkload = {
   };
   raw: {
     request_count: number;
+    sampled_request_count: number;
     requests_per_day: number;
     distinct_task_fingerprints: number;
     top1_cluster_share: number;
@@ -388,6 +396,11 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
   const now = options.now ?? new Date();
   const days = options.windowDays ?? 30;
   const minClusterSize = options.minClusterSize ?? 20;
+  const populationScale = options.populationScale ?? 1;
+  if (!Number.isFinite(populationScale) || populationScale < 1) {
+    throw new Error("population scale must be a finite number greater than or equal to 1");
+  }
+  const samplingMethod = options.samplingMethod ?? (populationScale > 1 ? "uniform sample; caller-supplied stratification" : "none");
   const fromMs = now.valueOf() - days * 86_400_000;
   const inWindow = filterRepairCapturesToWindow(captures, now, days);
   const timestamps = inWindow.map((capture) => Date.parse(capture.captured_at)).filter(Number.isFinite);
@@ -439,7 +452,7 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
     const unpricedModels = [...modelTotals.entries()].filter(([, total]) => !total.priced).map(([model]) => model).sort();
     const unpricedRequests = [...modelTotals.entries()].filter(([, total]) => !total.priced).reduce((sum, [, total]) => sum + total.requests, 0);
     const modelMix = Object.fromEntries([...modelTotals.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([model, total]) => [model, {
-      request_count: total.requests,
+      request_count: total.requests * populationScale,
       cost_share: incumbentCost > 0 && total.priced ? (total.cost / 1_000_000) / incumbentCost : 0,
       priced: total.priced,
     }]));
@@ -457,7 +470,7 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
     const delta = unpricedModels.length === 0 && incumbentCost > 0 ? clamp(1 - candidateCost / incumbentCost) : 0;
     const roi = volume * repeatability * headroom * delta;
     const dailyIncumbent = incumbentCost / actualDays;
-    const savings30 = unpricedModels.length === 0 ? Math.max(0, (dailyIncumbent - candidateCost / actualDays) * 30) : null;
+    const savings30 = unpricedModels.length === 0 ? Math.max(0, (dailyIncumbent - candidateCost / actualDays) * 30 * populationScale) : null;
     const alias = aliasMap.get(key) ?? "workload-unknown";
     workloads.push({
       workload: { alias: anonymized ? alias : key, id_hash: sha(key).slice(0, 16), name_hash: sha(workloadCaptures[0].workload_name ?? "").slice(0, 16) },
@@ -465,14 +478,15 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
       roi_score: roi,
       projected_savings_usd: { conservative: savings30 === null ? null : savings30 * (addressableRequests / workloadCaptures.length), optimistic: savings30 },
       raw: {
-        request_count: workloadCaptures.length,
-        requests_per_day: workloadCaptures.length / actualDays,
+        request_count: workloadCaptures.length * populationScale,
+        sampled_request_count: workloadCaptures.length,
+        requests_per_day: workloadCaptures.length * populationScale / actualDays,
         distinct_task_fingerprints: taskCounts.size,
         top1_cluster_share: shares[0] ?? 0,
         top5_cluster_share: shares.slice(0, 5).reduce((sum, share) => sum + share, 0),
         effective_task_count: hhi > 0 ? 1 / hhi : 0,
         addressable_share: addressableRequests / workloadCaptures.length,
-        addressable_requests: addressableRequests,
+        addressable_requests: addressableRequests * populationScale,
         median_output_tokens: medianOutput,
         structured_output_share: structured / workloadCaptures.length,
         median_input_tokens: medianInput,
@@ -483,8 +497,8 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
         model_mix: modelMix,
         unpriced_request_share: unpricedRequests / workloadCaptures.length,
         unpriced_models: unpricedModels,
-        incumbent_cost_30d_usd: dailyIncumbent * 30,
-        candidate_cost_30d_usd: (candidateCost / actualDays) * 30,
+        incumbent_cost_30d_usd: dailyIncumbent * populationScale * 30,
+        candidate_cost_30d_usd: (candidateCost / actualDays) * populationScale * 30,
         token_source: workloadCaptures.some((capture) => capture.token_source === "estimated") ? "estimated" : "observed",
       },
     });
@@ -508,6 +522,11 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
     },
     skipped_captures: options.captureStats?.skipped_captures ?? { total: 0, missing_timestamp: 0, invalid_timestamp: 0 },
     missing_rate_models: [...missingRateModels].sort(),
+    sampling: {
+      population_scale: populationScale,
+      sampled_captures: inWindow.length,
+      sampling_method: samplingMethod,
+    },
     workloads,
   };
 }
@@ -517,6 +536,7 @@ export function renderRepairReport(queue: RepairQueue): string {
     "# Repair target queue",
     "",
     `Generated ${queue.generated_at}; ${queue.window.days}-day requested window; candidate model \`${queue.candidate_model}\`.`,
+    `Population quantities are projected from an ${(100 / queue.sampling.population_scale).toFixed(3)}% uniform sample (population scale ${queue.sampling.population_scale.toFixed(3)}); share-based factors remain sample statistics.`,
     "",
     "## How to read this",
     "",
@@ -529,7 +549,8 @@ export function renderRepairReport(queue: RepairQueue): string {
     const conservative = row.projected_savings_usd.conservative === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.conservative.toFixed(2)}`;
     const optimistic = row.projected_savings_usd.optimistic === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.optimistic.toFixed(2)}`;
     const pricingFlag = row.raw.unpriced_request_share > 0 ? " ⚠" : "";
-    lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${row.raw.request_count} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} |`);
+    const confidenceFlag = row.raw.confidence < 0.5 ? " ⚠" : "";
+    lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${row.raw.request_count} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} |`);
   });
   if (queue.missing_rate_models.length) lines.push("", `⚠ Missing rate-card entries: ${queue.missing_rate_models.join(", ")}. Savings are withheld for affected rows.`);
   lines.push("", "Scores are aggregates only. ROI is the product of volume, repeatability, incumbent-headroom heuristic prior, and serving-cost delta. Savings are projections, not billing statements.");
