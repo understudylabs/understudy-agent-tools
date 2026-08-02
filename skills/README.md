@@ -106,6 +106,11 @@ group it belongs to.
 
 ## Local Models
 
+- [`adapter-portfolio`](adapter-portfolio/SKILL.md) records training adapter
+  lineage, dev and sealed-holdout evidence, and promotion decisions that
+  require transfer/no-forgetting checks across the base and previously
+  promoted adapters.
+
 - [`manage-local-models`](manage-local-models/SKILL.md) acquires, caches,
   organizes, and explains local open-weight models (Gemma 4, Nemotron 3): where
   weights come from and live, formats/quantization, gated weights and HF tokens,

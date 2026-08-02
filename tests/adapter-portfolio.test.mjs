@@ -29,6 +29,23 @@ function add(path, name, input) {
   return addEvidence(name, input, { registryPath: path });
 }
 
+function candidateFixture(policy = {}) {
+  const data = fixture();
+  saveRegistry(emptyRegistry({
+    metric: "band_mean_score",
+    min_dev_score: 0.7,
+    min_holdout_score: 0.7,
+    ...policy,
+  }), { registryPath: data.registryPath });
+  registerAdapter({
+    name: "adapter-a", adapterPath: "./adapter-a", baseModel: "base-model",
+    suite: "workload-band-a", method: "sft-lora",
+    holdout: { path: "./holdout.jsonl", sha256: holdoutSha, row_count: 2 },
+  }, { registryPath: data.registryPath });
+  updateAdapter("adapter-a", { status: "candidate" }, { registryPath: data.registryPath });
+  return data;
+}
+
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -75,5 +92,71 @@ describe("adapter portfolio", () => {
     const listed = spawnSync(process.execPath, [cli, "adapter-portfolio", "list", "--registry-path", data.registryPath, "--json"], { encoding: "utf8" });
     assert.equal(listed.status, 0, listed.stderr);
     assert.equal(JSON.parse(listed.stdout)[0].name, "adapter-cli");
+  });
+
+  it("scores the worst holdout rerun instead of rescuing a failing candidate", () => {
+    const data = candidateFixture();
+    add(data.registryPath, "adapter-a", {
+      subject: "base", suite: "workload-band-a", split: "dev", score: 0.7,
+      metric: "band_mean_score", dataset_sha256: sha("base-dev"), row_count: 2,
+      context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:00:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a",
+      split: "dev", score: 0.8, metric: "band_mean_score", dataset_sha256: sha("dev"),
+      row_count: 2, context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:01:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "base", suite: "workload-band-a", split: "holdout", score: 0.7,
+      metric: "band_mean_score", dataset_sha256: holdoutSha, row_count: 2,
+      context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:02:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a",
+      split: "holdout", score: 0.65, metric: "band_mean_score", dataset_sha256: holdoutSha,
+      row_count: 2, context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:03:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a",
+      split: "holdout", score: 0.99, metric: "band_mean_score", dataset_sha256: holdoutSha,
+      row_count: 2, context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:04:00.000Z",
+    });
+
+    const decision = evaluatePromotion(JSON.parse(readFileSync(data.registryPath)), "adapter-a");
+    const holdoutCheck = decision.checks.find((item) => item.check === "holdout_pass");
+    assert.equal(decision.decision, "blocked");
+    assert.equal(holdoutCheck.status, "fail");
+    assert.match(holdoutCheck.detail, /2 holdout runs recorded; scoring the worst/);
+    assert.match(holdoutCheck.detail, /0\.65/);
+  });
+
+  it("blocks holdout evidence that misses the required lift over base", () => {
+    const data = candidateFixture({ min_lift_vs_base: 0.05 });
+    add(data.registryPath, "adapter-a", {
+      subject: "base", suite: "workload-band-a", split: "dev", score: 0.7,
+      metric: "band_mean_score", dataset_sha256: sha("base-dev"), row_count: 2,
+      context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:00:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a",
+      split: "dev", score: 0.8, metric: "band_mean_score", dataset_sha256: sha("dev"),
+      row_count: 2, context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:01:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "base", suite: "workload-band-a", split: "holdout", score: 0.8,
+      metric: "band_mean_score", dataset_sha256: holdoutSha, row_count: 2,
+      context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:02:00.000Z",
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a",
+      split: "holdout", score: 0.82, metric: "band_mean_score", dataset_sha256: holdoutSha,
+      row_count: 2, context: { loaded_adapters: [] }, recorded_at: "2026-01-01T00:03:00.000Z",
+    });
+
+    const decision = evaluatePromotion(JSON.parse(readFileSync(data.registryPath)), "adapter-a");
+    const holdoutCheck = decision.checks.find((item) => item.check === "holdout_pass");
+    assert.equal(decision.decision, "blocked");
+    assert.equal(holdoutCheck.status, "fail");
+    assert.match(holdoutCheck.detail, /required lift 0\.05/);
   });
 });

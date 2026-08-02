@@ -29,6 +29,10 @@ function best(rows: EvidenceRow[]): EvidenceRow | undefined {
   return [...rows].sort((left, right) => right.score - left.score || right.recorded_at.localeCompare(left.recorded_at))[0];
 }
 
+function worst(rows: EvidenceRow[]): EvidenceRow | undefined {
+  return [...rows].sort((left, right) => left.score - right.score || right.recorded_at.localeCompare(left.recorded_at))[0];
+}
+
 function candidateRows(candidate: AdapterRecord, suite: string, split: EvidenceRow["split"]): EvidenceRow[] {
   return rowsFor(candidate, "adapter", suite, split, candidate.name);
 }
@@ -61,7 +65,8 @@ export function evaluatePromotion(
   else checks.push(check("status", "fail", `Adapter status ${candidate.status} cannot be promoted.`));
 
   const dev = best(candidateRows(candidate, candidate.suite, "dev"));
-  const devBases = best(baseRows(registry, candidate.suite, "dev"));
+  const devBases = best(baseRows(registry, candidate.suite, "dev")
+    .filter((row) => !row.context.loaded_adapters.includes(candidateName)));
   if (!dev) checks.push(check("dev_pass", "missing_evidence", `No adapter evidence for ${candidateName} on ${candidate.suite}/dev.`));
   else if (policy.min_dev_score !== undefined && dev.score < policy.min_dev_score) {
     checks.push(check("dev_pass", "fail", `Dev score ${dev.score} is below minimum ${policy.min_dev_score}.`));
@@ -69,10 +74,18 @@ export function evaluatePromotion(
     checks.push(check("dev_pass", "fail", `Dev score ${dev.score} is below base ${devBases.score} plus required lift ${policy.min_lift_vs_base}.`));
   } else checks.push(check("dev_pass", "pass", `Dev score ${dev.score} passes.`));
 
-  const holdout = best(candidateRows(candidate, candidate.suite, "holdout"));
+  const holdoutRows = candidateRows(candidate, candidate.suite, "holdout");
+  const holdout = worst(holdoutRows);
+  const holdoutRunDetail = holdoutRows.length > 1
+    ? `${holdoutRows.length} holdout runs recorded; scoring the worst. `
+    : "";
+  const holdoutBases = best(baseRows(registry, candidate.suite, "holdout")
+    .filter((row) => !row.context.loaded_adapters.includes(candidateName)));
   if (!holdout) checks.push(check("holdout_pass", "missing_evidence", `No adapter evidence for ${candidateName} on ${candidate.suite}/holdout.`));
   else if (policy.min_holdout_score !== undefined && holdout.score < policy.min_holdout_score) {
-    checks.push(check("holdout_pass", "fail", `Holdout score ${holdout.score} is below minimum ${policy.min_holdout_score}.`));
+    checks.push(check("holdout_pass", "fail", `${holdoutRunDetail}Holdout score ${holdout.score} is below minimum ${policy.min_holdout_score}.`));
+  } else if (holdoutBases && holdout.score < holdoutBases.score + policy.min_lift_vs_base) {
+    checks.push(check("holdout_pass", "fail", `${holdoutRunDetail}Holdout score ${holdout.score} is below base ${holdoutBases.score} plus required lift ${policy.min_lift_vs_base}.`));
   } else checks.push(check("holdout_pass", "pass", `Holdout score ${holdout.score} passes.`));
 
   if (!candidate.holdout || !holdout || !dev) {
