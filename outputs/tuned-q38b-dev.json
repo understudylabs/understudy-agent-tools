@@ -1,0 +1,433 @@
+{
+  "schema_version": "understudy.eval_result.v1",
+  "label": "tuned-q38b-dev",
+  "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+  "split": "dev",
+  "protocol": "native",
+  "mean_score": 0.5833333333333334,
+  "rows": [
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-close-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-lost-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-owner-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-rename-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-mail-draft-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-mail-revise-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 6,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-mail-discard-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-mail-send-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-disambiguate-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 6,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-crm-mail-churn-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 0,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-dev",
+      "task_id": "simple-api-mail-send-and-close-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 1,
+        "steps": 7,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-05",
+      "score": 1,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-lost-05",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-owner-05",
+      "score": 0,
+      "steps": 1,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-rename-05",
+      "score": 1,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-draft-05",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-revise-05",
+      "score": 1,
+      "steps": 6,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-discard-05",
+      "score": 0,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-05",
+      "score": 1,
+      "steps": 4,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "score": 0,
+      "steps": 1,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-05",
+      "score": 1,
+      "steps": 6,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-05",
+      "score": 0,
+      "steps": 0,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-05",
+      "score": 0,
+      "steps": 7,
+      "malformed": 0,
+      "forbidden_effects": [
+        "mail.drafts.d-3"
+      ]
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 28868,
+    "completion_tokens": 44017,
+    "total_tokens": 72885,
+    "requests": 51
+  },
+  "elapsed_ms": 83146,
+  "provenance": {
+    "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+    "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f"
+  }
+}
