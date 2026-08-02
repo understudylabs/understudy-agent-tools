@@ -152,8 +152,8 @@ and writes an immutable artifact.
 
 **Candidate payload.** [`submit-payload.mjs`](submit-payload.mjs) emits a
 candidate as [`understudy.executor-submit.v1`](contracts/experiment-executor-submit-request.json)
-(vendored from `understudylabs/understudy-platform@yolo/vercel-experiment-orchestrator`,
-byte-identical at `c299ca4`), validated in
+(vendored from the internal orchestrator branch, byte-identical at its
+authoritative head `c299ca4`), validated in
 `tests/multi-base-bakeoff-submit.test.mjs` with no provider calls:
 
 | Schema field | Bake-off value |
