@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { Command } from "commander";
+import type { EvalRow } from "../generalization.js";
 
 /**
  * `understudy benchmarks …` — the agent-operator surface over the file-based
@@ -174,6 +176,107 @@ export function registerBenchmarksCommand(program: Command): void {
     .action(async (dir: string, options: { baseline: string; candidate: string }) => {
       const { comparePrimeModels } = await import("../prime-benchmark-compare.js");
       console.log(JSON.stringify(comparePrimeModels(dir, options.baseline, options.candidate), null, 2));
+    });
+
+  benchmarks
+    .command("generalization")
+    .description("Compare baseline/candidate eval rows across task groups without running models")
+    .requiredOption("--manifest <path>", "Generalization manifest JSON")
+    .option("--out <path.json>", "Write the JSON report to this path")
+    .option("--markdown <path.md>", "Write the Markdown report to this path")
+    .action(async (options: { manifest: string; out?: string; markdown?: string }) => {
+      const { readJsonlFile } = await import("../benchmark-artifacts.js");
+      const { deriveGeneralizationReport, renderGeneralizationReport } =
+        await import("../generalization.js");
+      const manifestPath = resolve(options.manifest);
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      const manifestDir = dirname(manifestPath);
+      const rowsByArm: Record<string, { baseline: EvalRow[]; candidate: EvalRow[] }> = {};
+      for (const arm of manifest.arms ?? []) {
+        const loadRows = (file: string): EvalRow[] => {
+          const rowPath = resolve(manifestDir, file);
+          if (!existsSync(rowPath)) throw new Error(`rows file not found: ${rowPath}`);
+          const parsed = readJsonlFile<EvalRow>(rowPath);
+          if (parsed.skipped > 0) throw new Error(`rows file ${rowPath} contains ${parsed.skipped} malformed line(s)`);
+          return parsed.items;
+        };
+        rowsByArm[arm.arm_id] = {
+          baseline: loadRows(arm.baseline.rows),
+          candidate: loadRows(arm.candidate.rows),
+        };
+      }
+      const report = deriveGeneralizationReport(manifest, rowsByArm);
+      if (options.out) {
+        const target = resolve(options.out);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+      }
+      if (options.markdown) {
+        const target = resolve(options.markdown);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, renderGeneralizationReport(report), { mode: 0o600 });
+      }
+      console.log(JSON.stringify(report, null, 2));
+    });
+
+  benchmarks
+    .command("generalization-run")
+    .description("Run one registered generalization group with one provider model")
+    .requiredOption("--group <id>", "Registered group id")
+    .requiredOption("--model <id>", "Provider model id")
+    .requiredOption("--provider <provider>", "anthropic or fireworks")
+    .requiredOption("--splits <splits>", "Comma-separated train,dev,holdout")
+    .requiredOption("--out <path>", "Rows JSONL output")
+    .requiredOption("--receipts <path>", "Per-call receipts JSONL output")
+    .requiredOption("--budget-usd <n>", "Hard USD cap")
+    .requiredOption("--price-input <n>", "USD per one million input tokens")
+    .requiredOption("--price-output <n>", "USD per one million output tokens")
+    .option("--debug-transcripts <path>", "Write full episode transcripts as JSONL")
+    .option("--run-id <id>", "Run id", `generalization-${Date.now()}`)
+    .action(async (options: {
+      group: string; model: string; provider: string; splits: string; out: string; receipts: string;
+      budgetUsd: string; priceInput: string; priceOutput: string; runId: string; debugTranscripts?: string;
+    }) => {
+      const { mkdirSync, appendFileSync, writeFileSync } = await import("node:fs");
+      const path = await import("node:path");
+      const { BudgetLedger, runModelRows } = await import("../generalization-model-runner.js");
+      const { groupAAdapter } = await import("../generalization-group-adapters.js");
+      const { groupBAdapter } = await import("../generalization-group-adapters.js");
+      const { groupCAdapter } = await import("../generalization-group-adapters.js");
+      const adapters: Record<string, () => import("../generalization-model-runner.js").ModelTaskAdapter> = {
+        "automationbench-simple-api": groupAAdapter,
+        "event-categorizer": groupBAdapter,
+        "synthetic-workflow-shapes": groupCAdapter,
+      };
+      const makeAdapter = adapters[options.group];
+      if (!makeAdapter) throw new Error(`unknown generalization group ${options.group}`);
+      if (options.provider !== "anthropic" && options.provider !== "fireworks") throw new Error("--provider must be anthropic or fireworks");
+      const budget = new BudgetLedger(Number(options.budgetUsd));
+      const output = path.resolve(options.out);
+      const receipts = path.resolve(options.receipts);
+      mkdirSync(path.dirname(output), { recursive: true });
+      mkdirSync(path.dirname(receipts), { recursive: true });
+      writeFileSync(output, "", { mode: 0o600 });
+      writeFileSync(receipts, "", { mode: 0o600 });
+      const allRows = [];
+      for (const split of options.splits.split(",").map((value) => value.trim()).filter(Boolean)) {
+        const rows = await runModelRows({
+          adapter: makeAdapter(),
+          split,
+          frozenHoldoutSha256: split === "holdout" ? makeAdapter().splitSha256("holdout") : undefined,
+          runId: options.runId,
+          model: options.model,
+          provider: options.provider,
+          price: { inputUsdPerMillion: Number(options.priceInput), outputUsdPerMillion: Number(options.priceOutput) },
+          budget,
+          receiptsPath: receipts,
+          debugTranscriptsPath: options.debugTranscripts ? path.resolve(options.debugTranscripts) : undefined,
+        });
+        allRows.push(...rows);
+      }
+      for (const row of allRows) appendFileSync(output, `${JSON.stringify(row)}\n`);
+      appendFileSync(receipts, `${JSON.stringify({ type: "run_summary", run_id: options.runId, group: options.group, model: options.model, ...budget.summary() })}\n`);
+      console.log(JSON.stringify({ rows: allRows.length, output, receipts, summary: budget.summary() }, null, 2));
     });
 
   benchmarks

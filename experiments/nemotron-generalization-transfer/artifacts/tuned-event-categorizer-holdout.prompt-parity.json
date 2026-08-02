@@ -1,0 +1,16 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "event-categorizer",
+  "split": "holdout",
+  "arm": "tuned",
+  "tasks": [
+    {
+      "task_id": "evt-011",
+      "sha256": "8507f650e68eb14bb7ad21305325312be1bfd63df4d9be8c3e8c96155ecca75a"
+    },
+    {
+      "task_id": "evt-012",
+      "sha256": "f705606fe265b58c3b2aa60b5cd0e4e2db81a73103e85ec3fe42eb86268eea06"
+    }
+  ]
+}

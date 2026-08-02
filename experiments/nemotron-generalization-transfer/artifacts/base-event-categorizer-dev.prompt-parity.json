@@ -1,0 +1,20 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "event-categorizer",
+  "split": "dev",
+  "arm": "base",
+  "tasks": [
+    {
+      "task_id": "evt-009",
+      "system_sha256": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6c",
+      "user_sha256": "a1d56da9dd4698a1cb98476fd8951c5ca9706e7aaa4fe934951b6c418cfaf77b",
+      "prompt_sha256": "76be9315e4567118ec4e694429ab626eca2f292b154b6990290644be95e5ab5a"
+    },
+    {
+      "task_id": "evt-010",
+      "system_sha256": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6c",
+      "user_sha256": "5df2d17c315e546d7dae7cafc50b5562fc787bc7e734ba1e2aafabe52476552a",
+      "prompt_sha256": "1c4d2197871e775a217ba17c1d8f322193a9405a6b99c1875030bc75a34ea85e"
+    }
+  ]
+}

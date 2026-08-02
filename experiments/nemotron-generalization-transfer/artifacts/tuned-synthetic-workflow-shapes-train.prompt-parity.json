@@ -1,0 +1,38 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "synthetic-workflow-shapes",
+  "split": "train",
+  "arm": "tuned",
+  "tasks": [
+    {
+      "task_id": "saw-email-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "5869ef239e8cef7a731633f85f0d8728c5d11b8c89a2880545cfcf9d0a9cce4f",
+      "prompt_sha256": "246190068f2213b0010e73e73e19a20bec3340b4a7df8bf46919d658ceed69c5"
+    },
+    {
+      "task_id": "saw-email-002",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "60cbd72d6cb6b851083bcd355c211bb78465e6c9daef537714bfbdf604dc8757",
+      "prompt_sha256": "1f8d943661836a131551e265341d29b2666d6de309690a255c3979a67f51f6f6"
+    },
+    {
+      "task_id": "saw-meeting-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "5ad25199951a385dd19b8d2fe4e2ff4029a5a7d71a044724ad64ff8744e474ae",
+      "prompt_sha256": "e3e891f3cfcd144fcf355d774a1e9286223501f50e327b13247b2b4e84496ab1"
+    },
+    {
+      "task_id": "saw-record-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "bbcb272cd8dc4322331da0c2a2ed5707fd7d20d2964441abd2b9ff84c12bac36",
+      "prompt_sha256": "a63c1afc8b505bc4355ea68c2b634933af0e1f03806daf8f2ea8d5f6307635f3"
+    },
+    {
+      "task_id": "saw-orch-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "dd483441bf77c76db08304a3fb026f631b1199030261914cc15882b5842b7372",
+      "prompt_sha256": "daa6b68b4a1e12507992a6a52bff5ccfe97bda621b9dc4ad1bece98d22c6c8d1"
+    }
+  ]
+}

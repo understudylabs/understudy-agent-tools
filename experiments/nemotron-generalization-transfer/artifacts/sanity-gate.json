@@ -1,0 +1,81 @@
+{
+  "schema_version": "understudy.generalization_sanity_gate.v1",
+  "generated_at": "2026-08-01T23:41:16.430Z",
+  "checks": [
+    {
+      "group": "A",
+      "task_id": "simple-api-crm-close-01",
+      "band": "single-write",
+      "oracle_reward": 1,
+      "sentinel_reward": 0,
+      "oracle_forbidden_effects": [],
+      "sentinel_forbidden_effects": [
+        "crm.contacts.c-0"
+      ],
+      "passed": true
+    },
+    {
+      "group": "A",
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "band": "multi-write",
+      "oracle_reward": 1,
+      "sentinel_reward": 0,
+      "oracle_forbidden_effects": [],
+      "sentinel_forbidden_effects": [
+        "crm.contacts.c-0"
+      ],
+      "passed": true
+    },
+    {
+      "group": "C",
+      "task_id": "saw-meeting-001",
+      "band": "single-write",
+      "oracle_reward": 1,
+      "sentinel_reward": 0,
+      "oracle_forbidden_effects": [],
+      "sentinel_forbidden_effects": [
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard"
+      ],
+      "passed": true
+    },
+    {
+      "group": "C",
+      "task_id": "saw-orch-001",
+      "band": "multi-write",
+      "oracle_reward": 1,
+      "sentinel_reward": 0,
+      "oracle_forbidden_effects": [],
+      "sentinel_forbidden_effects": [
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard",
+        "records.rec_guard"
+      ],
+      "passed": true
+    },
+    {
+      "group": "B",
+      "variant": "gold-vs-empty-completion",
+      "task_id": "evt-001",
+      "gold_score": 1,
+      "empty_score": 0,
+      "passed": true
+    }
+  ],
+  "passed": true
+}

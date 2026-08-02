@@ -1,0 +1,1251 @@
+{
+  "schema_version": "understudy.generalization_report.v1",
+  "generated_at": "2026-08-02T00:14:37.528Z",
+  "manifest": {
+    "schema_version": "understudy.generalization_manifest.v1",
+    "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "eval_splits": [
+      "train"
+    ],
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench simple/api",
+        "status": "present",
+        "match": {
+          "benchmark_id": "automationbench-simple-api-offline"
+        },
+        "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "expected_task_counts": {
+          "train": 48,
+          "dev": 12,
+          "holdout": 12
+        }
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer verifiers",
+        "status": "present",
+        "match": {
+          "benchmark_id": "event-categorizer-offline"
+        },
+        "frozen_split_sha256": "803ed4bf0664783d76b9e8b7aa139a15a9ff5a82cda402f214d8225ce02dcee2",
+        "expected_task_counts": {
+          "train": 8,
+          "dev": 2,
+          "holdout": 2
+        }
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic workflow shapes",
+        "status": "present",
+        "match": {
+          "benchmark_id": "synthetic-workflow-shapes-offline"
+        },
+        "frozen_split_sha256": "01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326",
+        "expected_task_counts": {
+          "train": 5,
+          "dev": 2,
+          "holdout": 2
+        }
+      }
+    ],
+    "arms": [
+      {
+        "arm_id": "nemotron-transfer",
+        "train_groups": [
+          "automationbench-simple-api"
+        ],
+        "eval_splits": [
+          "train"
+        ],
+        "baseline": {
+          "rows": "rows/base-{group}-{split}.jsonl",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        "candidate": {
+          "rows": "rows/tuned-{group}-{split}.jsonl",
+          "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020"
+        }
+      }
+    ],
+    "require_content_hashes": true,
+    "require_all_groups_scored": true
+  },
+  "arms": [
+    {
+      "arm_id": "nemotron-transfer",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train"
+      ],
+      "baseline_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "candidate_model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "task_deltas": [
+        {
+          "task_id": "simple-api-crm-bulk-owner-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-bulk-owner-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-bulk-owner-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-bulk-owner-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-close-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-close-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-close-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-close-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-lost-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-lost-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-lost-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-lost-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0.5,
+          "candidate_mean": 1,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-owner-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-owner-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-owner-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-owner-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-rename-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-rename-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-rename-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-rename-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-discard-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-discard-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-discard-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-discard-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-draft-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-draft-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-draft-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-draft-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-revise-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-revise-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-revise-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-revise-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-01",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-02",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 1,
+          "delta": 0.6666666666666667,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-03",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 1,
+          "delta": 0.6666666666666667,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-04",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "evt-001",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-002",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-003",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-004",
+          "group_id": "event-categorizer",
+          "baseline_mean": 0.7,
+          "candidate_mean": 1,
+          "delta": 0.30000000000000004,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "evt-005",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-006",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-007",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-008",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 0.7,
+          "delta": -0.30000000000000004,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "saw-email-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "saw-email-002",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "saw-meeting-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "saw-orch-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "saw-record-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        }
+      ],
+      "matrix": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 48,
+          "baseline_mean": 0.920138888888889,
+          "candidate_mean": 1,
+          "delta": 0.07986111111111112,
+          "fixed": 5,
+          "regressed": 0,
+          "unchanged": 43,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0.024305555555555556,
+            0.14236111111111113
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 8,
+          "baseline_mean": 0.9625,
+          "candidate_mean": 0.9625,
+          "delta": 0,
+          "fixed": 1,
+          "regressed": 1,
+          "unchanged": 6,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 5,
+          "baseline_mean": 0.2,
+          "candidate_mean": 0.26666666666666666,
+          "delta": 0.06666666666666667,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 4,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0,
+            0.2
+          ],
+          "status": "scored"
+        }
+      ],
+      "score": {
+        "in_domain_gain": 0.07986111111111112,
+        "transfer_gain": 0.02564102564102564,
+        "transfer_ratio": 0.3210702341137123,
+        "forgetting": 0,
+        "regressed_groups": [],
+        "generalization_score": 0.3210702341137123,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0
+      }
+    }
+  ],
+  "matrix": [
+    {
+      "arm_id": "nemotron-transfer",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "cells": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 48,
+          "baseline_mean": 0.920138888888889,
+          "candidate_mean": 1,
+          "delta": 0.07986111111111112,
+          "fixed": 5,
+          "regressed": 0,
+          "unchanged": 43,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0.024305555555555556,
+            0.14236111111111113
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 8,
+          "baseline_mean": 0.9625,
+          "candidate_mean": 0.9625,
+          "delta": 0,
+          "fixed": 1,
+          "regressed": 1,
+          "unchanged": 6,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 5,
+          "baseline_mean": 0.2,
+          "candidate_mean": 0.26666666666666666,
+          "delta": 0.06666666666666667,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 4,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0
+          },
+          "paired_ci": [
+            0,
+            0.2
+          ],
+          "status": "scored"
+        }
+      ]
+    }
+  ],
+  "score": {
+    "in_domain_gain": 0.07986111111111112,
+    "transfer_gain": 0.02564102564102564,
+    "transfer_ratio": 0.3210702341137123,
+    "forgetting": 0,
+    "regressed_groups": [],
+    "generalization_score": 0.3210702341137123,
+    "weighting": "task-weighted",
+    "regression_threshold": 0.05,
+    "forgetting_penalty": 0
+  },
+  "coverage": {
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench simple/api",
+        "status": "scored",
+        "task_count": 48
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer verifiers",
+        "status": "scored",
+        "task_count": 8
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic workflow shapes",
+        "status": "scored",
+        "task_count": 5
+      }
+    ],
+    "unassigned_task_ids": []
+  },
+  "warnings": []
+}

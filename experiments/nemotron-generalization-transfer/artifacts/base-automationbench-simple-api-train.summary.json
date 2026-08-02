@@ -1,0 +1,53 @@
+{
+  "schema_version": "understudy.generalization_transfer_summary.v1",
+  "run_id": "transfer-base-automationbench-simple-api-train-1785627844695",
+  "arm": "base",
+  "group": "automationbench-simple-api",
+  "split": "train",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "route": "tinker-sampling",
+  "sampler_url": "http://127.0.0.1:18790",
+  "sampler_health": {
+    "ok": true,
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "model_path": null,
+    "renderer": "nemotron3_disable_thinking",
+    "lora_rank": null,
+    "checkpoint_base_model": null,
+    "weights_info": null,
+    "sampling_defaults": {
+      "temperature": 0,
+      "max_tokens": 192,
+      "max_model_turns": 12
+    }
+  },
+  "prompt": {
+    "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+    "task_id": "simple-api-crm-close-01",
+    "task_prompt_sha256": "12ee87abb989fb5063da970b511d2b282046c3ebb327464e5c4fb928d9d0758d"
+  },
+  "task_count": 48,
+  "mean_score": 0.920138888888889,
+  "strict_pass_rate": 0.8958333333333334,
+  "parse_failure_rows": 0,
+  "error_rate": 0,
+  "tokens": {
+    "prompt": 142011,
+    "completion": 9536,
+    "total": 151547
+  },
+  "wall_clock_ms": 1040496,
+  "estimated_cost": {
+    "usd": 0.180155,
+    "inputUsdPerMillion": 1,
+    "outputUsdPerMillion": 4,
+    "basis": "estimated Tinker-equivalent price; Tinker exposes no USD accounting"
+  },
+  "artifacts": {
+    "rows": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/rows/base-automationbench-simple-api-train.jsonl",
+    "receipts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/receipts/base-automationbench-simple-api-train.jsonl",
+    "transcripts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/transcripts/base-automationbench-simple-api-train.jsonl",
+    "prompts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/prompts.json",
+    "sanity_gate": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/sanity-gate.json"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "synthetic-workflow-shapes",
+  "split": "dev",
+  "arm": "base",
+  "tasks": [
+    {
+      "task_id": "saw-doc-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "0ea903c199bc0f2f2d1186e81b5e42e74fd7445978011bc8627df97dd45dec38",
+      "prompt_sha256": "6ed6bae38db3daad792f69fc7e70d2a42d2059dce137ee60465cb91edb24d281"
+    },
+    {
+      "task_id": "saw-analysis-001",
+      "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+      "user_sha256": "c0d3ec8d15b8e64191e78ea5472410b4e7a67f1bed30ddf84b74c12ce8653c3c",
+      "prompt_sha256": "a4535bb894fca0329f8ae6e3df3a9ac4c3860e8cad2327810be639bf5789d996"
+    }
+  ]
+}

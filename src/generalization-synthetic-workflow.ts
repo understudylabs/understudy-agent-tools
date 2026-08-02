@@ -1,28 +1,13 @@
-import {
-  SYNTHETIC_WORKFLOW_SUBSET,
-  evaluateSplit,
-  oraclePolicy,
-  sentinelPolicy,
-  splitSha256,
-} from "./synthetic-workflow-offline.js";
+import type { EvalRow, GeneralizationGroup } from "./generalization.js";
+import { SYNTHETIC_WORKFLOW_SUBSET, splitSha256 } from "./synthetic-workflow-offline.js";
+import { evaluateSplit, oraclePolicy, sentinelPolicy } from "./synthetic-workflow-offline.js";
 import type { Policy } from "./automationbench-offline.js";
+import { groupCAdapter } from "./generalization-group-adapters.js";
+import { runModelRows, type ModelRunOptions } from "./generalization-model-runner.js";
 
 export type SyntheticSplit = "train" | "dev" | "holdout";
-export type EvalRow = Record<string, unknown> & {
-  task_id?: string;
-  score?: number | null;
-};
-export type GeneralizationGroup = {
-  group_id: string;
-  label?: string;
-  status?: "present" | "planned";
-  task_ids?: string[];
-  match?: { benchmark_id?: string };
-};
 
-export function syntheticWorkflowGroup(
-  overrides: { task_ids?: string[]; label?: string } = {},
-): GeneralizationGroup {
+export function syntheticWorkflowGroup(overrides: { task_ids?: string[]; label?: string } = {}): GeneralizationGroup {
   return {
     group_id: "synthetic-workflow-shapes",
     label: overrides.label ?? "Synthetic workflow shapes",
@@ -43,13 +28,20 @@ export function syntheticWorkflowArmRows(options: {
   model?: string | null;
   frozenHoldoutSha256?: string;
 }): EvalRow[] {
+  const split = options.split ?? "holdout";
   return evaluateSplit({
     runId: options.runId,
-    split: options.split ?? "holdout",
+    split,
     policy: options.policy,
     model: options.model,
     frozenHoldoutSha256: options.frozenHoldoutSha256,
   }) as EvalRow[];
+}
+
+export type SyntheticWorkflowModelRowsOptions = Omit<ModelRunOptions, "adapter" | "split"> & { split: SyntheticSplit };
+
+export async function syntheticWorkflowModelRows(options: SyntheticWorkflowModelRowsOptions): Promise<EvalRow[]> {
+  return runModelRows({ ...options, adapter: groupCAdapter() }) as Promise<EvalRow[]>;
 }
 
 export { oraclePolicy, sentinelPolicy };

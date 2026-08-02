@@ -1,0 +1,16 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "synthetic-workflow-shapes",
+  "split": "holdout",
+  "arm": "tuned",
+  "tasks": [
+    {
+      "task_id": "saw-doc-002",
+      "sha256": "ffec01e7aea1850f5ead6bbb260d0971dd52cdc95d142e1314969aa9f7a38934"
+    },
+    {
+      "task_id": "saw-analysis-002",
+      "sha256": "a4535bb894fca0329f8ae6e3df3a9ac4c3860e8cad2327810be639bf5789d996"
+    }
+  ]
+}
