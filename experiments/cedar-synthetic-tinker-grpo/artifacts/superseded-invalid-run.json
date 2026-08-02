@@ -1,6 +1,6 @@
 {
   "status": "superseded",
-  "reason": "The original Cedar experiment used a fixture whose write representations were not discoverable from the candidate-visible catalog and included calibration-sensitive exact string writes.",
+  "reason": "The original synthetic workflow experiment used a fixture whose write representations were not discoverable from the candidate-visible catalog and included calibration-sensitive exact string writes.",
   "superseded_by": "63e6bae",
   "do_not_report": true,
   "holdout_results_void": true,

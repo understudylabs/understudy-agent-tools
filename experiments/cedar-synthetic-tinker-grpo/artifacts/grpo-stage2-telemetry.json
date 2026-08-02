@@ -62,7 +62,7 @@
   "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
   "remove_constant_reward_groups": true,
   "renderer": "nemotron3_disable_thinking",
-  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node Cedar-synthetic service is the verifier; its terminal reward is literally partialCredit from src/synthetic-workflow-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node synthetic workflow-synthetic service is the verifier; its terminal reward is literally partialCredit from src/synthetic-workflow-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
   "stage": "2",
   "steps": [
     {

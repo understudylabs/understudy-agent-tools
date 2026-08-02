@@ -1,7 +1,7 @@
-# Cedar-synthetic Nemotron SFT → GRPO arm
+# synthetic workflow-synthetic Nemotron SFT → GRPO arm
 
 This directory contains a reproducible SFT → GRPO research arm for the
-sanitized Cedar-shaped synthetic fixture. The Node evaluator in
+sanitized synthetic workflow-shaped synthetic fixture. The Node evaluator in
 `src/synthetic-workflow-offline.ts` is the sole authority for state
 transitions, terminal reward, split membership, and holdout authorization.
 
@@ -34,7 +34,7 @@ token cost.
 
 ## Results
 
-The first Cedar run used the pre-calibration fixture and is superseded. Its
+The first synthetic workflow run used the pre-calibration fixture and is superseded. Its
 artifacts remain as diagnostic evidence in `artifacts/`, but its scores must
 not be reported. The repaired run below uses the fixture hash above and
 selects checkpoints on dev only.
@@ -122,7 +122,7 @@ fixture.
 2. Dev and holdout contain only 12 tasks each; see the uncertainty warning
    above.
 3. This is a synthetic, offline fixture and is **not** an upstream
-   Cedar-synthetic result.
+   synthetic workflow-synthetic result.
 
 ## Deviations from the brief
 
@@ -149,7 +149,7 @@ this run (`/home/ubuntu/tinker-venv/bin/python`), so substitute your own
 interpreter. Provide `TINKER_API_KEY` only through the process environment.
 Never write the key to an artifact.
 
-Start the Cedar evaluator service:
+Start the synthetic workflow evaluator service:
 
 ```bash
 node scripts/synthetic-workflow-rl-service.mjs
@@ -248,13 +248,13 @@ included.
 
 ## Final parity round
 
-The earlier repaired Cedar scores in this note are superseded. They used the
+The earlier repaired synthetic workflow scores in this note are superseded. They used the
 generic service prompt while the historical AutomationBench checkpoints were
 trained with `nemotron-v1`, so they did not constitute a comparable
 experiment. The final round uses the real service path with explicit prompt
 variants and checkpoint identity checks.
 
-The Cedar contract is `cedar-v1`, whose SHA-256 identity is
+The synthetic workflow contract is `cedar-v1`, whose SHA-256 identity is
 `1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11`.
 The AutomationBench control uses `nemotron-v1`, whose SHA-256 identity is
 `85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738`.
@@ -275,9 +275,9 @@ fallback from the requested `nemotron-v1` prompt to the generic prompt.
 | #402 SFT epoch 4 | 0.954861 | 0.944444 | 1.000000 | 0.833333 | 1.000000 |
 | #402 GRPO step 20 | 1.000000 | 1.000000 | 1.000000 | 1.000000 | 1.000000 |
 
-### Cedar final results
+### synthetic workflow final results
 
-The final Cedar arm used `cedar-v1`, train-only SFT/GRPO data, dev-only
+The final synthetic workflow arm used `cedar-v1`, train-only SFT/GRPO data, dev-only
 selection, and a resumable SFT state at every epoch. Epoch 1 was selected by
 the dev tie-break, and GRPO started from that epoch-1 state. Values are means
 over all tasks in the split.
@@ -288,7 +288,7 @@ over all tasks in the split.
 | SFT epoch 1 | 0.229167 | 0.250000 | 0.166667 |
 | SFT + GRPO step 40 | 0.496528 | 0.416667 | 0.375000 |
 
-Final Cedar per-band means:
+Final synthetic workflow per-band means:
 
 | Arm / split | Discovery | Multi-write | Single-write |
 |---|---:|---:|---:|
@@ -302,7 +302,7 @@ Final Cedar per-band means:
 | GRPO dev | 0.600000 | 0.000000 | 0.666667 |
 | GRPO holdout | 0.500000 | 0.000000 | 0.666667 |
 
-Relative to base, Cedar's final training-response deltas are:
+Relative to base, synthetic workflow's final training-response deltas are:
 
 | Split | SFT − base | GRPO − base |
 |---|---:|---:|
@@ -312,15 +312,15 @@ Relative to base, Cedar's final training-response deltas are:
 
 These results should not be interpreted as a clean workload-family effect:
 the AutomationBench controls are near ceiling under their historical prompt,
-while Cedar remains a different synthetic API surface despite the structural
+while synthetic workflow remains a different synthetic API surface despite the structural
 prompt parity. The transferable result is that prompt contracts must be held
 constant and identified before comparing training response.
 
 ### Holdout disclosure
 
-The Cedar holdout was evaluated on three occasions overall. Two evaluations
+The synthetic workflow holdout was evaluated on three occasions overall. Two evaluations
 belonged to earlier superseded/voided runs: the first used the uncalibrated
-fixture and the second used the generic Cedar prompt. The three evaluations
+fixture and the second used the generic synthetic workflow prompt. The three evaluations
 in the final round above are the only valid final-round holdout results. No
 holdout result from any occasion was used for training or checkpoint
 selection. The final round passed the frozen holdout hash shown above and
@@ -335,7 +335,7 @@ pass was run.
    through the environment and requires every oracle write endpoint, method,
    literal, and required body key to be discoverable from candidate-visible
    data.
-2. **Undiscoverable write protocol.** Cedar's generic resource catalog did not
+2. **Undiscoverable write protocol.** synthetic workflow's generic resource catalog did not
    explain that semantic operations persisted through resources such as
    `/summaries`, and it omitted required body shapes. The fixture now exposes
    semantic persistence targets in readable events and method-specific
@@ -343,7 +343,7 @@ pass was run.
    excessive verbatim document assertions were also removed or calibrated.
 3. **Silent prompt-variant fallback.** The service ignored both CLI and reset
    prompt variants, returning the generic prompt. This made #402 checkpoints
-   appear to fail and gave Cedar an unequal contract. The service now resolves
+   appear to fail and gave synthetic workflow an unequal contract. The service now resolves
    `nemotron-v1` and `cedar-v1` strictly, returns prompt identity, and rejects
    unknown variants. Checkpoint metadata pins model, LoRA, renderer, prompt
    variant, and prompt identity; evaluation refuses a mismatch before model
@@ -370,7 +370,7 @@ different offline prompt and is void. The final corrected run used:
   8 groups per batch, learning rate `1e-5`, dataset seed `7`.
 - Evaluation: greedy (`temperature=0`), one sample per task, with
   `max_model_turns=12`.
-- Cedar prompt: `cedar-v1`,
+- synthetic workflow prompt: `cedar-v1`,
   `1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11`.
 
 ### Same-day AutomationBench reference
@@ -398,9 +398,9 @@ The earlier serving-drift conclusion was wrong. The #402 control recovered
 when the service honored the historical `nemotron-v1` prompt, proving that
 the causal issue was prompt mismatch caused by silent fallback.
 
-### Final Cedar results
+### Final synthetic workflow results
 
-The final corrected Cedar results are:
+The final corrected synthetic workflow results are:
 
 | Arm | Train mean | Dev mean | Holdout mean |
 |---|---:|---:|---:|
@@ -424,16 +424,16 @@ Per-band means:
 
 ### Answer to the training-response question
 
-Nemotron responds to Cedar-shaped training in the same broad **optimization
+Nemotron responds to synthetic workflow-shaped training in the same broad **optimization
 shape** as AutomationBench—GRPO is the dominant improvement over the selected
 SFT arm—but not in the same **behavioral allocation**. AutomationBench's
 training response reaches the multi-write band: its dev multi-write rises from
-`0.500000` for base to `0.833333` after SFT and `1.000000` after GRPO. Cedar's
+`0.500000` for base to `0.833333` after SFT and `1.000000` after GRPO. synthetic workflow's
 dev response is SFT `0.166667` to GRPO `0.500000`, but the gain is concentrated
 in discovery and single-write; multi-write remains exactly `0.000000` for
 base, SFT, GRPO, and all three holdout arms.
 
-The Cedar multi-write floor is not explained by an HTTP plumbing failure:
+The synthetic workflow multi-write floor is not explained by an HTTP plumbing failure:
 the Python-path oracle reaches reward `1.0` on all 72 tasks, the endpoint and
 body-schema reachability gate passes, and final evaluation has zero parse-error
 and forbidden-effect rates. The remaining evidence points to a genuine
@@ -442,7 +442,7 @@ lost writes: multi-write tasks require longer chains with preservation,
 append/move semantics, and several dependent writes, and the model's
 transcripts show it often spends the turn budget exploring or emits malformed
 actions before completing the chain. Because the floor is still absolute,
-this should not be claimed as proof that Cedar multi-write is intrinsically
+this should not be claimed as proof that synthetic workflow multi-write is intrinsically
 harder; it is a headline finding that warrants a follow-up calibration study
 of chain length and recovery, not a clean cross-benchmark conclusion.
 
@@ -465,17 +465,17 @@ of chain length and recovery, not a clean cross-benchmark conclusion.
    caught by the real-service AutomationBench control and restored by the
    historical prompt. The service now honors CLI, reset, and protocol
    variants, returns prompt identity, and hard-fails unknown variants.
-4. **Oracle trajectories under a different prompt.** Symptom: corrected Cedar
+4. **Oracle trajectories under a different prompt.** Symptom: corrected synthetic workflow
    evaluation still used SFT trajectories whose offline system message was
    generic while evaluation used `cedar-v1`. It was caught by inspecting the
    actual serialized oracle trajectory after the prompt-identity fix. The
-   trajectory generator now injects the exact Cedar prompt, and checkpoint
+   trajectory generator now injects the exact synthetic workflow prompt, and checkpoint
    metadata/evaluation pin model, renderer, LoRA rank, prompt variant, and
    prompt identity.
 
 ### Holdout exposure disclosure
 
-The Cedar holdout was evaluated on four occasions per arm:
+The synthetic workflow holdout was evaluated on four occasions per arm:
 
 1. The uncalibrated fixture run; voided after the vacuous reachability and
    undiscoverable-write-protocol defects.
@@ -509,7 +509,7 @@ GRPO selected step 30 sampler:
 tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000030
 ```
 
-Final Cedar evaluation parse-error rates and forbidden-effect counts were zero.
+Final synthetic workflow evaluation parse-error rates and forbidden-effect counts were zero.
 Tinker billing snapshots returned empty usage data (`{"data":[],"sessions":{}}`);
 no dollar figure is fabricated. Machine-readable final provenance is in
 `artifacts/final-results-corrected.json`.
