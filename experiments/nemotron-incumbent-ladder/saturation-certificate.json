@@ -1,0 +1,18 @@
+{
+  "schema_version": "understudy.ladder_saturation.v1",
+  "fixture_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "threshold": 0.95,
+  "saturated": false,
+  "usable": true,
+  "status": "pass",
+  "incumbent": {
+    "mean_score": 0.75,
+    "exact_match_rate": 0.75,
+    "by_band": {
+      "shortcut": { "mean_score": 1, "exact_match_rate": 1 },
+      "playbook": { "mean_score": 0.833, "exact_match_rate": 0.833 },
+      "judgment": { "mean_score": 0.476, "exact_match_rate": 0.476 }
+    }
+  },
+  "reason": "Incumbent dev mean and exact-match rate are below the saturation threshold."
+}

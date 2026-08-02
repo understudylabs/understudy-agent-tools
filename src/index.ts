@@ -87,6 +87,7 @@ export type {
   BuildArmEvidenceInput,
   EvalResultRow,
 } from "./arm-evidence/index.js";
+export * from "./incumbent-ladder/index.js";
 
 export const repoRoot = installedPackageRoot();
 

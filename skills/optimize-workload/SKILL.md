@@ -173,6 +173,9 @@ directly when a workload has unusual validator, split, or claim-boundary shape.
 Block on stale hashes, missing metric feedback, unapproved provider calls, or
 proxy-only validation.
 
+For reusable incumbent comparisons, see [the incumbent ladder verifier and
+evidence notes](references/incumbent-ladder.md).
+
 Use the CLI guide before creating a local optimizer env:
 
 ```bash

@@ -1,0 +1,17 @@
+{
+  "schema_version": "understudy.route_decision_packet.v1",
+  "decision": "local-only",
+  "workload_id": "synthetic-event-routing",
+  "incumbent": { "provider": "openai", "model": "gpt-4o" },
+  "model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "evidence": {
+    "packet_path": "evidence-row.json",
+    "eval_results_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "constraints": {
+    "holdout": "clean",
+    "claim_boundary": "Dev-only evidence; no production replacement claim."
+  },
+  "recommended_next_command": "Run the deliberate holdout gate only after candidate freeze.",
+  "approval_required_before": ["holdout execution", "production promotion"]
+}

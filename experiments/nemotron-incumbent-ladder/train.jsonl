@@ -1,0 +1,6 @@
+{"task_id":"synthetic-01","band":"shortcut","request":{"messages":[{"role":"user","content":"Synthetic shortcut routing case 1."}]},"label":{"calls":[{"tool":"save-execution-summary","arguments":{}}]}}
+{"task_id":"synthetic-02","band":"shortcut","request":{"messages":[{"role":"user","content":"Synthetic shortcut routing case 2."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}
+{"task_id":"synthetic-03","band":"shortcut","request":{"messages":[{"role":"user","content":"Synthetic shortcut routing case 3."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}
+{"task_id":"synthetic-04","band":"playbook","request":{"messages":[{"role":"user","content":"Synthetic playbook routing case 4."}]},"label":{"calls":[{"tool":"save-execution-summary","arguments":{}}]}}
+{"task_id":"synthetic-05","band":"playbook","request":{"messages":[{"role":"user","content":"Synthetic playbook routing case 5."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}
+{"task_id":"synthetic-06","band":"playbook","request":{"messages":[{"role":"user","content":"Synthetic playbook routing case 6."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}
