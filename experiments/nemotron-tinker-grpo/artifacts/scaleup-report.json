@@ -2445,17 +2445,53 @@
     }
   },
   "receipts": {
-    "r16-shaped": {
-      "usage_artifact": "artifacts/r16-shaped-grpo-stage2.usage.json",
-      "wall_clock_seconds": 1271.3543152909997
+    "automationbench_holdout": {
+      "source": "automationbench-r32-none-selected-holdout.summary.json",
+      "tokens": 17162,
+      "wall_clock_seconds": null
     },
-    "r32-none": {
-      "usage_artifact": "artifacts/r32-none-grpo-stage2.usage.json",
+    "final_billing_view": {
+      "dollars": null,
+      "sampling_prefill_tokens": 4070930,
+      "sampling_sample_tokens": 355268,
+      "source": "billing-usage-final.json",
+      "tokens": 5237642,
+      "training_tokens": 811444
+    },
+    "grpo_dev_curves": {
+      "source": "three *-dev-curve.jsonl; in-process evaluator records tokens but does not record a wall-clock field",
+      "tokens": 417551,
+      "wall_clock_seconds": null
+    },
+    "post_selection_evaluations_excluding_holdouts": {
+      "source": "selected AutomationBench train/dev and synthetic train/dev summaries",
+      "tokens": 369116,
+      "wall_clock_seconds": null
+    },
+    "r16_shaped_grpo_training": {
+      "source": "r16-shaped-grpo-stage2-telemetry.json",
+      "tokens": 4246412,
+      "wall_clock_seconds": 1271.354315291
+    },
+    "r32_none_grpo_training": {
+      "source": "r32-none-grpo-stage2-telemetry.json",
+      "tokens": 4249305,
       "wall_clock_seconds": 949.259285009
     },
-    "r32-shaped": {
-      "usage_artifact": "artifacts/r32-shaped-grpo-stage2.usage.json",
+    "r32_shaped_grpo_training": {
+      "source": "r32-shaped-grpo-stage2-telemetry.json",
+      "tokens": 4259207,
       "wall_clock_seconds": 1067.387618373
+    },
+    "rank16_sft": {
+      "source": "r16-shaped-sft-phase-metrics.json; data + training + seven recorded evaluations",
+      "tokens": 391072,
+      "wall_clock_seconds": 502.981591647
+    },
+    "synthetic_holdout": {
+      "source": "synthetic-transfer-r32-none-selected-holdout.summary.json",
+      "tokens": 6153,
+      "wall_clock_seconds": null
     }
   },
   "selection": {

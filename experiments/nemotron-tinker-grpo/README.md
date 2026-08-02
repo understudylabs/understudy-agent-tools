@@ -427,41 +427,26 @@ transfer evaluation were already written; neither may be rerun.
 
 ## Cost, receipts, and cleanup
 
-Measured token totals are prompt plus sampled/model-input tokens. The
-baseline handoff used `426,680` tokens. SFT used `356,662` hosted tokens and
-about `396.9s` across training, data preparation, and recorded evaluations.
-GRPO Stage 1 used `213,219` tokens and `113.5s`. GRPO Stage 2 used
-`4,280,921` tokens across training and its requested evaluations, with
-`1,773.1s` training wall-clock. The sealed holdout used `72,129` tokens.
-The summed total across all phases is `5,349,611` tokens.
+Artifact-derived receipts for this scale-up are kept separate by phase. Rank-16
+SFT (data preparation, four epoch DEV evaluations, selected train/DEV, and
+variance evaluation) used `391,072` recorded tokens and `502.981591647s`.
+The three GRPO training runs used:
 
-Tinker's `get_billing_usage` initially returned empty events. The final retry
-returned events but no dollar amounts; the returned event token total was
-`575,178`, which is a provider billing view and is not substituted for the
-artifact-derived phase totals above.
+- `r32-none`: `4,249,305` rollout tokens and `949.259285009s`;
+- `r32-shaped`: `4,259,207` rollout tokens and `1,067.387618373s`;
+- `r16-shaped`: `4,246,412` rollout tokens and `1,271.354315291s`.
 
-The cleanup query found these arm training runs:
+The three in-process DEV curves contain `417,551` evaluation tokens in their
+records; those evaluators did not emit per-evaluation wall-clock fields. The
+post-selection non-holdout evaluations contain `369,116` tokens. The approved
+AutomationBench holdout contains `17,162` tokens and the synthetic holdout
+contains `6,153` tokens; each was run exactly once.
 
-- SFT run `e3e3d392...:train:0`: epoch 1–4 sampler checkpoints and the epoch-4
-  resumable state; all reported `expires_at: null`.
-- GRPO Stage 1 run `91eac422...:train:0`: final sampler and state; both
-  reported `expires_at: null`.
-- GRPO Stage 2 run `efb1352d...:train:0`: steps 5–40, final sampler/state.
-  Steps 5–35 reported expiry on 2026-08-08; step 40 and final checkpoints
-  reported `expires_at: null`. The selected step-20 sampler and state had
-  expiry 2026-08-08T22:45:40Z and 2026-08-08T22:45:38Z respectively.
+The final Tinker billing query returned `5,237,642` provider-billed tokens:
+`811,444` training, `4,070,930` sampling prefill, and `355,268` sampling
+output, with no dollar amount. This provider billing view is not substituted
+for the artifact-derived phase receipts above because the per-phase usage
+snapshots were empty and the accounting boundaries differ.
 
-No checkpoints were deleted. If cleanup were requested, it would delete the
-SFT epoch samplers/state, the Stage 1 final sampler/state, and every Stage 2
-step/final sampler/state listed in `artifacts/grpo-stage2-checkpoints.json`;
-the current user decision is to retain all as evidence.
-
-`list_sessions(limit=100)` returned 100 sessions (the response was
-paginated/truncated at the requested limit). Tinker has no always-on serving
-deployment for this arm: sampling clients are ephemeral. No serving resource
-was left running. The local Node environment service was stopped and no
-process remained listening.
-
-All fixture contacts, tasks, tool observations, and trajectories in these
-artifacts are synthetic public-test data; no customer or private trace data is
-included.
+Both holdouts were accessed exactly once, after DEV selection and descriptive
+transfer evaluations; neither may be rerun.
