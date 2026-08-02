@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>domain-identification — combined experiment</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0a0a0a; color: #e4e4e7;
+         font: 14px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid #27272a; }
+  h1 { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #a1a1aa; letter-spacing: .02em; }
+  .headline { display: flex; gap: 28px; align-items: baseline; flex-wrap: wrap; }
+  .hi { font-size: 30px; font-weight: 700; color: #fff; }
+  .hi small { font-size: 12px; font-weight: 500; color: #71717a; margin-left: 6px; }
+  .totals { display: flex; gap: 22px; color: #a1a1aa; font-variant-numeric: tabular-nums; }
+  .totals b { color: #e4e4e7; font-weight: 600; }
+  .prov { margin-top: 8px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+          font-size: 12px; color: #71717a; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge--holdout { background: #052e16; color: #4ade80; border: 1px solid #166534; }
+  .badge--proto { background: #1e1b4b; color: #a5b4fc; border: 1px solid #3730a3; }
+  code { color: #a1a1aa; }
+  .board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+           padding: 18px 20px; align-items: start; }
+  .lane { border-right: 1px dashed #27272a; padding: 0 14px; }
+  .lane:last-child { border-right: none; }
+  .lane h2 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+             color: #71717a; }
+  .lane--baseline h2 { color: #a1a1aa; }
+  .lane--wave1 h2 { color: #93c5fd; }
+  .lane--wave2 h2 { color: #f0abfc; }
+  .node { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .dot { width: 34px; height: 34px; border-radius: 8px; flex: 0 0 auto;
+         border: 1px solid #3f3f46; }
+  /* Surgical background convention — the ONLY status-driven visual. */
+  .exp-node--idle   { background: #52525b; }
+  .exp-node--active { background: #ffffff; animation: exp-pulse 1s ease-in-out infinite; }
+  .exp-node--success{ background: #16a34a; }
+  .exp-node--failure{ background: #dc2626; }
+  @keyframes exp-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .meta { min-width: 0; }
+  .meta .lbl { color: #e4e4e7; font-weight: 600; }
+  .meta .sub { color: #71717a; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .score { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score--none { color: #a1a1aa; font-weight: 500; }
+  .refs { padding: 6px 20px 20px; color: #71717a; font-size: 12px; }
+  .refs .ref { color: #a1a1aa; }
+  .stamp { padding: 0 20px 18px; color: #3f3f46; font-size: 11px; }
+  .monitor-panel { margin: 0 20px 4px; border: 1px solid #27272a; border-radius: 8px;
+                   background: #111113; color: #a1a1aa; }
+  .monitor-panel__inner { padding: 14px 16px; }
+  .monitor-panel__title { color: #e4e4e7; font-size: 12px; font-weight: 700;
+                           letter-spacing: .08em; text-transform: uppercase; }
+  .monitor-panel__preview { display: inline-block; margin-top: 8px; padding: 4px 8px;
+                             border: 1px solid #854d0e; border-radius: 4px; color: #facc15;
+                             font-size: 11px; font-weight: 700; }
+  .monitor-panel__headline { margin-top: 8px; color: #fff; font-size: 25px; font-weight: 700; }
+  .monitor-panel__headline small { margin-left: 6px; color: #71717a; font-size: 11px; font-weight: 500; }
+  .monitor-panel__facts, .monitor-panel__protocol { display: flex; gap: 16px; flex-wrap: wrap;
+                                                    margin-top: 5px; font-size: 12px;
+                                                    font-variant-numeric: tabular-nums; }
+  .monitor-panel__protocol { color: #71717a; }
+  .monitor-panel__active { margin-top: 9px; font-size: 12px; }
+  .monitor-panel__waves { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+                          margin-top: 11px; }
+  .monitor-panel__waves section { min-width: 0; }
+  .monitor-panel__waves h3 { margin: 0 0 4px; color: #71717a; font-size: 11px;
+                              text-transform: uppercase; letter-spacing: .08em; }
+  .monitor-panel__waves ul, .monitor-panel__reference ul { margin: 0; padding-left: 16px;
+                                                            font-size: 12px; }
+  .monitor-panel__waves li { margin: 2px 0; }
+  .monitor-panel__waves li span { color: #71717a; }
+  .monitor-panel__reference { margin-top: 10px; font-size: 12px; }
+  .monitor-panel__reference em { color: #71717a; }
+  @media (max-width: 700px) { .monitor-panel__waves { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>domain-identification · meet / beat incumbent</h1>
+  <div class="headline">
+    <div><span class="hi" id="hi">—</span></div>
+    <div class="totals">
+      <div>elapsed <b id="t-elapsed">—</b></div>
+      <div>episodes <b id="t-ep">—</b></div>
+      <div>reflections <b id="t-refl">—</b></div>
+      <div>winner <b id="t-win">—</b></div>
+    </div>
+  </div>
+  <div class="prov">
+    <span class="badge badge--holdout" id="holdout">holdout untouched</span>
+    <span class="badge badge--proto" id="proto">rank protocol —</span>
+    <span>dev split <code id="devsha">—</code></span>
+  </div>
+</header>
+<aside class="monitor-panel" id="monitor-panel" aria-label="Overall experiment summary"></aside>
+<main class="board" id="board"></main>
+<div class="refs" id="refs"></div>
+<div class="stamp" id="stamp"></div>
+
+<script type="module">
+import { visualStateOf, backgroundClassOf } from "./renderer.mjs";
+import { renderSummaryHTML, summarizeManifest } from "./monitor-panel.mjs";
+
+const WAVES = [
+  ["baseline", "Baseline"],
+  ["wave1", "Wave 1"],
+  ["wave2", "Wave 2 (turbo branches)"],
+];
+const MANIFEST_URL = new URLSearchParams(location.search).get("src") || "./experiment-manifest.json";
+const fmtPct = (s) => (s === null || s === undefined) ? "—" : `${(s * 100).toFixed(1)}%`;
+const fmtDur = (s) => { s = Math.max(0, Math.round(s || 0)); const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
+
+// Persistent node DOM keyed by node_id so identity/position are preserved across
+// refreshes (no relayout, no camera/force reset — lanes are fixed columns).
+const board = document.getElementById("board");
+const lanes = {};
+for (const [w, title] of WAVES) {
+  const el = document.createElement("section");
+  el.className = `lane lane--${w}`;
+  el.innerHTML = `<h2>${title}</h2>`;
+  board.appendChild(el);
+  lanes[w] = el;
+}
+const nodeEls = new Map(); // node_id -> { root, dot, score, sub }
+
+function upsertNode(node) {
+  let rec = nodeEls.get(node.node_id);
+  if (!rec) {
+    const root = document.createElement("div");
+    root.className = "node";
+    root.dataset.nodeId = node.node_id;
+    const dot = document.createElement("div");
+    dot.className = "dot";
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const lbl = document.createElement("div"); lbl.className = "lbl";
+    const sub = document.createElement("div"); sub.className = "sub";
+    const score = document.createElement("div"); score.className = "score";
+    meta.appendChild(lbl); meta.appendChild(sub);
+    root.appendChild(dot); root.appendChild(meta); root.appendChild(score);
+    (lanes[node.wave] || lanes.baseline).appendChild(root);
+    rec = { root, dot, lbl, sub, score };
+    nodeEls.set(node.node_id, rec);
+  }
+  // Only the background class encodes status (the surgical convention).
+  rec.dot.className = `dot ${backgroundClassOf(visualStateOf(node))}`;
+  rec.lbl.textContent = node.label || node.node_id;
+  const ep = node.episode_progress || {};
+  const parts = [];
+  parts.push(node.status);
+  if (ep.expected != null) parts.push(`ep ${ep.completed || 0}/${ep.expected}`);
+  if (node.branch_id) parts.push(node.branch_id);
+  rec.sub.textContent = parts.join(" · ");
+  // In-progress nodes show no score (never 0/none-as-final).
+  if (node.score === null || node.score === undefined) {
+    rec.score.className = "score score--none";
+    rec.score.textContent = "in progress";
+  } else {
+    rec.score.className = "score";
+    rec.score.textContent = fmtPct(node.score);
+  }
+}
+
+function render(m) {
+  document.getElementById("monitor-panel").innerHTML = renderSummaryHTML(summarizeManifest(m));
+  document.getElementById("hi").innerHTML =
+    `${fmtPct(m.headline.high_score)} <small>canonical k=${m.rank_protocol.samples_per_task} · ${m.headline.high_score_node || "—"}</small>`;
+  const t = m.totals || {};
+  const b = t.budget || {};
+  document.getElementById("t-elapsed").textContent = fmtDur(t.wall_clock_s);
+  document.getElementById("t-ep").textContent =
+    `${(b.stage_a_completed ?? 0)} / ${b.max_total_episodes ?? "—"}`;
+  document.getElementById("t-refl").textContent =
+    `${(b.total_reflections ?? 0)} / ${b.max_total_reflections ?? "—"}`;
+  document.getElementById("t-win").textContent = t.selected_winner || "—";
+  document.getElementById("devsha").textContent = (m.dev_split_sha256 || "").slice(0, 16) + "…";
+  document.getElementById("proto").textContent =
+    `rank protocol ${m.rank_protocol.method} k=${m.rank_protocol.samples_per_task}`;
+  document.getElementById("holdout").style.display = m.holdout_untouched ? "" : "none";
+  for (const node of m.nodes) upsertNode(node);
+  const refs = (m.reference_lines || []).map(r =>
+    `<span class="ref">${r.label}: ${fmtPct(r.score)}</span> <em>(${r.note || "reference"})</em>`).join(" &nbsp;·&nbsp; ");
+  document.getElementById("refs").innerHTML = refs ? `reference lines — ${refs}` : "";
+  document.getElementById("stamp").textContent =
+    `manifest ${m.experiment || ""} · updated ${new Date().toLocaleTimeString()}`;
+}
+
+async function poll() {
+  try {
+    const r = await fetch(MANIFEST_URL, { cache: "no-store" });
+    if (r.ok) render(await r.json());
+  } catch (e) { /* transient: keep last frame */ }
+  setTimeout(poll, 2000);
+}
+poll();
+</script>
+</body>
+</html>
