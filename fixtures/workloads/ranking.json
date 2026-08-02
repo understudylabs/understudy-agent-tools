@@ -1,0 +1,2141 @@
+{
+  "schema": "understudy.synthetic_workflow.repair_targets.v1",
+  "ranking": [
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-b1a191d4f748",
+      "requests": 53979.961143036395,
+      "share": 0.06581922843291672,
+      "tokens": 1021010,
+      "tool_count": 1,
+      "message_turns": 2,
+      "description": "synthetic decision task with 1 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-006",
+      "cluster_id": "workload-006-3d8c7253c02e",
+      "requests": 44356.05568497193,
+      "share": 0.05408453988650129,
+      "tokens": 1808896,
+      "tool_count": 1,
+      "message_turns": 1,
+      "description": "synthetic decision task with 1 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-fcdb126a748f",
+      "requests": 38888.062304089304,
+      "share": 0.04741726748049997,
+      "tokens": 2995854,
+      "tool_count": 6,
+      "message_turns": 2,
+      "description": "synthetic decision task with 6 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-521e89cb0aec",
+      "requests": 37942.17537605066,
+      "share": 0.046263921933931036,
+      "tokens": 769053,
+      "tool_count": 1,
+      "message_turns": 4,
+      "description": "synthetic decision task with 1 tool slots and 4 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-9d0fef29df94",
+      "requests": 31778.181481846175,
+      "share": 0.038747997253905826,
+      "tokens": 2582704,
+      "tool_count": 6,
+      "message_turns": 6,
+      "description": "synthetic decision task with 6 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-108658929624",
+      "requests": 28073.15110808515,
+      "share": 0.03423035338463211,
+      "tokens": 2237242,
+      "tool_count": 6,
+      "message_turns": 5,
+      "description": "synthetic decision task with 6 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-a34da82b07f9",
+      "requests": 25737.822917870748,
+      "share": 0.031382824480151214,
+      "tokens": 2260526,
+      "tool_count": 6,
+      "message_turns": 8,
+      "description": "synthetic decision task with 6 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-ddfd48ccc8da",
+      "requests": 24858.40282139674,
+      "share": 0.030310523741272535,
+      "tokens": 2091831,
+      "tool_count": 6,
+      "message_turns": 7,
+      "description": "synthetic decision task with 6 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-b3b59ce58be6",
+      "requests": 21180.42931672795,
+      "share": 0.025825871045199972,
+      "tokens": 1925126,
+      "tool_count": 6,
+      "message_turns": 9,
+      "description": "synthetic decision task with 6 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-426b29aa1477",
+      "requests": 18880.92474868428,
+      "share": 0.023022022853358012,
+      "tokens": 1685208,
+      "tool_count": 6,
+      "message_turns": 10,
+      "description": "synthetic decision task with 6 tool slots and 10 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-6bf63ee9ffb0",
+      "requests": 18700.449196452286,
+      "share": 0.022801964125130365,
+      "tokens": 390272,
+      "tool_count": 1,
+      "message_turns": 2,
+      "description": "synthetic decision task with 1 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-eeeac6f4855a",
+      "requests": 17733.36620309034,
+      "share": 0.021622773642109978,
+      "tokens": 1375553,
+      "tool_count": 6,
+      "message_turns": 4,
+      "description": "synthetic decision task with 6 tool slots and 4 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-1445d062b2a9",
+      "requests": 17499.44538061028,
+      "share": 0.021337547648537417,
+      "tokens": 1676202,
+      "tool_count": 6,
+      "message_turns": 11,
+      "description": "synthetic decision task with 6 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-507843b4118c",
+      "requests": 15466.290501567137,
+      "share": 0.018858466845410475,
+      "tokens": 440027,
+      "tool_count": 0,
+      "message_turns": 4,
+      "description": "synthetic decision task with 0 tool slots and 4 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-75d58b1b96c2",
+      "requests": 15404.424645969588,
+      "share": 0.018783032132314203,
+      "tokens": 1473161,
+      "tool_count": 6,
+      "message_turns": 13,
+      "description": "synthetic decision task with 6 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-fe213fe5b072",
+      "requests": 14039.942436170826,
+      "share": 0.01711928202287231,
+      "tokens": 1340093,
+      "tool_count": 6,
+      "message_turns": 12,
+      "description": "synthetic decision task with 6 tool slots and 12 message turns"
+    },
+    {
+      "workload": "workload-001",
+      "cluster_id": "workload-001-901e5400afa0",
+      "requests": 14026.800499211588,
+      "share": 0.017103257703246014,
+      "tokens": 292589,
+      "tool_count": 0,
+      "message_turns": 2,
+      "description": "synthetic decision task with 0 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-b0a4a93bf1d8",
+      "requests": 14021.927021953516,
+      "share": 0.017097315340448428,
+      "tokens": 1567744,
+      "tool_count": 55,
+      "message_turns": 3,
+      "description": "synthetic decision task with 55 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-206072921d93",
+      "requests": 13356.755367590413,
+      "share": 0.016286253529017795,
+      "tokens": 1257891,
+      "tool_count": 6,
+      "message_turns": 14,
+      "description": "synthetic decision task with 6 tool slots and 14 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-3946af1d17ec",
+      "requests": 12875.10500132077,
+      "share": 0.015698964194031134,
+      "tokens": 1223383,
+      "tool_count": 6,
+      "message_turns": 16,
+      "description": "synthetic decision task with 6 tool slots and 16 message turns"
+    },
+    {
+      "workload": "workload-014",
+      "cluster_id": "workload-014-3d8c7253c02e",
+      "requests": 12198.559961315274,
+      "share": 0.014874034505488314,
+      "tokens": 217088,
+      "tool_count": 1,
+      "message_turns": 1,
+      "description": "synthetic decision task with 1 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-cbfaa6578798",
+      "requests": 11518.428349956397,
+      "share": 0.014044731613367716,
+      "tokens": 1264718,
+      "tool_count": 6,
+      "message_turns": 19,
+      "description": "synthetic decision task with 6 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-e230861c5e3b",
+      "requests": 11251.361202149938,
+      "share": 0.01371908940770139,
+      "tokens": 2297344,
+      "tool_count": 10,
+      "message_turns": 1,
+      "description": "synthetic decision task with 10 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-343a3eb70e46",
+      "requests": 10876.302267872783,
+      "share": 0.01326176989230602,
+      "tokens": 1036320,
+      "tool_count": 6,
+      "message_turns": 18,
+      "description": "synthetic decision task with 6 tool slots and 18 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-5f6a86ca1d75",
+      "requests": 10373.602334921015,
+      "share": 0.012648814250628374,
+      "tokens": 1134979,
+      "tool_count": 6,
+      "message_turns": 25,
+      "description": "synthetic decision task with 6 tool slots and 25 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-9061cfe55952",
+      "requests": 10369.867738773271,
+      "share": 0.012644260556410223,
+      "tokens": 964626,
+      "tool_count": 6,
+      "message_turns": 17,
+      "description": "synthetic decision task with 6 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-44a68bf58bc0",
+      "requests": 10367.57778693765,
+      "share": 0.012641468356123719,
+      "tokens": 1163763,
+      "tool_count": 6,
+      "message_turns": 27,
+      "description": "synthetic decision task with 6 tool slots and 27 message turns"
+    },
+    {
+      "workload": "workload-012",
+      "cluster_id": "workload-012-3d8c7253c02e",
+      "requests": 10347.229942813887,
+      "share": 0.012616657678751229,
+      "tokens": 184320,
+      "tool_count": 1,
+      "message_turns": 1,
+      "description": "synthetic decision task with 1 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-40d92a2ed19a",
+      "requests": 10140.639076425947,
+      "share": 0.012364755840754145,
+      "tokens": 996770,
+      "tool_count": 6,
+      "message_turns": 15,
+      "description": "synthetic decision task with 6 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-db78313bd17d",
+      "requests": 9919.932157135243,
+      "share": 0.012095641917181153,
+      "tokens": 1100962,
+      "tool_count": 6,
+      "message_turns": 26,
+      "description": "synthetic decision task with 6 tool slots and 26 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-164caa2b6dc5",
+      "requests": 9880.837277586666,
+      "share": 0.01204797247183371,
+      "tokens": 1673728,
+      "tool_count": 10,
+      "message_turns": 3,
+      "description": "synthetic decision task with 10 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-02022004ecde",
+      "requests": 9879.778741773107,
+      "share": 0.012046681770450422,
+      "tokens": 1434112,
+      "tool_count": 17,
+      "message_turns": 3,
+      "description": "synthetic decision task with 17 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-e5d0ac5da493",
+      "requests": 9438.410129890679,
+      "share": 0.011508509069443272,
+      "tokens": 857223,
+      "tool_count": 6,
+      "message_turns": 20,
+      "description": "synthetic decision task with 6 tool slots and 20 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-1f2dd224acc1",
+      "requests": 9221.75819541467,
+      "share": 0.011244339498666371,
+      "tokens": 935416,
+      "tool_count": 6,
+      "message_turns": 23,
+      "description": "synthetic decision task with 6 tool slots and 23 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-671d826908c9",
+      "requests": 9183.663272792877,
+      "share": 0.011197889327879216,
+      "tokens": 1661440,
+      "tool_count": 17,
+      "message_turns": 1,
+      "description": "synthetic decision task with 17 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-97413e8d2f43",
+      "requests": 8556.65431942579,
+      "share": 0.01043336033124291,
+      "tokens": 944671,
+      "tool_count": 6,
+      "message_turns": 22,
+      "description": "synthetic decision task with 6 tool slots and 22 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-b844adcf188a",
+      "requests": 7372.537324366071,
+      "share": 0.008989534412535504,
+      "tokens": 754825,
+      "tool_count": 6,
+      "message_turns": 21,
+      "description": "synthetic decision task with 6 tool slots and 21 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-8f6d15bf4830",
+      "requests": 6683.52942597627,
+      "share": 0.008149408423262679,
+      "tokens": 748185,
+      "tool_count": 6,
+      "message_turns": 24,
+      "description": "synthetic decision task with 6 tool slots and 24 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-953e59631d14",
+      "requests": 6454.997138565297,
+      "share": 0.007870752816424765,
+      "tokens": 1552384,
+      "tool_count": 55,
+      "message_turns": 5,
+      "description": "synthetic decision task with 55 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-013",
+      "cluster_id": "workload-013-3d8c7253c02e",
+      "requests": 5753.09210186976,
+      "share": 0.007014900997153158,
+      "tokens": 102400,
+      "tool_count": 1,
+      "message_turns": 1,
+      "description": "synthetic decision task with 1 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-c979a399e128",
+      "requests": 5273.7014492753615,
+      "share": 0.006430366992245187,
+      "tokens": 813056,
+      "tool_count": 49,
+      "message_turns": 1,
+      "description": "synthetic decision task with 49 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-e7ef08ecf5d8",
+      "requests": 5045.443478260869,
+      "share": 0.006152045866818162,
+      "tokens": 629248,
+      "tool_count": 49,
+      "message_turns": 5,
+      "description": "synthetic decision task with 49 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-9a1164448ff4",
+      "requests": 4815.141449275363,
+      "share": 0.005871232366152708,
+      "tokens": 864768,
+      "tool_count": 49,
+      "message_turns": 7,
+      "description": "synthetic decision task with 49 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-1e68a57b81cf",
+      "requests": 4616.985349089939,
+      "share": 0.005629615267005113,
+      "tokens": 1280000,
+      "tool_count": 56,
+      "message_turns": 3,
+      "description": "synthetic decision task with 56 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-8ee6a8c3a02e",
+      "requests": 4393.480905872838,
+      "share": 0.005357090246749963,
+      "tokens": 87471,
+      "tool_count": 1,
+      "message_turns": 5,
+      "description": "synthetic decision task with 1 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-e971eede3a1b",
+      "requests": 3912.50392562458,
+      "share": 0.004770621989574892,
+      "tokens": 1088000,
+      "tool_count": 56,
+      "message_turns": 5,
+      "description": "synthetic decision task with 56 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-a2a1d20737d3",
+      "requests": 3897.479420289855,
+      "share": 0.004752302203347232,
+      "tokens": 608768,
+      "tool_count": 49,
+      "message_turns": 3,
+      "description": "synthetic decision task with 49 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-27335275b6ae",
+      "requests": 3897.36635476074,
+      "share": 0.004752164339485696,
+      "tokens": 1028096,
+      "tool_count": 55,
+      "message_turns": 7,
+      "description": "synthetic decision task with 55 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-dde1f2aed69b",
+      "requests": 3675.109095307208,
+      "share": 0.004481160044167984,
+      "tokens": 1024000,
+      "tool_count": 52,
+      "message_turns": 1,
+      "description": "synthetic decision task with 52 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-8f296c79a184",
+      "requests": 3443.8680577331234,
+      "share": 0.004199201584901535,
+      "tokens": 660480,
+      "tool_count": 17,
+      "message_turns": 5,
+      "description": "synthetic decision task with 17 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-e971eede3a1b",
+      "requests": 3443.825800677137,
+      "share": 0.004199150059728823,
+      "tokens": 960000,
+      "tool_count": 56,
+      "message_turns": 5,
+      "description": "synthetic decision task with 56 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-975980622830",
+      "requests": 3442.284482341558,
+      "share": 0.004197270688542384,
+      "tokens": 960000,
+      "tool_count": 53,
+      "message_turns": 3,
+      "description": "synthetic decision task with 53 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-d364f549db1d",
+      "requests": 3214.0466447312783,
+      "share": 0.003918974112320341,
+      "tokens": 716288,
+      "tool_count": 10,
+      "message_turns": 5,
+      "description": "synthetic decision task with 10 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-f34895da2de8",
+      "requests": 3191.8296264713586,
+      "share": 0.003891884300305228,
+      "tokens": 716288,
+      "tool_count": 55,
+      "message_turns": 1,
+      "description": "synthetic decision task with 55 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-73826521955a",
+      "requests": 2983.513074504112,
+      "share": 0.0036378782871486484,
+      "tokens": 832000,
+      "tool_count": 52,
+      "message_turns": 3,
+      "description": "synthetic decision task with 52 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-ecd95f679219",
+      "requests": 2982.3814492753627,
+      "share": 0.0036364984658621134,
+      "tokens": 412672,
+      "tool_count": 49,
+      "message_turns": 9,
+      "description": "synthetic decision task with 49 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-91455c16ef72",
+      "requests": 2768.052426152495,
+      "share": 0.003375161283803994,
+      "tokens": 768000,
+      "tool_count": 56,
+      "message_turns": 1,
+      "description": "synthetic decision task with 56 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-153b364ad5d2",
+      "requests": 2758.776513983641,
+      "share": 0.0033638509128989893,
+      "tokens": 768000,
+      "tool_count": 55,
+      "message_turns": 9,
+      "description": "synthetic decision task with 55 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-dd5702114cba",
+      "requests": 2557.4603644156714,
+      "share": 0.0031183806799631366,
+      "tokens": 704000,
+      "tool_count": 56,
+      "message_turns": 9,
+      "description": "synthetic decision task with 56 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-faaeaf47b5a8",
+      "requests": 2523.218118045477,
+      "share": 0.0030766281816624443,
+      "tokens": 704000,
+      "tool_count": 53,
+      "message_turns": 1,
+      "description": "synthetic decision task with 53 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-d8703838db9e",
+      "requests": 2325.997197396016,
+      "share": 0.002836151372248298,
+      "tokens": 460288,
+      "tool_count": 7,
+      "message_turns": 3,
+      "description": "synthetic decision task with 7 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-ffa913bfde17",
+      "requests": 2294.2347826086957,
+      "share": 0.0027974225997519993,
+      "tokens": 280576,
+      "tool_count": 49,
+      "message_turns": 11,
+      "description": "synthetic decision task with 49 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-8a2e2278c3dd",
+      "requests": 2069.895936130739,
+      "share": 0.0025238801690047235,
+      "tokens": 96768,
+      "tool_count": 26,
+      "message_turns": 3,
+      "description": "synthetic decision task with 26 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-b4c75d38aee0",
+      "requests": 1842.061538461538,
+      "share": 0.0022460755180282446,
+      "tokens": 512000,
+      "tool_count": 18,
+      "message_turns": 1,
+      "description": "synthetic decision task with 18 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-0a57e58f4203",
+      "requests": 1608.9940986065608,
+      "share": 0.001961890077000583,
+      "tokens": 88576,
+      "tool_count": 26,
+      "message_turns": 1,
+      "description": "synthetic decision task with 26 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-b7c2d07038af",
+      "requests": 1607.6881159420288,
+      "share": 0.0019602976569708893,
+      "tokens": 88576,
+      "tool_count": 49,
+      "message_turns": 13,
+      "description": "synthetic decision task with 49 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-a68ba97d67f0",
+      "requests": 1605.4944000967585,
+      "share": 0.00195762279983355,
+      "tokens": 448000,
+      "tool_count": 52,
+      "message_turns": 5,
+      "description": "synthetic decision task with 52 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-5a537e3a32f9",
+      "requests": 1385.2255429871,
+      "share": 0.0016890430173409057,
+      "tokens": 22986,
+      "tool_count": 0,
+      "message_turns": 5,
+      "description": "synthetic decision task with 0 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-547895d7c5de",
+      "requests": 1379.21167019616,
+      "share": 0.0016817101393874646,
+      "tokens": 204288,
+      "tool_count": 6,
+      "message_turns": 3,
+      "description": "synthetic decision task with 6 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-3bb82f3648a2",
+      "requests": 1370.2095289534875,
+      "share": 0.0016707335847866416,
+      "tokens": 384000,
+      "tool_count": 55,
+      "message_turns": 11,
+      "description": "synthetic decision task with 55 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-646f6f1b7058",
+      "requests": 1340.3032684227537,
+      "share": 0.001634268071441221,
+      "tokens": 384000,
+      "tool_count": 56,
+      "message_turns": 7,
+      "description": "synthetic decision task with 56 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-baece9ad9fb6",
+      "requests": 1171.3231837761969,
+      "share": 0.001428226078144971,
+      "tokens": 125818,
+      "tool_count": 6,
+      "message_turns": 28,
+      "description": "synthetic decision task with 6 tool slots and 28 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-978f372eab6d",
+      "requests": 1151.2884615384614,
+      "share": 0.001403797198767653,
+      "tokens": 320000,
+      "tool_count": 18,
+      "message_turns": 3,
+      "description": "synthetic decision task with 18 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-6ad5b2e1aeb3",
+      "requests": 1147.9411828607006,
+      "share": 0.0013997157712294526,
+      "tokens": 200192,
+      "tool_count": 10,
+      "message_turns": 7,
+      "description": "synthetic decision task with 10 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-30c3c928429e",
+      "requests": 1146.116629734898,
+      "share": 0.0013974910441931184,
+      "tokens": 140288,
+      "tool_count": 26,
+      "message_turns": 5,
+      "description": "synthetic decision task with 26 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-2de7400f9b56",
+      "requests": 929.5924993311932,
+      "share": 0.0011334773083825917,
+      "tokens": 82664,
+      "tool_count": 7,
+      "message_turns": 10,
+      "description": "synthetic decision task with 7 tool slots and 10 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-f34895da2de8",
+      "requests": 922.9961255656109,
+      "share": 0.0011254341712162775,
+      "tokens": 256000,
+      "tool_count": 55,
+      "message_turns": 1,
+      "description": "synthetic decision task with 55 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-1a957740eef3",
+      "requests": 921.1153043724057,
+      "share": 0.0011231408350015847,
+      "tokens": 196096,
+      "tool_count": 7,
+      "message_turns": 7,
+      "description": "synthetic decision task with 7 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-ef253010c215",
+      "requests": 921.0686744073537,
+      "share": 0.001123083977822428,
+      "tokens": 256000,
+      "tool_count": 54,
+      "message_turns": 1,
+      "description": "synthetic decision task with 54 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-23c6549a1c94",
+      "requests": 921.0406825568797,
+      "share": 0.001123049846601108,
+      "tokens": 256000,
+      "tool_count": 18,
+      "message_turns": 5,
+      "description": "synthetic decision task with 18 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-ef5a55baa78d",
+      "requests": 920.1985460950373,
+      "share": 0.0011220230068076,
+      "tokens": 196096,
+      "tool_count": 17,
+      "message_turns": 7,
+      "description": "synthetic decision task with 17 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-646f6f1b7058",
+      "requests": 920.1868364030336,
+      "share": 0.001122008728863034,
+      "tokens": 256000,
+      "tool_count": 56,
+      "message_turns": 7,
+      "description": "synthetic decision task with 56 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-8297e4cc6e1c",
+      "requests": 919.8614593146139,
+      "share": 0.0011216119877677081,
+      "tokens": 196096,
+      "tool_count": 55,
+      "message_turns": 21,
+      "description": "synthetic decision task with 55 tool slots and 21 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-44a6416261da",
+      "requests": 918.0828816287038,
+      "share": 0.0011194433198302785,
+      "tokens": 256000,
+      "tool_count": 55,
+      "message_turns": 17,
+      "description": "synthetic decision task with 55 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-e93ad0277319",
+      "requests": 917.2574398700036,
+      "share": 0.0011184368363404147,
+      "tokens": 196096,
+      "tool_count": 55,
+      "message_turns": 13,
+      "description": "synthetic decision task with 55 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-91455c16ef72",
+      "requests": 916.4714517876489,
+      "share": 0.0011174784597865492,
+      "tokens": 256000,
+      "tool_count": 56,
+      "message_turns": 1,
+      "description": "synthetic decision task with 56 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-fb0e8c5dc81b",
+      "requests": 916.3066666666667,
+      "share": 0.0011172775328260514,
+      "tokens": 196096,
+      "tool_count": 25,
+      "message_turns": 5,
+      "description": "synthetic decision task with 25 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-c1f724b9b845",
+      "requests": 892.8333333333334,
+      "share": 0.001088655861820125,
+      "tokens": 256000,
+      "tool_count": 57,
+      "message_turns": 5,
+      "description": "synthetic decision task with 57 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-ee5ad4d9978a",
+      "requests": 807,
+      "share": 0.000983996954066277,
+      "tokens": 56908,
+      "tool_count": 8,
+      "message_turns": 5,
+      "description": "synthetic decision task with 8 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-760a2783f56a",
+      "requests": 707.8038461538462,
+      "share": 0.000863044397387584,
+      "tokens": 70308,
+      "tool_count": 7,
+      "message_turns": 24,
+      "description": "synthetic decision task with 7 tool slots and 24 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-77789ceac72e",
+      "requests": 700.9493535875889,
+      "share": 0.0008546865289775877,
+      "tokens": 78405,
+      "tool_count": 7,
+      "message_turns": 18,
+      "description": "synthetic decision task with 7 tool slots and 18 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-ec7cb344c94c",
+      "requests": 695.3507724719101,
+      "share": 0.0008478600274101515,
+      "tokens": 192000,
+      "tool_count": 56,
+      "message_turns": 11,
+      "description": "synthetic decision task with 56 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-a2895574beee",
+      "requests": 690.514114565022,
+      "share": 0.0008419625594445526,
+      "tokens": 132096,
+      "tool_count": 7,
+      "message_turns": 1,
+      "description": "synthetic decision task with 7 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-e9749bd2270a",
+      "requests": 690.1689149627717,
+      "share": 0.0008415416482213069,
+      "tokens": 132096,
+      "tool_count": 55,
+      "message_turns": 15,
+      "description": "synthetic decision task with 55 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-1e68a57b81cf",
+      "requests": 689.0752979414951,
+      "share": 0.0008402081713714294,
+      "tokens": 192000,
+      "tool_count": 56,
+      "message_turns": 3,
+      "description": "synthetic decision task with 56 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-3eb06d5ac080",
+      "requests": 688.8919233196848,
+      "share": 0.0008399845777291562,
+      "tokens": 73388,
+      "tool_count": 7,
+      "message_turns": 6,
+      "description": "synthetic decision task with 7 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-011",
+      "cluster_id": "workload-011-f34895da2de8",
+      "requests": 688.8070512820512,
+      "share": 0.0008398810909552816,
+      "tokens": 192000,
+      "tool_count": 55,
+      "message_turns": 1,
+      "description": "synthetic decision task with 55 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-dae59c0df912",
+      "requests": 688.7410904822877,
+      "share": 0.0008398006631658701,
+      "tokens": 132096,
+      "tool_count": 54,
+      "message_turns": 3,
+      "description": "synthetic decision task with 54 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-9122dcc1d281",
+      "requests": 686.8734848484848,
+      "share": 0.000837523441040642,
+      "tokens": 132096,
+      "tool_count": 54,
+      "message_turns": 5,
+      "description": "synthetic decision task with 54 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-37c0db9f967e",
+      "requests": 647.5,
+      "share": 0.0007895142847062135,
+      "tokens": 192000,
+      "tool_count": 59,
+      "message_turns": 5,
+      "description": "synthetic decision task with 59 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-57500e746318",
+      "requests": 645,
+      "share": 0.0007864659670046451,
+      "tokens": 32980,
+      "tool_count": 8,
+      "message_turns": 2,
+      "description": "synthetic decision task with 8 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-fb250fc83721",
+      "requests": 634.4008326645264,
+      "share": 0.0007735421152404013,
+      "tokens": 68398,
+      "tool_count": 7,
+      "message_turns": 12,
+      "description": "synthetic decision task with 7 tool slots and 12 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-bfbabf77e65f",
+      "requests": 482.49101123595506,
+      "share": 0.0005883143561592782,
+      "tokens": 46965,
+      "tool_count": 6,
+      "message_turns": 30,
+      "description": "synthetic decision task with 6 tool slots and 30 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-a090d1aad2eb",
+      "requests": 476.33333333333337,
+      "share": 0.000580806132738831,
+      "tokens": 32808,
+      "tool_count": 8,
+      "message_turns": 9,
+      "description": "synthetic decision task with 8 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-899c1e6f6038",
+      "requests": 471.4238095238095,
+      "share": 0.0005748198174048937,
+      "tokens": 49503,
+      "tool_count": 6,
+      "message_turns": 29,
+      "description": "synthetic decision task with 6 tool slots and 29 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-26b63b80b326",
+      "requests": 469.37737556561086,
+      "share": 0.0005723245450609467,
+      "tokens": 54260,
+      "tool_count": 7,
+      "message_turns": 22,
+      "description": "synthetic decision task with 7 tool slots and 22 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-0259a46f06aa",
+      "requests": 468.3,
+      "share": 0.0005710108718577912,
+      "tokens": 39643,
+      "tool_count": 7,
+      "message_turns": 25,
+      "description": "synthetic decision task with 7 tool slots and 25 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-ea110b0ad059",
+      "requests": 468,
+      "share": 0.0005706450737336029,
+      "tokens": 31998,
+      "tool_count": 8,
+      "message_turns": 6,
+      "description": "synthetic decision task with 8 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-126cb6323cb4",
+      "requests": 465,
+      "share": 0.0005669870924917209,
+      "tokens": 128000,
+      "tool_count": 57,
+      "message_turns": 15,
+      "description": "synthetic decision task with 57 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-000",
+      "cluster_id": "workload-000-c41e91202f9e",
+      "requests": 461.94870354364735,
+      "share": 0.0005632665640914679,
+      "tokens": 128000,
+      "tool_count": 5,
+      "message_turns": 1,
+      "description": "synthetic decision task with 5 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-6ea4f653ee3d",
+      "requests": 461.92435897435894,
+      "share": 0.0005632368800988683,
+      "tokens": 44277,
+      "tool_count": 7,
+      "message_turns": 7,
+      "description": "synthetic decision task with 7 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-ca93dd738a9f",
+      "requests": 461.01454064771974,
+      "share": 0.0005621275139747461,
+      "tokens": 128000,
+      "tool_count": 6,
+      "message_turns": 7,
+      "description": "synthetic decision task with 6 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-0a2b17afc022",
+      "requests": 460.5153846153846,
+      "share": 0.0005615188795070613,
+      "tokens": 128000,
+      "tool_count": 18,
+      "message_turns": 9,
+      "description": "synthetic decision task with 18 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-7e419d2d5ca7",
+      "requests": 460.5153846153846,
+      "share": 0.0005615188795070613,
+      "tokens": 128000,
+      "tool_count": 18,
+      "message_turns": 11,
+      "description": "synthetic decision task with 18 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-000",
+      "cluster_id": "workload-000-5b24dd018a1d",
+      "requests": 460.41964285714283,
+      "share": 0.0005614021389884902,
+      "tokens": 128000,
+      "tool_count": 5,
+      "message_turns": 3,
+      "description": "synthetic decision task with 5 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-01bedbbacfc6",
+      "requests": 460.1871969941823,
+      "share": 0.0005611187114530026,
+      "tokens": 128000,
+      "tool_count": 56,
+      "message_turns": 13,
+      "description": "synthetic decision task with 56 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-ea110b0ad059",
+      "requests": 460,
+      "share": 0.0005608904570885841,
+      "tokens": 28778,
+      "tool_count": 8,
+      "message_turns": 6,
+      "description": "synthetic decision task with 8 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-e9069993f8bb",
+      "requests": 459.92224480906054,
+      "share": 0.0005607956480786123,
+      "tokens": 128000,
+      "tool_count": 54,
+      "message_turns": 13,
+      "description": "synthetic decision task with 54 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-809e272f0fe3",
+      "requests": 459.91233148295004,
+      "share": 0.0005607835604916267,
+      "tokens": 52366,
+      "tool_count": 7,
+      "message_turns": 5,
+      "description": "synthetic decision task with 7 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-64fc154912b7",
+      "requests": 459.67145178764895,
+      "share": 0.0005604898493559728,
+      "tokens": 128000,
+      "tool_count": 55,
+      "message_turns": 25,
+      "description": "synthetic decision task with 55 tool slots and 25 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-81ec600e4986",
+      "requests": 459.6615384615385,
+      "share": 0.0005604777617689872,
+      "tokens": 128000,
+      "tool_count": 56,
+      "message_turns": 15,
+      "description": "synthetic decision task with 56 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-1bc1a72a9164",
+      "requests": 459.6320147408686,
+      "share": 0.0005604417626968535,
+      "tokens": 128000,
+      "tool_count": 6,
+      "message_turns": 1,
+      "description": "synthetic decision task with 6 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-757714cc5b2c",
+      "requests": 459.29825619653434,
+      "share": 0.000560034801865356,
+      "tokens": 68096,
+      "tool_count": 7,
+      "message_turns": 5,
+      "description": "synthetic decision task with 7 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-7294c04929c6",
+      "requests": 459.26666666666665,
+      "share": 0.000559996283896124,
+      "tokens": 128000,
+      "tool_count": 7,
+      "message_turns": 9,
+      "description": "synthetic decision task with 7 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-6ada3cc3f543",
+      "requests": 458.53333333333336,
+      "share": 0.000559102110703664,
+      "tokens": 8192,
+      "tool_count": 49,
+      "message_turns": 17,
+      "description": "synthetic decision task with 49 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-916b3fc46aae",
+      "requests": 458.53333333333336,
+      "share": 0.000559102110703664,
+      "tokens": 68096,
+      "tool_count": 25,
+      "message_turns": 1,
+      "description": "synthetic decision task with 25 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-bc463d448ec7",
+      "requests": 458.5,
+      "share": 0.0005590614664676431,
+      "tokens": 128000,
+      "tool_count": 57,
+      "message_turns": 1,
+      "description": "synthetic decision task with 57 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-f29b00db7183",
+      "requests": 458.38666666666666,
+      "share": 0.0005589232760651719,
+      "tokens": 68096,
+      "tool_count": 49,
+      "message_turns": 15,
+      "description": "synthetic decision task with 49 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-ba6767bcc215",
+      "requests": 458.38666666666666,
+      "share": 0.0005589232760651719,
+      "tokens": 128000,
+      "tool_count": 17,
+      "message_turns": 9,
+      "description": "synthetic decision task with 17 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-373fa656d083",
+      "requests": 458.38666666666666,
+      "share": 0.0005589232760651719,
+      "tokens": 68096,
+      "tool_count": 6,
+      "message_turns": 5,
+      "description": "synthetic decision task with 6 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-bf71cd5b5064",
+      "requests": 457.80384615384617,
+      "share": 0.0005582126272307448,
+      "tokens": 128000,
+      "tool_count": 52,
+      "message_turns": 9,
+      "description": "synthetic decision task with 52 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-5c9147362047",
+      "requests": 457.7576923076923,
+      "share": 0.0005581563505962543,
+      "tokens": 37797,
+      "tool_count": 7,
+      "message_turns": 13,
+      "description": "synthetic decision task with 7 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-d302c7693804",
+      "requests": 457.5,
+      "share": 0.0005578421393870157,
+      "tokens": 128000,
+      "tool_count": 59,
+      "message_turns": 9,
+      "description": "synthetic decision task with 59 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-b41035e0d6e0",
+      "requests": 448.66666666666663,
+      "share": 0.000547071416841474,
+      "tokens": 128000,
+      "tool_count": 59,
+      "message_turns": 7,
+      "description": "synthetic decision task with 59 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-3e4699d83a78",
+      "requests": 444.2676056338028,
+      "share": 0.0005417075225947706,
+      "tokens": 23014,
+      "tool_count": 7,
+      "message_turns": 9,
+      "description": "synthetic decision task with 7 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-90aed0298718",
+      "requests": 429.8333333333333,
+      "share": 0.0005241074234896588,
+      "tokens": 128000,
+      "tool_count": 59,
+      "message_turns": 3,
+      "description": "synthetic decision task with 59 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-5b04c3311025",
+      "requests": 429,
+      "share": 0.000523091317589136,
+      "tokens": 28786,
+      "tool_count": 8,
+      "message_turns": 8,
+      "description": "synthetic decision task with 8 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-d7f201ef8129",
+      "requests": 424.5,
+      "share": 0.000517604345726313,
+      "tokens": 32080,
+      "tool_count": 8,
+      "message_turns": 17,
+      "description": "synthetic decision task with 8 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-2dd27c7de921",
+      "requests": 409.5,
+      "share": 0.0004993144395169026,
+      "tokens": 43194,
+      "tool_count": 8,
+      "message_turns": 27,
+      "description": "synthetic decision task with 8 tool slots and 27 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-da5d06202ea1",
+      "requests": 390,
+      "share": 0.00047553756144466913,
+      "tokens": 36627,
+      "tool_count": 8,
+      "message_turns": 18,
+      "description": "synthetic decision task with 8 tool slots and 18 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-c8704557ebac",
+      "requests": 277,
+      "share": 0.00033775360133377785,
+      "tokens": 18714,
+      "tool_count": 7,
+      "message_turns": 20,
+      "description": "synthetic decision task with 7 tool slots and 20 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-950f95db60c3",
+      "requests": 250,
+      "share": 0.00030483177015683916,
+      "tokens": 16794,
+      "tool_count": 7,
+      "message_turns": 15,
+      "description": "synthetic decision task with 7 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-f88c640cc07b",
+      "requests": 249.33333333333334,
+      "share": 0.000304018885436421,
+      "tokens": 14953,
+      "tool_count": 8,
+      "message_turns": 11,
+      "description": "synthetic decision task with 8 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-b0a4a93bf1d8",
+      "requests": 240.71428571428572,
+      "share": 0.00029350944726529946,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 3,
+      "description": "synthetic decision task with 55 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-3022f7aae6d2",
+      "requests": 239.83333333333334,
+      "share": 0.00029243527817046107,
+      "tokens": 27926,
+      "tool_count": 6,
+      "message_turns": 39,
+      "description": "synthetic decision task with 6 tool slots and 39 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-2d27018b4a03",
+      "requests": 239.5,
+      "share": 0.00029202883581025196,
+      "tokens": 18549,
+      "tool_count": 8,
+      "message_turns": 21,
+      "description": "synthetic decision task with 8 tool slots and 21 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-0884461a5cb6",
+      "requests": 239.5,
+      "share": 0.00029202883581025196,
+      "tokens": 19183,
+      "tool_count": 8,
+      "message_turns": 24,
+      "description": "synthetic decision task with 8 tool slots and 24 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-953e59631d14",
+      "requests": 238.6,
+      "share": 0.0002909314414376873,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 5,
+      "description": "synthetic decision task with 55 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-911cfef9cf7d",
+      "requests": 238,
+      "share": 0.0002901998451893109,
+      "tokens": 26569,
+      "tool_count": 8,
+      "message_turns": 22,
+      "description": "synthetic decision task with 8 tool slots and 22 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-c84b9faa794e",
+      "requests": 238,
+      "share": 0.0002901998451893109,
+      "tokens": 15299,
+      "tool_count": 8,
+      "message_turns": 12,
+      "description": "synthetic decision task with 8 tool slots and 12 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-59251725185a",
+      "requests": 238,
+      "share": 0.0002901998451893109,
+      "tokens": 15887,
+      "tool_count": 8,
+      "message_turns": 18,
+      "description": "synthetic decision task with 8 tool slots and 18 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-99fc5c2444ac",
+      "requests": 234,
+      "share": 0.00028532253686680147,
+      "tokens": 19207,
+      "tool_count": 8,
+      "message_turns": 7,
+      "description": "synthetic decision task with 8 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-5b04c3311025",
+      "requests": 234,
+      "share": 0.00028532253686680147,
+      "tokens": 15574,
+      "tool_count": 8,
+      "message_turns": 8,
+      "description": "synthetic decision task with 8 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-010",
+      "cluster_id": "workload-010-0b6378882dd1",
+      "requests": 234,
+      "share": 0.00028532253686680147,
+      "tokens": 64000,
+      "tool_count": 8,
+      "message_turns": 3,
+      "description": "synthetic decision task with 8 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-5c0e8da7d495",
+      "requests": 232.02380952380952,
+      "share": 0.00028291291430270453,
+      "tokens": 27589,
+      "tool_count": 7,
+      "message_turns": 16,
+      "description": "synthetic decision task with 7 tool slots and 16 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-27335275b6ae",
+      "requests": 232.02380952380952,
+      "share": 0.00028291291430270453,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 7,
+      "description": "synthetic decision task with 55 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-46a4931329c1",
+      "requests": 231.69101123595505,
+      "share": 0.0002825071243379372,
+      "tokens": 23826,
+      "tool_count": 7,
+      "message_turns": 4,
+      "description": "synthetic decision task with 7 tool slots and 4 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-b85d3178407d",
+      "requests": 231.69101123595505,
+      "share": 0.0002825071243379372,
+      "tokens": 34947,
+      "tool_count": 6,
+      "message_turns": 8,
+      "description": "synthetic decision task with 6 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-153b364ad5d2",
+      "requests": 231.69101123595505,
+      "share": 0.0002825071243379372,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 9,
+      "description": "synthetic decision task with 55 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-beddebe11e3b",
+      "requests": 230.525,
+      "share": 0.0002810853752616214,
+      "tokens": 18284,
+      "tool_count": 7,
+      "message_turns": 11,
+      "description": "synthetic decision task with 7 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-25d25cb6e6ae",
+      "requests": 230.51533742331287,
+      "share": 0.00028107359342019814,
+      "tokens": 29250,
+      "tool_count": 6,
+      "message_turns": 13,
+      "description": "synthetic decision task with 6 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-6dac74c7152a",
+      "requests": 230.26760563380282,
+      "share": 0.0002807715273405163,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 19,
+      "description": "synthetic decision task with 55 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-011",
+      "cluster_id": "workload-011-953e59631d14",
+      "requests": 230.2576923076923,
+      "share": 0.00028075943975353063,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 5,
+      "description": "synthetic decision task with 55 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-08224cb2a840",
+      "requests": 230.2576923076923,
+      "share": 0.00028075943975353063,
+      "tokens": 27213,
+      "tool_count": 7,
+      "message_turns": 14,
+      "description": "synthetic decision task with 7 tool slots and 14 message turns"
+    },
+    {
+      "workload": "workload-011",
+      "cluster_id": "workload-011-2bb75b880b6d",
+      "requests": 230.2576923076923,
+      "share": 0.00028075943975353063,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 23,
+      "description": "synthetic decision task with 55 tool slots and 23 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-01bedbbacfc6",
+      "requests": 230.2576923076923,
+      "share": 0.00028075943975353063,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 13,
+      "description": "synthetic decision task with 56 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-7f185b437ad1",
+      "requests": 230.20982142857142,
+      "share": 0.0002807010694942451,
+      "tokens": 26802,
+      "tool_count": 7,
+      "message_turns": 19,
+      "description": "synthetic decision task with 7 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-c2878f800205",
+      "requests": 230.0086956521739,
+      "share": 0.0002804558313884714,
+      "tokens": 8913,
+      "tool_count": 1,
+      "message_turns": 6,
+      "description": "synthetic decision task with 1 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-a623a15a5052",
+      "requests": 230.0086956521739,
+      "share": 0.0002804558313884714,
+      "tokens": 4096,
+      "tool_count": 50,
+      "message_turns": 1,
+      "description": "synthetic decision task with 50 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-b9c495003525",
+      "requests": 230.0086956521739,
+      "share": 0.0002804558313884714,
+      "tokens": 4096,
+      "tool_count": 50,
+      "message_turns": 11,
+      "description": "synthetic decision task with 50 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-ccaa98d7e56a",
+      "requests": 230.0086956521739,
+      "share": 0.0002804558313884714,
+      "tokens": 4096,
+      "tool_count": 50,
+      "message_turns": 9,
+      "description": "synthetic decision task with 50 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-3d8e3995f30c",
+      "requests": 229.97737556561086,
+      "share": 0.0002804176419587575,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 19,
+      "description": "synthetic decision task with 56 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-686710f16f07",
+      "requests": 229.64361702127658,
+      "share": 0.0002800106811272599,
+      "tokens": 4096,
+      "tool_count": 10,
+      "message_turns": 9,
+      "description": "synthetic decision task with 10 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-72010a444a00",
+      "requests": 229.64361702127658,
+      "share": 0.0002800106811272599,
+      "tokens": 4096,
+      "tool_count": 50,
+      "message_turns": 7,
+      "description": "synthetic decision task with 50 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-0d6c0279b400",
+      "requests": 229.64361702127658,
+      "share": 0.0002800106811272599,
+      "tokens": 4096,
+      "tool_count": 50,
+      "message_turns": 5,
+      "description": "synthetic decision task with 50 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-f974372e8d02",
+      "requests": 229.42735042735043,
+      "share": 0.00027974698141265073,
+      "tokens": 10032,
+      "tool_count": 7,
+      "message_turns": 8,
+      "description": "synthetic decision task with 7 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-6eabf35adc38",
+      "requests": 229.40384615384616,
+      "share": 0.00027971832201545654,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 17,
+      "description": "synthetic decision task with 56 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-dd5702114cba",
+      "requests": 229.40384615384616,
+      "share": 0.00027971832201545654,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 9,
+      "description": "synthetic decision task with 56 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-ec7cb344c94c",
+      "requests": 229.40384615384616,
+      "share": 0.00027971832201545654,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 11,
+      "description": "synthetic decision task with 56 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-9a0d05cd47a4",
+      "requests": 229.26666666666668,
+      "share": 0.000279551055351832,
+      "tokens": 4096,
+      "tool_count": 17,
+      "message_turns": 11,
+      "description": "synthetic decision task with 17 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-8dae29e2ffec",
+      "requests": 229.26666666666668,
+      "share": 0.000279551055351832,
+      "tokens": 4096,
+      "tool_count": 49,
+      "message_turns": 19,
+      "description": "synthetic decision task with 49 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-89259668d3dd",
+      "requests": 229.26666666666668,
+      "share": 0.000279551055351832,
+      "tokens": 4096,
+      "tool_count": 49,
+      "message_turns": 75,
+      "description": "synthetic decision task with 49 tool slots and 75 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-3fdbf8d2e0dd",
+      "requests": 229.12,
+      "share": 0.00027937222071334,
+      "tokens": 64000,
+      "tool_count": 25,
+      "message_turns": 3,
+      "description": "synthetic decision task with 25 tool slots and 3 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-30b49b0a6dd1",
+      "requests": 229.12,
+      "share": 0.00027937222071334,
+      "tokens": 16211,
+      "tool_count": 6,
+      "message_turns": 6,
+      "description": "synthetic decision task with 6 tool slots and 6 message turns"
+    },
+    {
+      "workload": "workload-004",
+      "cluster_id": "workload-004-3b8aa4d8b906",
+      "requests": 228.9795918367347,
+      "share": 0.00027920101723752946,
+      "tokens": 64000,
+      "tool_count": 17,
+      "message_turns": 15,
+      "description": "synthetic decision task with 17 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-009",
+      "cluster_id": "workload-009-c8e76dd722b8",
+      "requests": 228.9795918367347,
+      "share": 0.00027920101723752946,
+      "tokens": 64000,
+      "tool_count": 26,
+      "message_turns": 19,
+      "description": "synthetic decision task with 26 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-6ddd71aba191",
+      "requests": 228.9795918367347,
+      "share": 0.00027920101723752946,
+      "tokens": 64000,
+      "tool_count": 10,
+      "message_turns": 11,
+      "description": "synthetic decision task with 10 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-003",
+      "cluster_id": "workload-003-122c6606e975",
+      "requests": 228.9795918367347,
+      "share": 0.00027920101723752946,
+      "tokens": 64000,
+      "tool_count": 54,
+      "message_turns": 7,
+      "description": "synthetic decision task with 54 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-011",
+      "cluster_id": "workload-011-ccaa98d7e56a",
+      "requests": 228.8,
+      "share": 0.00027898203604753924,
+      "tokens": 64000,
+      "tool_count": 50,
+      "message_turns": 9,
+      "description": "synthetic decision task with 50 tool slots and 9 message turns"
+    },
+    {
+      "workload": "workload-007",
+      "cluster_id": "workload-007-a7eb43763b96",
+      "requests": 228.29166666666666,
+      "share": 0.0002783622114482203,
+      "tokens": 64000,
+      "tool_count": 53,
+      "message_turns": 5,
+      "description": "synthetic decision task with 53 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-81ec600e4986",
+      "requests": 227.5,
+      "share": 0.0002773969108427237,
+      "tokens": 64000,
+      "tool_count": 56,
+      "message_turns": 15,
+      "description": "synthetic decision task with 56 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-011",
+      "cluster_id": "workload-011-27335275b6ae",
+      "requests": 226.76470588235293,
+      "share": 0.00027650034681285057,
+      "tokens": 64000,
+      "tool_count": 55,
+      "message_turns": 7,
+      "description": "synthetic decision task with 55 tool slots and 7 message turns"
+    },
+    {
+      "workload": "workload-005",
+      "cluster_id": "workload-005-30e233561e0f",
+      "requests": 226.76470588235293,
+      "share": 0.00027650034681285057,
+      "tokens": 5147,
+      "tool_count": 1,
+      "message_turns": 11,
+      "description": "synthetic decision task with 1 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-6957853a2f30",
+      "requests": 223.5,
+      "share": 0.00027251960252021426,
+      "tokens": 64000,
+      "tool_count": 59,
+      "message_turns": 11,
+      "description": "synthetic decision task with 59 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-c84b9faa794e",
+      "requests": 223.5,
+      "share": 0.00027251960252021426,
+      "tokens": 18135,
+      "tool_count": 8,
+      "message_turns": 12,
+      "description": "synthetic decision task with 8 tool slots and 12 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-7bd16cdb3474",
+      "requests": 223.5,
+      "share": 0.00027251960252021426,
+      "tokens": 12881,
+      "tool_count": 8,
+      "message_turns": 14,
+      "description": "synthetic decision task with 8 tool slots and 14 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-85b17c750e42",
+      "requests": 220.5,
+      "share": 0.0002688616212783322,
+      "tokens": 64000,
+      "tool_count": 58,
+      "message_turns": 11,
+      "description": "synthetic decision task with 58 tool slots and 11 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-02297c17bf75",
+      "requests": 220.5,
+      "share": 0.0002688616212783322,
+      "tokens": 21794,
+      "tool_count": 8,
+      "message_turns": 25,
+      "description": "synthetic decision task with 8 tool slots and 25 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-6e0e388e6329",
+      "requests": 215.5,
+      "share": 0.00026276498587519536,
+      "tokens": 64000,
+      "tool_count": 57,
+      "message_turns": 13,
+      "description": "synthetic decision task with 57 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-008afadf0971",
+      "requests": 215.5,
+      "share": 0.00026276498587519536,
+      "tokens": 64000,
+      "tool_count": 58,
+      "message_turns": 1,
+      "description": "synthetic decision task with 58 tool slots and 1 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-c50b18e34b4c",
+      "requests": 215.5,
+      "share": 0.00026276498587519536,
+      "tokens": 14087,
+      "tool_count": 8,
+      "message_turns": 4,
+      "description": "synthetic decision task with 8 tool slots and 4 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-911cfef9cf7d",
+      "requests": 215.16666666666666,
+      "share": 0.00026235854351498624,
+      "tokens": 21498,
+      "tool_count": 8,
+      "message_turns": 22,
+      "description": "synthetic decision task with 8 tool slots and 22 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-f8163898baa0",
+      "requests": 215.16666666666666,
+      "share": 0.00026235854351498624,
+      "tokens": 19003,
+      "tool_count": 8,
+      "message_turns": 25,
+      "description": "synthetic decision task with 8 tool slots and 25 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-93bdadffe6fa",
+      "requests": 214.66666666666666,
+      "share": 0.00026174887997467257,
+      "tokens": 18384,
+      "tool_count": 8,
+      "message_turns": 19,
+      "description": "synthetic decision task with 8 tool slots and 19 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-d7f201ef8129",
+      "requests": 214,
+      "share": 0.00026093599525425434,
+      "tokens": 17672,
+      "tool_count": 8,
+      "message_turns": 17,
+      "description": "synthetic decision task with 8 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-f2d18c6597cd",
+      "requests": 213,
+      "share": 0.000259716668173627,
+      "tokens": 22347,
+      "tool_count": 6,
+      "message_turns": 8,
+      "description": "synthetic decision task with 6 tool slots and 8 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-9463aa8ae200",
+      "requests": 209.33333333333334,
+      "share": 0.0002552458022113267,
+      "tokens": 64000,
+      "tool_count": 59,
+      "message_turns": 13,
+      "description": "synthetic decision task with 59 tool slots and 13 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-d545cf787d95",
+      "requests": 197.5,
+      "share": 0.00024081709842390295,
+      "tokens": 9921,
+      "tool_count": 5,
+      "message_turns": 10,
+      "description": "synthetic decision task with 5 tool slots and 10 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-57500e746318",
+      "requests": 194,
+      "share": 0.00023654945364170722,
+      "tokens": 13053,
+      "tool_count": 8,
+      "message_turns": 2,
+      "description": "synthetic decision task with 8 tool slots and 2 message turns"
+    },
+    {
+      "workload": "workload-002",
+      "cluster_id": "workload-002-973b30a5ccc3",
+      "requests": 193.5,
+      "share": 0.00023593979010139352,
+      "tokens": 64000,
+      "tool_count": 59,
+      "message_turns": 15,
+      "description": "synthetic decision task with 59 tool slots and 15 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-ee5ad4d9978a",
+      "requests": 193.5,
+      "share": 0.00023593979010139352,
+      "tokens": 18626,
+      "tool_count": 8,
+      "message_turns": 5,
+      "description": "synthetic decision task with 8 tool slots and 5 message turns"
+    },
+    {
+      "workload": "workload-008",
+      "cluster_id": "workload-008-da41d5ff2bd8",
+      "requests": 172.5,
+      "share": 0.00021033392140821903,
+      "tokens": 24281,
+      "tool_count": 6,
+      "message_turns": 17,
+      "description": "synthetic decision task with 6 tool slots and 17 message turns"
+    },
+    {
+      "workload": "workload-015",
+      "cluster_id": "workload-015-6bcaa0b60790",
+      "requests": 12,
+      "share": 0.000014631924967528282,
+      "tokens": 14956,
+      "tool_count": 7,
+      "message_turns": 2,
+      "description": "synthetic decision task with 7 tool slots and 2 message turns"
+    }
+  ],
+  "source": "local numeric aggregates only",
+  "sampling": {
+    "method": "date-and-prefix stratified sample with inverse-probability weighting",
+    "sample_keys": 4000,
+    "population_keys": 919428
+  }
+}

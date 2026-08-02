@@ -1,0 +1,117 @@
+{
+  "run_id": "synthetic-workflow-20260802T015242",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "lane": "tinker",
+  "renderer": "nemotron3",
+  "split": "train",
+  "samples_per_task": 8,
+  "task_count": 48,
+  "temperature": 0.7,
+  "max_turns": 14,
+  "max_tokens": 512,
+  "counts": {
+    "episodes": 384,
+    "classes": {
+      "tool_call_failure": 358,
+      "pass": 16,
+      "near_miss": 10,
+      "other_fail": 0
+    },
+    "dpo_pairs": 10,
+    "sft_rows": 358
+  },
+  "family_breakdown": {
+    "action-option-selection": {
+      "episodes": 32,
+      "pass": 2,
+      "near_miss": 0,
+      "tool_call_failure": 30,
+      "other_fail": 0
+    },
+    "agent-state-synchronization": {
+      "episodes": 32,
+      "pass": 8,
+      "near_miss": 0,
+      "tool_call_failure": 24,
+      "other_fail": 0
+    },
+    "analysis-then-persist": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 0,
+      "tool_call_failure": 32,
+      "other_fail": 0
+    },
+    "multi-step-orchestrator-chain": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 5,
+      "tool_call_failure": 27,
+      "other_fail": 0
+    },
+    "document-preservation": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 0,
+      "tool_call_failure": 32,
+      "other_fail": 0
+    },
+    "entity-identification": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 2,
+      "tool_call_failure": 30,
+      "other_fail": 0
+    },
+    "routed-mail-followup": {
+      "episodes": 32,
+      "pass": 3,
+      "near_miss": 0,
+      "tool_call_failure": 29,
+      "other_fail": 0
+    },
+    "meeting-event-orchestration": {
+      "episodes": 32,
+      "pass": 1,
+      "near_miss": 0,
+      "tool_call_failure": 31,
+      "other_fail": 0
+    },
+    "record-observation": {
+      "episodes": 32,
+      "pass": 2,
+      "near_miss": 0,
+      "tool_call_failure": 30,
+      "other_fail": 0
+    },
+    "agent-state-partial-failure": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 2,
+      "tool_call_failure": 30,
+      "other_fail": 0
+    },
+    "event-routing": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 0,
+      "tool_call_failure": 32,
+      "other_fail": 0
+    },
+    "summary-orchestration": {
+      "episodes": 32,
+      "pass": 0,
+      "near_miss": 1,
+      "tool_call_failure": 31,
+      "other_fail": 0
+    }
+  },
+  "mean_reward": 0.052083333333333336,
+  "pass_rate": 0.041666666666666664,
+  "token_totals": {
+    "total": 8152233,
+    "prompt": 6594348,
+    "completion": 1557885
+  },
+  "wall_clock_s": 4364
+}

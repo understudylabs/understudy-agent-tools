@@ -1,0 +1,2 @@
+{"schema":"understudy.synthetic_workflow.fixture.v1","task_id":"workload-014-009","workload":"workload-014","split":"dev","prompt":"Synthetic workload-014 task 9: select the correct structured action.","message_turns":1,"tool_slots":["tool-0"],"expected":{"tool":"finish","arguments":{}}}
+{"schema":"understudy.synthetic_workflow.fixture.v1","task_id":"workload-014-010","workload":"workload-014","split":"dev","prompt":"Synthetic workload-014 task 10: select the correct structured action.","message_turns":1,"tool_slots":["tool-0"],"expected":{"tool":"finish","arguments":{}}}
