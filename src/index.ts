@@ -52,6 +52,7 @@ import { registerBenchmarksCommand } from "./commands/benchmarks.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
 import { registerTrustCommand } from "./commands/trust.js";
 import { registerTrainingCommand } from "./commands/training.js";
+import { registerServingContractCommand } from "./commands/serving-contract.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -892,6 +893,7 @@ export function buildProgram(): Command {
   registerRuntimeCommand(program);
   registerTrustCommand(program);
   registerTrainingCommand(program);
+  registerServingContractCommand(program);
 
   const understand = program
     .command("capture-evidence")
