@@ -10,6 +10,7 @@ import {
 } from "../dist/automationbench-offline.js";
 import {
   ACTION_PROTOCOL_SYSTEM_PROMPT,
+  AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1,
   parseAgentAction,
   replayOracleTrajectory,
   startEnvService,
@@ -57,6 +58,38 @@ describe("parseAgentAction", () => {
 });
 
 describe("AutomationBench RL service", () => {
+  it("keeps the base prompt default and pins the Nemotron prompt variant", async () => {
+    const protocol = await json("/protocol");
+    assert.equal(protocol.body.system_prompt, ACTION_PROTOCOL_SYSTEM_PROMPT);
+    assert.equal(protocol.body.prompt_variant, "default");
+    assert.equal(
+      AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1,
+      `You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+
+Allowed replies:
+{"tool":"api_search","arguments":{"query":"<text>"}}
+{"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"<path>","body":{...}}}
+{"tool":"finish","arguments":{}}
+
+api_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {"draft_id":"..."}).
+
+Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`,
+    );
+    const nemotronProtocol = await json("/protocol?prompt_variant=nemotron-v1");
+    assert.equal(nemotronProtocol.body.system_prompt, AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1);
+    assert.equal(nemotronProtocol.body.prompt_variant, "nemotron-v1");
+  });
+
+  it("supports the generalized synthetic-workflow adapter", async () => {
+    const synthetic = await startEnvService({ port: 0, benchmark: "synthetic-workflow" });
+    try {
+      const response = await fetch(`http://127.0.0.1:${synthetic.port}/health`);
+      assert.deepEqual(await response.json(), { ok: true, benchmark: "synthetic-workflow" });
+    } finally {
+      await new Promise((resolve) => synthetic.server.close(resolve));
+    }
+  });
+
   it("refuses holdout listing without the frozen hash and allows it with the hash", async () => {
     const denied = await json("/tasks?split=holdout");
     assert.equal(denied.response.status, 400);

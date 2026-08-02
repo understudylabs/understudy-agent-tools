@@ -4,6 +4,9 @@ This directory contains a reproducible, train-only-warm-started SFT → GRPO
 research arm for the synthetic offline AutomationBench fixture. The Node
 evaluator in `src/automationbench-offline.ts` is the sole authority for state
 transitions, terminal reward, split membership, and holdout authorization.
+The HTTP service is shared with the `synthetic-workflow` benchmark through a
+generalized benchmark adapter; selecting `--benchmark automationbench` keeps
+this arm on the AutomationBench evaluator.
 
 ## Arm and provenance
 
@@ -16,6 +19,15 @@ transitions, terminal reward, split membership, and holdout authorization.
   `importance_sampling`, learning rate `1e-5`, constant-reward filtering
   enabled
 - Evaluation: greedy temperature 0.0, one sample per task
+- Prompt variant: `nemotron-v1`
+
+Every committed Nemotron SFT, GRPO, and holdout result used the explicitly
+selected `AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1` prompt.
+The generalized service's `ACTION_PROTOCOL_SYSTEM_PROMPT` remains the default
+for existing callers. Select the reproducibility variant with
+`--prompt-variant nemotron-v1` on the service CLI, or pass
+`prompt_variant="nemotron-v1"` to `/reset` and
+`?prompt_variant=nemotron-v1` to `/protocol`.
 
 The renderer and split provenance are:
 
@@ -140,7 +152,9 @@ Never write the key to an artifact.
 Start the evaluator service:
 
 ```bash
-node scripts/automationbench-rl-service.mjs
+node scripts/automationbench-rl-service.mjs \
+  --benchmark automationbench \
+  --prompt-variant nemotron-v1
 ```
 
 Regenerate oracle data:
