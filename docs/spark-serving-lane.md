@@ -89,7 +89,11 @@ node scripts/spark-reachability-probe.mjs
 
 It reports JSON on stdout and a short summary on stderr. The default probe
 checks peer presence/online state, TCP 22, and
-`GET http://<spark-ip>:5153/v1/models`.
+`GET /v1/models` on port 5153 through the local userspace SOCKS5 proxy
+(`127.0.0.1:1055`). The proxy host and port are configurable with
+`TAILSCALE_SOCKS5_HOST` and `TAILSCALE_SOCKS5_PORT`, or the corresponding
+probe flags. Direct dials to the 100.x addresses do not work without a TUN
+interface.
 
 ## Multi-LoRA launch
 

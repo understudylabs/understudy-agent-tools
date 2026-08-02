@@ -28,6 +28,8 @@ function parseArgs(args) {
   }
   return {
     socket: valueAfter(args, "--socket", process.env.TAILSCALE_SOCKET || `${process.env.HOME}/.tailscale/tailscaled.sock`),
+    socks5Host: valueAfter(args, "--socks5-host", process.env.TAILSCALE_SOCKS5_HOST || "127.0.0.1"),
+    socks5Port: Number(valueAfter(args, "--socks5-port", process.env.TAILSCALE_SOCKS5_PORT || "1055")),
     port: Number(valueAfter(args, "--port", process.env.SPARK_SERVING_PORT || "5153")),
     timeoutMs: Number(valueAfter(args, "--timeout-ms", process.env.SPARK_PROBE_TIMEOUT_MS || "1500")),
     nodes,
@@ -49,39 +51,154 @@ function peerFor(status, ip) {
   return peers.find((peer) => peer.TailscaleIPs?.includes(ip) || peer.HostName === ip || peer.DNSName?.startsWith(`${ip}.`)) ?? null;
 }
 
-function tcpReachable(host, port, timeoutMs) {
-  return new Promise((resolve) => {
-    const socket = net.createConnection({ host, port });
-    let settled = false;
-    const finish = (ok) => {
-      if (settled) return;
-      settled = true;
-      socket.destroy();
-      resolve(ok);
+function readExact(socket, size, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    const onData = (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (buffer.length >= size) {
+        cleanup();
+        resolve(buffer.subarray(0, size));
+      }
     };
-    socket.setTimeout(timeoutMs, () => finish(false));
-    socket.once("connect", () => finish(true));
-    socket.once("error", () => finish(false));
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onTimeout = () => {
+      cleanup();
+      reject(new Error("SOCKS5 read timeout"));
+    };
+    const timer = setTimeout(onTimeout, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("data", onData);
+      socket.off("error", onError);
+      socket.off("close", onClose);
+    };
+    const onClose = () => onError(new Error("SOCKS5 socket closed"));
+    socket.on("data", onData);
+    socket.once("error", onError);
+    socket.once("close", onClose);
   });
 }
 
-async function httpProbe(url, timeoutMs) {
+function readSocks5ConnectReply(socket, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let buffer = Buffer.alloc(0);
+    let expected = null;
+    const onData = (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      if (expected === null && buffer.length >= 4) {
+        const addressLength = buffer[3] === 0x01 ? 4 : buffer[3] === 0x04 ? 16 : buffer[4] + 1;
+        expected = 4 + addressLength + 2;
+      }
+      if (expected !== null && buffer.length >= expected) {
+        cleanup();
+        resolve(buffer.subarray(0, expected));
+      }
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const onTimeout = () => {
+      cleanup();
+      reject(new Error("SOCKS5 read timeout"));
+    };
+    const timer = setTimeout(onTimeout, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      socket.off("data", onData);
+      socket.off("error", onError);
+      socket.off("close", onClose);
+    };
+    const onClose = () => onError(new Error("SOCKS5 socket closed"));
+    socket.on("data", onData);
+    socket.once("error", onError);
+    socket.once("close", onClose);
+  });
+}
+
+async function socks5Connect(proxyHost, proxyPort, targetHost, targetPort, timeoutMs) {
+  const socket = net.createConnection({ host: proxyHost, port: proxyPort });
+  socket.setTimeout(timeoutMs);
+  await new Promise((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+    socket.once("timeout", () => reject(new Error("SOCKS5 proxy connect timeout")));
+  });
+  socket.setTimeout(0);
+  socket.write(Buffer.from([0x05, 0x01, 0x00]));
+  const greeting = await readExact(socket, 2, timeoutMs);
+  if (greeting[0] !== 0x05 || greeting[1] !== 0x00) {
+    throw new Error("SOCKS5 no-auth negotiation failed");
+  }
+  const host = Buffer.from(targetHost);
+  if (host.length > 255) throw new Error("target host is too long");
+  socket.write(Buffer.concat([
+    Buffer.from([0x05, 0x01, 0x00, 0x03, host.length]),
+    host,
+    Buffer.from([(targetPort >> 8) & 0xff, targetPort & 0xff]),
+  ]));
+  const reply = await readSocks5ConnectReply(socket, timeoutMs);
+  const header = reply.subarray(0, 4);
+  if (header[0] !== 0x05 || header[1] !== 0x00) {
+    throw new Error(`SOCKS5 target connection failed (code ${header[1]})`);
+  }
+  return socket;
+}
+
+async function tcpReachable(proxyHost, proxyPort, host, port, timeoutMs) {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
+    const socket = await socks5Connect(proxyHost, proxyPort, host, port, timeoutMs);
+    socket.destroy();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function httpProbe(proxyHost, proxyPort, host, port, timeoutMs) {
+  let socket;
+  try {
+    socket = await socks5Connect(proxyHost, proxyPort, host, port, timeoutMs);
+    socket.write(`GET /v1/models HTTP/1.1\r\nHost: ${host}:${port}\r\nConnection: close\r\n\r\n`);
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("HTTP response timeout")), timeoutMs);
+      socket.on("data", (chunk) => chunks.push(chunk));
+      socket.once("end", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      socket.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+    const responseText = Buffer.concat(chunks).toString("utf8");
+    const separator = responseText.indexOf("\r\n\r\n");
+    const headers = separator >= 0 ? responseText.slice(0, separator) : responseText;
+    const body = separator >= 0 ? responseText.slice(separator + 4) : "";
+    const statusMatch = headers.match(/^HTTP\/\d(?:\.\d)?\s+(\d+)/);
+    const payload = (() => {
+      try {
+        return JSON.parse(body);
+      } catch {
+        return null;
+      }
+    })();
     return {
-      ok: response.ok,
-      status: response.status,
+      ok: statusMatch ? Number(statusMatch[1]) >= 200 && Number(statusMatch[1]) < 300 : false,
+      status: statusMatch ? Number(statusMatch[1]) : null,
       models: Array.isArray(payload?.data) ? payload.data.map((model) => model.id).filter(Boolean) : [],
       adapters: Array.isArray(payload?.adapters) ? payload.adapters : [],
     };
   } catch (error) {
     return { ok: false, status: null, models: [], adapters: [], error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    socket?.destroy();
   }
 }
 
@@ -95,8 +212,8 @@ export async function probe(options = parseArgs(process.argv.slice(2))) {
   };
   for (const node of options.nodes) {
     const peer = peerFor(status, node.ip);
-    const tcp22 = await tcpReachable(node.ip, 22, options.timeoutMs);
-    const serving = await httpProbe(`http://${node.ip}:${options.port}/v1/models`, options.timeoutMs);
+    const tcp22 = await tcpReachable(options.socks5Host, options.socks5Port, node.ip, 22, options.timeoutMs);
+    const serving = await httpProbe(options.socks5Host, options.socks5Port, node.ip, options.port, options.timeoutMs);
     result.nodes.push({
       name: node.name,
       ip: node.ip,

@@ -66,6 +66,27 @@ import { installedPackageRoot } from "./internal/package-root.js";
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
+export {
+  ARM_EVIDENCE_REQUIRED_FIELDS,
+  ARM_EVIDENCE_SCHEMA_VERSION,
+  EVAL_RESULT_SCHEMA_VERSION,
+  assertArmEntryGate,
+  assertArmEvidenceRow,
+  buildArmEvidenceRow,
+  runArmEntryGate,
+  summarizeBands,
+  validateArmEvidenceRow,
+} from "./arm-evidence/index.js";
+export type {
+  ArmEntryGate,
+  ArmEntryGateSpec,
+  ArmEvidenceBand,
+  ArmEvidenceCheck,
+  ArmEvidenceIssue,
+  ArmEvidenceRow,
+  BuildArmEvidenceInput,
+  EvalResultRow,
+} from "./arm-evidence/index.js";
 
 export const repoRoot = installedPackageRoot();
 

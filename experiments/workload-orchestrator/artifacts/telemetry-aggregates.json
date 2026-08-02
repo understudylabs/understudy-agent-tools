@@ -1,0 +1,61 @@
+{
+  "schema_version": "understudy.workload_repair_aggregates.v1",
+  "workload_code": "WL-OR",
+  "workload_role": "multi-step orchestration controller",
+  "source": "gateway telemetry, outer spans only; AGGREGATES ONLY — no rows, prompts, completions, or identifiers were exported",
+  "window": {
+    "first_event": "2026-07-02",
+    "last_event": "2026-08-01",
+    "active_days": 20
+  },
+  "volume": {
+    "requests": 2481,
+    "requests_per_active_day": 124,
+    "success_rate": 0.9992,
+    "errors": 2,
+    "error_origin": "upstream"
+  },
+  "cost": {
+    "customer_cost_usd": 406.49,
+    "usd_per_request": 0.1638,
+    "share_of_project_cost_pct": 1.3,
+    "rank_by_cost_of_21_workloads": 10
+  },
+  "tokens": {
+    "uncached_input": 128427233,
+    "cache_read_input": 11280653,
+    "cache_creation_input": 1986297,
+    "output": 691485,
+    "cache_read_share_of_input_pct": 8.0,
+    "input_tokens_p50": 53290,
+    "input_tokens_p95": 95519,
+    "output_tokens_p50": 202,
+    "output_tokens_p95": 698,
+    "output_tokens_max": 2095,
+    "output_tokens_mean": 279,
+    "output_length_cv": 0.79,
+    "reasoning_output_tokens_mean": 0
+  },
+  "output_length_histogram_pct": {
+    "0-63": 5.2,
+    "64-127": 17.4,
+    "128-255": 39.6,
+    "256-511": 24.7,
+    "512-1023": 11.9,
+    "1024+": 1.2
+  },
+  "bounded_output": {
+    "pct_at_or_below_1024_tokens": 98.8,
+    "verdict": "bounded"
+  },
+  "latency_ms": {
+    "p50": 5076,
+    "p95": 16089,
+    "mean": 6595
+  },
+  "incumbent": {
+    "provider_family": "frontier hosted",
+    "distinct_served_models": 2,
+    "note": "99.9% of requests and 100% of cost sit on a single frontier model"
+  }
+}

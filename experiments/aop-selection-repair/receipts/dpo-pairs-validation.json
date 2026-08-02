@@ -1,0 +1,25 @@
+{
+  "schema_version": "understudy.dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T03:17:20.220Z",
+  "pairs_path": "outputs/aop/dpo_pairs.r2.jsonl",
+  "manifest_path": "outputs/aop/dpo_pairs.r2.manifest.json",
+  "pairs_sha256": "ef9147c7d9742c950a30b0283407ce78e68d0ff748afee8e14b9ead23fac5b8c",
+  "fixture_id": "aop-selection-offline-v1",
+  "fixture": "aop-selection",
+  "manifest_declared_sha256": "ef9147c7d9742c950a30b0283407ce78e68d0ff748afee8e14b9ead23fac5b8c",
+  "lines": 184,
+  "accepted": 184,
+  "rejected": 0,
+  "split_counts": {
+    "train": 184
+  },
+  "band_counts": {
+    "direct": 65,
+    "restraint": 60,
+    "disambiguation": 59
+  },
+  "holdout_split_sha256": "1f9c82c40e49240566308063b665c98b825bbb4e1c42440a2822fe7562dd4416",
+  "train_split_sha256": "f8e8dde2cbab6db7a7f1f6b400d954467a6743b15f41a93d81b372361835c6d1",
+  "failures": [],
+  "verdict": "pass"
+}

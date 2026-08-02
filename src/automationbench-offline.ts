@@ -646,12 +646,18 @@ export function taskBands(): Record<string, Family["band"]> {
   return Object.fromEntries(FAMILIES.map((family) => [family.slug, family.band]));
 }
 
+/** Authoritative difficulty band for one registered task id. */
+export function taskBandForId(taskId: string): Family["band"] {
+  if (!TASKS.some((task) => task.taskId === taskId)) throw new Error(`unknown task_id: ${taskId}`);
+  const familySlug = /^simple-api-(.+)-\d{2}$/.exec(taskId)?.[1];
+  const family = FAMILIES.find((candidate) => candidate.slug === familySlug);
+  if (!family) throw new Error(`task has no band metadata: ${taskId}`);
+  return family.band;
+}
+
 /** Return the difficulty band for one task from the fixture's family metadata. */
 export function taskBand(taskId: string): Family["band"] {
-  const slug = taskId.replace(/^simple-api-/, "").replace(/-\d{2}$/, "");
-  const band = taskBands()[slug];
-  if (!band) throw new Error(`unknown task family for ${taskId}`);
-  return band;
+  return taskBandForId(taskId);
 }
 
 /** Task counts per split, computed from the fixture rather than hard-coded. */
