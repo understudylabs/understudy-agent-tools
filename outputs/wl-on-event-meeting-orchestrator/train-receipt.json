@@ -1,0 +1,28 @@
+{
+  "schema_version": "understudy.tinker_dpo.receipt.v1",
+  "generated_at": "2026-08-02T06:56:00Z",
+  "backend": "tinker",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3",
+  "pairs_path": "outputs/wl-on-event-meeting-orchestrator/dpo_pairs.normalized.jsonl",
+  "pairs_sha256": "6f773deca6ff370fd61354962089966391d8b000db6058930a60791bba0294f5",
+  "pairs": 21,
+  "pairs_by_band": {
+    "multi-write": 9,
+    "no-op-guard": 5,
+    "long-chain": 4,
+    "conditional": 3
+  },
+  "hyperparameters": {
+    "lora_rank": 32,
+    "dpo_beta": 0.1,
+    "learning_rate": 1e-05,
+    "epochs": 3,
+    "batch_size": 8,
+    "max_length": 8192,
+    "max_steps": null
+  },
+  "log_path": "/tmp/understudy-dpo/1785653680",
+  "checkpoint": "tinker://9c850318-a92f-5f5b-be81-1ef141575811:train:0/sampler_weights/final",
+  "wall_clock_s": 79.7
+}

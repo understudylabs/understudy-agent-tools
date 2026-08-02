@@ -1,0 +1,16 @@
+{
+  "schema_version": "understudy.executor-submit.receipt.v1",
+  "idempotency_key": "6a4931c27921df65ef534b9fb436d30f4e108786e013fd946a58895a334573fd",
+  "experiment_id": "wl-meeting-dpo-20260802",
+  "candidate_id": "nemotron-dpo-r32-e3",
+  "attempt": 0,
+  "policy_descriptor": {
+    "beta": 0.1,
+    "epochs": 3,
+    "lora_rank": 32,
+    "renderer": "nemotron3",
+    "normalized_pairs_sha256": "6f773deca6ff370fd61354962089966391d8b000db6058930a60791bba0294f5",
+    "train_receipt_sha256": "a0609389d10807a94f7685b831f64efa984a7b1271a0205affedf111dc023f21"
+  },
+  "payload_sha256": "e62c916e29c92590dfb8962e134622b3ec45ef5e33f5c90c0667b6cbfdd6c48b"
+}

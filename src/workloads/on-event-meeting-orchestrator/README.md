@@ -51,3 +51,55 @@ the Nemotron reasoning base or any tuned descendant; a lower cap can truncate
 the reasoning block before the JSON action and inflate malformed counts. The
 workload runner caps concurrency at four and aborts/retries stalled local
 requests after 180 seconds.
+
+## Resumable DPO arm
+
+The train sampler supports `--offset` after stride selection,
+`--request-timeout-seconds` (default `180`), repeated `--base-url` flags, and
+the merge utility. The recorded six-chunk base run used six samples per task,
+temperature `0.9`, a 2048-token cap, timeout `600`, and concurrency `2` per
+shim across ports 8099 and 8100:
+
+```text
+chunks:       6 × 8 tasks
+rollouts:     288
+sampling wall clock: 11164 seconds across chunks (see chunk artifacts)
+merged mean score: 0.2482638888888889
+```
+
+Pair mining found 16 tasks with an exact-1 rollout and 29 with a qualifying
+near-miss sibling. It emitted 21 turn-level pairs:
+
+```text
+band counts: multi-write 9, no-op-guard 5, long-chain 4, conditional 3
+tier counts: exact 18, graded 3
+```
+
+The graded tier is used only when a band has no exact pair and requires a
+strictly higher-scoring, zero-forbidden-effects chosen rollout, a lower-scoring
+sibling, and an outcome-changing effective action divergence. Discovery and
+single-write had no strict pair under this run. The validator accepted all 21
+normalized pairs; no holdout task was read or executed.
+
+The tuned checkpoint was trained with DPO beta `0.1`, three epochs, and LoRA
+rank `32` through the unchanged Tinker trainer. Candidate scoring remains
+fixture-local and does not imply a promotion decision; the recorded DEV mean
+was `0.1875` versus the base `0.40625` on this small graded-data arm.
+
+## Candidate payload contract
+
+`emit-candidate-payload.mjs` emits an immutable
+`understudy.executor-submit.v1` payload plus a receipt. The vendored schema is
+`experiment-executor-submit-request.json`; its `$comment` records the upstream
+path and platform-spec commit `585d8e1`. The payload contains only train and
+dev manifest references. The deterministic receipt key is derived from
+`experiment_id`, `candidate_id`, and `attempt`. The policy hash covers
+hyperparameters, the normalized-pairs hash, and the train receipt hash, never
+weights or raw pairs. The script makes no provider calls and adds no
+controller, queue, poller, or state database.
+
+The holdout remains sealed. The exact future-only invocation is:
+
+```bash
+node scripts/wl-on-event-meeting-orchestrator/zeroshot.mjs --model nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 --split holdout --frozen-holdout b2af83e5743fec33ec3e21cfedac21f2e4b251a898ecc834673fb362189400ae --max-tokens 2048 --base-url http://127.0.0.1:8099/v1
+```
