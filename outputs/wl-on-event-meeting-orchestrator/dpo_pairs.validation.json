@@ -1,6 +1,6 @@
 {
   "schema_version": "understudy.dpo_pairs_validation.v1",
-  "generated_at": "2026-08-02T06:54:32.394Z",
+  "generated_at": "2026-08-02T07:05:35.007Z",
   "pairs_path": "outputs/wl-on-event-meeting-orchestrator/dpo_pairs.jsonl",
   "manifest_path": "outputs/wl-on-event-meeting-orchestrator/dpo_pairs.manifest.json",
   "pairs_sha256": "dfa3d3089e0927df94948f93e0e481b426600f0e6fd7d38e4a7c5a19e92bfcc6",
@@ -16,6 +16,10 @@
     "no-op-guard": 5,
     "long-chain": 4,
     "conditional": 3
+  },
+  "tier_counts": {
+    "exact": 18,
+    "graded": 3
   },
   "fixture_id": "meeting-orchestrator-shapes-offline-v1",
   "holdout_split_sha256": "b2af83e5743fec33ec3e21cfedac21f2e4b251a898ecc834673fb362189400ae",

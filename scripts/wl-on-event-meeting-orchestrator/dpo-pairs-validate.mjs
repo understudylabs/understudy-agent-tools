@@ -100,6 +100,7 @@ const lines = raw.toString("utf8").split("\n").filter((line) => line.trim().leng
 const normalized = [];
 const seen = new Set();
 const bandCounts = {};
+const tierCounts = {};
 const splitCounts = {};
 
 lines.forEach((line, index) => {
@@ -156,6 +157,7 @@ lines.forEach((line, index) => {
   const tier = row.tier ?? "exact";
   if (tier !== "exact" && tier !== "graded") return void fail(lineNumber, `unknown preference tier ${tier}`);
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
+  tierCounts[tier] = (tierCounts[tier] ?? 0) + 1;
   normalized.push({ task_id: taskId, family, band, split, tier, prompt_conversation: prompt, chosen, rejected });
 });
 
@@ -173,6 +175,7 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
+  tier_counts: tierCounts,
   fixture_id: MEETING_ORCHESTRATOR_SUBSET.fixture_id,
   holdout_split_sha256: splitSha256("holdout"),
   train_split_sha256: splitSha256("train"),
