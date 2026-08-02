@@ -1,0 +1,336 @@
+{
+  "groups": [
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-18"
+    },
+    {
+      "reward_mean": 0.6666666666666666,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-and-notify-16"
+    },
+    {
+      "reward_mean": 0.6666666666666666,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-and-notify-17"
+    },
+    {
+      "reward_mean": 0.6666666666666666,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-and-notify-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-status-sweep-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-status-sweep-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-status-sweep-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-18"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-needle-send-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-needle-send-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-needle-send-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-purge-16"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-purge-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-purge-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-18"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-16"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-17"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-18"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-16"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-17"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-18"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 48,
+      "holdout": 48,
+      "train": 192
+    },
+    "fixture_sha256": "81c7b17208aaa907d071e64126f6195033df819e724a000b6179f5e77f1cbd5a",
+    "split_sha256": {
+      "dev": "931219077e7d6006e14e35a52112cccfdf14ece9046c78b468d013b265e2e173",
+      "holdout": "7c15a9e33d687792cf613e9bd53b9d544dbc400dc35b8aeaa4795b16593d84d1",
+      "train": "8b906b7400ed064b1f88db7239b4eba0f6ab19f8538de52f9498e6a41a4732d2"
+    }
+  },
+  "label": "holdout-base",
+  "lora_rank": 32,
+  "mean_model_turns": 5.375,
+  "mean_reward": 0.8958333333333334,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "base",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "discovery": {
+      "count": 15,
+      "mean_reward": 0.9333333333333333
+    },
+    "multi-write": {
+      "count": 21,
+      "mean_reward": 0.8095238095238095
+    },
+    "single-write": {
+      "count": 12,
+      "mean_reward": 1.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 48,
+  "samples_per_task": 1,
+  "split": "holdout",
+  "strict_pass_rate": 0.8333333333333334,
+  "task_count": 48,
+  "temperature": 0.0,
+  "total_prompt_tokens": 165198,
+  "total_sampled_tokens": 10258
+}

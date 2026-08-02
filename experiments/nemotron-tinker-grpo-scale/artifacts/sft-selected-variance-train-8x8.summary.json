@@ -1,0 +1,88 @@
+{
+  "groups": [
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-01"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-02"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-03"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-04"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-07"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 8,
+      "task_id": "simple-api-crm-close-08"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 48,
+      "holdout": 48,
+      "train": 192
+    },
+    "fixture_sha256": "81c7b17208aaa907d071e64126f6195033df819e724a000b6179f5e77f1cbd5a",
+    "split_sha256": {
+      "dev": "931219077e7d6006e14e35a52112cccfdf14ece9046c78b468d013b265e2e173",
+      "holdout": "7c15a9e33d687792cf613e9bd53b9d544dbc400dc35b8aeaa4795b16593d84d1",
+      "train": "8b906b7400ed064b1f88db7239b4eba0f6ab19f8538de52f9498e6a41a4732d2"
+    }
+  },
+  "label": "sft-selected-variance-train-8x8",
+  "lora_rank": 32,
+  "mean_model_turns": 3.140625,
+  "mean_reward": 1.0,
+  "model": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch4",
+  "model_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch4",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "single-write": {
+      "count": 64,
+      "mean_reward": 1.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 64,
+  "samples_per_task": 8,
+  "split": "train",
+  "strict_pass_rate": 1.0,
+  "task_count": 8,
+  "temperature": 1.0,
+  "total_prompt_tokens": 97729,
+  "total_sampled_tokens": 4174
+}

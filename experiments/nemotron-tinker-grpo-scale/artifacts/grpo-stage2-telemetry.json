@@ -1,0 +1,456 @@
+{
+  "constant_group_fraction": 0.903125,
+  "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
+  "dataset_seed": 7,
+  "exemplar": {
+    "messages": [
+      {
+        "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "role": "system"
+      },
+      {
+        "content": "The draft titled \"Old quarterly review\" is obsolete. Mark that draft discarded. Do not modify or send any other draft.",
+        "role": "user"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Old quarterly review\",\"to\":\"ruth.teitelbaum@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Quarterly review\",\"to\":\"katherine.johnson@example.test\"}},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-1\",\"body\":{\"status\":\"discarded\"}}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"draft\":{\"status\":\"discarded\",\"subject\":\"Old quarterly review\",\"to\":\"ruth.teitelbaum@example.test\"},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+        "role": "assistant"
+      }
+    ],
+    "reward": 1.0,
+    "step": 0,
+    "task_id": "simple-api-mail-discard-10"
+  },
+  "group_size": 8,
+  "groups_per_batch": 8,
+  "load_checkpoint_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/weights/sft-epoch4-state",
+  "lora_rank": 32,
+  "max_steps": 40,
+  "max_tokens": 192,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "remove_constant_reward_groups": true,
+  "renderer": "nemotron3_disable_thinking",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node AutomationBench service is the verifier; its terminal reward is literally partialCredit from src/automationbench-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "stage": "2",
+  "steps": [
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 125106,
+      "sampled_tokens": 5803,
+      "step": 0,
+      "wall_clock_seconds": 59.14449142400008
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9869791666666666,
+      "prompt_tokens": 113849,
+      "sampled_tokens": 5399,
+      "step": 1,
+      "wall_clock_seconds": 55.006654134999735
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 134872,
+      "sampled_tokens": 6447,
+      "step": 2,
+      "wall_clock_seconds": 94.98805821699989
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.96875,
+      "prompt_tokens": 130750,
+      "sampled_tokens": 6059,
+      "step": 3,
+      "wall_clock_seconds": 22.5060873970001
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 93553,
+      "sampled_tokens": 4590,
+      "step": 4,
+      "wall_clock_seconds": 25.571978925000167
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 106156,
+      "sampled_tokens": 5409,
+      "step": 5,
+      "wall_clock_seconds": 32.096811951999825
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9583333333333334,
+      "prompt_tokens": 121047,
+      "sampled_tokens": 5994,
+      "step": 6,
+      "wall_clock_seconds": 18.324324242999865
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 100553,
+      "sampled_tokens": 4994,
+      "step": 7,
+      "wall_clock_seconds": 19.54873520000001
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 99515,
+      "sampled_tokens": 5107,
+      "step": 8,
+      "wall_clock_seconds": 31.088122137000028
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 122108,
+      "sampled_tokens": 5626,
+      "step": 9,
+      "wall_clock_seconds": 32.716348317999746
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 139461,
+      "sampled_tokens": 6358,
+      "step": 10,
+      "wall_clock_seconds": 78.20282393200023
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9947916666666666,
+      "prompt_tokens": 112131,
+      "sampled_tokens": 5385,
+      "step": 11,
+      "wall_clock_seconds": 19.65562491799983
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 118771,
+      "sampled_tokens": 5663,
+      "step": 12,
+      "wall_clock_seconds": 32.36253861199975
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 97995,
+      "sampled_tokens": 4726,
+      "step": 13,
+      "wall_clock_seconds": 12.049855565000144
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9739583333333334,
+      "prompt_tokens": 113393,
+      "sampled_tokens": 5605,
+      "step": 14,
+      "wall_clock_seconds": 16.98261807400013
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 99272,
+      "sampled_tokens": 4905,
+      "step": 15,
+      "wall_clock_seconds": 19.240698307999992
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 148263,
+      "sampled_tokens": 6804,
+      "step": 16,
+      "wall_clock_seconds": 43.86652947599987
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 97868,
+      "sampled_tokens": 4797,
+      "step": 17,
+      "wall_clock_seconds": 32.42116257099997
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9895833333333334,
+      "prompt_tokens": 114513,
+      "sampled_tokens": 5300,
+      "step": 18,
+      "wall_clock_seconds": 22.33390335399963
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9921875,
+      "prompt_tokens": 112457,
+      "sampled_tokens": 5241,
+      "step": 19,
+      "wall_clock_seconds": 18.360730541000066
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 123947,
+      "sampled_tokens": 6039,
+      "step": 20,
+      "wall_clock_seconds": 27.61734853500002
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.93359375,
+      "prompt_tokens": 142224,
+      "sampled_tokens": 6318,
+      "step": 21,
+      "wall_clock_seconds": 65.5809033290002
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 124930,
+      "sampled_tokens": 5477,
+      "step": 22,
+      "wall_clock_seconds": 38.066996503000155
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.9765625,
+      "prompt_tokens": 103960,
+      "sampled_tokens": 5028,
+      "step": 23,
+      "wall_clock_seconds": 37.721328301000085
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 98853,
+      "sampled_tokens": 5034,
+      "step": 24,
+      "wall_clock_seconds": 16.01398568600007
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 85640,
+      "sampled_tokens": 4520,
+      "step": 25,
+      "wall_clock_seconds": 21.000375775000066
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 133961,
+      "sampled_tokens": 6074,
+      "step": 26,
+      "wall_clock_seconds": 24.999203824000233
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 137191,
+      "sampled_tokens": 6505,
+      "step": 27,
+      "wall_clock_seconds": 19.988058529000227
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9947916666666666,
+      "prompt_tokens": 132546,
+      "sampled_tokens": 6106,
+      "step": 28,
+      "wall_clock_seconds": 33.28080916800036
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 129672,
+      "sampled_tokens": 5616,
+      "step": 29,
+      "wall_clock_seconds": 26.012576698999965
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 120909,
+      "sampled_tokens": 5816,
+      "step": 30,
+      "wall_clock_seconds": 23.29348700899982
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 119787,
+      "sampled_tokens": 5941,
+      "step": 31,
+      "wall_clock_seconds": 28.617466624999906
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.984375,
+      "prompt_tokens": 114077,
+      "sampled_tokens": 5354,
+      "step": 32,
+      "wall_clock_seconds": 17.427103302999967
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 98489,
+      "sampled_tokens": 4684,
+      "step": 33,
+      "wall_clock_seconds": 18.016779902000053
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 100347,
+      "sampled_tokens": 5294,
+      "step": 34,
+      "wall_clock_seconds": 13.092428631000075
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.9895833333333334,
+      "prompt_tokens": 125460,
+      "sampled_tokens": 5667,
+      "step": 35,
+      "wall_clock_seconds": 20.813092959000187
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 112812,
+      "sampled_tokens": 5303,
+      "step": 36,
+      "wall_clock_seconds": 22.199665777000064
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.953125,
+      "prompt_tokens": 131573,
+      "sampled_tokens": 5784,
+      "step": 37,
+      "wall_clock_seconds": 21.502343337000184
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.96484375,
+      "prompt_tokens": 133797,
+      "sampled_tokens": 6301,
+      "step": 38,
+      "wall_clock_seconds": 16.5832122060001
+    },
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 1.0,
+      "prompt_tokens": 93184,
+      "sampled_tokens": 4658,
+      "step": 39,
+      "wall_clock_seconds": 15.166852376999941
+    }
+  ],
+  "total_constant_groups": 289,
+  "total_groups": 320,
+  "wall_clock_seconds": 1522.333282988
+}

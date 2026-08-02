@@ -1,0 +1,61 @@
+{
+  "data": {
+    "local_tokens": 123571,
+    "wall_clock_seconds": 2.858517908000067
+  },
+  "evaluations": [
+    {
+      "phase": "sft-epoch1-dev",
+      "prompt_tokens": 86999,
+      "sampled_tokens": 4108,
+      "split": "dev",
+      "wall_clock_seconds": 79.17400550999992
+    },
+    {
+      "phase": "sft-epoch2-dev",
+      "prompt_tokens": 84920,
+      "sampled_tokens": 4089,
+      "split": "dev",
+      "wall_clock_seconds": 159.3943602910001
+    },
+    {
+      "phase": "sft-epoch3-dev",
+      "prompt_tokens": 84920,
+      "sampled_tokens": 4089,
+      "split": "dev",
+      "wall_clock_seconds": 65.37233087800018
+    },
+    {
+      "phase": "sft-epoch4-dev",
+      "prompt_tokens": 84920,
+      "sampled_tokens": 4089,
+      "split": "dev",
+      "wall_clock_seconds": 57.25264695999999
+    },
+    {
+      "phase": "sft-selected-train",
+      "prompt_tokens": 338693,
+      "sampled_tokens": 16326,
+      "split": "train",
+      "wall_clock_seconds": 170.3620240099999
+    },
+    {
+      "phase": "sft-selected-dev",
+      "prompt_tokens": 84920,
+      "sampled_tokens": 4089,
+      "split": "dev",
+      "wall_clock_seconds": 59.85282417799999
+    },
+    {
+      "phase": "sft-selected-variance-train-8x8",
+      "prompt_tokens": 97729,
+      "sampled_tokens": 4174,
+      "split": "train",
+      "wall_clock_seconds": 69.93611263699995
+    }
+  ],
+  "training": {
+    "model_input_tokens": 494284,
+    "wall_clock_seconds": 249.64111857400007
+  }
+}

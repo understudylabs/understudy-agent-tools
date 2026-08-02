@@ -1,0 +1,47 @@
+{
+  "baseline": {
+    "dev": 184739,
+    "train": 730672
+  },
+  "billing_receipts": "provider usage API returned empty event data for all captured receipts",
+  "grand_total_tokens": 8645127,
+  "grpo": {
+    "evaluations": {
+      "dev_steps": {
+        "10": 89009,
+        "20": 89009,
+        "30": 89009,
+        "40": 89009
+      },
+      "selected_train": 355019
+    },
+    "stage1_rollout": {
+      "prompt": 245997,
+      "sampled": 11237
+    },
+    "stage2_rollout": {
+      "prompt": 4664992,
+      "sampled": 221731
+    }
+  },
+  "holdout": {
+    "base": 175456,
+    "grpo-step10": 88664,
+    "sft-epoch4": 88664
+  },
+  "sft": {
+    "data_local_tokens": 123571,
+    "evaluations": {
+      "epoch_dev": {
+        "epoch1": 91107,
+        "epoch2": 89009,
+        "epoch3": 89009,
+        "epoch4": 89009
+      },
+      "selected_dev": 89009,
+      "selected_train": 355019,
+      "variance_train": 101903
+    },
+    "training_model_input_tokens": 494284
+  }
+}

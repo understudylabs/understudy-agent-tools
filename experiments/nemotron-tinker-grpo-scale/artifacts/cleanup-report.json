@@ -1,0 +1,196 @@
+{
+  "queried_at": "2026-08-02T00:52:12.565103Z",
+  "runs": {
+    "grpo_stage1": {
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "time": "2026-08-02T00:08:05.556670Z",
+          "tinker_path": "tinker://ebce40a2-dfa9-51f2-820a-65f698737016:train:0/weights/final"
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-02T00:08:07.165497Z",
+          "tinker_path": "tinker://ebce40a2-dfa9-51f2-820a-65f698737016:train:0/sampler_weights/final"
+        }
+      ],
+      "training_run_id": "ebce40a2-dfa9-51f2-820a-65f698737016:train:0"
+    },
+    "grpo_stage2": {
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/000005",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:13:35.949587Z",
+          "time": "2026-08-02T00:13:35.949651Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000005"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000005",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:13:37.698419Z",
+          "time": "2026-08-02T00:13:37.698472Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000005"
+        },
+        {
+          "checkpoint_id": "weights/000010",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:16:23.491719Z",
+          "time": "2026-08-02T00:16:23.491779Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000010"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000010",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:16:25.359435Z",
+          "time": "2026-08-02T00:16:25.359509Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000010"
+        },
+        {
+          "checkpoint_id": "weights/000015",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:19:39.235649Z",
+          "time": "2026-08-02T00:19:39.235713Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000015"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000015",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:19:41.059128Z",
+          "time": "2026-08-02T00:19:41.059207Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000015"
+        },
+        {
+          "checkpoint_id": "weights/000020",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:22:30.891370Z",
+          "time": "2026-08-02T00:22:30.891433Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000020"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000020",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:22:33.020314Z",
+          "time": "2026-08-02T00:22:33.020395Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000020"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000025",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:26:18.748631Z",
+          "time": "2026-08-02T00:26:18.748695Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000025"
+        },
+        {
+          "checkpoint_id": "weights/000025",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:26:18.865416Z",
+          "time": "2026-08-02T00:26:18.865462Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000025"
+        },
+        {
+          "checkpoint_id": "weights/000030",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:29:01.387469Z",
+          "time": "2026-08-02T00:29:01.387530Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000030"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000030",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:29:03.138699Z",
+          "time": "2026-08-02T00:29:03.138759Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000030"
+        },
+        {
+          "checkpoint_id": "weights/000035",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:31:20.076227Z",
+          "time": "2026-08-02T00:31:20.076284Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000035"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000035",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:31:21.772536Z",
+          "time": "2026-08-02T00:31:21.772597Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000035"
+        },
+        {
+          "checkpoint_id": "weights/000040",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:33:29.301286Z",
+          "time": "2026-08-02T00:33:29.301349Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/000040"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000040",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:33:31.005509Z",
+          "time": "2026-08-02T00:33:31.005578Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/000040"
+        },
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "time": "2026-08-02T00:33:35.020425Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/weights/final"
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-02T00:33:36.665728Z",
+          "tinker_path": "tinker://5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0/sampler_weights/final"
+        }
+      ],
+      "training_run_id": "5eb88b9c-21cc-55c5-b50a-7980daf76e39:train:0"
+    },
+    "sft": {
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch1",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-01T23:52:05.458361Z",
+          "tinker_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch1"
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch2",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-01T23:53:05.822692Z",
+          "tinker_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch2"
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch3",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-01T23:53:55.187370Z",
+          "tinker_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch3"
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch4",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "time": "2026-08-01T23:54:52.876697Z",
+          "tinker_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/sampler_weights/sft-epoch4"
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch4-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "time": "2026-08-01T23:54:58.863839Z",
+          "tinker_path": "tinker://6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0/weights/sft-epoch4-state"
+        }
+      ],
+      "training_run_id": "6a954d26-3cd1-5d79-b50b-ace95e187cef:train:0"
+    }
+  },
+  "source": "Tinker list_checkpoints API"
+}
