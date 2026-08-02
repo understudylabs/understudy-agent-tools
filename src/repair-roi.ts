@@ -594,8 +594,8 @@ export function renderRepairReport(queue: RepairQueue): string {
     const lines = [
       title,
       "",
-      "| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity |",
-      "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+      "| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity | Fallback rates |",
+      "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
     ];
     rows.forEach((row, index) => {
       const conservative = row.projected_savings_usd.conservative === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.conservative.toFixed(2)}`;
@@ -603,7 +603,8 @@ export function renderRepairReport(queue: RepairQueue): string {
       const pricingFlag = row.raw.unpriced_request_share > 0 ? " ⚠" : "";
       const confidenceFlag = row.raw.confidence < 0.5 ? " ⚠" : "";
       const fallbackFlag = row.raw.fallback_rate_models.length ? " ⚠" : "";
-      lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag}${fallbackFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${formatCount(row.raw.request_count)} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} (${(row.raw.observed_token_share * 100).toFixed(1)}% observed) | ${row.raw.no_opportunity_reason ?? "—"} |`);
+      const fallbackRates = row.raw.fallback_rate_models.map((model) => `${model} R²=${row.raw.rate_basis[model].r2?.toFixed(6) ?? "—"}`).join(", ") || "—";
+      lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag}${fallbackFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${formatCount(row.raw.request_count)} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} (${(row.raw.observed_token_share * 100).toFixed(1)}% observed) | ${row.raw.no_opportunity_reason ?? "—"} | ${fallbackRates} |`);
     });
     return lines;
   };
