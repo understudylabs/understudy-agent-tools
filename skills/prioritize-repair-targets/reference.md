@@ -3,13 +3,16 @@
 ## Fingerprints
 
 The task fingerprint deliberately excludes user content. It hashes the
-workload key, endpoint, masked system prompt, sorted tool names, collapsed role
-skeleton, and request-shape buckets. URLs, emails, identifiers, dates,
+workload key, endpoint, masked system prompt, sorted tool names, the set of
+message roles, and request-shape buckets. Conversation turn depth is excluded
+from this coarse tier so a multi-turn tool loop does not fan one task into a
+different fingerprint for every alternation. URLs, emails, identifiers, dates,
 numbers, quoted strings, and blob-like values are masked before hashing.
 
 The variant fingerprint adds a bounded masked-token shingle sketch from the
-first user message. This separates prompt-template variants without making
-individual IDs and values part of the task identity.
+first user message and the full role skeleton. This separates prompt-template
+and turn-shape variants without making individual IDs and values part of the
+task identity.
 
 Masking is applied in this order: URLs → email addresses → hex-like
 identifiers of eight or more characters → ISO dates/times → long quoted
@@ -40,8 +43,11 @@ Each workload receives four `[0,1]` factors:
 `roi_score` is the product of those four factors. Savings are extrapolated to
 30 days from the observed window. Conservative savings apply only to
 addressable repeated-task clusters; optimistic savings apply to all traffic.
-Missing token counts use a character/4 estimate and are marked
-`token_source: "estimated"`.
+Provider usage is read from JSON response bodies and provider SSE usage frames
+(including Anthropic `message_start`/`message_delta` and OpenAI usage frames).
+Missing token counts use a character/4 estimate. Workloads report the observed
+token share and use `token_source: "mixed"` when only some requests required
+estimation.
 
 ## Sampling
 
@@ -74,4 +80,8 @@ to the served-model identifiers in the captures, and reviewed with the
 effective pricing date. A billing export or provider invoice is preferable;
 vendor documentation can be used when billing evidence is unavailable, but
 the `source` and `checked_at` fields must say what was reviewed. Never guess
-prices from model names, public list-price memory, or capture payloads.
+prices from model names, public list-price memory, or capture payloads. Each
+queue row carries the rate basis used by its served models: `nnls`,
+`blended_fallback`, or `published`. Fallback-priced rows are flagged because
+heterogeneous cache tiers, routing, or price periods can make one blended rate
+misleading.

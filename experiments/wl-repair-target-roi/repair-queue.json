@@ -1,9 +1,9 @@
 {
   "schema_version": "understudy.repair_queue.v1",
-  "generated_at": "2026-08-02T02:28:27.014Z",
+  "generated_at": "2026-08-02T02:42:04.246Z",
   "window": {
-    "from": "2026-07-03T02:28:27.014Z",
-    "to": "2026-08-02T02:28:27.014Z",
+    "from": "2026-07-03T02:42:04.246Z",
+    "to": "2026-08-02T02:42:04.246Z",
     "days": 30
   },
   "candidate_model": "accounts/fireworks/models/glm-5p2",
@@ -86,117 +86,27 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": null,
         "incumbent_cost_30d_usd": 234.25655200129177,
         "candidate_cost_30d_usd": 95.48214984564193,
-        "token_source": "estimated"
-      }
-    },
-    {
-      "workload": {
-        "alias": "workload-o",
-        "id_hash": "d8a57b37e4f0c46d",
-        "name_hash": "ef79f8f4e6bcf1ce"
-      },
-      "factors": {
-        "volume": 0.6871836403469339,
-        "repeatability": 0.13524234129390747,
-        "incumbent_headroom": 0.734298206604251,
-        "serving_cost_delta": 0.7540969994905335
-      },
-      "roi_score": 0.05146182370149819,
-      "projected_savings_usd": {
-        "conservative": 869.8581421325216,
-        "optimistic": 1053.210593660455
-      },
-      "raw": {
-        "request_count": 36395.77933333325,
-        "sampled_request_count": 247,
-        "requests_per_day": 1257.880336651596,
-        "distinct_task_fingerprints": 14,
-        "top1_cluster_share": 0.20242914979757085,
-        "top5_cluster_share": 0.7408906882591093,
-        "effective_task_count": 7.394134044358259,
-        "addressable_share": 0.8259109311740891,
-        "addressable_requests": 30059.671999999933,
-        "median_output_tokens": 326,
-        "structured_output_share": 0.5708502024291497,
-        "median_input_tokens": 2,
-        "error_rate": 0.04048582995951417,
-        "confidence": 1,
-        "dominant_incumbent_model": "claude-sonnet-4-6",
-        "candidate_model": "accounts/fireworks/models/glm-5p2",
-        "model_mix": {
-          "claude-sonnet-4-6": {
-            "request_count": 25344.429333333275,
-            "cost_share": 0.761707166375816,
-            "priced": true
-          },
-          "claude-sonnet-5": {
-            "request_count": 11051.349999999975,
-            "cost_share": 0.2382928336241841,
-            "priced": true
-          }
-        },
-        "unpriced_request_share": 0,
-        "unpriced_models": [],
-        "incumbent_cost_30d_usd": 1396.6513517120507,
-        "candidate_cost_30d_usd": 343.4407580515955,
-        "token_source": "estimated"
-      }
-    },
-    {
-      "workload": {
-        "alias": "workload-g",
-        "id_hash": "7df195e19686f43f",
-        "name_hash": "8a757605542a147a"
-      },
-      "factors": {
-        "volume": 0.7009672204369961,
-        "repeatability": 0.094150388573829,
-        "incumbent_headroom": 0.7219063745471016,
-        "serving_cost_delta": 0.8361906028523469
-      },
-      "roi_score": 0.039838775882541436,
-      "projected_savings_usd": {
-        "conservative": 1284.4119231215507,
-        "optimistic": 1865.7773199028843
-      },
-      "raw": {
-        "request_count": 40668.967999999906,
-        "sampled_request_count": 276,
-        "requests_per_day": 1405.5666919669657,
-        "distinct_task_fingerprints": 22,
-        "top1_cluster_share": 0.14855072463768115,
-        "top5_cluster_share": 0.6159420289855073,
-        "effective_task_count": 10.621305075292808,
-        "addressable_share": 0.6884057971014492,
-        "addressable_requests": 27996.753333333272,
-        "median_output_tokens": 406,
-        "structured_output_share": 0.605072463768116,
-        "median_input_tokens": 1,
-        "error_rate": 0.010869565217391304,
-        "confidence": 1,
-        "dominant_incumbent_model": "claude-sonnet-4-6",
-        "candidate_model": "accounts/fireworks/models/glm-5p2",
-        "model_mix": {
-          "claude-sonnet-4-6": {
-            "request_count": 28880.86133333327,
-            "cost_share": 0.809471389695082,
-            "priced": true
-          },
-          "claude-sonnet-5": {
-            "request_count": 11788.106666666641,
-            "cost_share": 0.1905286103049179,
-            "priced": true
-          }
-        },
-        "unpriced_request_share": 0,
-        "unpriced_models": [],
-        "incumbent_cost_30d_usd": 2231.2823338823623,
-        "candidate_cost_30d_usd": 365.50501397947824,
-        "token_source": "estimated"
+        "token_source": "mixed",
+        "observed_token_share": 0.7710843373493976,
+        "estimated_request_count": 11198.701333333309
       }
     },
     {
@@ -207,25 +117,25 @@
       },
       "factors": {
         "volume": 0.5507561836344913,
-        "repeatability": 0.09607376561570492,
+        "repeatability": 0.2659131469363475,
         "incumbent_headroom": 0.8351115948932928,
         "serving_cost_delta": 0.762027628649751
       },
-      "roi_score": 0.033672815165279014,
+      "roi_score": 0.09319968036458035,
       "projected_savings_usd": {
-        "conservative": 0,
+        "conservative": 221.30908968092504,
         "optimistic": 504.0929264954404
       },
       "raw": {
         "request_count": 12082.809333333305,
         "sampled_request_count": 82,
         "requests_per_day": 417.59590123656227,
-        "distinct_task_fingerprints": 21,
-        "top1_cluster_share": 0.2073170731707317,
-        "top5_cluster_share": 0.5853658536585364,
-        "effective_task_count": 10.408668730650156,
-        "addressable_share": 0,
-        "addressable_requests": 0,
+        "distinct_task_fingerprints": 9,
+        "top1_cluster_share": 0.43902439024390244,
+        "top5_cluster_share": 0.902439024390244,
+        "effective_task_count": 3.76062639821029,
+        "addressable_share": 0.43902439024390244,
+        "addressable_requests": 5304.647999999988,
         "median_output_tokens": 213,
         "structured_output_share": 0.7439024390243902,
         "median_input_tokens": 1,
@@ -245,64 +155,165 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": null,
         "incumbent_cost_30d_usd": 661.5152883480756,
         "candidate_cost_30d_usd": 157.42236185263528,
-        "token_source": "estimated"
+        "token_source": "mixed",
+        "observed_token_share": 0.975609756097561,
+        "estimated_request_count": 294.702666666666
       }
     },
     {
       "workload": {
-        "alias": "workload-c",
-        "id_hash": "35ee5eaafa008b2e",
-        "name_hash": "94b8cb43abcd69d2"
+        "alias": "workload-o",
+        "id_hash": "d8a57b37e4f0c46d",
+        "name_hash": "ef79f8f4e6bcf1ce"
       },
       "factors": {
-        "volume": 0.518355554878311,
-        "repeatability": 0.07835726883345932,
-        "incumbent_headroom": 0.8045671688988096,
-        "serving_cost_delta": 0.6298468115642937
+        "volume": 0.6871836403469339,
+        "repeatability": 0.19418446458719207,
+        "incumbent_headroom": 0.734298206604251,
+        "serving_cost_delta": 0.7540969994905335
       },
-      "roi_score": 0.02058279217926244,
+      "roi_score": 0.07389022244475203,
       "projected_savings_usd": {
-        "conservative": 0,
-        "optimistic": 328.73964113479457
+        "conservative": 1053.210593660455,
+        "optimistic": 1053.210593660455
       },
       "raw": {
-        "request_count": 9283.13399999998,
-        "sampled_request_count": 63,
-        "requests_per_day": 320.83587534028567,
-        "distinct_task_fingerprints": 21,
-        "top1_cluster_share": 0.1746031746031746,
-        "top5_cluster_share": 0.5079365079365079,
-        "effective_task_count": 12.762057877813502,
-        "addressable_share": 0,
-        "addressable_requests": 0,
-        "median_output_tokens": 307,
-        "structured_output_share": 0.746031746031746,
+        "request_count": 36395.77933333325,
+        "sampled_request_count": 247,
+        "requests_per_day": 1257.880336651596,
+        "distinct_task_fingerprints": 6,
+        "top1_cluster_share": 0.29554655870445345,
+        "top5_cluster_share": 0.9149797570850202,
+        "effective_task_count": 5.1497425508567565,
+        "addressable_share": 1,
+        "addressable_requests": 36395.77933333325,
+        "median_output_tokens": 326,
+        "structured_output_share": 0.5708502024291497,
         "median_input_tokens": 2,
-        "error_rate": 0.015873015873015872,
+        "error_rate": 0.04048582995951417,
         "confidence": 1,
         "dominant_incumbent_model": "claude-sonnet-4-6",
         "candidate_model": "accounts/fireworks/models/glm-5p2",
         "model_mix": {
           "claude-sonnet-4-6": {
-            "request_count": 7072.863999999984,
-            "cost_share": 0.8437024539169328,
+            "request_count": 25344.429333333275,
+            "cost_share": 0.761707166375816,
             "priced": true
           },
           "claude-sonnet-5": {
-            "request_count": 2210.269999999995,
-            "cost_share": 0.15629754608306712,
+            "request_count": 11051.349999999975,
+            "cost_share": 0.2382928336241841,
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
-        "incumbent_cost_30d_usd": 521.9358661486807,
-        "candidate_cost_30d_usd": 193.1962250138862,
-        "token_source": "estimated"
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 1396.6513517120507,
+        "candidate_cost_30d_usd": 343.4407580515955,
+        "token_source": "mixed",
+        "observed_token_share": 0.9595141700404858,
+        "estimated_request_count": 1473.5133333333301
+      }
+    },
+    {
+      "workload": {
+        "alias": "workload-g",
+        "id_hash": "7df195e19686f43f",
+        "name_hash": "8a757605542a147a"
+      },
+      "factors": {
+        "volume": 0.7009672204369961,
+        "repeatability": 0.14482251627809287,
+        "incumbent_headroom": 0.7219063745471016,
+        "serving_cost_delta": 0.8361906028523469
+      },
+      "roi_score": 0.061280169483574634,
+      "projected_savings_usd": {
+        "conservative": 1777.8965041103572,
+        "optimistic": 1865.7773199028843
+      },
+      "raw": {
+        "request_count": 40668.967999999906,
+        "sampled_request_count": 276,
+        "requests_per_day": 1405.5666919669657,
+        "distinct_task_fingerprints": 8,
+        "top1_cluster_share": 0.2210144927536232,
+        "top5_cluster_share": 0.7717391304347827,
+        "effective_task_count": 6.905003625815807,
+        "addressable_share": 0.9528985507246377,
+        "addressable_requests": 38753.40066666658,
+        "median_output_tokens": 406,
+        "structured_output_share": 0.605072463768116,
+        "median_input_tokens": 1,
+        "error_rate": 0.010869565217391304,
+        "confidence": 1,
+        "dominant_incumbent_model": "claude-sonnet-4-6",
+        "candidate_model": "accounts/fireworks/models/glm-5p2",
+        "model_mix": {
+          "claude-sonnet-4-6": {
+            "request_count": 28880.86133333327,
+            "cost_share": 0.809471389695082,
+            "priced": true
+          },
+          "claude-sonnet-5": {
+            "request_count": 11788.106666666641,
+            "cost_share": 0.1905286103049179,
+            "priced": true
+          }
+        },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
+        "unpriced_request_share": 0,
+        "unpriced_models": [],
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 2231.2823338823623,
+        "candidate_cost_30d_usd": 365.50501397947824,
+        "token_source": "mixed",
+        "observed_token_share": 0.9891304347826086,
+        "estimated_request_count": 442.053999999999
       }
     },
     {
@@ -313,25 +324,25 @@
       },
       "factors": {
         "volume": 0.7878089599423691,
-        "repeatability": 0.038104049995941865,
+        "repeatability": 0.13803749695641587,
         "incumbent_headroom": 0.8253212837837838,
         "serving_cost_delta": 0.6084554014652847
       },
-      "roi_score": 0.01507453241768053,
+      "roi_score": 0.05460969957121572,
       "projected_savings_usd": {
-        "conservative": 2019.779609441602,
+        "conservative": 4520.908565058538,
         "optimistic": 5238.213473084528
       },
       "raw": {
         "request_count": 81779.98999999982,
         "sampled_request_count": 555,
         "requests_per_day": 2826.4112827596596,
-        "distinct_task_fingerprints": 59,
-        "top1_cluster_share": 0.1045045045045045,
-        "top5_cluster_share": 0.3117117117117117,
-        "effective_task_count": 26.243929453863867,
-        "addressable_share": 0.3855855855855856,
-        "addressable_requests": 31533.185333333262,
+        "distinct_task_fingerprints": 12,
+        "top1_cluster_share": 0.1873873873873874,
+        "top5_cluster_share": 0.8054054054054054,
+        "effective_task_count": 7.244408382135045,
+        "addressable_share": 0.863063063063063,
+        "addressable_requests": 70581.28866666651,
         "median_output_tokens": 288,
         "structured_output_share": 0.7837837837837838,
         "median_input_tokens": 2,
@@ -351,11 +362,154 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": null,
         "incumbent_cost_30d_usd": 8609.034385215158,
         "candidate_cost_30d_usd": 3370.8209121306295,
-        "token_source": "estimated"
+        "token_source": "mixed",
+        "observed_token_share": 0.9945945945945946,
+        "estimated_request_count": 442.053999999999
+      }
+    },
+    {
+      "workload": {
+        "alias": "workload-c",
+        "id_hash": "35ee5eaafa008b2e",
+        "name_hash": "94b8cb43abcd69d2"
+      },
+      "factors": {
+        "volume": 0.518355554878311,
+        "repeatability": 0.20786092214663637,
+        "incumbent_headroom": 0.8045671688988096,
+        "serving_cost_delta": 0.6298468115642937
+      },
+      "roi_score": 0.05460065449482799,
+      "projected_savings_usd": {
+        "conservative": 125.23414900373126,
+        "optimistic": 328.73964113479457
+      },
+      "raw": {
+        "request_count": 9283.13399999998,
+        "sampled_request_count": 63,
+        "requests_per_day": 320.83587534028567,
+        "distinct_task_fingerprints": 10,
+        "top1_cluster_share": 0.38095238095238093,
+        "top5_cluster_share": 0.8253968253968254,
+        "effective_task_count": 4.810909090909092,
+        "addressable_share": 0.38095238095238093,
+        "addressable_requests": 3536.431999999992,
+        "median_output_tokens": 307,
+        "structured_output_share": 0.746031746031746,
+        "median_input_tokens": 2,
+        "error_rate": 0.015873015873015872,
+        "confidence": 1,
+        "dominant_incumbent_model": "claude-sonnet-4-6",
+        "candidate_model": "accounts/fireworks/models/glm-5p2",
+        "model_mix": {
+          "claude-sonnet-4-6": {
+            "request_count": 7072.863999999984,
+            "cost_share": 0.8437024539169328,
+            "priced": true
+          },
+          "claude-sonnet-5": {
+            "request_count": 2210.269999999995,
+            "cost_share": 0.15629754608306712,
+            "priced": true
+          }
+        },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
+        "unpriced_request_share": 0,
+        "unpriced_models": [],
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 521.9358661486807,
+        "candidate_cost_30d_usd": 193.1962250138862,
+        "token_source": "mixed",
+        "observed_token_share": 0.9841269841269841,
+        "estimated_request_count": 147.351333333333
+      }
+    },
+    {
+      "workload": {
+        "alias": "workload-k",
+        "id_hash": "a67746d1c0b0e9d7",
+        "name_hash": "12479a1a8b5b5e9b"
+      },
+      "factors": {
+        "volume": 0.39080224462639185,
+        "repeatability": 0.5578512396694215,
+        "incumbent_headroom": 0.3748046875,
+        "serving_cost_delta": 0.4355458761920946
+      },
+      "roi_score": 0.03558888419081388,
+      "projected_savings_usd": {
+        "conservative": 0,
+        "optimistic": 266.86874742129544
+      },
+      "raw": {
+        "request_count": 3241.729333333326,
+        "sampled_request_count": 22,
+        "requests_per_day": 112.0379247220045,
+        "distinct_task_fingerprints": 4,
+        "top1_cluster_share": 0.7272727272727273,
+        "top5_cluster_share": 1,
+        "effective_task_count": 1.7925925925925925,
+        "addressable_share": 0,
+        "addressable_requests": 0,
+        "median_output_tokens": 220,
+        "structured_output_share": 0,
+        "median_input_tokens": 51394,
+        "error_rate": 0,
+        "confidence": 1,
+        "dominant_incumbent_model": "claude-sonnet-4-6",
+        "candidate_model": "accounts/fireworks/models/glm-5p2",
+        "model_mix": {
+          "claude-sonnet-4-6": {
+            "request_count": 3241.729333333326,
+            "cost_share": 1,
+            "priced": true
+          }
+        },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          }
+        },
+        "fallback_rate_models": [],
+        "unpriced_request_share": 0,
+        "unpriced_models": [],
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 612.722475424368,
+        "candidate_cost_30d_usd": 345.8537280030725,
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -367,13 +521,13 @@
       "factors": {
         "volume": 0.1369290194204384,
         "repeatability": 1,
-        "incumbent_headroom": 0.18960000000000002,
-        "serving_cost_delta": 0.5021973077988802
+        "incumbent_headroom": 0.45100156250000006,
+        "serving_cost_delta": 0.4416045257947885
       },
-      "roi_score": 0.01303791697940711,
+      "roi_score": 0.02727137656659905,
       "projected_savings_usd": {
         "conservative": 0,
-        "optimistic": 12.179326979957835
+        "optimistic": 9.266096630644878
       },
       "raw": {
         "request_count": 294.702666666666,
@@ -385,9 +539,9 @@
         "effective_task_count": 1,
         "addressable_share": 0,
         "addressable_requests": 0,
-        "median_output_tokens": 1212,
+        "median_output_tokens": 148,
         "structured_output_share": 0,
-        "median_input_tokens": 8832,
+        "median_input_tokens": 11873,
         "error_rate": 0,
         "confidence": 0.31622776601683794,
         "dominant_incumbent_model": "claude-sonnet-4-6",
@@ -399,11 +553,90 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          }
+        },
+        "fallback_rate_models": [],
         "unpriced_request_share": 0,
         "unpriced_models": [],
-        "incumbent_cost_30d_usd": 24.25207541103627,
-        "candidate_cost_30d_usd": 12.072748431078434,
-        "token_source": "estimated"
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 20.98279362958972,
+        "candidate_cost_30d_usd": 11.716696998944846,
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
+      }
+    },
+    {
+      "workload": {
+        "alias": "workload-l",
+        "id_hash": "be348fc6262589ce",
+        "name_hash": "dff0bd1de0982319"
+      },
+      "factors": {
+        "volume": 0.345570369918874,
+        "repeatability": 0.3333333333333333,
+        "incumbent_headroom": 0.48967122395833335,
+        "serving_cost_delta": 0.43344748912160547
+      },
+      "roi_score": 0.02444873074602184,
+      "projected_savings_usd": {
+        "conservative": 0,
+        "optimistic": 112.14100460947996
+      },
+      "raw": {
+        "request_count": 2210.269999999995,
+        "sampled_request_count": 15,
+        "requests_per_day": 76.38949412863944,
+        "distinct_task_fingerprints": 4,
+        "top1_cluster_share": 0.4666666666666667,
+        "top5_cluster_share": 1,
+        "effective_task_count": 3,
+        "addressable_share": 0,
+        "addressable_requests": 0,
+        "median_output_tokens": 157,
+        "structured_output_share": 0.26666666666666666,
+        "median_input_tokens": 27249,
+        "error_rate": 0,
+        "confidence": 0.8660254037844386,
+        "dominant_incumbent_model": "claude-sonnet-4-6",
+        "candidate_model": "accounts/fireworks/models/glm-5p2",
+        "model_mix": {
+          "claude-sonnet-4-6": {
+            "request_count": 2062.918666666662,
+            "cost_share": 0.9724257525930703,
+            "priced": true
+          },
+          "claude-sonnet-5": {
+            "request_count": 147.351333333333,
+            "cost_share": 0.027574247406929743,
+            "priced": true
+          }
+        },
+        "rate_basis": {
+          "claude-sonnet-4-6": {
+            "basis": "nnls",
+            "r2": 0.990336188531085
+          },
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
+        "unpriced_request_share": 0,
+        "unpriced_models": [],
+        "no_opportunity_reason": null,
+        "incumbent_cost_30d_usd": 258.7187777618395,
+        "candidate_cost_30d_usd": 146.5777731523595,
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -447,112 +680,21 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-haiku-4-5": {
+            "basis": "nnls",
+            "r2": 0.9999999840366555
+          }
+        },
+        "fallback_rate_models": [],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": null,
         "incumbent_cost_30d_usd": 9.963786916543507,
         "candidate_cost_30d_usd": 7.64799087338901,
-        "token_source": "estimated"
-      }
-    },
-    {
-      "workload": {
-        "alias": "workload-l",
-        "id_hash": "be348fc6262589ce",
-        "name_hash": "dff0bd1de0982319"
-      },
-      "factors": {
-        "volume": 0.345570369918874,
-        "repeatability": 0.12000000000000002,
-        "incumbent_headroom": 0.2719466145833334,
-        "serving_cost_delta": 0.46480704798097694
-      },
-      "roi_score": 0.005241723465645813,
-      "projected_savings_usd": {
-        "conservative": 0,
-        "optimistic": 220.87999008991028
-      },
-      "raw": {
-        "request_count": 2210.269999999995,
-        "sampled_request_count": 15,
-        "requests_per_day": 76.38949412863944,
-        "distinct_task_fingerprints": 10,
-        "top1_cluster_share": 0.2,
-        "top5_cluster_share": 0.6666666666666666,
-        "effective_task_count": 8.333333333333332,
-        "addressable_share": 0,
-        "addressable_requests": 0,
-        "median_output_tokens": 794,
-        "structured_output_share": 0.26666666666666666,
-        "median_input_tokens": 52801,
-        "error_rate": 0,
-        "confidence": 0.8660254037844386,
-        "dominant_incumbent_model": "claude-sonnet-4-6",
-        "candidate_model": "accounts/fireworks/models/glm-5p2",
-        "model_mix": {
-          "claude-sonnet-4-6": {
-            "request_count": 2062.918666666662,
-            "cost_share": 0.9849876752913199,
-            "priced": true
-          },
-          "claude-sonnet-5": {
-            "request_count": 147.351333333333,
-            "cost_share": 0.015012324708680023,
-            "priced": true
-          }
-        },
-        "unpriced_request_share": 0,
-        "unpriced_models": [],
-        "incumbent_cost_30d_usd": 475.20791917714246,
-        "candidate_cost_30d_usd": 254.32792908723215,
-        "token_source": "estimated"
-      }
-    },
-    {
-      "workload": {
-        "alias": "workload-k",
-        "id_hash": "a67746d1c0b0e9d7",
-        "name_hash": "12479a1a8b5b5e9b"
-      },
-      "factors": {
-        "volume": 0.39080224462639185,
-        "repeatability": 0.12809917355371894,
-        "incumbent_headroom": 0.10000000000000002,
-        "serving_cost_delta": 0.4557776299524192
-      },
-      "roi_score": 0.0022816886553359396,
-      "projected_savings_usd": {
-        "conservative": 0,
-        "optimistic": 348.94184586793017
-      },
-      "raw": {
-        "request_count": 3241.729333333326,
-        "sampled_request_count": 22,
-        "requests_per_day": 112.0379247220045,
-        "distinct_task_fingerprints": 13,
-        "top1_cluster_share": 0.2727272727272727,
-        "top5_cluster_share": 0.6363636363636364,
-        "effective_task_count": 7.8064516129032295,
-        "addressable_share": 0,
-        "addressable_requests": 0,
-        "median_output_tokens": 1779,
-        "structured_output_share": 0,
-        "median_input_tokens": 61484,
-        "error_rate": 0,
-        "confidence": 1,
-        "dominant_incumbent_model": "claude-sonnet-4-6",
-        "candidate_model": "accounts/fireworks/models/glm-5p2",
-        "model_mix": {
-          "claude-sonnet-4-6": {
-            "request_count": 3241.729333333326,
-            "cost_share": 1,
-            "priced": true
-          }
-        },
-        "unpriced_request_share": 0,
-        "unpriced_models": [],
-        "incumbent_cost_30d_usd": 765.5966921947394,
-        "candidate_cost_30d_usd": 416.6548463268092,
-        "token_source": "estimated"
+        "token_source": "mixed",
+        "observed_token_share": 0.5,
+        "estimated_request_count": 147.351333333333
       }
     },
     {
@@ -563,7 +705,7 @@
       },
       "factors": {
         "volume": 1,
-        "repeatability": 0.40832593388873956,
+        "repeatability": 0.4114298306906745,
         "incumbent_headroom": 0.740127721567623,
         "serving_cost_delta": 0
       },
@@ -576,12 +718,12 @@
         "request_count": 449421.56666666566,
         "sampled_request_count": 3050,
         "requests_per_day": 15532.530472823353,
-        "distinct_task_fingerprints": 9,
-        "top1_cluster_share": 0.4859016393442623,
-        "top5_cluster_share": 0.9954098360655738,
-        "effective_task_count": 2.449023970817586,
-        "addressable_share": 0.9954098360655738,
-        "addressable_requests": 447358.647999999,
+        "distinct_task_fingerprints": 6,
+        "top1_cluster_share": 0.48688524590163934,
+        "top5_cluster_share": 0.9990163934426229,
+        "effective_task_count": 2.4305481163611358,
+        "addressable_share": 0.9990163934426229,
+        "addressable_requests": 448979.51266666566,
         "median_output_tokens": 105,
         "structured_output_share": 0.9314754098360656,
         "median_input_tokens": 20623,
@@ -596,11 +738,23 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "gpt-4o": {
+            "basis": "blended_fallback",
+            "r2": -0.015065567072531483
+          }
+        },
+        "fallback_rate_models": [
+          "gpt-4o"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 15174.22589957065,
         "candidate_cost_30d_usd": 16991.12176083414,
-        "token_source": "observed"
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -644,11 +798,23 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "gpt-4o": {
+            "basis": "blended_fallback",
+            "r2": -0.015065567072531483
+          }
+        },
+        "fallback_rate_models": [
+          "gpt-4o"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 1124.5390582004145,
         "candidate_cost_30d_usd": 1282.7017150262207,
-        "token_source": "observed"
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -692,11 +858,23 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "gpt-4o": {
+            "basis": "blended_fallback",
+            "r2": -0.015065567072531483
+          }
+        },
+        "fallback_rate_models": [
+          "gpt-4o"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 130.9908277978171,
         "candidate_cost_30d_usd": 157.05786938140048,
-        "token_source": "observed"
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -740,11 +918,23 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 26.571087288908778,
         "candidate_cost_30d_usd": 62.509637629706845,
-        "token_source": "observed"
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     },
     {
@@ -788,11 +978,23 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 90.83531857255765,
         "candidate_cost_30d_usd": 223.47440949356957,
-        "token_source": "estimated"
+        "token_source": "mixed",
+        "observed_token_share": 0.8095238095238095,
+        "estimated_request_count": 1178.810666666664
       }
     },
     {
@@ -836,12 +1038,2255 @@
             "priced": true
           }
         },
+        "rate_basis": {
+          "claude-sonnet-5": {
+            "basis": "blended_fallback",
+            "r2": 0.3680615882342728
+          }
+        },
+        "fallback_rate_models": [
+          "claude-sonnet-5"
+        ],
         "unpriced_request_share": 0,
         "unpriced_models": [],
+        "no_opportunity_reason": "candidate_not_cheaper",
         "incumbent_cost_30d_usd": 55.340547535671114,
         "candidate_cost_30d_usd": 140.15413475738572,
-        "token_source": "observed"
+        "token_source": "observed",
+        "observed_token_share": 1,
+        "estimated_request_count": 0
       }
     }
-  ]
+  ],
+  "projection_validation": {
+    "observed_span_days": 28.934214386574073,
+    "rows": [
+      {
+        "alias": "workload-j",
+        "selector_incumbent_cost_30d_usd": 234.25655200129177,
+        "observed_billing_30d_usd": 521.303423309787,
+        "selector_to_observed_ratio": 0.4493669934373013,
+        "observed_event_count": 36702
+      },
+      {
+        "alias": "workload-h",
+        "selector_incumbent_cost_30d_usd": 661.5152883480756,
+        "observed_billing_30d_usd": 693.214841727552,
+        "selector_to_observed_ratio": 0.9542716752854306,
+        "observed_event_count": 13289
+      },
+      {
+        "alias": "workload-o",
+        "selector_incumbent_cost_30d_usd": 1396.6513517120507,
+        "observed_billing_30d_usd": 1569.8812974191917,
+        "selector_to_observed_ratio": 0.8896541120708154,
+        "observed_event_count": 38397
+      },
+      {
+        "alias": "workload-g",
+        "selector_incumbent_cost_30d_usd": 2231.2823338823623,
+        "observed_billing_30d_usd": 2220.7150102826085,
+        "selector_to_observed_ratio": 1.0047585230661402,
+        "observed_event_count": 37329
+      },
+      {
+        "alias": "workload-a",
+        "selector_incumbent_cost_30d_usd": 8609.034385215158,
+        "observed_billing_30d_usd": 7082.374496785663,
+        "selector_to_observed_ratio": 1.215557633830627,
+        "observed_event_count": 82004
+      },
+      {
+        "alias": "workload-c",
+        "selector_incumbent_cost_30d_usd": 521.9358661486807,
+        "observed_billing_30d_usd": 409.0649435255472,
+        "selector_to_observed_ratio": 1.275924213036565,
+        "observed_event_count": 7078
+      },
+      {
+        "alias": "workload-k",
+        "selector_incumbent_cost_30d_usd": 612.722475424368,
+        "observed_billing_30d_usd": 420.1072680632494,
+        "selector_to_observed_ratio": 1.4584905380216353,
+        "observed_event_count": 2471
+      },
+      {
+        "alias": "workload-i",
+        "selector_incumbent_cost_30d_usd": 20.98279362958972,
+        "observed_billing_30d_usd": 50.598047710579124,
+        "selector_to_observed_ratio": 0.4146957161195491,
+        "observed_event_count": 770
+      },
+      {
+        "alias": "workload-l",
+        "selector_incumbent_cost_30d_usd": 258.7187777618395,
+        "observed_billing_30d_usd": 340.8590760140476,
+        "selector_to_observed_ratio": 0.7590197708309726,
+        "observed_event_count": 2820
+      },
+      {
+        "alias": "workload-d",
+        "selector_incumbent_cost_30d_usd": 9.963786916543507,
+        "observed_billing_30d_usd": 7.606028335855495,
+        "selector_to_observed_ratio": 1.3099855110417258,
+        "observed_event_count": 361
+      },
+      {
+        "alias": "workload-f",
+        "selector_incumbent_cost_30d_usd": 15174.22589957065,
+        "observed_billing_30d_usd": 14923.591289050597,
+        "selector_to_observed_ratio": 1.0167945238961311,
+        "observed_event_count": 451699
+      },
+      {
+        "alias": "workload-b",
+        "selector_incumbent_cost_30d_usd": 1124.5390582004145,
+        "observed_billing_30d_usd": 1268.6974505184146,
+        "selector_to_observed_ratio": 0.8863729155764488,
+        "observed_event_count": 148930
+      },
+      {
+        "alias": "workload-p",
+        "selector_incumbent_cost_30d_usd": 130.9908277978171,
+        "observed_billing_30d_usd": 201.05996908281082,
+        "selector_to_observed_ratio": 0.6515012829026435,
+        "observed_event_count": 14046
+      },
+      {
+        "alias": "workload-m",
+        "selector_incumbent_cost_30d_usd": 26.571087288908778,
+        "observed_billing_30d_usd": 73.36380838406224,
+        "selector_to_observed_ratio": 0.3621824967129318,
+        "observed_event_count": 12261
+      },
+      {
+        "alias": "workload-n",
+        "selector_incumbent_cost_30d_usd": 90.83531857255765,
+        "observed_billing_30d_usd": 203.4171982471752,
+        "selector_to_observed_ratio": 0.4465468965027349,
+        "observed_event_count": 5242
+      },
+      {
+        "alias": "workload-e",
+        "selector_incumbent_cost_30d_usd": 55.340547535671114,
+        "observed_billing_30d_usd": 198.2413243838253,
+        "selector_to_observed_ratio": 0.27915747489924664,
+        "observed_event_count": 15430
+      }
+    ]
+  },
+  "candidate_scenarios": [
+    {
+      "label": "observed-traffic candidate",
+      "candidate_model": "accounts/fireworks/models/glm-5p2",
+      "rate_card": {
+        "source_models": 7,
+        "checked_at": [
+          "2026-08-02"
+        ]
+      },
+      "workloads": [
+        {
+          "workload": {
+            "alias": "workload-j",
+            "id_hash": "a08928952f5d7abb",
+            "name_hash": "8c774bdb5f63fefc"
+          },
+          "factors": {
+            "volume": 0.7239162204997567,
+            "repeatability": 0.8356074902017709,
+            "incumbent_headroom": 0.822288733057229,
+            "serving_cost_delta": 0.5924035036376895
+          },
+          "roi_score": 0.2946677385369915,
+          "projected_savings_usd": {
+            "conservative": 138.77440215564982,
+            "optimistic": 138.77440215564982
+          },
+          "raw": {
+            "request_count": 48920.64266666656,
+            "sampled_request_count": 332,
+            "requests_per_day": 1690.7541367138863,
+            "distinct_task_fingerprints": 2,
+            "top1_cluster_share": 0.9096385542168675,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1.1967341266394511,
+            "addressable_share": 1,
+            "addressable_requests": 48920.64266666656,
+            "median_output_tokens": 218,
+            "structured_output_share": 0.7710843373493976,
+            "median_input_tokens": 15,
+            "error_rate": 0.2289156626506024,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 4420.53999999999,
+                "cost_share": 0.37003092555904,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 44500.102666666564,
+                "cost_share": 0.6299690744409602,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 234.25655200129177,
+            "candidate_cost_30d_usd": 95.48214984564193,
+            "token_source": "mixed",
+            "observed_token_share": 0.7710843373493976,
+            "estimated_request_count": 11198.701333333309
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-h",
+            "id_hash": "8d27e04da35e9886",
+            "name_hash": "2f42987d2102c8f6"
+          },
+          "factors": {
+            "volume": 0.5507561836344913,
+            "repeatability": 0.2659131469363475,
+            "incumbent_headroom": 0.8351115948932928,
+            "serving_cost_delta": 0.762027628649751
+          },
+          "roi_score": 0.09319968036458035,
+          "projected_savings_usd": {
+            "conservative": 221.30908968092504,
+            "optimistic": 504.0929264954404
+          },
+          "raw": {
+            "request_count": 12082.809333333305,
+            "sampled_request_count": 82,
+            "requests_per_day": 417.59590123656227,
+            "distinct_task_fingerprints": 9,
+            "top1_cluster_share": 0.43902439024390244,
+            "top5_cluster_share": 0.902439024390244,
+            "effective_task_count": 3.76062639821029,
+            "addressable_share": 0.43902439024390244,
+            "addressable_requests": 5304.647999999988,
+            "median_output_tokens": 213,
+            "structured_output_share": 0.7439024390243902,
+            "median_input_tokens": 1,
+            "error_rate": 0.024390243902439025,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 8399.025999999982,
+                "cost_share": 0.6992036821854131,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 3683.783333333325,
+                "cost_share": 0.3007963178145869,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 661.5152883480756,
+            "candidate_cost_30d_usd": 157.42236185263528,
+            "token_source": "mixed",
+            "observed_token_share": 0.975609756097561,
+            "estimated_request_count": 294.702666666666
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-o",
+            "id_hash": "d8a57b37e4f0c46d",
+            "name_hash": "ef79f8f4e6bcf1ce"
+          },
+          "factors": {
+            "volume": 0.6871836403469339,
+            "repeatability": 0.19418446458719207,
+            "incumbent_headroom": 0.734298206604251,
+            "serving_cost_delta": 0.7540969994905335
+          },
+          "roi_score": 0.07389022244475203,
+          "projected_savings_usd": {
+            "conservative": 1053.210593660455,
+            "optimistic": 1053.210593660455
+          },
+          "raw": {
+            "request_count": 36395.77933333325,
+            "sampled_request_count": 247,
+            "requests_per_day": 1257.880336651596,
+            "distinct_task_fingerprints": 6,
+            "top1_cluster_share": 0.29554655870445345,
+            "top5_cluster_share": 0.9149797570850202,
+            "effective_task_count": 5.1497425508567565,
+            "addressable_share": 1,
+            "addressable_requests": 36395.77933333325,
+            "median_output_tokens": 326,
+            "structured_output_share": 0.5708502024291497,
+            "median_input_tokens": 2,
+            "error_rate": 0.04048582995951417,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 25344.429333333275,
+                "cost_share": 0.761707166375816,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 11051.349999999975,
+                "cost_share": 0.2382928336241841,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 1396.6513517120507,
+            "candidate_cost_30d_usd": 343.4407580515955,
+            "token_source": "mixed",
+            "observed_token_share": 0.9595141700404858,
+            "estimated_request_count": 1473.5133333333301
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-g",
+            "id_hash": "7df195e19686f43f",
+            "name_hash": "8a757605542a147a"
+          },
+          "factors": {
+            "volume": 0.7009672204369961,
+            "repeatability": 0.14482251627809287,
+            "incumbent_headroom": 0.7219063745471016,
+            "serving_cost_delta": 0.8361906028523469
+          },
+          "roi_score": 0.061280169483574634,
+          "projected_savings_usd": {
+            "conservative": 1777.8965041103572,
+            "optimistic": 1865.7773199028843
+          },
+          "raw": {
+            "request_count": 40668.967999999906,
+            "sampled_request_count": 276,
+            "requests_per_day": 1405.5666919669657,
+            "distinct_task_fingerprints": 8,
+            "top1_cluster_share": 0.2210144927536232,
+            "top5_cluster_share": 0.7717391304347827,
+            "effective_task_count": 6.905003625815807,
+            "addressable_share": 0.9528985507246377,
+            "addressable_requests": 38753.40066666658,
+            "median_output_tokens": 406,
+            "structured_output_share": 0.605072463768116,
+            "median_input_tokens": 1,
+            "error_rate": 0.010869565217391304,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 28880.86133333327,
+                "cost_share": 0.809471389695082,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 11788.106666666641,
+                "cost_share": 0.1905286103049179,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 2231.2823338823623,
+            "candidate_cost_30d_usd": 365.50501397947824,
+            "token_source": "mixed",
+            "observed_token_share": 0.9891304347826086,
+            "estimated_request_count": 442.053999999999
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-a",
+            "id_hash": "003b317c68075632",
+            "name_hash": "1077d0fc96bfdd3c"
+          },
+          "factors": {
+            "volume": 0.7878089599423691,
+            "repeatability": 0.13803749695641587,
+            "incumbent_headroom": 0.8253212837837838,
+            "serving_cost_delta": 0.6084554014652847
+          },
+          "roi_score": 0.05460969957121572,
+          "projected_savings_usd": {
+            "conservative": 4520.908565058538,
+            "optimistic": 5238.213473084528
+          },
+          "raw": {
+            "request_count": 81779.98999999982,
+            "sampled_request_count": 555,
+            "requests_per_day": 2826.4112827596596,
+            "distinct_task_fingerprints": 12,
+            "top1_cluster_share": 0.1873873873873874,
+            "top5_cluster_share": 0.8054054054054054,
+            "effective_task_count": 7.244408382135045,
+            "addressable_share": 0.863063063063063,
+            "addressable_requests": 70581.28866666651,
+            "median_output_tokens": 288,
+            "structured_output_share": 0.7837837837837838,
+            "median_input_tokens": 2,
+            "error_rate": 0.005405405405405406,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 48331.23733333322,
+                "cost_share": 0.5777475383335646,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 33448.752666666594,
+                "cost_share": 0.42225246166643543,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 8609.034385215158,
+            "candidate_cost_30d_usd": 3370.8209121306295,
+            "token_source": "mixed",
+            "observed_token_share": 0.9945945945945946,
+            "estimated_request_count": 442.053999999999
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-c",
+            "id_hash": "35ee5eaafa008b2e",
+            "name_hash": "94b8cb43abcd69d2"
+          },
+          "factors": {
+            "volume": 0.518355554878311,
+            "repeatability": 0.20786092214663637,
+            "incumbent_headroom": 0.8045671688988096,
+            "serving_cost_delta": 0.6298468115642937
+          },
+          "roi_score": 0.05460065449482799,
+          "projected_savings_usd": {
+            "conservative": 125.23414900373126,
+            "optimistic": 328.73964113479457
+          },
+          "raw": {
+            "request_count": 9283.13399999998,
+            "sampled_request_count": 63,
+            "requests_per_day": 320.83587534028567,
+            "distinct_task_fingerprints": 10,
+            "top1_cluster_share": 0.38095238095238093,
+            "top5_cluster_share": 0.8253968253968254,
+            "effective_task_count": 4.810909090909092,
+            "addressable_share": 0.38095238095238093,
+            "addressable_requests": 3536.431999999992,
+            "median_output_tokens": 307,
+            "structured_output_share": 0.746031746031746,
+            "median_input_tokens": 2,
+            "error_rate": 0.015873015873015872,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 7072.863999999984,
+                "cost_share": 0.8437024539169328,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 2210.269999999995,
+                "cost_share": 0.15629754608306712,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 521.9358661486807,
+            "candidate_cost_30d_usd": 193.1962250138862,
+            "token_source": "mixed",
+            "observed_token_share": 0.9841269841269841,
+            "estimated_request_count": 147.351333333333
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-k",
+            "id_hash": "a67746d1c0b0e9d7",
+            "name_hash": "12479a1a8b5b5e9b"
+          },
+          "factors": {
+            "volume": 0.39080224462639185,
+            "repeatability": 0.5578512396694215,
+            "incumbent_headroom": 0.3748046875,
+            "serving_cost_delta": 0.4355458761920946
+          },
+          "roi_score": 0.03558888419081388,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 266.86874742129544
+          },
+          "raw": {
+            "request_count": 3241.729333333326,
+            "sampled_request_count": 22,
+            "requests_per_day": 112.0379247220045,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.7272727272727273,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1.7925925925925925,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 220,
+            "structured_output_share": 0,
+            "median_input_tokens": 51394,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 3241.729333333326,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 612.722475424368,
+            "candidate_cost_30d_usd": 345.8537280030725,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-i",
+            "id_hash": "9cdb7e10dd42c910",
+            "name_hash": "8cb76fc24a203311"
+          },
+          "factors": {
+            "volume": 0.1369290194204384,
+            "repeatability": 1,
+            "incumbent_headroom": 0.45100156250000006,
+            "serving_cost_delta": 0.4416045257947885
+          },
+          "roi_score": 0.02727137656659905,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 9.266096630644878
+          },
+          "raw": {
+            "request_count": 294.702666666666,
+            "sampled_request_count": 2,
+            "requests_per_day": 10.185265883818593,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 148,
+            "structured_output_share": 0,
+            "median_input_tokens": 11873,
+            "error_rate": 0,
+            "confidence": 0.31622776601683794,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 294.702666666666,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 20.98279362958972,
+            "candidate_cost_30d_usd": 11.716696998944846,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-l",
+            "id_hash": "be348fc6262589ce",
+            "name_hash": "dff0bd1de0982319"
+          },
+          "factors": {
+            "volume": 0.345570369918874,
+            "repeatability": 0.3333333333333333,
+            "incumbent_headroom": 0.48967122395833335,
+            "serving_cost_delta": 0.43344748912160547
+          },
+          "roi_score": 0.02444873074602184,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 112.14100460947996
+          },
+          "raw": {
+            "request_count": 2210.269999999995,
+            "sampled_request_count": 15,
+            "requests_per_day": 76.38949412863944,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.4666666666666667,
+            "top5_cluster_share": 1,
+            "effective_task_count": 3,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 157,
+            "structured_output_share": 0.26666666666666666,
+            "median_input_tokens": 27249,
+            "error_rate": 0,
+            "confidence": 0.8660254037844386,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 2062.918666666662,
+                "cost_share": 0.9724257525930703,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 147.351333333333,
+                "cost_share": 0.027574247406929743,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 258.7187777618395,
+            "candidate_cost_30d_usd": 146.5777731523595,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-d",
+            "id_hash": "5089e59fed68ec39",
+            "name_hash": "f18daf19d2b78807"
+          },
+          "factors": {
+            "volume": 0.1369290194204384,
+            "repeatability": 0.5,
+            "incumbent_headroom": 0.5814804687500001,
+            "serving_cost_delta": 0.23242127341256513
+          },
+          "roi_score": 0.00925287106730159,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 2.3157960431544975
+          },
+          "raw": {
+            "request_count": 294.702666666666,
+            "sampled_request_count": 2,
+            "requests_per_day": 10.185265883818593,
+            "distinct_task_fingerprints": 2,
+            "top1_cluster_share": 0.5,
+            "top5_cluster_share": 1,
+            "effective_task_count": 2,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 54,
+            "structured_output_share": 0,
+            "median_input_tokens": 5,
+            "error_rate": 0.5,
+            "confidence": 0.31622776601683794,
+            "dominant_incumbent_model": "claude-haiku-4-5",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-haiku-4-5": {
+                "request_count": 294.702666666666,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-haiku-4-5": {
+                "basis": "nnls",
+                "r2": 0.9999999840366555
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 9.963786916543507,
+            "candidate_cost_30d_usd": 7.64799087338901,
+            "token_source": "mixed",
+            "observed_token_share": 0.5,
+            "estimated_request_count": 147.351333333333
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-f",
+            "id_hash": "5ec17567134faec0",
+            "name_hash": "6d0c20be5043ef99"
+          },
+          "factors": {
+            "volume": 1,
+            "repeatability": 0.4114298306906745,
+            "incumbent_headroom": 0.740127721567623,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 449421.56666666566,
+            "sampled_request_count": 3050,
+            "requests_per_day": 15532.530472823353,
+            "distinct_task_fingerprints": 6,
+            "top1_cluster_share": 0.48688524590163934,
+            "top5_cluster_share": 0.9990163934426229,
+            "effective_task_count": 2.4305481163611358,
+            "addressable_share": 0.9990163934426229,
+            "addressable_requests": 448979.51266666566,
+            "median_output_tokens": 105,
+            "structured_output_share": 0.9314754098360656,
+            "median_input_tokens": 20623,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 449421.56666666566,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 15174.22589957065,
+            "candidate_cost_30d_usd": 16991.12176083414,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-b",
+            "id_hash": "311195751800478b",
+            "name_hash": "c601123a78f82067"
+          },
+          "factors": {
+            "volume": 0.8629483655527125,
+            "repeatability": 0.3047014001795725,
+            "incumbent_headroom": 0.9174009967672414,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 149561.60333333298,
+            "sampled_request_count": 1015,
+            "requests_per_day": 5169.022436037935,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.37733990147783253,
+            "top5_cluster_share": 1,
+            "effective_task_count": 3.2819015580849342,
+            "addressable_share": 1,
+            "addressable_requests": 149561.60333333298,
+            "median_output_tokens": 74,
+            "structured_output_share": 0.9773399014778326,
+            "median_input_tokens": 3950,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 149561.60333333298,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 1124.5390582004145,
+            "candidate_cost_30d_usd": 1282.7017150262207,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-p",
+            "id_hash": "dd929c0ea0db4aff",
+            "name_hash": "e64e6b52f906ffe5"
+          },
+          "factors": {
+            "volume": 0.5752201512731582,
+            "repeatability": 1,
+            "incumbent_headroom": 0.8788378906250001,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 14735.1333333333,
+            "sampled_request_count": 100,
+            "requests_per_day": 509.2632941909296,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 14735.1333333333,
+            "median_output_tokens": 221,
+            "structured_output_share": 1,
+            "median_input_tokens": 3650,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 14735.1333333333,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 130.9908277978171,
+            "candidate_cost_30d_usd": 157.05786938140048,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-m",
+            "id_hash": "c08c43f218434c51",
+            "name_hash": "69c13378ba0a44e6"
+          },
+          "factors": {
+            "volume": 0.5566225918067121,
+            "repeatability": 1,
+            "incumbent_headroom": 0.9394871093750001,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 12672.214666666638,
+            "sampled_request_count": 86,
+            "requests_per_day": 437.9664330041995,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 12672.214666666638,
+            "median_output_tokens": 99,
+            "structured_output_share": 1,
+            "median_input_tokens": 2134,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 12672.214666666638,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 26.571087288908778,
+            "candidate_cost_30d_usd": 62.509637629706845,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-n",
+            "id_hash": "c5412f984075995e",
+            "name_hash": "7cebca75aaaf4c8e"
+          },
+          "factors": {
+            "volume": 0.4687890796400381,
+            "repeatability": 1,
+            "incumbent_headroom": 0.4825294642857143,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 6188.755999999986,
+            "sampled_request_count": 42,
+            "requests_per_day": 213.89058356019044,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 6188.755999999986,
+            "median_output_tokens": 720,
+            "structured_output_share": 0.8095238095238095,
+            "median_input_tokens": 14853,
+            "error_rate": 0.19047619047619047,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 6188.755999999986,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 90.83531857255765,
+            "candidate_cost_30d_usd": 223.47440949356957,
+            "token_source": "mixed",
+            "observed_token_share": 0.8095238095238095,
+            "estimated_request_count": 1178.810666666664
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-e",
+            "id_hash": "52951feb03febebe",
+            "name_hash": "94780b0a1f4029dd"
+          },
+          "factors": {
+            "volume": 0.5881050396461285,
+            "repeatability": 1,
+            "incumbent_headroom": 0.8762078125,
+            "serving_cost_delta": 0
+          },
+          "roi_score": 0,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 0
+          },
+          "raw": {
+            "request_count": 16355.997999999963,
+            "sampled_request_count": 111,
+            "requests_per_day": 565.2822565519318,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 16355.997999999963,
+            "median_output_tokens": 260,
+            "structured_output_share": 1,
+            "median_input_tokens": 2794,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/glm-5p2",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 16355.997999999963,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": "candidate_not_cheaper",
+            "incumbent_cost_30d_usd": 55.340547535671114,
+            "candidate_cost_30d_usd": 140.15413475738572,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "label": "American open-weight target family",
+      "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+      "rate_card": {
+        "source_models": 8,
+        "checked_at": [
+          "2026-08-02"
+        ]
+      },
+      "workloads": [
+        {
+          "workload": {
+            "alias": "workload-p",
+            "id_hash": "dd929c0ea0db4aff",
+            "name_hash": "e64e6b52f906ffe5"
+          },
+          "factors": {
+            "volume": 0.5752201512731582,
+            "repeatability": 1,
+            "incumbent_headroom": 0.8788378906250001,
+            "serving_cost_delta": 0.5762570500935982
+          },
+          "roi_score": 0.29131249760510763,
+          "projected_savings_usd": {
+            "conservative": 75.48438801608859,
+            "optimistic": 75.48438801608859
+          },
+          "raw": {
+            "request_count": 14735.1333333333,
+            "sampled_request_count": 100,
+            "requests_per_day": 509.2632941909296,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 14735.1333333333,
+            "median_output_tokens": 221,
+            "structured_output_share": 1,
+            "median_input_tokens": 3650,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 14735.1333333333,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 130.9908277978171,
+            "candidate_cost_30d_usd": 55.50643978172851,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-j",
+            "id_hash": "a08928952f5d7abb",
+            "name_hash": "8c774bdb5f63fefc"
+          },
+          "factors": {
+            "volume": 0.7239162204997567,
+            "repeatability": 0.8356074902017709,
+            "incumbent_headroom": 0.822288733057229,
+            "serving_cost_delta": 0.40795915420300366
+          },
+          "roi_score": 0.20292317760832168,
+          "projected_savings_usd": {
+            "conservative": 95.56710482095895,
+            "optimistic": 95.56710482095895
+          },
+          "raw": {
+            "request_count": 48920.64266666656,
+            "sampled_request_count": 332,
+            "requests_per_day": 1690.7541367138863,
+            "distinct_task_fingerprints": 2,
+            "top1_cluster_share": 0.9096385542168675,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1.1967341266394511,
+            "addressable_share": 1,
+            "addressable_requests": 48920.64266666656,
+            "median_output_tokens": 218,
+            "structured_output_share": 0.7710843373493976,
+            "median_input_tokens": 15,
+            "error_rate": 0.2289156626506024,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 4420.53999999999,
+                "cost_share": 0.37003092555904,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 44500.102666666564,
+                "cost_share": 0.6299690744409602,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 234.25655200129177,
+            "candidate_cost_30d_usd": 138.68944718033282,
+            "token_source": "mixed",
+            "observed_token_share": 0.7710843373493976,
+            "estimated_request_count": 11198.701333333309
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-f",
+            "id_hash": "5ec17567134faec0",
+            "name_hash": "6d0c20be5043ef99"
+          },
+          "factors": {
+            "volume": 1,
+            "repeatability": 0.4114298306906745,
+            "incumbent_headroom": 0.740127721567623,
+            "serving_cost_delta": 0.6143034482924448
+          },
+          "roi_score": 0.18706192585749512,
+          "projected_savings_usd": {
+            "conservative": 9312.410528754832,
+            "optimistic": 9321.579295274774
+          },
+          "raw": {
+            "request_count": 449421.56666666566,
+            "sampled_request_count": 3050,
+            "requests_per_day": 15532.530472823353,
+            "distinct_task_fingerprints": 6,
+            "top1_cluster_share": 0.48688524590163934,
+            "top5_cluster_share": 0.9990163934426229,
+            "effective_task_count": 2.4305481163611358,
+            "addressable_share": 0.9990163934426229,
+            "addressable_requests": 448979.51266666566,
+            "median_output_tokens": 105,
+            "structured_output_share": 0.9314754098360656,
+            "median_input_tokens": 20623,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 449421.56666666566,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 15174.22589957065,
+            "candidate_cost_30d_usd": 5852.6466042958755,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-b",
+            "id_hash": "311195751800478b",
+            "name_hash": "c601123a78f82067"
+          },
+          "factors": {
+            "volume": 0.8629483655527125,
+            "repeatability": 0.3047014001795725,
+            "incumbent_headroom": 0.9174009967672414,
+            "serving_cost_delta": 0.6042661678424148
+          },
+          "roi_score": 0.14576281516668274,
+          "projected_savings_usd": {
+            "conservative": 679.5209072878828,
+            "optimistic": 679.5209072878828
+          },
+          "raw": {
+            "request_count": 149561.60333333298,
+            "sampled_request_count": 1015,
+            "requests_per_day": 5169.022436037935,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.37733990147783253,
+            "top5_cluster_share": 1,
+            "effective_task_count": 3.2819015580849342,
+            "addressable_share": 1,
+            "addressable_requests": 149561.60333333298,
+            "median_output_tokens": 74,
+            "structured_output_share": 0.9773399014778326,
+            "median_input_tokens": 3950,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "gpt-4o",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "gpt-4o": {
+                "request_count": 149561.60333333298,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "gpt-4o": {
+                "basis": "blended_fallback",
+                "r2": -0.015065567072531483
+              }
+            },
+            "fallback_rate_models": [
+              "gpt-4o"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 1124.5390582004145,
+            "candidate_cost_30d_usd": 445.0181509125319,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-m",
+            "id_hash": "c08c43f218434c51",
+            "name_hash": "69c13378ba0a44e6"
+          },
+          "factors": {
+            "volume": 0.5566225918067121,
+            "repeatability": 1,
+            "incumbent_headroom": 0.9394871093750001,
+            "serving_cost_delta": 0.168751868344454
+          },
+          "roi_score": 0.08824705980852711,
+          "projected_savings_usd": {
+            "conservative": 4.483920623946929,
+            "optimistic": 4.483920623946929
+          },
+          "raw": {
+            "request_count": 12672.214666666638,
+            "sampled_request_count": 86,
+            "requests_per_day": 437.9664330041995,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 12672.214666666638,
+            "median_output_tokens": 99,
+            "structured_output_share": 1,
+            "median_input_tokens": 2134,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 12672.214666666638,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 26.571087288908778,
+            "candidate_cost_30d_usd": 22.08716666496185,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-h",
+            "id_hash": "8d27e04da35e9886",
+            "name_hash": "2f42987d2102c8f6"
+          },
+          "factors": {
+            "volume": 0.5507561836344913,
+            "repeatability": 0.2659131469363475,
+            "incumbent_headroom": 0.8351115948932928,
+            "serving_cost_delta": 0.7167479277380465
+          },
+          "roi_score": 0.0876617530069434,
+          "projected_savings_usd": {
+            "conservative": 208.1588979909598,
+            "optimistic": 474.1397120905195
+          },
+          "raw": {
+            "request_count": 12082.809333333305,
+            "sampled_request_count": 82,
+            "requests_per_day": 417.59590123656227,
+            "distinct_task_fingerprints": 9,
+            "top1_cluster_share": 0.43902439024390244,
+            "top5_cluster_share": 0.902439024390244,
+            "effective_task_count": 3.76062639821029,
+            "addressable_share": 0.43902439024390244,
+            "addressable_requests": 5304.647999999988,
+            "median_output_tokens": 213,
+            "structured_output_share": 0.7439024390243902,
+            "median_input_tokens": 1,
+            "error_rate": 0.024390243902439025,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 8399.025999999982,
+                "cost_share": 0.6992036821854131,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 3683.783333333325,
+                "cost_share": 0.3007963178145869,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 661.5152883480756,
+            "candidate_cost_30d_usd": 187.37557625755613,
+            "token_source": "mixed",
+            "observed_token_share": 0.975609756097561,
+            "estimated_request_count": 294.702666666666
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-o",
+            "id_hash": "d8a57b37e4f0c46d",
+            "name_hash": "ef79f8f4e6bcf1ce"
+          },
+          "factors": {
+            "volume": 0.6871836403469339,
+            "repeatability": 0.19418446458719207,
+            "incumbent_headroom": 0.734298206604251,
+            "serving_cost_delta": 0.7513276096713845
+          },
+          "roi_score": 0.0736188636806787,
+          "projected_savings_usd": {
+            "conservative": 1049.342721626123,
+            "optimistic": 1049.342721626123
+          },
+          "raw": {
+            "request_count": 36395.77933333325,
+            "sampled_request_count": 247,
+            "requests_per_day": 1257.880336651596,
+            "distinct_task_fingerprints": 6,
+            "top1_cluster_share": 0.29554655870445345,
+            "top5_cluster_share": 0.9149797570850202,
+            "effective_task_count": 5.1497425508567565,
+            "addressable_share": 1,
+            "addressable_requests": 36395.77933333325,
+            "median_output_tokens": 326,
+            "structured_output_share": 0.5708502024291497,
+            "median_input_tokens": 2,
+            "error_rate": 0.04048582995951417,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 25344.429333333275,
+                "cost_share": 0.761707166375816,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 11051.349999999975,
+                "cost_share": 0.2382928336241841,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 1396.6513517120507,
+            "candidate_cost_30d_usd": 347.3086300859275,
+            "token_source": "mixed",
+            "observed_token_share": 0.9595141700404858,
+            "estimated_request_count": 1473.5133333333301
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-a",
+            "id_hash": "003b317c68075632",
+            "name_hash": "1077d0fc96bfdd3c"
+          },
+          "factors": {
+            "volume": 0.7878089599423691,
+            "repeatability": 0.13803749695641587,
+            "incumbent_headroom": 0.8253212837837838,
+            "serving_cost_delta": 0.7553961272682295
+          },
+          "roi_score": 0.06779782950078958,
+          "projected_savings_usd": {
+            "conservative": 5612.698668718838,
+            "optimistic": 6503.231234110554
+          },
+          "raw": {
+            "request_count": 81779.98999999982,
+            "sampled_request_count": 555,
+            "requests_per_day": 2826.4112827596596,
+            "distinct_task_fingerprints": 12,
+            "top1_cluster_share": 0.1873873873873874,
+            "top5_cluster_share": 0.8054054054054054,
+            "effective_task_count": 7.244408382135045,
+            "addressable_share": 0.863063063063063,
+            "addressable_requests": 70581.28866666651,
+            "median_output_tokens": 288,
+            "structured_output_share": 0.7837837837837838,
+            "median_input_tokens": 2,
+            "error_rate": 0.005405405405405406,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 48331.23733333322,
+                "cost_share": 0.5777475383335646,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 33448.752666666594,
+                "cost_share": 0.42225246166643543,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 8609.034385215158,
+            "candidate_cost_30d_usd": 2105.8031511046047,
+            "token_source": "mixed",
+            "observed_token_share": 0.9945945945945946,
+            "estimated_request_count": 442.053999999999
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-c",
+            "id_hash": "35ee5eaafa008b2e",
+            "name_hash": "94b8cb43abcd69d2"
+          },
+          "factors": {
+            "volume": 0.518355554878311,
+            "repeatability": 0.20786092214663637,
+            "incumbent_headroom": 0.8045671688988096,
+            "serving_cost_delta": 0.7685785524499092
+          },
+          "roi_score": 0.0666271404791716,
+          "projected_savings_usd": {
+            "conservative": 152.8185571338067,
+            "optimistic": 401.1487124762426
+          },
+          "raw": {
+            "request_count": 9283.13399999998,
+            "sampled_request_count": 63,
+            "requests_per_day": 320.83587534028567,
+            "distinct_task_fingerprints": 10,
+            "top1_cluster_share": 0.38095238095238093,
+            "top5_cluster_share": 0.8253968253968254,
+            "effective_task_count": 4.810909090909092,
+            "addressable_share": 0.38095238095238093,
+            "addressable_requests": 3536.431999999992,
+            "median_output_tokens": 307,
+            "structured_output_share": 0.746031746031746,
+            "median_input_tokens": 2,
+            "error_rate": 0.015873015873015872,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 7072.863999999984,
+                "cost_share": 0.8437024539169328,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 2210.269999999995,
+                "cost_share": 0.15629754608306712,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 521.9358661486807,
+            "candidate_cost_30d_usd": 120.7871536724381,
+            "token_source": "mixed",
+            "observed_token_share": 0.9841269841269841,
+            "estimated_request_count": 147.351333333333
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-k",
+            "id_hash": "a67746d1c0b0e9d7",
+            "name_hash": "12479a1a8b5b5e9b"
+          },
+          "factors": {
+            "volume": 0.39080224462639185,
+            "repeatability": 0.5578512396694215,
+            "incumbent_headroom": 0.3748046875,
+            "serving_cost_delta": 0.7987267938476181
+          },
+          "roi_score": 0.06526475606855693,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 489.3978583140815
+          },
+          "raw": {
+            "request_count": 3241.729333333326,
+            "sampled_request_count": 22,
+            "requests_per_day": 112.0379247220045,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.7272727272727273,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1.7925925925925925,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 220,
+            "structured_output_share": 0,
+            "median_input_tokens": 51394,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 3241.729333333326,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 612.722475424368,
+            "candidate_cost_30d_usd": 123.32461711028655,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-g",
+            "id_hash": "7df195e19686f43f",
+            "name_hash": "8a757605542a147a"
+          },
+          "factors": {
+            "volume": 0.7009672204369961,
+            "repeatability": 0.14482251627809287,
+            "incumbent_headroom": 0.7219063745471016,
+            "serving_cost_delta": 0.7616487588124189
+          },
+          "roi_score": 0.05581737568895031,
+          "projected_savings_usd": {
+            "conservative": 1619.4067010959968,
+            "optimistic": 1699.4534201615784
+          },
+          "raw": {
+            "request_count": 40668.967999999906,
+            "sampled_request_count": 276,
+            "requests_per_day": 1405.5666919669657,
+            "distinct_task_fingerprints": 8,
+            "top1_cluster_share": 0.2210144927536232,
+            "top5_cluster_share": 0.7717391304347827,
+            "effective_task_count": 6.905003625815807,
+            "addressable_share": 0.9528985507246377,
+            "addressable_requests": 38753.40066666658,
+            "median_output_tokens": 406,
+            "structured_output_share": 0.605072463768116,
+            "median_input_tokens": 1,
+            "error_rate": 0.010869565217391304,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 28880.86133333327,
+                "cost_share": 0.809471389695082,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 11788.106666666641,
+                "cost_share": 0.1905286103049179,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 2231.2823338823623,
+            "candidate_cost_30d_usd": 531.8289137207838,
+            "token_source": "mixed",
+            "observed_token_share": 0.9891304347826086,
+            "estimated_request_count": 442.053999999999
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-i",
+            "id_hash": "9cdb7e10dd42c910",
+            "name_hash": "8cb76fc24a203311"
+          },
+          "factors": {
+            "volume": 0.1369290194204384,
+            "repeatability": 1,
+            "incumbent_headroom": 0.45100156250000006,
+            "serving_cost_delta": 0.8046669787574987
+          },
+          "roi_score": 0.049692371582715056,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 16.884161155814052
+          },
+          "raw": {
+            "request_count": 294.702666666666,
+            "sampled_request_count": 2,
+            "requests_per_day": 10.185265883818593,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 148,
+            "structured_output_share": 0,
+            "median_input_tokens": 11873,
+            "error_rate": 0,
+            "confidence": 0.31622776601683794,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 294.702666666666,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 20.98279362958972,
+            "candidate_cost_30d_usd": 4.098632473775671,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-l",
+            "id_hash": "be348fc6262589ce",
+            "name_hash": "dff0bd1de0982319"
+          },
+          "factors": {
+            "volume": 0.345570369918874,
+            "repeatability": 0.3333333333333333,
+            "incumbent_headroom": 0.48967122395833335,
+            "serving_cost_delta": 0.7848059518646788
+          },
+          "roi_score": 0.044267206262744725,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 203.0440366466467
+          },
+          "raw": {
+            "request_count": 2210.269999999995,
+            "sampled_request_count": 15,
+            "requests_per_day": 76.38949412863944,
+            "distinct_task_fingerprints": 4,
+            "top1_cluster_share": 0.4666666666666667,
+            "top5_cluster_share": 1,
+            "effective_task_count": 3,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 157,
+            "structured_output_share": 0.26666666666666666,
+            "median_input_tokens": 27249,
+            "error_rate": 0,
+            "confidence": 0.8660254037844386,
+            "dominant_incumbent_model": "claude-sonnet-4-6",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-4-6": {
+                "request_count": 2062.918666666662,
+                "cost_share": 0.9724257525930703,
+                "priced": true
+              },
+              "claude-sonnet-5": {
+                "request_count": 147.351333333333,
+                "cost_share": 0.027574247406929743,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-4-6": {
+                "basis": "nnls",
+                "r2": 0.990336188531085
+              },
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 258.7187777618395,
+            "candidate_cost_30d_usd": 55.67474111519274,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-e",
+            "id_hash": "52951feb03febebe",
+            "name_hash": "94780b0a1f4029dd"
+          },
+          "factors": {
+            "volume": 0.5881050396461285,
+            "repeatability": 1,
+            "incumbent_headroom": 0.8762078125,
+            "serving_cost_delta": 0.0823363164926354
+          },
+          "roi_score": 0.0424280875240465,
+          "projected_savings_usd": {
+            "conservative": 4.556536836772752,
+            "optimistic": 4.556536836772752
+          },
+          "raw": {
+            "request_count": 16355.997999999963,
+            "sampled_request_count": 111,
+            "requests_per_day": 565.2822565519318,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 16355.997999999963,
+            "median_output_tokens": 260,
+            "structured_output_share": 1,
+            "median_input_tokens": 2794,
+            "error_rate": 0,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 16355.997999999963,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 55.340547535671114,
+            "candidate_cost_30d_usd": 50.78401069889836,
+            "token_source": "observed",
+            "observed_token_share": 1,
+            "estimated_request_count": 0
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-d",
+            "id_hash": "5089e59fed68ec39",
+            "name_hash": "f18daf19d2b78807"
+          },
+          "factors": {
+            "volume": 0.1369290194204384,
+            "repeatability": 0.5,
+            "incumbent_headroom": 0.5814804687500001,
+            "serving_cost_delta": 0.7020635615978591
+          },
+          "roi_score": 0.02794969462620777,
+          "projected_savings_usd": {
+            "conservative": 0,
+            "optimistic": 6.995211729630685
+          },
+          "raw": {
+            "request_count": 294.702666666666,
+            "sampled_request_count": 2,
+            "requests_per_day": 10.185265883818593,
+            "distinct_task_fingerprints": 2,
+            "top1_cluster_share": 0.5,
+            "top5_cluster_share": 1,
+            "effective_task_count": 2,
+            "addressable_share": 0,
+            "addressable_requests": 0,
+            "median_output_tokens": 54,
+            "structured_output_share": 0,
+            "median_input_tokens": 5,
+            "error_rate": 0.5,
+            "confidence": 0.31622776601683794,
+            "dominant_incumbent_model": "claude-haiku-4-5",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-haiku-4-5": {
+                "request_count": 294.702666666666,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-haiku-4-5": {
+                "basis": "nnls",
+                "r2": 0.9999999840366555
+              }
+            },
+            "fallback_rate_models": [],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 9.963786916543507,
+            "candidate_cost_30d_usd": 2.968575186912822,
+            "token_source": "mixed",
+            "observed_token_share": 0.5,
+            "estimated_request_count": 147.351333333333
+          }
+        },
+        {
+          "workload": {
+            "alias": "workload-n",
+            "id_hash": "c5412f984075995e",
+            "name_hash": "7cebca75aaaf4c8e"
+          },
+          "factors": {
+            "volume": 0.4687890796400381,
+            "repeatability": 1,
+            "incumbent_headroom": 0.4825294642857143,
+            "serving_cost_delta": 0.11706954921944934
+          },
+          "roi_score": 0.02648166393445263,
+          "projected_savings_usd": {
+            "conservative": 10.634049798494399,
+            "optimistic": 10.634049798494399
+          },
+          "raw": {
+            "request_count": 6188.755999999986,
+            "sampled_request_count": 42,
+            "requests_per_day": 213.89058356019044,
+            "distinct_task_fingerprints": 1,
+            "top1_cluster_share": 1,
+            "top5_cluster_share": 1,
+            "effective_task_count": 1,
+            "addressable_share": 1,
+            "addressable_requests": 6188.755999999986,
+            "median_output_tokens": 720,
+            "structured_output_share": 0.8095238095238095,
+            "median_input_tokens": 14853,
+            "error_rate": 0.19047619047619047,
+            "confidence": 1,
+            "dominant_incumbent_model": "claude-sonnet-5",
+            "candidate_model": "accounts/fireworks/models/nemotron-3-ultra-nvfp4",
+            "model_mix": {
+              "claude-sonnet-5": {
+                "request_count": 6188.755999999986,
+                "cost_share": 1,
+                "priced": true
+              }
+            },
+            "rate_basis": {
+              "claude-sonnet-5": {
+                "basis": "blended_fallback",
+                "r2": 0.3680615882342728
+              }
+            },
+            "fallback_rate_models": [
+              "claude-sonnet-5"
+            ],
+            "unpriced_request_share": 0,
+            "unpriced_models": [],
+            "no_opportunity_reason": null,
+            "incumbent_cost_30d_usd": 90.83531857255765,
+            "candidate_cost_30d_usd": 80.20126877406325,
+            "token_source": "mixed",
+            "observed_token_share": 0.8095238095238095,
+            "estimated_request_count": 1178.810666666664
+          }
+        }
+      ]
+    }
+  ],
+  "diagnostics": {
+    "repeatability": {
+      "method": "coarse task fingerprints use role sets; full role skeleton remains in variant fingerprints",
+      "rows": [
+        {
+          "alias": "workload-j",
+          "before_hhi": 0.8356074902017709,
+          "after_hhi": 0.8356074902017709,
+          "before_rank": 1,
+          "after_rank": 1,
+          "role_depth_fanout_captures": 0
+        },
+        {
+          "alias": "workload-o",
+          "before_hhi": 0.13524234129390747,
+          "after_hhi": 0.19418446458719207,
+          "before_rank": 2,
+          "after_rank": 3,
+          "role_depth_fanout_captures": 247
+        },
+        {
+          "alias": "workload-g",
+          "before_hhi": 0.094150388573829,
+          "after_hhi": 0.14482251627809287,
+          "before_rank": 3,
+          "after_rank": 4,
+          "role_depth_fanout_captures": 276
+        },
+        {
+          "alias": "workload-h",
+          "before_hhi": 0.09607376561570492,
+          "after_hhi": 0.2659131469363475,
+          "before_rank": 4,
+          "after_rank": 2,
+          "role_depth_fanout_captures": 82
+        },
+        {
+          "alias": "workload-c",
+          "before_hhi": 0.07835726883345932,
+          "after_hhi": 0.20786092214663637,
+          "before_rank": 5,
+          "after_rank": 6,
+          "role_depth_fanout_captures": 63
+        }
+      ]
+    },
+    "usage_parsing": {
+      "captures": 6000,
+      "observed_token_captures": 5861,
+      "estimated_token_captures": 139,
+      "sse_objects": 35,
+      "sse_usage_recovered": 35
+    }
+  }
 }
