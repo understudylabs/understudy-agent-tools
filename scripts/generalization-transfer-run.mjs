@@ -26,7 +26,7 @@ import { TASKS as SYNTHETIC_TASKS } from "../dist/synthetic-workflow-offline.js"
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const artifactRoot = resolve(root, "experiments/nemotron-generalization-transfer/artifacts");
 const sanityPath = resolve(artifactRoot, "sanity-gate.json");
-const holdoutMarker = resolve(artifactRoot, "holdout-accessed.json");
+const holdoutMarker = resolve(artifactRoot, "holdout-accessed");
 const baseModel = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16";
 const tunedModel = "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020";
 const estimatedPrice = {

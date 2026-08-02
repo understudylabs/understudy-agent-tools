@@ -1,6 +1,6 @@
 {
   "schema_version": "understudy.generalization_prompt_parity_check.v1",
-  "generated_at": "2026-08-02T00:13:43.201Z",
+  "generated_at": "2026-08-02T00:14:37.567Z",
   "checks": [
     {
       "group": "automationbench-simple-api",

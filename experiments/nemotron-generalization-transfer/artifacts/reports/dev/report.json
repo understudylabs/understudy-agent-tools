@@ -1,0 +1,531 @@
+{
+  "schema_version": "understudy.generalization_report.v1",
+  "generated_at": "2026-08-02T00:14:37.485Z",
+  "manifest": {
+    "schema_version": "understudy.generalization_manifest.v1",
+    "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "eval_splits": [
+      "dev"
+    ],
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench simple/api",
+        "status": "present",
+        "match": {
+          "benchmark_id": "automationbench-simple-api-offline"
+        },
+        "frozen_split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "expected_task_counts": {
+          "train": 48,
+          "dev": 12,
+          "holdout": 12
+        }
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer verifiers",
+        "status": "present",
+        "match": {
+          "benchmark_id": "event-categorizer-offline"
+        },
+        "frozen_split_sha256": "803ed4bf0664783d76b9e8b7aa139a15a9ff5a82cda402f214d8225ce02dcee2",
+        "expected_task_counts": {
+          "train": 8,
+          "dev": 2,
+          "holdout": 2
+        }
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic workflow shapes",
+        "status": "present",
+        "match": {
+          "benchmark_id": "synthetic-workflow-shapes-offline"
+        },
+        "frozen_split_sha256": "01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326",
+        "expected_task_counts": {
+          "train": 5,
+          "dev": 2,
+          "holdout": 2
+        }
+      }
+    ],
+    "arms": [
+      {
+        "arm_id": "nemotron-transfer",
+        "train_groups": [
+          "automationbench-simple-api"
+        ],
+        "eval_splits": [
+          "dev"
+        ],
+        "baseline": {
+          "rows": "rows/base-{group}-{split}.jsonl",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        "candidate": {
+          "rows": "rows/tuned-{group}-{split}.jsonl",
+          "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020"
+        }
+      }
+    ],
+    "require_content_hashes": true,
+    "require_all_groups_scored": true
+  },
+  "arms": [
+    {
+      "arm_id": "nemotron-transfer",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "dev"
+      ],
+      "baseline_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "candidate_model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "task_deltas": [
+        {
+          "task_id": "simple-api-crm-bulk-owner-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-close-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-lost-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-owner-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-crm-rename-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-discard-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-draft-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-revise-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "simple-api-mail-send-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-05",
+          "group_id": "automationbench-simple-api",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-009",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-010",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "saw-analysis-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "saw-doc-001",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        }
+      ],
+      "matrix": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 12,
+          "baseline_mean": 0.9166666666666666,
+          "candidate_mean": 1,
+          "delta": 0.08333333333333333,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 11,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0.25
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 2,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 2,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 2,
+          "baseline_mean": 0,
+          "candidate_mean": 0.25,
+          "delta": 0.25,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 1,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0.25,
+            0.25
+          ],
+          "status": "scored"
+        }
+      ],
+      "score": {
+        "in_domain_gain": 0.08333333333333333,
+        "transfer_gain": 0.125,
+        "transfer_ratio": 1.5,
+        "forgetting": 0,
+        "regressed_groups": [],
+        "generalization_score": 1,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0
+      }
+    }
+  ],
+  "matrix": [
+    {
+      "arm_id": "nemotron-transfer",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "cells": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 12,
+          "baseline_mean": 0.9166666666666666,
+          "candidate_mean": 1,
+          "delta": 0.08333333333333333,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 11,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0.25
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 2,
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 2,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 2,
+          "baseline_mean": 0,
+          "candidate_mean": 0.25,
+          "delta": 0.25,
+          "fixed": 1,
+          "regressed": 0,
+          "unchanged": 1,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "dev": 0
+          },
+          "paired_ci": [
+            0.25,
+            0.25
+          ],
+          "status": "scored"
+        }
+      ]
+    }
+  ],
+  "score": {
+    "in_domain_gain": 0.08333333333333333,
+    "transfer_gain": 0.125,
+    "transfer_ratio": 1.5,
+    "forgetting": 0,
+    "regressed_groups": [],
+    "generalization_score": 1,
+    "weighting": "task-weighted",
+    "regression_threshold": 0.05,
+    "forgetting_penalty": 0
+  },
+  "coverage": {
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench simple/api",
+        "status": "scored",
+        "task_count": 12
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer verifiers",
+        "status": "scored",
+        "task_count": 2
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic workflow shapes",
+        "status": "scored",
+        "task_count": 2
+      }
+    ],
+    "unassigned_task_ids": []
+  },
+  "warnings": []
+}
