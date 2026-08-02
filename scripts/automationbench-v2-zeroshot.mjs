@@ -41,6 +41,8 @@ const stride = Number(argValue("--stride", "1")) || 1;
 const concurrency = Number(argValue("--concurrency", "6"));
 const maxTurns = Number(argValue("--max-turns", "14"));
 const temperature = Number(argValue("--temperature", "0"));
+const rollouts = Number(argValue("--rollouts", argValue("--samples", "1")));
+if (!Number.isInteger(rollouts) || rollouts < 1) throw new Error("--rollouts must be a positive integer");
 // A malformed emission is always rejected (never executed); this only bounds how
 // many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
@@ -147,7 +149,7 @@ async function chat(messages, attempt = 0) {
   };
 }
 
-async function runTask(task) {
+async function runTask(task, rolloutIndex = 0) {
   const { handle } = reset(task.taskId);
   const messages = [
     { role: "system", content: SYSTEM },
@@ -196,7 +198,7 @@ async function runTask(task) {
     fixture === "on-event-execution"
       ? task.taskId.replace(/^oee-/, "").replace(/-\d{2}$/, "")
       : task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
-  return {
+  const row = {
     task_id: task.taskId,
     family,
     band: BANDS[family] ?? "unknown",
@@ -211,17 +213,25 @@ async function runTask(task) {
     completion_tokens: completionTokens,
     error,
   };
+  if (rollouts > 1) row.rollout_index = rolloutIndex;
+  return { row, transcript: rollouts > 1 ? { task_id: task.taskId, rollout_index: rolloutIndex, split: task.split, messages } : null };
 }
 
 async function main() {
   const started = Date.now();
   const rows = [];
+  const transcripts = [];
   let cursor = 0;
+  const work = Array.from({ length: rollouts }, (_, rolloutIndex) => ({ rolloutIndex, tasks }));
   const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < tasks.length) {
-      const task = tasks[cursor++];
-      rows.push(await runTask(task));
-      process.stderr.write(`\r${rows.length}/${tasks.length} done`);
+    while (cursor < work.length * tasks.length) {
+      const position = cursor++;
+      const rolloutIndex = Math.floor(position / tasks.length);
+      const task = tasks[position % tasks.length];
+      const result = await runTask(task, rolloutIndex);
+      rows.push(result.row);
+      if (result.transcript) transcripts.push(result.transcript);
+      process.stderr.write(`\r${rows.length}/${work.length * tasks.length} done`);
     }
   });
   await Promise.all(workers);
@@ -245,7 +255,7 @@ async function main() {
     fixture_sha256: fixtureConfig.fixtureSha(),
     split_sha256: fixtureConfig.splitHash(split),
     pool_size: fixtureConfig.tasks.filter((task) => task.split === split).length,
-    sampled: tasks.length,
+    sampled: tasks.length * rollouts,
     scored: scored.length,
     errors: rows.length - scored.length,
     mean_score: mean(scored.map((row) => row.score)),
@@ -263,11 +273,21 @@ async function main() {
     prompt_tokens: rows.reduce((sum, row) => sum + row.prompt_tokens, 0),
     completion_tokens: rows.reduce((sum, row) => sum + row.completion_tokens, 0),
     wall_clock_s: Math.round((Date.now() - started) / 1000),
-    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id)),
+    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id) || (a.rollout_index ?? 0) - (b.rollout_index ?? 0)),
   };
   if (outPath) {
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);
+    if (rollouts > 1) {
+      const transcriptPath = outPath.replace(/\.json$/i, ".transcripts.jsonl");
+      writeFileSync(
+        transcriptPath,
+        `${transcripts
+          .sort((a, b) => a.task_id.localeCompare(b.task_id) || a.rollout_index - b.rollout_index)
+          .map((transcript) => JSON.stringify(transcript))
+          .join("\n")}\n`,
+      );
+    }
   }
   const { rows: _rows, ...summary } = report;
   console.log(JSON.stringify(summary, null, 2));
