@@ -1,0 +1,64 @@
+{
+  "schema_version": "understudy.workload_aggregates.v1",
+  "workload": "on-event-execution",
+  "evidence_scope": {
+    "source": "gateway outer-span telemetry, aggregate rows only",
+    "raw_data_committed": false,
+    "note": "No prompts, completions, traces, request bodies, or tenant/project identifiers were read into or derived for this artifact. Counts, token sums, USD, and distributions only."
+  },
+  "window": {
+    "first_request_utc": "2026-06-03T18:13:32Z",
+    "last_request_utc": "2026-08-02T00:32:43Z",
+    "active_days": 30
+  },
+  "volume": {
+    "requests": 13912,
+    "requests_share_of_project": 0.0152,
+    "peak_day_requests": 2110,
+    "median_active_day_requests": 69
+  },
+  "cost": {
+    "customer_cost_usd": 703.79,
+    "upstream_cost_usd": 703.79,
+    "share_of_project_cost": 0.022426,
+    "rank_by_cost_of_21_workloads": 6,
+    "mean_cost_usd_per_request": 0.050589
+  },
+  "tokens": {
+    "provider_equivalent_input_total": 794336376,
+    "provider_equivalent_input_p50": 55434,
+    "provider_equivalent_input_p95": 89237,
+    "cache_read_share_of_input": 0.821,
+    "output_total": 5002461,
+    "output_mean": 359.58,
+    "output_p50": 192,
+    "output_p95": 1099,
+    "reasoning_output_total": 0
+  },
+  "output_length_bands": {
+    "0-64": 733,
+    "65-128": 3196,
+    "129-256": 5332,
+    "257-512": 1592,
+    "513-1024": 2209,
+    "1025-2048": 662,
+    "2049+": 188,
+    "fraction_under_256": 0.6657
+  },
+  "served_models": [
+    { "provider": "anthropic", "class": "frontier-mid", "requests": 9899 },
+    { "provider": "anthropic", "class": "frontier-mid", "requests": 4013 }
+  ],
+  "request_shape": {
+    "max_tokens_64000_requests": 9532,
+    "max_tokens_4096_requests": 4012,
+    "forced_stream_requests": 13545,
+    "client_requested_stream_requests": 0
+  },
+  "reliability": {
+    "non_success_requests": 256,
+    "non_success_rate": 0.0184,
+    "by_status": { "400": 173, "529": 55, "502": 20, "503": 8 },
+    "all_error_origin": "upstream"
+  }
+}
