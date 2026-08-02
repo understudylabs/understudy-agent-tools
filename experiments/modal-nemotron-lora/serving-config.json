@@ -1,0 +1,36 @@
+{
+  "app": "understudy-nemotron-vllm-lab",
+  "endpointPattern": "https://understudylabs--understudy-nemotron-vllm-lab-serve.modal.run",
+  "image": "vllm/vllm-openai:v0.26.0",
+  "vllmSupportEvidence": {
+    "nemotronLoraPullRequest": 30802,
+    "mergedAt": "2026-01-19T14:30:44Z",
+    "mergeCommit": "aa7f37ccfa168d40c89d1a104a870757666fcb56",
+    "firstComparedStableTagContainingMerge": "v0.15.0"
+  },
+  "baseModel": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "gpu": "H200",
+  "scaledownWindowSeconds": 300,
+  "flags": [
+    "--enable-lora",
+    "--max-loras 4",
+    "--max-lora-rank 64",
+    "--enable-auto-tool-choice",
+    "--tool-call-parser qwen3_xml"
+  ],
+  "chatTemplate": "model tokenizer_config.json (Nemotron-3 XML <tool_call> renderer)",
+  "runtimeLoraUpdating": true,
+  "adapterLoading": "base-only startup; POST /v1/load_lora_adapter for converted adapters",
+  "conversion": {
+    "script": "scripts/convert-nemotron-tinker-lora.py",
+    "rank8MappedTensorFraction": 0.9741342726,
+    "rank8DroppedModules": [
+      "mixer.gate_proj",
+      "mixer.x_proj"
+    ]
+  },
+  "orchestration": {
+    "executor": "Modal deployed function invoked by an external Vercel Workflow",
+    "artifactContract": "understudy.eval_result.v1 rows and understudy.eval_summary.v1 summaries carry sha256 references"
+  }
+}
