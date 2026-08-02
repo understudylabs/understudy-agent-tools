@@ -20,6 +20,24 @@ const safeEventKeys = new Set([
   "state", "metrics", "frontier", "usage", "failure_class", "code",
   "retry_scheduled",
 ]);
+const eventTypes = new Set([
+  "experiment.accepted",
+  "experiment.phase_changed",
+  "candidate.state_changed",
+  "rollout.state_changed",
+  "score.snapshot",
+  "usage.snapshot",
+  "experiment.error",
+]);
+
+const isCanonicalEvent = (event) => event !== null
+  && typeof event === "object"
+  && event.schema_version === "understudy.experiment-event.v1"
+  && event.experiment_id === experimentId
+  && Number.isInteger(event.sequence)
+  && event.sequence >= 0
+  && typeof event.occurred_at === "string"
+  && eventTypes.has(event.type);
 
 const redact = (event) => Object.fromEntries(
   Object.entries(event).filter(([key]) => safeEventKeys.has(key)),
@@ -69,10 +87,19 @@ createServer(async (request, response) => {
     );
     const body = await upstream.json();
     if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
+    if (
+      body.experiment_id !== experimentId
+      || !Array.isArray(body.events)
+      || body.events.some((event) => !isCanonicalEvent(event))
+      || !Number.isInteger(body.next_after)
+      || typeof body.has_more !== "boolean"
+    ) {
+      throw new Error("upstream returned an invalid event stream");
+    }
     response.writeHead(200, headers(origin));
     response.end(JSON.stringify({
       experiment_id: body.experiment_id,
-      events: Array.isArray(body.events) ? body.events.map(redact) : [],
+      events: body.events.map(redact),
       next_after: body.next_after,
       has_more: body.has_more,
     }));
