@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
-  assertHoldoutAbsent,
   buildResult,
   buildSubmitPayload,
   loadContract,

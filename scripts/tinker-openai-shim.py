@@ -44,6 +44,7 @@ parser.add_argument("--renderer", required=True)
 parser.add_argument("--model-path", default=None, help="tinker:// checkpoint to serve over the base weights")
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
+parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
 args = parser.parse_args()
 request_timeout = 300
 log_path = os.environ.get("TINKER_SHIM_LOG", "/tmp/tinker-openai-shim.log")
@@ -66,7 +67,7 @@ sampler = (
     else service.create_sampling_client(base_model=args.base_model)
 )
 renderer = get_renderer(args.renderer, get_tokenizer(args.base_model))
-pool = ThreadPoolExecutor(max_workers=16)
+pool = ThreadPoolExecutor(max_workers=args.max_workers)
 
 
 def sample(messages, temperature, max_tokens):
