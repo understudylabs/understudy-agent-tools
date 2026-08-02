@@ -1,3 +1,5 @@
-artifacts/
+artifacts/*
+!artifacts/wave-*.json
+!artifacts/holdout-*.json
 __pycache__/
 *.pyc

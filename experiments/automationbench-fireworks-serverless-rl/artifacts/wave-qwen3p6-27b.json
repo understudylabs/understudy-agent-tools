@@ -1,0 +1,1109 @@
+{
+  "model": "accounts/fireworks/models/qwen3p6-27b",
+  "tokenizer": "Qwen/Qwen3.6-27B",
+  "renderer": "qwen3_5_disable_thinking",
+  "first_gradient_seconds": 40.33700769899997,
+  "sft": {
+    "wall_seconds": 6358.174556167,
+    "meter": {
+      "model": "accounts/fireworks/models/qwen3p6-27b",
+      "phase": "sft",
+      "prefill_tokens": 0,
+      "cached_prefill_tokens": 0,
+      "sample_tokens": 0,
+      "train_tokens": 102296,
+      "sampling_seconds": 0.0,
+      "sampling_tokens_per_second": 0.0,
+      "estimated_usd": 0.41972048800000006
+    },
+    "logs": [
+      {
+        "epoch": 1,
+        "step": 1,
+        "batch_tokens": 8735,
+        "forward_backward_seconds": 40.60603726999989,
+        "optim_step_seconds": 0.5094626310001331,
+        "metrics": {
+          "loss:sum": 2.972950726747513,
+          "total_tokens:sum": 8735.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1018.0
+        }
+      },
+      {
+        "epoch": 1,
+        "step": 2,
+        "batch_tokens": 7095,
+        "forward_backward_seconds": 5.279925344000276,
+        "optim_step_seconds": 0.7068779159999394,
+        "metrics": {
+          "loss:sum": 0.4443996958434582,
+          "total_tokens:sum": 7095.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1000.0
+        }
+      },
+      {
+        "epoch": 1,
+        "step": 3,
+        "batch_tokens": 9744,
+        "forward_backward_seconds": 5.483662875999926,
+        "optim_step_seconds": 0.7149425790003079,
+        "metrics": {
+          "loss:sum": 0.1576326509239152,
+          "total_tokens:sum": 9744.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1415.0
+        }
+      },
+      {
+        "epoch": 2,
+        "step": 4,
+        "batch_tokens": 8735,
+        "forward_backward_seconds": 4.543380108999827,
+        "optim_step_seconds": 0.7375342600003023,
+        "metrics": {
+          "loss:sum": 0.542495688307099,
+          "total_tokens:sum": 8735.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1018.0
+        }
+      },
+      {
+        "epoch": 2,
+        "step": 5,
+        "batch_tokens": 7095,
+        "forward_backward_seconds": 4.5160672639999575,
+        "optim_step_seconds": 0.7302509740002279,
+        "metrics": {
+          "loss:sum": 0.03430347767425701,
+          "total_tokens:sum": 7095.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1000.0
+        }
+      },
+      {
+        "epoch": 2,
+        "step": 6,
+        "batch_tokens": 9744,
+        "forward_backward_seconds": 4.559485861999747,
+        "optim_step_seconds": 0.7520403049998095,
+        "metrics": {
+          "loss:sum": 0.030734630534425378,
+          "total_tokens:sum": 9744.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1415.0
+        }
+      },
+      {
+        "epoch": 3,
+        "step": 7,
+        "batch_tokens": 8735,
+        "forward_backward_seconds": 4.484249502000239,
+        "optim_step_seconds": 0.7307192119997126,
+        "metrics": {
+          "loss:sum": 0.41877898541861214,
+          "total_tokens:sum": 8735.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1018.0
+        }
+      },
+      {
+        "epoch": 3,
+        "step": 8,
+        "batch_tokens": 7095,
+        "forward_backward_seconds": 4.427888622999944,
+        "optim_step_seconds": 0.6943144070000926,
+        "metrics": {
+          "loss:sum": 0.011204388574697077,
+          "total_tokens:sum": 7095.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1000.0
+        }
+      },
+      {
+        "epoch": 3,
+        "step": 9,
+        "batch_tokens": 9744,
+        "forward_backward_seconds": 4.718612818000111,
+        "optim_step_seconds": 0.7128074349998315,
+        "metrics": {
+          "loss:sum": 0.013391570864769164,
+          "total_tokens:sum": 9744.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1415.0
+        }
+      },
+      {
+        "epoch": 4,
+        "step": 10,
+        "batch_tokens": 8735,
+        "forward_backward_seconds": 4.502996832999997,
+        "optim_step_seconds": 0.7204830539999421,
+        "metrics": {
+          "loss:sum": 0.1890231913421303,
+          "total_tokens:sum": 8735.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1018.0
+        }
+      },
+      {
+        "epoch": 4,
+        "step": 11,
+        "batch_tokens": 7095,
+        "forward_backward_seconds": 4.417086618999747,
+        "optim_step_seconds": 0.6889307239998743,
+        "metrics": {
+          "loss:sum": 0.015947185704135336,
+          "total_tokens:sum": 7095.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1000.0
+        }
+      },
+      {
+        "epoch": 4,
+        "step": 12,
+        "batch_tokens": 9744,
+        "forward_backward_seconds": 4.81574303699972,
+        "optim_step_seconds": 0.7825030490002973,
+        "metrics": {
+          "loss:sum": 0.01958961196942255,
+          "total_tokens:sum": 9744.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 1.0,
+          "response_tokens": 1415.0
+        }
+      }
+    ],
+    "checkpoints": [
+      {
+        "epoch": 1,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/sft-epoch-1-0bba2fbc"
+      },
+      {
+        "epoch": 2,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/sft-epoch-2-0bba2fbc"
+      },
+      {
+        "epoch": 3,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/sft-epoch-3-0bba2fbc"
+      },
+      {
+        "epoch": 4,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/sft-epoch-4-0bba2fbc"
+      }
+    ],
+    "selected": {
+      "epoch": 4,
+      "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/sft-epoch-4-0bba2fbc"
+    },
+    "dev": {
+      "count": 12,
+      "mean_reward": 1.0,
+      "strict_pass_rate": 1.0,
+      "parse_errors": 0,
+      "reward_distribution": {
+        "1.0": 12
+      },
+      "rows": [
+        {
+          "task_id": "simple-api-crm-close-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-crm-lost-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-crm-owner-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-crm-rename-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-mail-draft-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-mail-revise-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-mail-discard-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-mail-send-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-crm-bulk-owner-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 4
+        },
+        {
+          "task_id": "simple-api-crm-disambiguate-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 3
+        },
+        {
+          "task_id": "simple-api-crm-mail-churn-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 4
+        },
+        {
+          "task_id": "simple-api-mail-send-and-close-05",
+          "reward": 1.0,
+          "parse_errors": [],
+          "model_turns": 5
+        }
+      ]
+    },
+    "dev_meter": {
+      "model": "accounts/fireworks/models/qwen3p6-27b",
+      "phase": "sft-dev",
+      "prefill_tokens": 16019,
+      "cached_prefill_tokens": 0,
+      "sample_tokens": 839,
+      "train_tokens": 0,
+      "sampling_seconds": 27.90918042999874,
+      "sampling_tokens_per_second": 30.06179282492237,
+      "estimated_usd": 0.034489544999999996
+    }
+  },
+  "grpo": {
+    "wall_seconds": 6223.689182283,
+    "meter": {
+      "model": "accounts/fireworks/models/qwen3p6-27b",
+      "phase": "grpo",
+      "prefill_tokens": 3599600,
+      "cached_prefill_tokens": 0,
+      "sample_tokens": 184410,
+      "train_tokens": 36540,
+      "sampling_seconds": 5897.824296682013,
+      "sampling_tokens_per_second": 31.2674624952366,
+      "estimated_usd": 7.8769535699999995
+    },
+    "logs": [
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 1,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 2,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 3,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 4,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 5,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 6,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 7,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 8,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 9,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 10,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        },
+        "dev": {
+          "count": 12,
+          "mean_reward": 1.0,
+          "strict_pass_rate": 1.0,
+          "parse_errors": 0,
+          "reward_distribution": {
+            "1.0": 12
+          },
+          "rows": [
+            {
+              "task_id": "simple-api-crm-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-lost-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-rename-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-draft-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-revise-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-discard-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-send-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-bulk-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-crm-disambiguate-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-mail-churn-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-mail-send-and-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 5
+            }
+          ]
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 11,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 12,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 13,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 14,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 15,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 16,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 17,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 18,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 19,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 20,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        },
+        "dev": {
+          "count": 12,
+          "mean_reward": 1.0,
+          "strict_pass_rate": 1.0,
+          "parse_errors": 0,
+          "reward_distribution": {
+            "1.0": 12
+          },
+          "rows": [
+            {
+              "task_id": "simple-api-crm-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-lost-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-rename-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-draft-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-revise-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-discard-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-send-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-bulk-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-crm-disambiguate-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-mail-churn-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-mail-send-and-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 5
+            }
+          ]
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 21,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 22,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 23,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 24,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 25,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 26,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 27,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 28,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 29,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 30,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        },
+        "dev": {
+          "count": 12,
+          "mean_reward": 1.0,
+          "strict_pass_rate": 1.0,
+          "parse_errors": 0,
+          "reward_distribution": {
+            "1.0": 12
+          },
+          "rows": [
+            {
+              "task_id": "simple-api-crm-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-lost-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-rename-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-draft-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-revise-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-discard-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-send-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-bulk-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-crm-disambiguate-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-mail-churn-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-mail-send-and-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 5
+            }
+          ]
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 31,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 32,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 33,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 34,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": true,
+        "datum_count": 40,
+        "train_tokens": 18739,
+        "first_gradient_seconds": 6.659198514998934,
+        "forward_backward_seconds": 6.659198514998934,
+        "optim_step_seconds": 0.8644012919994566,
+        "wall_seconds": 7.523950900998898,
+        "receipt": {
+          "model": "accounts/fireworks/models/qwen3p6-27b",
+          "phase": "grpo",
+          "prefill_tokens": 3124364,
+          "cached_prefill_tokens": 0,
+          "sample_tokens": 160555,
+          "train_tokens": 18739,
+          "sampling_seconds": 5123.869872477029,
+          "sampling_tokens_per_second": 31.334714580170047,
+          "estimated_usd": 6.786508381999999
+        },
+        "forward_metrics": {
+          "loss:sum": 0.5918846130371107,
+          "total_tokens:sum": 18739.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 2.0
+        },
+        "step": 35,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "0.3333333333333333": 1,
+          "1.0": 63
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 36,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 37,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 38,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": false,
+        "datum_count": 0,
+        "step": 39,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "1.0": 64
+        }
+      },
+      {
+        "trained": true,
+        "datum_count": 35,
+        "train_tokens": 17801,
+        "first_gradient_seconds": 5.34450242999992,
+        "forward_backward_seconds": 5.34450242999992,
+        "optim_step_seconds": 0.7882768380004563,
+        "wall_seconds": 6.133062557999438,
+        "receipt": {
+          "model": "accounts/fireworks/models/qwen3p6-27b",
+          "phase": "grpo",
+          "prefill_tokens": 3599600,
+          "cached_prefill_tokens": 0,
+          "sample_tokens": 184410,
+          "train_tokens": 36540,
+          "sampling_seconds": 5897.824296682013,
+          "sampling_tokens_per_second": 31.2674624952366,
+          "estimated_usd": 7.8769535699999995
+        },
+        "forward_metrics": {
+          "loss:sum": 37.39084625244138,
+          "total_tokens:sum": 17801.0,
+          "dp_sharded_counts:min": 1.0,
+          "dp_sharded_counts:max": 1.0,
+          "local_input_sequences:sum": 2.0
+        },
+        "step": 40,
+        "rollout_count": 64,
+        "reward_distribution": {
+          "0.0": 1,
+          "1.0": 63
+        },
+        "dev": {
+          "count": 12,
+          "mean_reward": 1.0,
+          "strict_pass_rate": 1.0,
+          "parse_errors": 0,
+          "reward_distribution": {
+            "1.0": 12
+          },
+          "rows": [
+            {
+              "task_id": "simple-api-crm-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-lost-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-rename-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-draft-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-revise-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-discard-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-mail-send-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-bulk-owner-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-crm-disambiguate-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 3
+            },
+            {
+              "task_id": "simple-api-crm-mail-churn-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 4
+            },
+            {
+              "task_id": "simple-api-mail-send-and-close-05",
+              "reward": 1.0,
+              "parse_errors": [],
+              "model_turns": 5
+            }
+          ]
+        }
+      }
+    ],
+    "checkpoints": [
+      {
+        "step": 5,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-5-0bba2fbc"
+      },
+      {
+        "step": 10,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-10-0bba2fbc"
+      },
+      {
+        "step": 15,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-15-0bba2fbc"
+      },
+      {
+        "step": 20,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-20-0bba2fbc"
+      },
+      {
+        "step": 25,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-25-0bba2fbc"
+      },
+      {
+        "step": 30,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-30-0bba2fbc"
+      },
+      {
+        "step": 35,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-35-0bba2fbc"
+      },
+      {
+        "step": 40,
+        "path": "understudy-dev/run-f95695e6ac9246eebe86bf24ddfb6264/grpo-step-40-0bba2fbc"
+      }
+    ]
+  },
+  "total_wall_seconds": 6366.0910447530005
+}
