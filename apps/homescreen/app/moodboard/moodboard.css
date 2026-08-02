@@ -1,0 +1,2336 @@
+/* Mood board — a visual language for models and what we do to them.
+   Everything on the black field, everything on the house easing. */
+
+.mb {
+  --mb-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --mb-field: #000;
+  --mb-clay: #d97757; /* closed model A (Anthropic) */
+  --mb-mint: #9edbd3; /* closed model B (OpenAI) */
+  --mb-amber: #f2b34c;
+  --mb-violet: #a78bfa;
+  --mb-cyan: #67e8f9;
+  --mb-green: #6ee7a0;
+  /* the app shell locks body overflow (panes scroll internally),
+     so the board is its own scroll container */
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--mb-field);
+  color: #f2f2f0;
+  padding: 40px 32px 120px;
+}
+.mb-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+.mb h1 {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(242, 242, 240, 0.9);
+  margin: 0;
+}
+.mb-sub {
+  font-size: 13px;
+  color: rgba(242, 242, 240, 0.45);
+  margin: 6px 0 40px;
+  max-width: 620px;
+  line-height: 1.5;
+}
+.mb-section {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: rgba(242, 242, 240, 0.55);
+  margin: 56px 0 6px;
+}
+.mb-section-note {
+  font-size: 12.5px;
+  color: rgba(242, 242, 240, 0.38);
+  margin: 0 0 18px;
+  max-width: 680px;
+  line-height: 1.5;
+}
+.mb-caption {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: rgba(242, 242, 240, 0.4);
+}
+.mb-caption b {
+  color: rgba(242, 242, 240, 0.85);
+  font-weight: 500;
+}
+
+/* ---------- cards on the field ---------- */
+.mb-card {
+  position: relative;
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    rgba(255, 255, 255, 0.035),
+    transparent 60%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.mb-card-label {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  z-index: 3;
+  pointer-events: none;
+}
+/* labels never block the art, but controls that live in them must work */
+.mb-card-label .mb-seg,
+.mb-card-label button {
+  pointer-events: auto;
+}
+.mb-grid {
+  display: grid;
+  gap: 14px;
+}
+
+/* ---------- segmented state control ---------- */
+.mb-seg {
+  display: inline-flex;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.mb-seg button {
+  background: transparent;
+  border: none;
+  color: rgba(242, 242, 240, 0.5);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 160ms var(--mb-ease), color 160ms var(--mb-ease);
+}
+.mb-seg button.active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f2f2f0;
+}
+.mb-chiprow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mb-chip {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 160ms var(--mb-ease), box-shadow 160ms var(--mb-ease);
+}
+.mb-chip.active {
+  transform: scale(1.25);
+  box-shadow: 0 0 0 2px #000, 0 0 0 3.5px rgba(255, 255, 255, 0.6);
+}
+.mb-chip.square {
+  border-radius: 4px;
+}
+
+/* ---------- baseline stage (the current app, faithfully) ---------- */
+.mb-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 420px;
+}
+.mb-stamp {
+  grid-area: 1 / 1;
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  opacity: 0.05;
+  transform: scale(0.92);
+  filter: drop-shadow(0 0 18px rgba(255, 255, 255, 0.12));
+}
+.mb-halo {
+  grid-area: 1 / 1;
+  width: 340px;
+  height: 340px;
+}
+.mb-orbit {
+  grid-area: 1 / 1;
+  width: 340px;
+  height: 340px;
+  position: relative;
+  pointer-events: none;
+  opacity: 0.62;
+  animation: mb-orbit 26s linear infinite;
+}
+.mb-orbit.active {
+  opacity: 1;
+  animation-duration: 16s;
+}
+.mb-orbit-body {
+  position: absolute;
+  top: 4%;
+  right: 6%;
+  width: 18%;
+  height: 18%;
+  min-width: 30px;
+  min-height: 30px;
+  filter: drop-shadow(0 0 14px rgba(255, 255, 255, 0.28));
+  animation: mb-orbit-counter 26s linear infinite;
+}
+.mb-orbit.active .mb-orbit-body {
+  animation-duration: 16s;
+}
+@keyframes mb-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes mb-orbit-counter {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* ---------- archetype grid ---------- */
+.mb-archetype {
+  display: grid;
+  place-items: center;
+  height: 220px;
+  padding-top: 14px;
+}
+.mb-archetype-halo {
+  width: 150px;
+  height: 150px;
+}
+.mb-archetype-foot {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 3;
+}
+
+/* ---------- closed-model languages: tiles on the field ----------
+   Same breath, same orbit, same easing — but squares instead of circles.
+   Open weights are visible cores; closed models are sealed surfaces. */
+.mb-tilefield {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 300px;
+}
+.mb-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-rows: repeat(3, 44px);
+  gap: 10px;
+}
+.mb-tile {
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mb-tile-color) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mb-tile-color) 55%, transparent);
+  animation: mb-tile-breathe 5.2s var(--mb-ease) infinite;
+  animation-delay: calc(var(--i) * 260ms);
+}
+.mb-tilefield[data-state="thinking"] .mb-tile {
+  animation: mb-tile-ripple 1.6s var(--mb-ease) infinite;
+  animation-delay: calc(var(--ring) * 220ms);
+}
+.mb-tilefield[data-state="speaking"] .mb-tile {
+  animation: mb-tile-speak 1.1s var(--mb-ease) infinite;
+  animation-delay: calc(var(--col) * 140ms);
+}
+.mb-tilefield[data-state="asleep"] .mb-tile {
+  animation: none;
+  opacity: 0.28;
+}
+/* processing highlight: hops tile to tile while the colony works.
+   border-color and box-shadow only — channels the state keyframes
+   (which animate transform/background) never touch. */
+.mb-tile.hot {
+  border-color: color-mix(in srgb, var(--mb-tile-color) 75%, white);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--mb-tile-color) 60%, white),
+    0 0 12px color-mix(in srgb, var(--mb-tile-color) 55%, transparent);
+  transition: border-color 140ms var(--mb-ease), box-shadow 140ms var(--mb-ease);
+}
+@keyframes mb-tile-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+}
+@keyframes mb-tile-ripple {
+  0%,
+  100% {
+    transform: scale(1);
+    background: color-mix(in srgb, var(--mb-tile-color) 16%, transparent);
+  }
+  35% {
+    transform: scale(1.14);
+    background: color-mix(in srgb, var(--mb-tile-color) 42%, transparent);
+  }
+}
+@keyframes mb-tile-speak {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-7px);
+  }
+}
+
+/* closed model B: a sealed lattice that rotates as one body — the whole
+   surface moves, nothing inside is visible */
+.mb-lattice {
+  display: grid;
+  grid-template-columns: repeat(4, 30px);
+  grid-template-rows: repeat(4, 30px);
+  gap: 8px;
+  animation: mb-lattice-turn 32s linear infinite;
+}
+.mb-tilefield[data-state="thinking"] .mb-lattice {
+  animation-duration: 12s;
+}
+.mb-tilefield[data-state="asleep"] .mb-lattice {
+  animation-play-state: paused;
+  opacity: 0.28;
+}
+.mb-lattice .mb-tile {
+  border-radius: 4px;
+  animation-name: mb-tile-breathe;
+  animation-duration: 6.4s;
+}
+.mb-tilefield[data-state="speaking"] .mb-lattice .mb-tile {
+  animation-name: mb-tile-speak;
+  animation-duration: 1.1s;
+  animation-delay: calc(var(--col) * 140ms);
+}
+@keyframes mb-lattice-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- operations ---------- */
+.mb-op {
+  height: 280px;
+  display: grid;
+  place-items: center;
+}
+
+/* A/B: two archetypes on one field, traffic split between them */
+.mb-ab {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  justify-items: center;
+  padding: 0 26px;
+}
+.mb-ab-contender {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+}
+.mb-ab-halo {
+  width: 110px;
+  height: 110px;
+}
+.mb-ab-splitter {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+  animation: mb-splitter-pulse 2.4s var(--mb-ease) infinite;
+}
+@keyframes mb-splitter-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255, 255, 255, 0.7);
+  }
+}
+.mb-ab-packet {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  opacity: 0;
+}
+.mb-ab-packet.to-a {
+  background: var(--mb-a);
+  animation: mb-packet-left 2.4s var(--mb-ease) infinite;
+}
+.mb-ab-packet.to-b {
+  background: var(--mb-b);
+  animation: mb-packet-right 2.4s var(--mb-ease) infinite;
+}
+@keyframes mb-packet-left {
+  0% {
+    transform: translate(0, -50%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-1 * var(--dist)), -50%);
+    opacity: 0;
+  }
+}
+@keyframes mb-packet-right {
+  0% {
+    transform: translate(0, -50%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  88% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(var(--dist), -50%);
+    opacity: 0;
+  }
+}
+.mb-ab-score {
+  width: 110px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.mb-ab-score i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--mb-score-color);
+  animation: mb-score-fill 9s var(--mb-ease) infinite;
+}
+@keyframes mb-score-fill {
+  0% {
+    width: 0;
+  }
+  80%,
+  100% {
+    width: var(--mb-score);
+  }
+}
+
+/* RLM: one large mind vs the same compute fanned out horizontally */
+.mb-rlm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-items: center;
+}
+/* open models are empty circles — no gradient fills; the ring carries
+   the color, and rings mix by stacking (border + inset box-shadow) */
+.mb-rlm-one {
+  width: 74px;
+  height: 74px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  animation: mb-breathe 5.2s var(--mb-ease) infinite;
+}
+@keyframes mb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.94);
+  }
+}
+.mb-rlm-fan {
+  position: relative;
+  width: 210px;
+  height: 170px;
+}
+.mb-rlm-root {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  z-index: 2;
+}
+.mb-rlm-worker {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--mb-cyan);
+  background: transparent;
+  opacity: 0;
+  animation: mb-rlm-quest 6s var(--mb-ease) infinite;
+  animation-delay: calc(var(--i) * 90ms);
+}
+@keyframes mb-rlm-quest {
+  0% {
+    transform: translate(-50%, 0) scale(0.4);
+    opacity: 0;
+  }
+  16% {
+    transform: translate(calc(-50% + var(--fx)), var(--fy)) scale(1);
+    opacity: 0.95;
+  }
+  58% {
+    transform: translate(calc(-50% + var(--fx)), var(--fy)) scale(1);
+    opacity: 0.95;
+  }
+  62% {
+    border-color: var(--mb-green);
+  }
+  84% {
+    transform: translate(-50%, 0) scale(0.5);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, 0) scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* GEPA: lineage buds, the frontier survives */
+.mb-gepa-node {
+  opacity: 0;
+  transition: opacity 700ms var(--mb-ease);
+}
+.mb-gepa-node.on {
+  opacity: 0.38;
+}
+.mb-gepa-node.on.frontier {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--mb-violet) 70%, transparent));
+}
+.mb-gepa-edge {
+  stroke: rgba(255, 255, 255, 0.22);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity 700ms var(--mb-ease);
+}
+.mb-gepa-edge.on {
+  opacity: 1;
+}
+
+/* SFT: the stream becomes the model — examples flow in, the color takes */
+.mb-sft {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.mb-sft-orb {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  /* the ring itself takes the data's color — white to amber as rows land */
+  animation: mb-sft-take 12s var(--mb-ease) infinite;
+}
+@keyframes mb-sft-take {
+  0% {
+    border-color: rgba(255, 255, 255, 0.85);
+    border-width: 1.5px;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+  70%,
+  92% {
+    border-color: var(--mb-sft-color);
+    border-width: 3px;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--mb-sft-color) 30%, transparent);
+  }
+  100% {
+    border-color: rgba(255, 255, 255, 0.85);
+    border-width: 1.5px;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+  }
+}
+.mb-sft-dash {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--mb-sft-color);
+  opacity: 0;
+  animation: mb-sft-flow 2.6s var(--mb-ease) infinite;
+  animation-delay: calc(var(--i) * 420ms);
+}
+@keyframes mb-sft-flow {
+  0% {
+    transform: translate(24px, calc(var(--jitter) * 1px));
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.9;
+  }
+  78% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(130px, 0);
+    opacity: 0;
+  }
+}
+
+/* RL: the two training loops, rings only, color = value.
+   GRPO — no critic: a group of rollouts is scored against its own mean;
+   above-mean rollouts push the policy green.
+   PPO — a critic scores each rollout; the update is clipped. */
+.mb-grpo,
+.mb-ppo {
+  position: relative;
+  width: 264px;
+  height: 148px;
+}
+.mb-grpo-policy,
+.mb-ppo-policy {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+}
+.mb-grpo-policy {
+  animation: mb-grpo-policy 7s var(--mb-ease) infinite;
+}
+@keyframes mb-grpo-policy {
+  0%,
+  76% {
+    border-color: rgba(255, 255, 255, 0.85);
+    box-shadow: none;
+  }
+  84% {
+    border-color: var(--mb-green);
+    box-shadow: 0 0 16px color-mix(in srgb, var(--mb-green) 45%, transparent);
+  }
+  94%,
+  100% {
+    border-color: color-mix(in srgb, var(--mb-green) 55%, white);
+    box-shadow: none;
+  }
+}
+.mb-grpo-roll {
+  position: absolute;
+  left: 168px;
+  top: var(--y);
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  background: transparent;
+  opacity: 0;
+}
+.mb-grpo-roll.win {
+  animation: mb-grpo-roll-win 7s var(--mb-ease) infinite;
+}
+.mb-grpo-roll.lose {
+  animation: mb-grpo-roll-lose 7s var(--mb-ease) infinite;
+}
+@keyframes mb-grpo-roll-win {
+  0% {
+    transform: translateX(-120px) scale(0.4);
+    opacity: 0;
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+  }
+  14% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  44% {
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+  }
+  52%,
+  68% {
+    border-color: var(--mb-green);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--mb-green) 35%, transparent);
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  82% {
+    transform: translateX(-120px) scale(0.5);
+    opacity: 0.7;
+  }
+  88%,
+  100% {
+    transform: translateX(-120px) scale(0.4);
+    opacity: 0;
+  }
+}
+@keyframes mb-grpo-roll-lose {
+  0% {
+    transform: translateX(-120px) scale(0.4);
+    opacity: 0;
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+  14% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  44% {
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+  52%,
+  68% {
+    border-color: rgba(255, 255, 255, 0.15);
+    opacity: 0.6;
+  }
+  80%,
+  100% {
+    transform: translateX(0) scale(0.9);
+    opacity: 0;
+  }
+}
+.mb-grpo-mean {
+  position: absolute;
+  left: 152px;
+  width: 56px;
+  top: 50%;
+  border-top: 1px dashed rgba(255, 255, 255, 0.35);
+  opacity: 0;
+  animation: mb-grpo-mean 7s var(--mb-ease) infinite;
+}
+.mb-grpo-mean .mb-caption {
+  position: absolute;
+  left: 100%;
+  top: -7px;
+  padding-left: 5px;
+}
+@keyframes mb-grpo-mean {
+  0%,
+  40% {
+    opacity: 0;
+  }
+  48%,
+  70% {
+    opacity: 1;
+  }
+  80%,
+  100% {
+    opacity: 0;
+  }
+}
+.mb-ppo-policy {
+  animation: mb-ppo-policy 7s var(--mb-ease) infinite;
+}
+@keyframes mb-ppo-policy {
+  0%,
+  66% {
+    border-color: rgba(255, 255, 255, 0.85);
+    box-shadow: none;
+  }
+  /* the clip: a guard ring appears and the color moves only one
+     bounded step, however big the reward was */
+  74% {
+    border-color: color-mix(in srgb, var(--mb-green) 45%, white);
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.14);
+  }
+  84%,
+  100% {
+    border-color: color-mix(in srgb, var(--mb-green) 35%, white);
+    box-shadow: none;
+  }
+}
+.mb-ppo-critic {
+  position: absolute;
+  left: 122px;
+  top: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 2px solid var(--mb-violet);
+  background: transparent;
+  animation: mb-ppo-critic 7s var(--mb-ease) infinite;
+}
+@keyframes mb-ppo-critic {
+  0%,
+  48% {
+    transform: scale(1);
+    box-shadow: none;
+  }
+  56% {
+    transform: scale(1.25);
+    box-shadow: 0 0 12px color-mix(in srgb, var(--mb-violet) 45%, transparent);
+  }
+  66%,
+  100% {
+    transform: scale(1);
+    box-shadow: none;
+  }
+}
+.mb-ppo-env {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+}
+.mb-ppo-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0;
+  animation: mb-ppo-dot 7s var(--mb-ease) infinite;
+}
+@keyframes mb-ppo-dot {
+  0% {
+    left: 48px;
+    top: 68px;
+    background: #fff;
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.9;
+  }
+  30% {
+    left: 216px;
+    top: 68px;
+    background: #fff;
+  }
+  38% {
+    left: 216px;
+    top: 68px;
+    background: var(--mb-green);
+  }
+  52% {
+    left: 132px;
+    top: 26px;
+    background: var(--mb-green);
+  }
+  60% {
+    left: 132px;
+    top: 26px;
+  }
+  72% {
+    left: 54px;
+    top: 60px;
+    opacity: 0.9;
+  }
+  78%,
+  100% {
+    left: 54px;
+    top: 60px;
+    opacity: 0;
+  }
+}
+.mb-rl-sublabel {
+  position: absolute;
+  text-align: center;
+}
+
+/* ---------- the optimization ladder ---------- */
+
+/* capture: traces accumulate, the slice freezes */
+.mb-capture {
+  display: grid;
+  grid-template-columns: repeat(6, 14px);
+  grid-auto-rows: 14px;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  transition: border-color 500ms var(--mb-ease), box-shadow 500ms var(--mb-ease);
+}
+.mb-capture.frozen {
+  border-color: var(--mb-cyan);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--mb-cyan) 22%, transparent);
+}
+.mb-cell {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 400ms var(--mb-ease), border-color 400ms var(--mb-ease);
+}
+.mb-cell.on {
+  background: color-mix(in srgb, var(--mb-cyan) 22%, transparent);
+  border-color: color-mix(in srgb, var(--mb-cyan) 60%, transparent);
+}
+.mb-capture.frozen .mb-cell.on {
+  background: transparent; /* crystallized: outline only */
+}
+
+/* climb: smallest rung first, first body over the bar wins */
+.mb-climb {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 22px;
+  padding: 30px 12px 0;
+  height: 130px;
+}
+.mb-threshold {
+  position: absolute;
+  top: 20px;
+  left: -4px;
+  right: -4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.3);
+}
+.mb-threshold .mb-caption {
+  position: absolute;
+  right: 0;
+  top: -16px;
+}
+.mb-rung {
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  background: transparent;
+  opacity: 0.5;
+  transition: all 500ms var(--mb-ease);
+}
+.mb-rung.trying {
+  opacity: 1;
+  transform: scale(1.12) translateY(-6px);
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.35);
+}
+.mb-rung.failed {
+  opacity: 0.15;
+}
+.mb-rung.passed {
+  opacity: 1;
+  /* green verdict stacks inside the white ring */
+  box-shadow:
+    inset 0 0 0 3px color-mix(in srgb, var(--mb-green) 60%, transparent),
+    0 0 18px color-mix(in srgb, var(--mb-green) 45%, transparent);
+}
+
+/* hybrid: the local body triages, the sealed surface takes the hard tail */
+.mb-hybrid {
+  position: relative;
+  width: 260px;
+  height: 120px;
+}
+.mb-hybrid-local {
+  position: absolute;
+  left: 88px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+}
+.mb-hybrid-remote {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  grid-template-columns: repeat(2, 16px);
+  grid-auto-rows: 16px;
+  gap: 5px;
+}
+.mb-hybrid-remote i,
+.mb-distill-teacher i,
+.mb-promote-body.incumbent i {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mb-clay) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mb-clay) 55%, transparent);
+  animation: mb-tile-breathe 6.4s var(--mb-ease) infinite;
+}
+.mb-hybrid-packet {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  opacity: 0;
+}
+.mb-hybrid-packet.easy {
+  background: #fff;
+  animation: mb-hyb-easy 3.6s var(--mb-ease) infinite;
+}
+.mb-hybrid-packet.hard {
+  background: var(--mb-clay);
+  animation: mb-hyb-hard 3.6s var(--mb-ease) infinite;
+  animation-delay: 450ms;
+}
+@keyframes mb-hyb-easy {
+  0% {
+    transform: translate(0, -50%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  70% {
+    transform: translate(92px, -50%);
+    opacity: 0.9;
+  }
+  82%,
+  100% {
+    transform: translate(104px, -50%);
+    opacity: 0;
+  }
+}
+@keyframes mb-hyb-hard {
+  0% {
+    transform: translate(0, -50%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  40% {
+    transform: translate(100px, calc(-50% - 34px));
+  }
+  80% {
+    transform: translate(206px, -50%);
+    opacity: 0.9;
+  }
+  92%,
+  100% {
+    transform: translate(214px, -50%);
+    opacity: 0;
+  }
+}
+
+/* seeded env: a bounded world, the same run every time */
+.mb-env {
+  position: relative;
+  width: 170px;
+  height: 120px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+}
+.mb-env-agent {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 255, 255, 0.3)
+  );
+  animation: mb-env-run 7s var(--mb-ease) infinite;
+}
+@keyframes mb-env-run {
+  0% {
+    left: 12px;
+    top: 92px;
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  25% {
+    left: 12px;
+    top: 16px;
+  }
+  50% {
+    left: 76px;
+    top: 16px;
+  }
+  75% {
+    left: 76px;
+    top: 78px;
+  }
+  92% {
+    left: 140px;
+    top: 78px;
+    opacity: 1;
+  }
+  100% {
+    left: 140px;
+    top: 78px;
+    opacity: 0;
+  }
+}
+
+/* distill: sealed teacher streams, open student takes the color */
+.mb-distill {
+  position: relative;
+  width: 250px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+.mb-distill-teacher {
+  display: grid;
+  grid-template-columns: repeat(2, 20px);
+  grid-auto-rows: 20px;
+  gap: 6px;
+}
+.mb-distill-dash {
+  position: absolute;
+  left: 64px;
+  top: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--mb-clay);
+  opacity: 0;
+  animation: mb-distill-flow 2.8s var(--mb-ease) infinite;
+  animation-delay: calc(var(--i) * 500ms);
+}
+@keyframes mb-distill-flow {
+  0% {
+    transform: translate(0, calc(var(--jitter) * 1px));
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.9;
+  }
+  80% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(118px, 0);
+    opacity: 0;
+  }
+}
+.mb-distill-student {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  /* the teacher's clay stacks in as an inner ring — the circle stays */
+  animation: mb-distill-take 11s var(--mb-ease) infinite;
+}
+@keyframes mb-distill-take {
+  0% {
+    box-shadow: inset 0 0 0 0
+      color-mix(in srgb, var(--mb-clay) 85%, transparent);
+  }
+  70%,
+  92% {
+    box-shadow: inset 0 0 0 5px
+      color-mix(in srgb, var(--mb-clay) 85%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0
+      color-mix(in srgb, var(--mb-clay) 85%, transparent);
+  }
+}
+
+/* compress / qat: same light, smaller body */
+.mb-compress {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  animation: mb-compress 8s var(--mb-ease) infinite;
+}
+@keyframes mb-compress {
+  0%,
+  15% {
+    transform: scale(1);
+    box-shadow: 0 0 22px rgba(255, 255, 255, 0.25);
+  }
+  45%,
+  80% {
+    transform: scale(0.6);
+    /* light stays constant while the body shrinks */
+    box-shadow: 0 0 38px rgba(255, 255, 255, 0.42);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 22px rgba(255, 255, 255, 0.25);
+  }
+}
+
+/* promote: traffic goes to the stage; the understudy takes it */
+.mb-promote {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.mb-promote-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 110px;
+  height: 110px;
+  margin: -55px 0 0 -55px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+.mb-promote-wing {
+  position: absolute;
+  right: 16%;
+  top: 12%;
+}
+.mb-promote-packet {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #fff;
+  opacity: 0;
+  animation: mb-promote-packet 2.4s var(--mb-ease) infinite;
+}
+@keyframes mb-promote-packet {
+  0% {
+    transform: translate(-320px, -50%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.85;
+  }
+  85% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-64px, -50%);
+    opacity: 0;
+  }
+}
+.mb-promote-body {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+.mb-promote-body.incumbent {
+  display: grid;
+  grid-template-columns: repeat(2, 22px);
+  grid-auto-rows: 22px;
+  gap: 6px;
+  animation: mb-promote-a 16s var(--mb-ease) infinite;
+}
+.mb-promote-body.understudy {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgba(255, 255, 255, 0.25),
+    rgba(255, 255, 255, 0.05) 65%
+  );
+  animation: mb-promote-b 16s var(--mb-ease) infinite;
+}
+@keyframes mb-promote-a {
+  0%,
+  40% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  56%,
+  94% {
+    transform: translate(86px, -116px) scale(0.5);
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+@keyframes mb-promote-b {
+  0%,
+  40% {
+    transform: translate(70px, -130px) scale(0.5);
+    opacity: 0.7;
+  }
+  56%,
+  94% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(70px, -130px) scale(0.5);
+    opacity: 0.7;
+  }
+}
+
+/* ---------- the record: hill climb & lineage ---------- */
+.mb-frontier-seg {
+  stroke: var(--mb-green);
+  stroke-width: 1.6;
+  opacity: 0;
+  transition: opacity 500ms var(--mb-ease);
+}
+.mb-frontier-seg.on {
+  opacity: 1;
+}
+.mb-run-dot {
+  opacity: 0;
+  transition: opacity 600ms var(--mb-ease);
+}
+.mb-run-dot.on {
+  opacity: 1;
+}
+.mb-milestone {
+  fill: none;
+  stroke: var(--mb-amber);
+  stroke-width: 1.4;
+  opacity: 0;
+  transition: opacity 500ms var(--mb-ease);
+}
+.mb-milestone.on {
+  opacity: 1;
+  animation: mb-milestone-pulse 2.4s var(--mb-ease) infinite;
+}
+@keyframes mb-milestone-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px color-mix(in srgb, var(--mb-amber) 40%, transparent));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--mb-amber) 80%, transparent));
+  }
+}
+.mb-milestone-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  fill: rgba(242, 242, 240, 0.55);
+  opacity: 0;
+  transition: opacity 500ms var(--mb-ease);
+}
+.mb-milestone-label.on {
+  opacity: 1;
+}
+.mb-lin-edge {
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1;
+  opacity: 0;
+  transition: opacity 600ms var(--mb-ease);
+}
+.mb-lin-edge.on {
+  opacity: 1;
+}
+.mb-lin-edge.frontier-edge {
+  stroke: color-mix(in srgb, var(--mb-green) 75%, transparent);
+  stroke-width: 1.6;
+}
+.mb-lin-node {
+  opacity: 0;
+  transition: opacity 600ms var(--mb-ease);
+}
+.mb-lin-node.on {
+  opacity: 0.4;
+}
+.mb-lin-node.on.frontier {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--mb-green) 60%, transparent));
+}
+.mb-lin-node.on.invalid {
+  opacity: 0.8;
+}
+
+/* ---------- global motion switch ---------- */
+.mb.mb-still * {
+  animation-play-state: paused !important;
+}
+
+/* ---------- manual steppers on story sketches ---------- */
+.mb-stepper {
+  display: inline-flex;
+  gap: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.mb-stepper button {
+  background: transparent;
+  border: none;
+  color: rgba(242, 242, 240, 0.6);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 160ms var(--mb-ease), color 160ms var(--mb-ease);
+}
+.mb-stepper button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2f2f0;
+}
+
+/* ---------- the workload theater ---------- */
+.mb-theater {
+  display: flex;
+  flex-direction: column;
+}
+.mb-th-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.mb-th-main {
+  display: grid;
+  grid-template-columns: 1fr 272px;
+  min-height: 420px;
+}
+.mb-th-stage {
+  position: relative;
+  overflow: hidden;
+}
+.mb-th-ring {
+  top: 46%;
+}
+.mb-th-body {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  transition: left 900ms var(--mb-ease), top 900ms var(--mb-ease),
+    transform 900ms var(--mb-ease), opacity 900ms var(--mb-ease);
+}
+.mb-th-body.at-stage {
+  left: 50%;
+  top: 46%;
+}
+.mb-th-body.at-wing {
+  left: 78%;
+  top: 20%;
+  transform: translate(-50%, -50%) scale(0.6);
+  opacity: 0.65;
+}
+.mb-th-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, 24px);
+  grid-auto-rows: 24px;
+  gap: 6px;
+}
+.mb-th-tiles i {
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--mb-clay) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mb-clay) 55%, transparent);
+  animation: mb-tile-breathe 6.4s var(--mb-ease) infinite;
+}
+.mb-th-orb {
+  width: 60px;
+  height: 60px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  /* family hue rides as a stacked inner ring, white stays the body */
+  box-shadow: inset 0 0 0 4px
+    color-mix(in srgb, var(--mb-amber) 75%, transparent);
+  animation: mb-breathe 5.2s var(--mb-ease) infinite;
+}
+.mb-th-packet {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  opacity: 0;
+  z-index: 1;
+}
+.mb-th-packet.to-stage {
+  animation: mb-th-to-stage 4.4s var(--mb-ease) infinite;
+}
+.mb-th-packet.to-wing {
+  animation: mb-th-to-wing 4.4s var(--mb-ease) infinite;
+}
+@keyframes mb-th-to-stage {
+  0% {
+    left: 2%;
+    top: 46%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  /* absorbed at the body's edge — the dot never crosses the model */
+  76% {
+    left: 40%;
+    top: 46%;
+    opacity: 0.9;
+  }
+  88%,
+  100% {
+    left: 44%;
+    top: 46%;
+    opacity: 0;
+  }
+}
+/* processed output: a new, smaller square emerges on the far side */
+.mb-th-out {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--mb-clay);
+  opacity: 0;
+  z-index: 1;
+  animation: mb-th-out 4.4s var(--mb-ease) infinite;
+}
+@keyframes mb-th-out {
+  0%,
+  46% {
+    left: 56%;
+    top: 46%;
+    transform: rotate(0deg);
+    opacity: 0;
+  }
+  56% {
+    opacity: 0.85;
+  }
+  92% {
+    left: 94%;
+    top: 46%;
+    transform: rotate(180deg);
+    opacity: 0.85;
+  }
+  100% {
+    left: 95%;
+    top: 46%;
+    opacity: 0;
+  }
+}
+@keyframes mb-th-to-wing {
+  0% {
+    left: 2%;
+    top: 46%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  55% {
+    left: 45%;
+    top: 32%;
+  }
+  92% {
+    left: 77%;
+    top: 21%;
+    opacity: 0.9;
+  }
+  100% {
+    left: 78%;
+    top: 20%;
+    opacity: 0;
+  }
+}
+.mb-th-overlay {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  z-index: 4;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+  backdrop-filter: blur(4px);
+}
+.mb-th-overlay.wide {
+  right: 18px;
+  display: grid;
+  place-items: center;
+}
+.mb-th-overlay.scores {
+  display: grid;
+  gap: 8px;
+  min-width: 240px;
+}
+.mb-th-scorebox {
+  display: grid;
+  gap: 4px;
+}
+.mb-th-scorebox .mb-ab-score {
+  width: 100%;
+}
+.mb-th-scorebox .mb-ab-score i {
+  transition: width 400ms var(--mb-ease);
+}
+/* the understudy wrapper: the halo persona itself, expanded around the
+   sealed colony like the 01 baseline figure — traffic enters here,
+   capture happens here, tint = rows accumulated (white → cyan) */
+.mb-th-wraphost {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.mb-th-wraphost .mb-tiles {
+  transition: transform 700ms var(--mb-ease);
+}
+.mb-th-wraphost.wrapped {
+  width: 235px;
+  height: 235px;
+}
+.mb-th-wraphost.wrapped .mb-tiles {
+  transform: scale(0.62);
+}
+.mb-th-wraphalo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.mb-th-body > .mb-caption {
+  white-space: nowrap;
+}
+/* captured row: a cyan tick relayed down toward the eval tray */
+.mb-th-cap {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 1.5px;
+  background: var(--mb-cyan);
+  opacity: 0;
+  z-index: 1;
+  animation: mb-th-cap 4.4s var(--mb-ease) infinite;
+}
+@keyframes mb-th-cap {
+  0%,
+  50% {
+    left: 56%;
+    top: 48%;
+    opacity: 0;
+  }
+  60% {
+    opacity: 0.9;
+  }
+  92% {
+    left: 10%;
+    top: 80%;
+    opacity: 0.8;
+  }
+  100% {
+    left: 9%;
+    top: 82%;
+    opacity: 0;
+  }
+}
+/* gateway switch bank */
+.mb-sw {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  transition: opacity 200ms var(--mb-ease);
+}
+.mb-sw.disabled {
+  opacity: 0.35;
+}
+.mb-sw-knob {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 200ms var(--mb-ease);
+}
+.mb-sw-knob::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  transition: left 200ms var(--mb-ease), background 200ms var(--mb-ease);
+}
+.mb-sw-knob.on {
+  border-color: var(--mb-green);
+}
+.mb-sw-knob.on::after {
+  left: 18px;
+  background: var(--mb-green);
+}
+.mb-sw-knob:disabled {
+  cursor: default;
+}
+/* generation ≥ 1 incumbent: an open ring on the stage */
+.mb-th-inc-circle {
+  width: 74px;
+  height: 74px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: transparent;
+  animation: mb-breathe 5.2s var(--mb-ease) infinite;
+  transition: border-color 600ms var(--mb-ease);
+}
+/* round responses out of a round incumbent */
+.mb-th-out.round {
+  border-radius: 999px;
+}
+/* shadow understudy orbit (outer div positions, inner div spins) */
+.mb-th-orbitpos {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 330px;
+  height: 330px;
+  margin: -165px 0 0 -165px;
+  pointer-events: none;
+  z-index: 3;
+}
+.mb-th-orbitspin {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: mb-orbit 22s linear infinite;
+}
+.mb-th-trainee {
+  position: absolute;
+  top: 4%;
+  right: 8%;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  background: transparent;
+  transition: border-color 600ms var(--mb-ease);
+}
+/* the stream radiating out to the orbit */
+.mb-th-feed {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--mb-cyan);
+  opacity: 0;
+  z-index: 2;
+  animation: mb-th-feed 3.4s var(--mb-ease) infinite;
+}
+@keyframes mb-th-feed {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.9;
+  }
+  80% {
+    transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy)))
+      scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy)))
+      scale(0.6);
+    opacity: 0;
+  }
+}
+/* the store */
+.mb-th-store {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  z-index: 4;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.mb-th-store .mb-capture {
+  grid-template-columns: repeat(8, 10px);
+  grid-auto-rows: 10px;
+  gap: 4px;
+  padding: 7px;
+}
+/* the wing: retired incumbents */
+.mb-th-retired {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mb-th-retired i.sq {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--mb-clay) 25%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mb-clay) 60%, transparent);
+}
+.mb-th-retired i.ring {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  opacity: 0.65;
+}
+.mb-th-rail {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mb-th-job {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: rgba(242, 242, 240, 0.75);
+  font: inherit;
+  transition: background 160ms var(--mb-ease), border-color 160ms var(--mb-ease);
+}
+.mb-th-job.active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f2f2f0;
+}
+.mb-th-job-n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.mb-th-job.done .mb-th-job-n {
+  color: var(--mb-green);
+  border-color: color-mix(in srgb, var(--mb-green) 60%, transparent);
+}
+.mb-th-job-title {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mb-th-job-sub {
+  display: block;
+  font-size: 11px;
+  color: rgba(242, 242, 240, 0.4);
+  margin-top: 2px;
+}
+.mb-th-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 56px;
+}
+.mb-th-btn {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f2f2f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 160ms var(--mb-ease);
+}
+.mb-th-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+.mb-th-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.mb-th-btn.primary {
+  border-color: var(--mb-amber);
+  color: var(--mb-amber);
+}
+.mb-th-slider {
+  width: 240px;
+  accent-color: var(--mb-amber);
+}
+.mb-rung-btn {
+  cursor: pointer;
+  padding: 0;
+}
+.mb-rung-btn:disabled {
+  cursor: default;
+}
+
+/* ---------- storyboard ---------- */
+.mb-sb-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 340px;
+}
+.mb-sb-frame {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 18px;
+}
+.mb-sb-frame.split {
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: 0;
+}
+.mb-sb-persona {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.mb-sb-stamp {
+  grid-area: 1 / 1;
+  width: 110px;
+  height: 110px;
+  object-fit: contain;
+  opacity: 0.05;
+}
+.mb-sb-halo {
+  grid-area: 1 / 1;
+  width: 190px;
+  height: 190px;
+}
+.mb-sb-chatbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 340px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: rgba(242, 242, 240, 0.4);
+}
+.mb-sb-traces {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.mb-sb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: rgba(242, 242, 240, 0.6);
+  opacity: 0;
+  animation: mb-sb-enter 600ms var(--mb-ease) forwards;
+  animation-delay: calc(var(--i) * 180ms);
+}
+.mb-sb-row-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  flex: none;
+}
+.mb-sb-row.chip {
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--mb-amber) 55%, transparent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: var(--mb-amber);
+}
+.mb-sb-row.chip b {
+  color: var(--mb-amber);
+}
+@keyframes mb-sb-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* storyboard frame 03 borrows the full tilefield; trim its canvas */
+.mb-sb-frame .mb-tilefield {
+  height: 220px;
+}
+.mb-sb-incumbent-label {
+  position: absolute;
+  top: 18px;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+.mb-sb-processing {
+  position: absolute;
+  bottom: 16px;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+/* requests: dots that fade away as they enter the model */
+.mb-sb-in {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  z-index: 2;
+  animation: mb-sb-in 3.6s var(--mb-ease) infinite;
+}
+@keyframes mb-sb-in {
+  0% {
+    left: 6%;
+    transform: translateY(var(--jy));
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.9;
+  }
+  34% {
+    left: 37%;
+    transform: translateY(var(--jy));
+    opacity: 0.9;
+  }
+  46%,
+  100% {
+    left: 42%;
+    transform: translateY(calc(var(--jy) / 2));
+    opacity: 0;
+  }
+}
+/* processed: new smaller squares emerging on the other side */
+.mb-sb-out {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--mb-clay);
+  opacity: 0;
+  z-index: 2;
+  animation: mb-sb-out 3.6s var(--mb-ease) infinite;
+}
+@keyframes mb-sb-out {
+  0%,
+  48% {
+    left: 58%;
+    transform: translateY(calc(var(--jy) / 2)) rotate(0deg);
+    opacity: 0;
+  }
+  58% {
+    opacity: 0.85;
+  }
+  92% {
+    left: 92%;
+    transform: translateY(var(--jy)) rotate(180deg);
+    opacity: 0.85;
+  }
+  100% {
+    left: 94%;
+    transform: translateY(var(--jy)) rotate(180deg);
+    opacity: 0;
+  }
+}
+/* theater incumbent: the full colony, compacted to stage scale */
+.mb-th-body .mb-tilefield {
+  height: auto;
+}
+.mb-th-body .mb-tiles {
+  grid-template-columns: repeat(3, 24px);
+  grid-template-rows: repeat(3, 24px);
+  gap: 7px;
+}
+
+/* ---------- component ids, for storyboarding by reference ---------- */
+.mb-id {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(242, 242, 240, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+/* ---------- first run: the fork ---------- */
+.mb-doors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 18px;
+}
+.mb-door {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  padding: 26px 18px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  color: #f2f2f0;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 200ms var(--mb-ease), background 200ms var(--mb-ease);
+}
+.mb-door:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.mb-door.chosen {
+  border-color: var(--mb-amber);
+}
+.mb-door-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mb-door-glyph {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  height: 28px;
+}
+.mb-door-glyph i {
+  width: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------- the codebase, symbolically ---------- */
+.mb-cb {
+  padding: 44px 18px 14px;
+  display: grid;
+  gap: 14px;
+}
+.mb-cb-crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mb-cb-crumb-seg {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  background: transparent;
+  border: none;
+  color: rgba(242, 242, 240, 0.5);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.mb-cb-crumb-seg.here {
+  color: #f2f2f0;
+}
+/* the tree: branches open in place, nothing is replaced */
+.mb-cb-tree {
+  display: grid;
+  gap: 6px;
+}
+.mb-cb-dirrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  color: #f2f2f0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 200ms var(--mb-ease), background 200ms var(--mb-ease);
+}
+.mb-cb-dirrow:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+.mb-cb-dirrow .mb-cb-bars {
+  flex-direction: row;
+  align-items: center;
+}
+.mb-cb-caret {
+  display: inline-block;
+  font-size: 11px;
+  color: rgba(242, 242, 240, 0.5);
+  transition: transform 220ms var(--mb-ease);
+}
+.mb-cb-caret.open {
+  transform: rotate(90deg);
+}
+.mb-cb-kids {
+  margin: 6px 0 10px 14px;
+  padding-left: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  display: grid;
+  gap: 8px;
+  animation: settle 260ms var(--mb-ease);
+}
+.mb-cb-dirname,
+.mb-cb-filename {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.mb-cb-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.mb-cb-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.22);
+}
+.mb-cb-bar.llm {
+  background: color-mix(in srgb, var(--mb-clay) 75%, transparent);
+}
+.mb-cb-llmdot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--mb-clay);
+  margin-left: 5px;
+  vertical-align: 0;
+}
+.mb-cb-files {
+  display: grid;
+  gap: 10px;
+}
+.mb-cb-file {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+.mb-cb-file .mb-cb-bars {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mb-cb-eps {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mb-ep {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(242, 242, 240, 0.75);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 180ms var(--mb-ease), color 180ms var(--mb-ease),
+    box-shadow 180ms var(--mb-ease);
+}
+.mb-ep b {
+  font-weight: 600;
+  color: rgba(242, 242, 240, 0.95);
+}
+.mb-ep:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+}
+.mb-ep.iso {
+  border-color: var(--mb-amber);
+  color: var(--mb-amber);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mb-amber) 30%, transparent);
+}
+.mb-ep.cap {
+  border-color: var(--mb-cyan);
+  color: var(--mb-cyan);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mb-cyan) 25%, transparent);
+}
+.mb-cb-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb *,
+  .mb *::before,
+  .mb *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

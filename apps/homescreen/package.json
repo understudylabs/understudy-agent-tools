@@ -6,6 +6,7 @@
     "dev": "next dev -p 1420",
     "build": "next build",
     "start": "next start -p 1420",
+    "orchard:workflow-proxy": "node scripts/orchard-workflow-proxy.mjs",
     "tauri": "tauri",
     "dev:explore": "next dev -p 14300",
     "tauri:dev:explore": "UNDERSTUDY_SERVER_PORT=17791 tauri dev --config src-tauri/tauri.dev-explore.conf.json"
