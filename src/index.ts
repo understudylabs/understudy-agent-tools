@@ -52,7 +52,6 @@ import { registerBenchmarksCommand } from "./commands/benchmarks.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
 import { registerTrustCommand } from "./commands/trust.js";
 import { registerTrainingCommand } from "./commands/training.js";
-import { registerServingContractCommand } from "./commands/serving-contract.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -67,6 +66,27 @@ import { installedPackageRoot } from "./internal/package-root.js";
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
+export {
+  ARM_EVIDENCE_REQUIRED_FIELDS,
+  ARM_EVIDENCE_SCHEMA_VERSION,
+  EVAL_RESULT_SCHEMA_VERSION,
+  assertArmEntryGate,
+  assertArmEvidenceRow,
+  buildArmEvidenceRow,
+  runArmEntryGate,
+  summarizeBands,
+  validateArmEvidenceRow,
+} from "./arm-evidence/index.js";
+export type {
+  ArmEntryGate,
+  ArmEntryGateSpec,
+  ArmEvidenceBand,
+  ArmEvidenceCheck,
+  ArmEvidenceIssue,
+  ArmEvidenceRow,
+  BuildArmEvidenceInput,
+  EvalResultRow,
+} from "./arm-evidence/index.js";
 
 export const repoRoot = installedPackageRoot();
 
@@ -872,7 +892,6 @@ export function buildProgram(): Command {
   registerRuntimeCommand(program);
   registerTrustCommand(program);
   registerTrainingCommand(program);
-  registerServingContractCommand(program);
 
   const understand = program
     .command("capture-evidence")

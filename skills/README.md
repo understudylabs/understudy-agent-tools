@@ -135,9 +135,6 @@ logprobs (which tokens?), and tool-trace forensics (why did this call fail?).
   models — any mix of local, gateway, or frontier — on one frozen eval and
   writes Pareto-style quality, latency, cost, reliability, and caveat artifacts
   for route decisions.
-- [`verify-serving-parity`](verify-serving-parity/SKILL.md) verifies that
-  identical weights use an aligned renderer, tool protocol, and sampler before
-  cross-lane quality comparison.
 - [`operate-benchmark-lab`](operate-benchmark-lab/SKILL.md) is the coding
   agent's operator manual for a trace-compiled benchmark directory: the
   benchmarks MCP server and CLI verbs across build → exception-based review
