@@ -153,8 +153,10 @@ lines.forEach((line, index) => {
 
   const family = task.family;
   const band = task.band ?? BANDS[family] ?? "unknown";
+  const tier = row.tier ?? "exact";
+  if (tier !== "exact" && tier !== "graded") return void fail(lineNumber, `unknown preference tier ${tier}`);
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
-  normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
+  normalized.push({ task_id: taskId, family, band, split, tier, prompt_conversation: prompt, chosen, rejected });
 });
 
 if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" });

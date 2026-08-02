@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -33,7 +33,11 @@ function runGate(rows, manifestOverrides = {}) {
     ...manifestOverrides,
   }));
   const result = spawnSync(process.execPath, [VALIDATOR, "--pairs", pairsPath, "--manifest", manifestPath, "--out", outPath], { encoding: "utf8" });
-  return { result, report: JSON.parse(result.stdout) };
+  return {
+    result,
+    report: JSON.parse(result.stdout),
+    normalized: existsSync(outPath) ? readFileSync(outPath, "utf8") : "",
+  };
 }
 
 function pair(taskId, chosen = "call A", rejected = "call B") {
@@ -42,10 +46,11 @@ function pair(taskId, chosen = "call A", rejected = "call B") {
 
 describe("workload DPO validation gate", () => {
   it("accepts a synthetic train pair and emits the trainer contract", () => {
-    const { result, report } = runGate([pair(trainTask.taskId)]);
+    const { result, report, normalized } = runGate([pair(trainTask.taskId)]);
     assert.equal(result.status, 0);
     assert.equal(report.verdict, "pass");
     assert.equal(report.fixture_id, MEETING_ORCHESTRATOR_SUBSET.fixture_id);
+    assert.match(normalized, /"tier":"exact"/);
   });
 
   it("rejects holdout and unknown task ids", () => {
@@ -152,5 +157,33 @@ describe("outcome-changing DPO mining", () => {
     assert.equal(mined[0].rejected.length, 1);
     assert.match(mined[0].chosen[0].content, /POST/);
     assert.match(mined[0].rejected[0].content, /finish/);
+  });
+
+  it("emits a graded tier when a band has no exact-1 rollout", () => {
+    const dir = mkdtempSync(join(tmpdir(), "wl-meeting-graded-mine-"));
+    const runPath = join(dir, "run.json");
+    const outPath = join(dir, "pairs.jsonl");
+    const manifestPath = join(dir, "manifest.json");
+    const trajectory = (action) => [
+      { role: "system", content: "system" },
+      { role: "user", content: trainTask.prompt },
+      { role: "assistant", content: action },
+    ];
+    writeFileSync(runPath, JSON.stringify({
+      split: "train",
+      fixture_id: MEETING_ORCHESTRATOR_SUBSET.fixture_id,
+      split_sha256: FROZEN_TRAIN_SHA256,
+      rows: [
+        { task_id: trainTask.taskId, sample_index: 0, score: 0.75, forbidden_effects: 0, trajectory: trajectory('{"tool":"api_fetch","arguments":{"method":"GET","url":"/meetings"}}') },
+        { task_id: trainTask.taskId, sample_index: 1, score: 0.25, forbidden_effects: 0, trajectory: trajectory('{"tool":"finish"}') },
+      ],
+    }));
+    const result = spawnSync(process.execPath, [MINER, "--run", runPath, "--out", outPath, "--manifest", manifestPath], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.pair_count, 1);
+    assert.deepEqual(report.tier_counts, { graded: 1 });
+    const mined = JSON.parse(readFileSync(outPath, "utf8").trim());
+    assert.equal(mined.tier, "graded");
   });
 });

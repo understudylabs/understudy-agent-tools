@@ -81,7 +81,9 @@ for (const row of run.rows) {
 
 const candidates = [];
 let droppedCosmetic = 0;
+const allBands = new Set();
 for (const [taskId, rows] of byTask) {
+  allBands.add(getTask(taskId).band);
   const chosen = rows.filter((row) => row.score === 1 && (row.forbidden_effects ?? 0) === 0 && assistantMessages(row));
   const rejected = rows.filter((row) =>
     assistantMessages(row) &&
@@ -101,6 +103,7 @@ for (const [taskId, rows] of byTask) {
         chosen: winner,
         rejected: loser,
         divergence,
+        tier: "exact",
         band: task.band,
       });
     }
@@ -131,7 +134,45 @@ while (progress) {
   }
 }
 
-const lines = selected.map(({ task, divergence }) => JSON.stringify({
+// If a band has no exact-1 preference signal, retain a documented graded tier:
+// the highest-scoring zero-forbidden rollout beats a strictly lower sibling.
+const selectedBands = new Set(selected.map((candidate) => candidate.band));
+for (const band of allBands) {
+  if (selectedBands.has(band)) continue;
+  for (const [taskId, rows] of byTask) {
+    const task = getTask(taskId);
+    if (task.band !== band) continue;
+    const eligible = rows
+      .filter((row) => typeof row.score === "number" && (row.forbidden_effects ?? 0) === 0 && assistantMessages(row))
+      .sort((left, right) => right.score - left.score);
+    if (eligible.length < 2 || eligible[0].score <= eligible[1].score) continue;
+    const winner = eligible[0];
+    const loser = eligible.find((row) => row.score < winner.score);
+    if (!loser) continue;
+    if (canonical(effectiveSequence(winner)) === canonical(effectiveSequence(loser))) {
+      droppedCosmetic += 1;
+      continue;
+    }
+    const divergence = firstDivergence(winner, loser);
+    if (!divergence?.chosen || !divergence.rejected) continue;
+    candidates.push({ task, chosen: winner, rejected: loser, divergence, tier: "graded", band });
+  }
+}
+
+const fallbackBands = new Set(candidates.filter((candidate) => candidate.tier === "graded").map((candidate) => candidate.band));
+
+const selectedWithTier = [...selected];
+for (const band of fallbackBands) {
+  const bucket = candidates.filter((candidate) => candidate.tier === "graded" && candidate.band === band);
+  const count = new Map();
+  for (const candidate of bucket) {
+    const taskCount = count.get(candidate.task.taskId) ?? 0;
+    if (taskCount >= maxPerTask) continue;
+    count.set(candidate.task.taskId, taskCount + 1);
+    selectedWithTier.push(candidate);
+  }
+}
+const lines = selectedWithTier.map(({ task, divergence, tier }) => JSON.stringify({
   task_id: task.taskId,
   family: task.family,
   band: task.band,
@@ -139,6 +180,7 @@ const lines = selected.map(({ task, divergence }) => JSON.stringify({
   prompt_conversation: divergence.prompt,
   chosen: [divergence.chosen],
   rejected: [divergence.rejected],
+  tier,
 }));
 const body = `${lines.length ? `${lines.join("\n")}\n` : ""}`;
 const pairsSha256 = createHash("sha256").update(body).digest("hex");
@@ -149,9 +191,10 @@ const manifest = {
   fixture_id: run.fixture_id ?? "meeting-orchestrator-shapes-offline-v1",
   train_split_sha256: run.split_sha256,
   pairs_sha256: pairsSha256,
-  pair_count: selected.length,
+  pair_count: selectedWithTier.length,
   dropped_cosmetic_only: droppedCosmetic,
-  band_counts: Object.fromEntries(selected.reduce((counts, row) => counts.set(row.band, (counts.get(row.band) ?? 0) + 1), new Map())),
+  band_counts: Object.fromEntries(selectedWithTier.reduce((counts, row) => counts.set(row.band, (counts.get(row.band) ?? 0) + 1), new Map())),
+  tier_counts: Object.fromEntries(selectedWithTier.reduce((counts, row) => counts.set(row.tier, (counts.get(row.tier) ?? 0) + 1), new Map())),
 };
 
 mkdirSync(dirname(pairsPath), { recursive: true });

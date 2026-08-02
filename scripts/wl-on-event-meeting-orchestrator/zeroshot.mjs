@@ -49,6 +49,7 @@ const model = argValue("--model");
 if (!model) throw new Error("--model is required");
 const split = argValue("--split", "dev");
 const limit = Number(argValue("--limit", "0")) || 0;
+const offset = Math.max(0, Number(argValue("--offset", "0")) || 0);
 const stride = Number(argValue("--stride", "1")) || 1;
 const concurrency = Math.min(4, Math.max(1, Number(argValue("--concurrency", "4")) || 4));
 const maxTurns = Number(argValue("--max-turns", "14"));
@@ -57,7 +58,8 @@ const temperature = Number(argValue("--temperature", "0"));
 // many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "512"));
-const requestTimeoutMs = 180_000;
+const requestTimeoutSeconds = Math.max(1, Number(argValue("--request-timeout-seconds", "180")) || 180);
+const requestTimeoutMs = requestTimeoutSeconds * 1000;
 const baseUrls = argValues("--base-url");
 if (baseUrls.length === 0) baseUrls.push("https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
@@ -76,7 +78,7 @@ const pool = taskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined }
 // Reporting-only difficulty band per family; scoring never reads it.
 const BANDS = taskBands();
 const strided = pool.filter((_task, index) => index % stride === 0);
-const tasks = limit > 0 ? strided.slice(0, limit) : strided;
+const tasks = limit > 0 ? strided.slice(offset, offset + limit) : strided.slice(offset);
 
 const SYSTEM = [
   "You operate business apps through two tools.",
@@ -262,6 +264,7 @@ async function main() {
     benchmark_id: MEETING_ORCHESTRATOR_SUBSET.benchmark_id,
     split_sha256: splitSha256(split),
     pool_size: pool.length,
+    offset,
     sampled: tasks.length * samples,
     samples,
     seed,
