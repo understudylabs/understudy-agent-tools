@@ -284,7 +284,7 @@ function sendDraft(draftId: string): ToolCall {
 // --- Task families -----------------------------------------------------------
 
 /** One authored task before it is stamped with an id and a split. */
-type CaseDraft = { prompt: string; state: WorldState; assertions: Assertion[]; allowedWrites: string[]; oracle: ToolCall[] };
+export type CaseDraft = { prompt: string; state: WorldState; assertions: Assertion[]; allowedWrites: string[]; oracle: ToolCall[] };
 
 type Family = {
   slug: string;
@@ -566,6 +566,8 @@ const SPLIT_BY_INSTANCE: Split[] = ["train", "train", "train", "train", "dev", "
  */
 export const TASKS: Task[] = buildTasks();
 
+const AUGMENTED_TASKS = new Map<string, Task>();
+
 function buildTasks(): Task[] {
   const tasks: Task[] = [];
   FAMILIES.forEach((family, familyIndex) => {
@@ -591,6 +593,24 @@ export function taskBands(): Record<string, Family["band"]> {
   return Object.fromEntries(FAMILIES.map((family) => [family.slug, family.band]));
 }
 
+/** Family slugs in the frozen authoring order. */
+export function familySlugs(): string[] {
+  return FAMILIES.map((family) => family.slug);
+}
+
+/** Author one family case without changing the frozen task table. */
+export function authorFamilyCase(slug: string, instance: number, offset: number): CaseDraft {
+  const family = FAMILIES.find((candidate) => candidate.slug === slug);
+  if (!family) throw new Error(`unknown task family: ${slug}`);
+  if (!Number.isInteger(instance) || instance < 0 || instance >= INSTANCES_PER_FAMILY) {
+    throw new Error(`family instance must be an integer from 0 to ${INSTANCES_PER_FAMILY - 1}`);
+  }
+  if (!Number.isInteger(offset) || offset < 0 || offset >= PERSONAS.length) {
+    throw new Error(`persona offset must be an integer from 0 to ${PERSONAS.length - 1}`);
+  }
+  return family.build(instance, offset);
+}
+
 /** Task counts per split, computed from the fixture rather than hard-coded. */
 export function splitCounts(): Record<Split, number> {
   return TASKS.reduce(
@@ -601,8 +621,43 @@ export function splitCounts(): Record<Split, number> {
 
 export function getTask(taskId: string): Task {
   const task = TASKS.find((candidate) => candidate.taskId === taskId);
-  if (!task) throw new Error(`unknown task_id: ${taskId}`);
-  return task;
+  if (task) return task;
+  const augmented = AUGMENTED_TASKS.get(taskId);
+  if (!augmented) throw new Error(`unknown task_id: ${taskId}`);
+  return augmented;
+}
+
+/** Canonical content hash used for frozen/augmented contamination checks. */
+export function taskContentSha256(task: Task): string {
+  return sha256({
+    prompt: task.prompt,
+    initialState: task.initialState,
+    assertions: task.assertions,
+    allowedWrites: task.allowedWrites,
+    oracle: task.oracle,
+  });
+}
+
+/** Register synthetic train-only tasks for the in-process environment. */
+export function registerAugmentedTasks(tasks: Task[]): void {
+  const frozenIds = new Set(TASKS.map((task) => task.taskId));
+  const frozenHashes = new Set(TASKS.map(taskContentSha256));
+  const seenIds = new Set(AUGMENTED_TASKS.keys());
+  const seenHashes = new Set([...AUGMENTED_TASKS.values()].map(taskContentSha256));
+  for (const task of tasks) {
+    if (task.split !== "train") throw new Error(`augmented task must be train-only: ${task.taskId}`);
+    if (frozenIds.has(task.taskId) || seenIds.has(task.taskId)) throw new Error(`augmented task id collides: ${task.taskId}`);
+    const contentHash = taskContentSha256(task);
+    if (frozenHashes.has(contentHash) || seenHashes.has(contentHash)) throw new Error(`augmented task content collides: ${task.taskId}`);
+    seenIds.add(task.taskId);
+    seenHashes.add(contentHash);
+  }
+  for (const task of tasks) AUGMENTED_TASKS.set(task.taskId, task);
+}
+
+/** Clear the process-local augmented task registry. */
+export function clearAugmentedTasks(): void {
+  AUGMENTED_TASKS.clear();
 }
 
 // ---------------------------------------------------------------------------
