@@ -24,6 +24,12 @@ only subset with enough evidence to model faithfully.
 The tasks, apps, and records here are **synthetic**. This is not the upstream
 Zapier dataset and must never be reported as an upstream AutomationBench score.
 
+> **v2 exists.** Strong bases now finish this fixture zero-shot, so it can no
+> longer rank them. The hard split
+> ([`docs/automationbench-v2-hard-split.md`](automationbench-v2-hard-split.md))
+> keeps every task below byte-identical and adds 144 join-first tasks. Use v2
+> to rank; this page stays the contract for the v1 pool and its hashes.
+
 ## Pins
 
 | Pin | Value |
