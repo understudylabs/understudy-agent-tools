@@ -1,0 +1,14 @@
+{
+  "status": "superseded",
+  "reason": "The original Cedar experiment used a fixture whose write representations were not discoverable from the candidate-visible catalog and included calibration-sensitive exact string writes.",
+  "superseded_by": "63e6bae",
+  "do_not_report": true,
+  "holdout_results_void": true,
+  "historical_artifacts_retained": true,
+  "diagnostic_evidence": {
+    "oracle_http_round_trip_non_holdout_tasks": "60/60 reward 1.0",
+    "base_train_successful_http_writes": 2,
+    "base_train_fractional_reward_rows": 0,
+    "base_train_parse_error_rate": 0
+  }
+}
