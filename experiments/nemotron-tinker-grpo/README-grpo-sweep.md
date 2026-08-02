@@ -221,8 +221,26 @@ and no local Node RL-service process remained. The installed Tinker resource
 surface provides no session stop/delete operation; re-query confirmed all
 retained checkpoint resources remain discoverable.
 
+### How solid is the selection?
+
+Not very, and the artifacts say so. The stress metric draws 48 samples per
+candidate (12 dev tasks x 4), so one sample is 0.020833 of the mean. Rank 16 /
+60 (1.000000) beats rank 16 / 30 (0.951389) by 2.3 samples and rank 32 / 40
+(0.979167) by 1.0 sample — inside the noise this fixture can resolve. The
+preregistered rule picked a point, but the honest reading is that every GRPO
+checkpoint from step 20 onward is statistically indistinguishable, and the
+sealed holdout (1.000000) would very likely be the same for several of them.
+
 ### Rule of thumb
 
-On this saturated 12-task fixture, do enough RL to reach the stress peak
-(about 60 steps for rank 16); beyond that, additional steps have diminishing
-returns and should require a larger or harder dev set to justify their cost.
+Averaged over both ranks, the stress curve goes 0.889 (step 10) -> 0.929 (20)
+-> 0.943 (30) -> 0.953 (40) -> 0.976 (60) -> 0.979 (80), from an SFT warm start
+at 0.785. So roughly 80% of GRPO's lift is already banked by step 10-20, and
+steps 40-80 buy about +0.03 — at or below the noise floor. Doubling LoRA rank
+from 16 to 32 bought nothing at any step.
+
+Rule of thumb: with a warm-started small model on a narrow tool-use task,
+budget GRPO at roughly 5 passes over the training set (here ~20-40 steps at 64
+rollouts/step over 48 tasks) and keep rank at 16; stop when the dev metric
+stops moving by more than one dev sample, and if dev is already saturated,
+spend the budget on a harder dev set instead of more RL steps.
