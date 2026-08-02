@@ -125,7 +125,7 @@ test("population scaling changes counts and dollars, not sample statistics", () 
   assert.equal(scaled.workloads[0].factors.repeatability, base.workloads[0].factors.repeatability);
   assert.equal(scaled.workloads[0].raw.structured_output_share, base.workloads[0].raw.structured_output_share);
   assert.equal(scaled.workloads[0].projected_savings_usd.optimistic, base.workloads[0].projected_savings_usd.optimistic * 10);
-  assert.match(renderRepairReport(scaled), /projected from an 10\.000% uniform sample/);
+  assert.match(renderRepairReport(scaled), /projected from a 10\.000% uniform sample/);
 });
 
 test("repair-targets CLI writes the queue and markdown artifacts", () => {
