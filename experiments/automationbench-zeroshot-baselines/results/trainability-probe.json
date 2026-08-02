@@ -1,0 +1,85 @@
+{
+  "probe": "gradient-lane-availability",
+  "generated_at": "2026-08-02T00:15:00Z",
+  "method": "live provider APIs only; no documentation-only claims. Fireworks serverless training attach via fireworks-ai==1.2.5 FiretitanServiceClient against https://api.fireworks.ai/training/v1/serverless, Fireworks managed LoRA SFT via POST /v1/accounts/understudy-dev/supervisedFineTuningJobs, Tinker via tinker==0.24.0 create_lora_training_client.",
+  "models": [
+    {
+      "model": "kimi-k3",
+      "family": "Moonshot Kimi",
+      "open_weight": true,
+      "fireworks_catalog": { "state": "READY", "supportsLora": true, "supervisedLoraTunable": true, "rlTunable": false, "rlLoraTunable": false },
+      "fireworks_serverless_training": {
+        "result": "attached",
+        "attach_seconds": 1.671,
+        "forward_backward_seconds": 35.965,
+        "optim_step_seconds": 0.9,
+        "loss_metric_keys": ["loss:sum", "total_tokens:sum", "dp_sharded_counts:min", "dp_sharded_counts:max", "local_input_sequences:sum", "response_tokens"],
+        "primitives": ["forward_backward", "optim_step", "save_weights_for_sampler"]
+      },
+      "fireworks_managed_lora_sft": { "result": "JOB_STATE_RUNNING", "job_deleted": true },
+      "tinker": { "result": "not in catalog for K3; moonshotai/Kimi-K2.6 is supported", "kimi_k2_6_attach_seconds": 1.23, "kimi_k2_6_forward_backward_seconds": 27.767, "kimi_k2_6_optim_step_seconds": 2.175 },
+      "verdict": "TRAINABLE"
+    },
+    {
+      "model": "glm-5p2",
+      "family": "Zhipu GLM",
+      "open_weight": true,
+      "fireworks_catalog": { "state": "READY", "supportsLora": false, "supervisedLoraTunable": false, "rlTunable": false, "rlLoraTunable": false },
+      "fireworks_serverless_training": { "result": "rejected", "error": "create_model: no eligible shared trainer found for base model accounts/fireworks/models/glm-5p2" },
+      "fireworks_managed_lora_sft": { "result": "rejected", "error": "base_model accounts/fireworks/models/glm-5p2 is not supported for training. GLM-5.2 training requires the FP8 checkpoint; use accounts/fireworks/models/glm-5p2-fp8 instead." },
+      "tinker": { "result": "rejected", "error": "base_model zai-org/GLM-5 is not supported" },
+      "verdict": "TRAINABLE via the FP8 checkpoint sibling (accounts/fireworks/models/glm-5p2-fp8), not via this model ID"
+    },
+    {
+      "model": "glm-5p2-fp8",
+      "family": "Zhipu GLM",
+      "open_weight": true,
+      "fireworks_catalog": { "state": "READY", "supportsLora": true, "supervisedLoraTunable": true, "rlTunable": false, "rlLoraTunable": false },
+      "fireworks_serverless_training": { "result": "rejected", "error": "create_model: no eligible shared trainer found for base model accounts/fireworks/models/glm-5p2-fp8" },
+      "fireworks_managed_lora_sft": { "result": "JOB_STATE_RUNNING", "job_deleted": true },
+      "tinker": { "result": "not in catalog" },
+      "inference": { "result": "404 NOT_FOUND on serverless chat completions; training-only checkpoint" },
+      "verdict": "TRAINABLE (Fireworks managed LoRA SFT)"
+    },
+    {
+      "model": "glm-5p1",
+      "family": "Zhipu GLM",
+      "open_weight": true,
+      "fireworks_catalog": { "state": "READY", "supportsLora": true, "supervisedLoraTunable": true, "rlTunable": false, "rlLoraTunable": true },
+      "fireworks_serverless_training": { "result": "rejected", "error": "create_model: no eligible shared trainer found for base model accounts/fireworks/models/glm-5p1" },
+      "fireworks_managed_lora_sft": { "result": "JOB_STATE_RUNNING", "job_deleted": true },
+      "tinker": { "result": "not in catalog" },
+      "inference": { "result": "404 NOT_FOUND on serverless chat completions" },
+      "verdict": "TRAINABLE (Fireworks managed LoRA SFT; catalog also flags rlLoraTunable)"
+    },
+    {
+      "model": "claude-sonnet-5",
+      "family": "Fable (Anthropic Claude route)",
+      "open_weight": false,
+      "fireworks_catalog": { "state": "absent" },
+      "fireworks_serverless_training": { "result": "not applicable; weights are not distributed" },
+      "fireworks_managed_lora_sft": { "result": "not applicable" },
+      "tinker": { "result": "not in catalog" },
+      "anthropic_api": { "fine_tuning_endpoints_probed": ["/v1/fine_tuning/jobs", "/v1/fine-tuning/jobs", "/v1/models/fine_tune"], "result": "404 not_found on all" },
+      "verdict": "INFERENCE-ONLY-REFERENCE"
+    }
+  ],
+  "tinker_catalog_snapshot": {
+    "sdk_version": "0.24.0",
+    "model_count": 28,
+    "kimi_entries": ["moonshotai/Kimi-K2.6", "moonshotai/Kimi-K2.6:peft:131072"],
+    "glm_entries": [],
+    "claude_entries": []
+  },
+  "fireworks_serverless_training_catalog": ["qwen3p5-9b", "qwen3p6-27b", "kimi-k3"],
+  "cleanup": {
+    "deployments_created": 0,
+    "managed_sft_jobs_created": 3,
+    "managed_sft_jobs_deleted": 3,
+    "datasets_created": 1,
+    "datasets_deleted": 1,
+    "serverless_training_runs_created": 2,
+    "serverless_training_runs_deleted": 0,
+    "serverless_training_run_delete_note": "DELETE /v1/accounts/understudy-dev/trainingRuns/<id> returns HTTP 501 and then 'Method Not Allowed'; serverless training runs are control-plane records with no deployment, trainer job, or idle cost."
+  }
+}

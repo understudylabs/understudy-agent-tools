@@ -3,7 +3,13 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { TASKS, taskPool, reset, step, finish, partialCredit, fixtureSha256, splitSha256, oraclePolicy, sentinelPolicy, rollout, taskBands, validateEvalRows } from "../dist/automationbench-offline.js";
 
-const DEFAULT_BASE_URL = "https://api.fireworks.ai/inference/v1/chat/completions";
+const PROVIDERS = {
+  fireworks: { baseUrl: "https://api.fireworks.ai/inference/v1/chat/completions", keyEnv: "FIREWORKS_API_KEY", route: "fireworks-serverless" },
+  understudy: { baseUrl: "https://api.understudylabs.com/v1/chat/completions", keyEnv: "UNDERSTUDY_API_KEY", route: "understudy-gateway" },
+  openai: { baseUrl: "https://api.openai.com/v1/chat/completions", keyEnv: "OPENAI_API_KEY", route: "openai" },
+  "understudy-anthropic": { baseUrl: "https://api.understudylabs.com/v1/messages", keyEnv: "UNDERSTUDY_API_KEY", route: "understudy-gateway-anthropic", wire: "anthropic-messages" },
+  anthropic: { baseUrl: "https://api.anthropic.com/v1/messages", keyEnv: "ANTHROPIC_API_KEY", route: "anthropic", wire: "anthropic-messages" },
+};
 const TOOL_DEFINITIONS = [
   {
     type: "function",
@@ -60,11 +66,14 @@ function parseArgs(args) {
   if (splits.some((splitName) => !["train", "dev"].includes(splitName))) throw new Error("--split accepts train or dev only; holdout is sealed");
   const mode = value(args, "--mode", "tools");
   if (!["tools", "json"].includes(mode)) throw new Error("--mode must be tools or json");
+  const provider = value(args, "--provider", "fireworks");
+  if (!Object.hasOwn(PROVIDERS, provider)) throw new Error(`--provider must be one of ${Object.keys(PROVIDERS).join(", ")}`);
   return {
     model: value(args, "--model"),
     splits: [...new Set(splits)],
-    provider: value(args, "--provider", "fireworks"),
-    baseUrl: value(args, "--base-url", DEFAULT_BASE_URL),
+    provider,
+    keyEnv: value(args, "--api-key-env", PROVIDERS[provider].keyEnv),
+    baseUrl: value(args, "--base-url", PROVIDERS[provider].baseUrl),
     concurrency: numberValue(args, "--concurrency", 4) || 1,
     limit: numberValue(args, "--limit", null),
     maxTurns: numberValue(args, "--max-turns", 12) || 1,
@@ -72,6 +81,8 @@ function parseArgs(args) {
     temperature: Number(value(args, "--temperature", "0")),
     out: value(args, "--out", "automationbench-zeroshot-baseline.json"),
     mode,
+    nameToolMessages: args.includes("--name-tool-messages"),
+    omitTemperature: args.includes("--omit-temperature"),
     sanity: args.includes("--sanity"),
     probeTools: args.includes("--probe-tools"),
   };
@@ -92,8 +103,37 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function anthropicBody(config, messages) {
+  const system = messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+  const turns = [];
+  for (const message of messages) {
+    if (message.role === "system") continue;
+    const role = message.role === "assistant" ? "assistant" : "user";
+    const text = String(message.content ?? "").trim();
+    if (!text) continue;
+    const previous = turns.at(-1);
+    if (previous && previous.role === role) previous.content += `\n\n${text}`;
+    else turns.push({ role, content: text });
+  }
+  const body = { model: config.model, max_tokens: config.maxTokens, messages: turns.map((turn) => ({ role: turn.role, content: [{ type: "text", text: turn.content }] })) };
+  if (!config.omitTemperature) body.temperature = config.temperature;
+  if (system) body.system = system;
+  return body;
+}
+
+function fromAnthropic(parsed) {
+  const content = (parsed.content ?? []).filter((block) => block.type === "text").map((block) => block.text).join("");
+  return {
+    choices: [{ message: { role: "assistant", content }, finish_reason: parsed.stop_reason === "max_tokens" ? "length" : "stop" }],
+    usage: { prompt_tokens: parsed.usage?.input_tokens ?? 0, completion_tokens: parsed.usage?.output_tokens ?? 0 },
+  };
+}
+
 async function request(config, messages, turn, options = {}) {
-  const body = { model: config.model, messages, temperature: config.temperature, max_tokens: config.maxTokens };
+  const wire = PROVIDERS[config.provider].wire ?? "openai-chat";
+  if (wire === "anthropic-messages") return requestAnthropic(config, messages, turn);
+  const body = { model: config.model, messages, max_tokens: config.maxTokens };
+  if (!config.omitTemperature) body.temperature = config.temperature;
   if (config.mode === "tools" || options.forceTools) body.tools = TOOL_DEFINITIONS;
   if (options.toolChoice) body.tool_choice = options.toolChoice;
   if (turn === 0) {
@@ -105,7 +145,7 @@ async function request(config, messages, turn, options = {}) {
     try {
       response = await fetch(config.baseUrl, {
         method: "POST",
-        headers: { authorization: `Bearer ${process.env.FIREWORKS_API_KEY ?? ""}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${process.env[config.keyEnv] ?? ""}`, "content-type": "application/json" },
         body: JSON.stringify(body),
       });
     } catch (error) {
@@ -139,8 +179,53 @@ async function request(config, messages, turn, options = {}) {
   throw lastError ?? new Error("provider request failed");
 }
 
-function malformedTool(name, reason) {
-  return { role: "tool", tool_call_id: `malformed-${Date.now()}-${Math.random().toString(36).slice(2)}`, content: JSON.stringify({ error: `malformed tool call${name ? ` for ${name}` : ""}: ${reason}` }) };
+async function requestAnthropic(config, messages, turn) {
+  const body = anthropicBody(config, messages);
+  if (turn === 0) console.log(`[request-shape] wire=anthropic-messages keys=${Object.keys(body).join(",")} messages=${body.messages.length}`);
+  let lastError;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(config.baseUrl, {
+        method: "POST",
+        headers: { "x-api-key": process.env[config.keyEnv] ?? "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      lastError = error;
+      if (attempt === 4) throw error;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 250 * 2 ** attempt));
+      continue;
+    }
+    const raw = await response.text();
+    if (response.status === 400 || response.status === 404) {
+      const error = new Error(`provider HTTP ${response.status}: ${raw}`);
+      error.fatalProvider = true;
+      throw error;
+    }
+    if (response.status === 429 || response.status >= 500) {
+      lastError = new Error(`provider HTTP ${response.status}: ${raw}`);
+      if (attempt === 4) throw lastError;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 1000 * 2 ** attempt));
+      continue;
+    }
+    if (!response.ok) throw new Error(`provider HTTP ${response.status}: ${raw}`);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`provider returned non-JSON response: ${raw}`);
+    }
+    if (turn === 0) console.log(`[response-shape] wire=anthropic-messages stop_reason=${parsed.stop_reason} blocks=${parsed.content?.length ?? 0}`);
+    return fromAnthropic(parsed);
+  }
+  throw lastError ?? new Error("provider request failed");
+}
+
+function malformedTool(config, name, reason) {
+  const message = { role: "tool", tool_call_id: `malformed-${Date.now()}-${Math.random().toString(36).slice(2)}`, content: JSON.stringify({ error: `malformed tool call${name ? ` for ${name}` : ""}: ${reason}` }) };
+  if (config.nameToolMessages) message.name = name || "malformed_tool_call";
+  return message;
 }
 
 function decodeNativeCall(call) {
@@ -246,7 +331,7 @@ async function runTask(config, task) {
       if (call.error) {
         malformed += 1;
         turnMalformed = true;
-        messages.push(malformedTool("", call.error));
+        messages.push(malformedTool(config, "", call.error));
         continue;
       }
       if (handle.done) break;
@@ -257,7 +342,9 @@ async function runTask(config, task) {
         error = errorMessage(stepError);
         break;
       }
-      messages.push({ role: "tool", tool_call_id: call.id, content: result.obs.messages.at(-1)?.content ?? "" });
+      const toolMessage = { role: "tool", tool_call_id: call.id, content: result.obs.messages.at(-1)?.content ?? "" };
+      if (config.nameToolMessages) toolMessage.name = call.name;
+      messages.push(toolMessage);
       if (result.done) break;
     }
     if (error || handle.done) break;
@@ -312,7 +399,7 @@ function rowFor(result, config, runId) {
     score: result.score,
     status: result.error ? "error" : "ok",
     model: config.model,
-    route: config.model.includes("#") ? "fireworks-dedicated" : "fireworks-serverless",
+    route: config.model.includes("#") ? `${config.provider}-dedicated` : PROVIDERS[config.provider].route,
     cost: { usd: null, basis: "provider-usage-not-priced" },
     benchmark_id: "automationbench-simple-api-offline",
     subscores: { forbidden_effects: result.forbidden_effects.length, steps: result.steps, malformed: result.malformed },
@@ -336,8 +423,7 @@ async function main() {
     return;
   }
   if (!config.model) throw new Error("--model is required unless --sanity is used");
-  if (config.provider !== "fireworks") throw new Error("only --provider fireworks is supported");
-  if (!process.env.FIREWORKS_API_KEY) throw new Error("FIREWORKS_API_KEY is required");
+  if (!process.env[config.keyEnv]) throw new Error(`${config.keyEnv} is required`);
   if (config.probeTools) {
     try {
       const probeResponse = await request({ ...config, mode: "tools" }, [
@@ -395,6 +481,8 @@ async function main() {
     provider: config.provider,
     base_url: config.baseUrl,
     mode: config.mode,
+    temperature: config.omitTemperature ? "omitted (rejected by model)" : config.temperature,
+    name_tool_messages: config.nameToolMessages,
     split: config.splits,
     fixture_sha256: fixtureSha256(),
     split_sha256: Object.fromEntries(config.splits.map((split) => [split, splitSha256(split)])),
