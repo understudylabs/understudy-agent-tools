@@ -1,0 +1,23 @@
+{
+  "all_clients_concurrent": true,
+  "all_rewards_one": true,
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "client_creation_seconds": {
+    "adapter_a": 0.20175869900003818,
+    "adapter_b": 0.18905730899996342,
+    "base": 0.6151943879999635
+  },
+  "request_count": 6,
+  "request_wall_clock_seconds": {
+    "adapter_a": [
+      13.63687228699996,
+      14.166790667999976,
+      30.509029663999854
+    ],
+    "adapter_b": [
+      36.53666207900005,
+      4.677971997999975,
+      11.234887748999881
+    ]
+  }
+}

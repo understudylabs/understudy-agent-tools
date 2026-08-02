@@ -1,0 +1,88 @@
+{
+  "band": "discovery",
+  "dev": {
+    "base_default": {
+      "mean_reward": 1.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "prompt_tokens": 9124,
+      "sampled_tokens": 737,
+      "strict_pass_rate": 1.0,
+      "task_count": 4
+    },
+    "selected_prompt": {
+      "mean_reward": 1.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "prompt_tokens": 9413,
+      "sampled_tokens": 694,
+      "strict_pass_rate": 1.0,
+      "task_count": 4
+    }
+  },
+  "holdout": {
+    "base_default": {
+      "mean_reward": 0.75,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.75
+        }
+      },
+      "prompt_tokens": 10507,
+      "sampled_tokens": 820,
+      "strict_pass_rate": 0.75,
+      "task_count": 4
+    },
+    "selected_prompt": {
+      "mean_reward": 0.75,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.75
+        }
+      },
+      "prompt_tokens": 11168,
+      "sampled_tokens": 742,
+      "strict_pass_rate": 0.75,
+      "task_count": 4
+    }
+  },
+  "selected_candidate": "search-first",
+  "train": {
+    "base_default": {
+      "mean_reward": 0.9375,
+      "per_band": {
+        "discovery": {
+          "count": 16,
+          "mean_reward": 0.9375
+        }
+      },
+      "prompt_tokens": 41349,
+      "sampled_tokens": 3079,
+      "strict_pass_rate": 0.9375,
+      "task_count": 16
+    },
+    "selected_prompt": {
+      "mean_reward": 0.8125,
+      "per_band": {
+        "discovery": {
+          "count": 16,
+          "mean_reward": 0.8125
+        }
+      },
+      "prompt_tokens": 42687,
+      "sampled_tokens": 2972,
+      "strict_pass_rate": 0.8125,
+      "task_count": 16
+    }
+  }
+}
