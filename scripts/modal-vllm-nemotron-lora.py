@@ -27,8 +27,13 @@ HF_SECRET = "understudy-nemotron-hf"
 AUTH_SECRET = "understudy-nemotron-vllm-auth"
 EXECUTOR_IDEMPOTENCY_DICT = "understudy-nemotron-experiment-idempotency"
 EXECUTOR_JOB_DICT = "understudy-nemotron-experiment-jobs"
+EXECUTOR_LAUNCH_CLAIM_DICT = "understudy-nemotron-experiment-launch-claims"
 H200_PRICE_PER_HOUR = 4.54
 EXECUTOR_AUTH_ENV = "VLLM_API_KEY"
+LAUNCH_ACK_GRACE_SECONDS = 60
+SCHEMA_DIRECTORY = os.environ.get(
+    "UNDERSTUDY_EXECUTOR_SCHEMA_DIRECTORY", "/opt/understudy/schemas"
+)
 
 app = modal.App(APP_NAME)
 model_cache = modal.Volume.from_name(MODEL_CACHE_VOLUME, create_if_missing=True)
@@ -37,10 +42,14 @@ idempotency_store = modal.Dict.from_name(
     EXECUTOR_IDEMPOTENCY_DICT, create_if_missing=True
 )
 job_store = modal.Dict.from_name(EXECUTOR_JOB_DICT, create_if_missing=True)
+launch_claim_store = modal.Dict.from_name(
+    EXECUTOR_LAUNCH_CLAIM_DICT, create_if_missing=True
+)
 
 image = (
     modal.Image.from_registry(VLLM_IMAGE, add_python="3.12")
     .entrypoint([])
+    .pip_install("jsonschema==4.25.1")
     .env(
         {
             "HF_HOME": "/root/.cache/huggingface",
@@ -49,10 +58,7 @@ image = (
             "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1",
         }
     )
-    .add_local_file(
-        "schemas/understudy.executor-submit.v1.schema.json",
-        "/opt/understudy/schemas/understudy.executor-submit.v1.schema.json",
-    )
+    .add_local_dir("schemas", "/opt/understudy/schemas")
 )
 
 
@@ -129,30 +135,66 @@ def authorization_valid(authorization: str | None, expected_token: str) -> bool:
     )
 
 
-def submission_action(record: dict[str, Any] | None) -> str:
+def submission_action(
+    record: dict[str, Any] | None, launch_claim_acquired: bool = False
+) -> str:
     if record is None:
         return "create_record"
-    if record.get("functionCallId"):
+    if record.get("function_call_id") or record.get("launch_state") == "launched":
         return "return_existing"
-    return "spawn"
+    if record.get("launch_state") in {"launching", "ambiguous"}:
+        return "return_ambiguous"
+    return "spawn" if launch_claim_acquired else "return_ambiguous"
+
+
+def monotonic_status(record: dict[str, Any], status: str, **updates: Any) -> dict[str, Any]:
+    current = dict(record)
+    if current.get("status") == "cancelled" and status != "cancelled":
+        return current
+    current.update({"status": status, **updates})
+    return current
+
+
+def iso_now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def job_ref(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "executor": "modal",
+        "job_id": record["job_id"],
+        "idempotency_key": record["idempotency_key"],
+        "submitted_at": record["submitted_at"],
+    }
+
+
+def _schema(name: str) -> dict[str, Any]:
+    import json
+
+    with open(f"{SCHEMA_DIRECTORY}/{name}.json", encoding="utf-8") as schema_file:
+        return json.load(schema_file)
+
+
+def _validate_payload(name: str, payload: dict[str, Any]) -> dict[str, Any]:
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    validator = Draft202012Validator(_schema(name), format_checker=FormatChecker())
+    errors = sorted(validator.iter_errors(payload), key=str)
+    if errors:
+        raise ValueError(f"payload does not match {name}")
+    return payload
 
 
 def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
-    import json
     from fastapi import HTTPException
-    from jsonschema import Draft202012Validator
 
-    with open(
-        "/opt/understudy/schemas/understudy.executor-submit.v1.schema.json",
-        encoding="utf-8",
-    ) as schema_file:
-        schema = json.load(schema_file)
-    errors = sorted(Draft202012Validator(schema).iter_errors(body), key=str)
-    if errors:
+    try:
+        _validate_payload("experiment-executor-submit-request", body)
+    except ValueError:
         raise HTTPException(
             status_code=400,
             detail="submit request does not match understudy.executor-submit.v1",
-        )
+        ) from None
     if "holdout" in body:
         raise HTTPException(status_code=400, detail="holdout context is not accepted")
     return body
@@ -163,7 +205,9 @@ def execute_experiment(job_id: str, request: dict[str, Any]) -> None:
     started = time.time()
     job = dict(job_store.get(job_id, {}))
     if job.get("status") != "cancelled":
-        job.update({"status": "running", "startedAt": started})
+        job = monotonic_status(
+            job, "running", started_at_epoch=started, observed_at=iso_now()
+        )
         job_store.put(job_id, job)
     try:
         # The deployed executor is intentionally a thin paid-work boundary.
@@ -171,17 +215,26 @@ def execute_experiment(job_id: str, request: dict[str, Any]) -> None:
         # a poller or embed provider orchestration here.
         job = dict(job_store.get(job_id, job))
         if job.get("status") != "cancelled":
-            job.update({"status": "succeeded"})
+            job = monotonic_status(job, "succeeded", observed_at=iso_now())
     except Exception as error:
         job = dict(job_store.get(job_id, job))
         if job.get("status") != "cancelled":
-            job.update({"status": "failed", "error": type(error).__name__})
+            job = monotonic_status(
+                job,
+                "failed",
+                failure_code=type(error).__name__,
+                observed_at=iso_now(),
+            )
         raise
     finally:
         finished = time.time()
         job = dict(job_store.get(job_id, job))
         if job.get("status") != "cancelled":
-            job.update({"finishedAt": finished, "durationSeconds": finished - started})
+            job.update({
+                "finished_at_epoch": finished,
+                "duration_seconds": finished - started,
+                "observed_at": iso_now(),
+            })
             job_store.put(job_id, job)
 
 
@@ -189,7 +242,9 @@ def execute_experiment(job_id: str, request: dict[str, Any]) -> None:
     image=image,
     timeout=60 * 60,
     secrets=[modal.Secret.from_name(AUTH_SECRET)],
+    max_containers=1,
 )
+@modal.concurrent(max_inputs=1)
 @modal.asgi_app()
 def executor_api() -> Any:
     from fastapi import FastAPI, Header, HTTPException
@@ -215,31 +270,86 @@ def executor_api() -> Any:
         if expected_key != idempotency_key:
             raise HTTPException(status_code=409, detail="idempotency key mismatch")
         job_id = deterministic_job_id(idempotency_key)
-        claimed = await idempotency_store.put.aio(
+        await idempotency_store.put.aio(
             idempotency_key, job_id, skip_if_exists=True
         )
         existing_job_id = await idempotency_store.get.aio(idempotency_key)
         if existing_job_id:
             job_id = existing_job_id
         record = await job_store.get.aio(job_id)
-        action = submission_action(record)
-        if action == "return_existing":
-            return {"job": job_id, "status": record.get("status", "queued")}
-        if action == "create_record":
+        if record is None:
+            submitted_at = iso_now()
             record = {
-                "job": job_id,
-                "idempotencyKey": idempotency_key,
+                "job_id": job_id,
+                "idempotency_key": idempotency_key,
+                "submitted_at": submitted_at,
                 "status": "queued",
+                "observed_at": submitted_at,
+                "artifact_refs": [],
                 "request": request,
             }
             await job_store.put.aio(job_id, record, skip_if_exists=True)
             record = await job_store.get.aio(job_id, record)
-        if submission_action(record) == "return_existing":
-            return {"job": job_id, "status": record.get("status", "queued")}
-        call = execute_experiment.spawn(job_id, request)
-        record["functionCallId"] = call.object_id
+        if record.get("idempotency_key") != idempotency_key:
+            raise HTTPException(status_code=409, detail="job id collision")
+        if record.get("function_call_id"):
+            return _validate_payload("experiment-executor-job-ref", job_ref(record))
+
+        launch_claim = {
+            "job_id": job_id,
+            "claimed_at": iso_now(),
+            "claimed_at_epoch": time.time(),
+        }
+        # Modal assigns a fresh opaque FunctionCall ID to every spawn and does
+        # not accept an idempotency key. This immutable pre-spawn claim makes
+        # paid launch at-most-once. If this process dies after claiming, a
+        # retry returns the existing job and inspect reports the ambiguous
+        # acknowledgement fail-closed; it never guesses by spawning again.
+        launch_claim_acquired = await launch_claim_store.put.aio(
+            job_id, launch_claim, skip_if_exists=True
+        )
+        action = submission_action(record, launch_claim_acquired)
+        if action != "spawn":
+            if record.get("launch_state") is None:
+                record.update({
+                    "launch_state": "ambiguous",
+                    "launch_claimed_at": (
+                        await launch_claim_store.get.aio(job_id, launch_claim)
+                    )["claimed_at"],
+                    "launch_claimed_at_epoch": (
+                        await launch_claim_store.get.aio(job_id, launch_claim)
+                    )["claimed_at_epoch"],
+                    "observed_at": iso_now(),
+                })
+                await job_store.put.aio(job_id, record)
+            return _validate_payload("experiment-executor-job-ref", job_ref(record))
+
+        record.update({
+            "launch_state": "launching",
+            "launch_claimed_at": launch_claim["claimed_at"],
+            "launch_claimed_at_epoch": launch_claim["claimed_at_epoch"],
+            "observed_at": iso_now(),
+        })
         await job_store.put.aio(job_id, record)
-        return {"job": job_id, "status": "queued"}
+        try:
+            call = await execute_experiment.spawn.aio(job_id, request)
+        except Exception:
+            record.update({
+                "status": "failed",
+                "launch_state": "ambiguous",
+                "failure_code": "launch_failed_after_claim",
+                "observed_at": iso_now(),
+            })
+            await job_store.put.aio(job_id, record)
+            raise HTTPException(status_code=503, detail="executor launch failed") from None
+        record = await job_store.get.aio(job_id, record)
+        record.update({
+            "function_call_id": call.object_id,
+            "launch_state": "launched",
+            "observed_at": iso_now(),
+        })
+        await job_store.put.aio(job_id, record)
+        return _validate_payload("experiment-executor-job-ref", job_ref(record))
 
     @api.get("/experiments/{job_id}")
     async def inspect_experiment(
@@ -250,9 +360,24 @@ def executor_api() -> Any:
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
-        public = dict(record)
-        public.pop("request", None)
-        return {"job": job_id, "status": public.get("status", "unknown")}
+        state = record.get("status", "failed")
+        failure_code = record.get("failure_code")
+        if (
+            not record.get("function_call_id")
+            and record.get("launch_claimed_at_epoch")
+            and time.time() - record["launch_claimed_at_epoch"] > LAUNCH_ACK_GRACE_SECONDS
+            and state not in {"cancelled", "failed"}
+        ):
+            state = "failed"
+            failure_code = "launch_acknowledgement_lost"
+        payload = {
+            "state": state,
+            "observed_at": iso_now(),
+            "artifact_refs": record.get("artifact_refs", []),
+        }
+        if failure_code:
+            payload["failure_code"] = failure_code
+        return _validate_payload("experiment-executor-job-status", payload)
 
     @api.delete("/experiments/{job_id}")
     async def cancel_experiment(
@@ -263,18 +388,26 @@ def executor_api() -> Any:
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
-        call_id = record.get("functionCallId")
-        if call_id:
-            modal.FunctionCall.from_id(call_id).cancel(terminate_containers=True)
-        record["status"] = "cancelled"
-        cancelled_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        record["cancelledAt"] = cancelled_at
-        await job_store.put.aio(job_id, record)
-        return {
-            "job": job_id,
-            "disposition": "cancelled",
-            "observed_at": cancelled_at,
-        }
+        observed_at = iso_now()
+        if record.get("status") in {"succeeded", "failed", "cancelled"}:
+            disposition = "already_terminal"
+        else:
+            record.update({"status": "cancelled", "observed_at": observed_at})
+            await job_store.put.aio(job_id, record)
+            call_id = record.get("function_call_id")
+            if call_id:
+                await modal.FunctionCall.from_id(call_id).cancel.aio(
+                    terminate_containers=True
+                )
+            disposition = "cancelled"
+        return _validate_payload(
+            "experiment-executor-cancellation-receipt",
+            {
+                "job": job_ref(record),
+                "disposition": disposition,
+                "observed_at": observed_at,
+            },
+        )
 
     @api.get("/experiments/{job_id}/usage")
     async def reconcile_usage(
@@ -285,28 +418,25 @@ def executor_api() -> Any:
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
-        duration = record.get("durationSeconds")
-        if duration is None and record.get("startedAt"):
-            duration = max(0.0, time.time() - record["startedAt"])
-        if duration is None:
-            return {
-                "job": job_id,
+        duration = record.get("duration_seconds")
+        if duration is None and record.get("started_at_epoch"):
+            duration = max(0.0, time.time() - record["started_at_epoch"])
+        estimated_usd = (
+            duration / 3600 * H200_PRICE_PER_HOUR if duration is not None else None
+        )
+        return _validate_payload(
+            "experiment-executor-usage-receipt",
+            {
                 "evidence_scope": "unknown",
-                "estimated_usd": None,
-                "actual_usd": None,
                 "requests": None,
-                "tokens": None,
-                "gpu_seconds": None,
-            }
-        return {
-            "job": job_id,
-            "evidence_scope": "unknown",
-            "estimated_usd": duration / 3600 * H200_PRICE_PER_HOUR,
-            "actual_usd": None,
-            "requests": None,
-            "tokens": None,
-            "gpu_seconds": duration,
-        }
+                "input_tokens": None,
+                "output_tokens": None,
+                "actual_usd": None,
+                "estimated_usd": estimated_usd,
+                "upper_bound_usd": estimated_usd,
+                "observed_at": iso_now(),
+            },
+        )
 
     return api
 

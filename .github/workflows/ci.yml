@@ -93,6 +93,11 @@ jobs:
             | sort -z \
             | xargs -0 node --test
 
+      - name: Run Modal executor contract tests
+        run: |
+          python3 -m pip install --disable-pip-version-check --user jsonschema==4.25.1
+          npm run test:modal-executor
+
   test_cli:
     name: test-cli
     runs-on: ubuntu-latest

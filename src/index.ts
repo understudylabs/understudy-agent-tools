@@ -66,6 +66,21 @@ import { installedPackageRoot } from "./internal/package-root.js";
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
+export {
+  ExecutorCancellationReceiptSchema,
+  ExecutorJobRefSchema,
+  ExecutorJobStatusSchema,
+  ExecutorUsageReceiptSchema,
+  ExperimentSubmitRequestSchema,
+  ModalExperimentExecutor,
+  type ExecutorCancellationReceipt,
+  type ExecutorJobRef,
+  type ExecutorJobStatus,
+  type ExecutorUsageReceipt,
+  type ExperimentExecutor,
+  type ExperimentRequest,
+  type ExperimentSubmitRequest,
+} from "./experiment-executor.js";
 
 export const repoRoot = installedPackageRoot();
 
