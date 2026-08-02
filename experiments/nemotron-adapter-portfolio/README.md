@@ -65,6 +65,12 @@ The frozen fixture exposes 16 discovery train tasks (not 12 as stated in the
 brief), 4 discovery dev tasks, and 4 discovery holdout tasks; all 16 train
 tasks were used.
 
+The prior-art `baseline-dev.summary.json` recorded discovery mean 0.75, while
+this fresh base-default prompt run recorded 1.0 on the same four dev tasks.
+The discrepancy is preserved rather than normalized away; it indicates
+sampling/runtime variance in repeated hosted base evaluations and is another
+reason not to claim a prompt lift from this small band.
+
 ## Tinker multi-adapter serving proof
 
 `scripts/multi_adapter_serving_demo.py` creates one Tinker `ServiceClient`
