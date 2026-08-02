@@ -1,0 +1,19 @@
+{
+  "adapter": "A",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3_disable_thinking",
+  "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+  "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000020",
+  "checkpoint_source": "origin/devin/nemotron-tinker-grpo-arm",
+  "retained_sampler_expiry": "2026-08-08T22:45:40Z",
+  "retained_state_expiry": "2026-08-08T22:45:38Z",
+  "verification": {
+    "split": "dev",
+    "task_count": 3,
+    "temperature": 0.0,
+    "loaded": true,
+    "summary_path": "artifacts/adapter-a/adapter-a-smoke-dev-3.summary.json"
+  },
+  "holdout_reused_from_prior_art": true,
+  "holdout_rerun": false
+}
