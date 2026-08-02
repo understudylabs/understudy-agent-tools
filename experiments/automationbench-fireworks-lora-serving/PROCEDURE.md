@@ -69,7 +69,8 @@ Addon requirements and limitations:
 
 - `--precision BF16` and `--disable-speculative-decoding` are both required
   when the default model shape is FP8/FP4.
-- Addon deployments do not support native tool calling.
+- Native tool calling was rejected on the addon deployment we tested (see
+  below). Not verified across bases: treat as a risk to check, not a law.
 - Use `--validate-only` as a free shape pre-check.
 - Adapter loading takes approximately 10–11 minutes.
 - The `#deployment` suffix is mandatory for LoRA inference.
@@ -111,9 +112,14 @@ invalid deployment: addons cannot be enabled with quantized precisions (FP8/FP4)
 "auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set
 ```
 
-Dedicated addon deployments expose no `firectl create deployment` flags for
-the two required native-tool settings. Native tool calls work on live-merge
-deployments, but not on addon deployments.
+`firectl create deployment` exposes no flags for either of the two required
+native-tool settings, so this could not be configured away.
+
+Evidence boundary: this error was observed on a `gemma-4-26b-a4b-it` **addon**
+deployment, while native tool calls worked with no extra flags on a `qwen3-8b`
+**live-merge** deployment. Deployment type and base model are confounded — we
+never had a working addon deployment to test in isolation. Prefer live merge
+when native tool calls are required, and verify before assuming the cause.
 
 ```text
 Internal error occurred, please contact the Fireworks AI team at https://discord.gg/fireworks-ai
