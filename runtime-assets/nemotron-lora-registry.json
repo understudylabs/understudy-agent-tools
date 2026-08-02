@@ -1,0 +1,29 @@
+{
+  "baseModel": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "adapters": {
+    "adapter-rank8": {
+      "volumePath": "/adapters/nemotron-rank8-adapter-b",
+      "baseModel": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "rank": 8,
+      "sourceTinkerRunId": "241bbbca",
+      "adapterSha256": "d3c87909c15d3e44e1a338ee0bb030c44a6a7c0f32fe42ffd1003be89e966ba5",
+      "convertedVolumePath": "/adapters/nemotron-rank8-converted",
+      "convertedAdapterSha256": "e71d28459ba0d37dec7a88a1e1fce8e221b6c583f3876fb3d3ea33cb7e2d46c5",
+      "convertedMappedFraction": 0.9741342726
+    },
+    "adapter-rank16": {
+      "volumePath": "/adapters/nemotron-rank16-sft",
+      "baseModel": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "rank": 16,
+      "sourceTinkerRunId": "50b15891",
+      "adapterSha256": "c79f79c8c1c72eb44e6e432ca8cfb4a64f6d729934fd9483f2c7278a7ef1d4f8"
+    },
+    "adapter-rank32": {
+      "volumePath": "/adapters/nemotron-rank32-final",
+      "baseModel": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "rank": 32,
+      "sourceTinkerRunId": "ebce40a2",
+      "adapterSha256": "efe8d9bdb73ebd8b5ac0fdb9d503de3b9f7c29a3325cab451e6216fe4c8d7e59"
+    }
+  }
+}

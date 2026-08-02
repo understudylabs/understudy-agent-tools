@@ -44,6 +44,7 @@ const temperature = Number(argValue("--temperature", "0"));
 // A malformed emission is always rejected (never executed); this only bounds
 // how many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
+const samples = Number(argValue("--samples", "1")) || 1;
 const maxTokens = Number(argValue("--max-tokens", "512"));
 const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
@@ -53,7 +54,9 @@ const apiKeyEnv = argValue("--api-key-env", "FIREWORKS_API_KEY");
 const includeTranscripts = process.argv.includes("--transcripts");
 const systemPrompt = systemFile ? readFileSync(systemFile, "utf8") : DEFAULT_SYSTEM;
 const systemPromptSha256 = createHash("sha256").update(systemPrompt).digest("hex");
-const apiKey = process.env[apiKeyEnv] ?? "";
+const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
+const apiKey = process.env[apiKeyEnv] ?? (isLocalShim ? "local-shim" : "");
+if (!apiKey) throw new Error(`${apiKeyEnv} is required (never hard-code it)`);
 
 const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 const strided = pool.filter((_task, index) => index % stride === 0);
@@ -69,18 +72,22 @@ async function main() {
   const started = Date.now();
   const rows = [];
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < tasks.length) {
-      const task = tasks[cursor++];
-      rows.push(await runEpisode({
+  const episodes = tasks.flatMap((task) =>
+    Array.from({ length: samples }, (_unused, sample) => ({ task, sample })),
+  );
+  const workers = Array.from({ length: Math.min(concurrency, episodes.length) }, async () => {
+    while (cursor < episodes.length) {
+      const { task, sample } = episodes[cursor++];
+      const row = await runEpisode({
         task,
         systemPrompt,
         chat,
         maxTurns,
         malformedTolerance,
         band: bands[taskFamily(task)],
-      }));
-      process.stderr.write(`\r${rows.length}/${tasks.length} done`);
+      });
+      rows.push({ ...row, sample });
+      process.stderr.write(`\r${rows.length}/${episodes.length} done`);
     }
   });
   await Promise.all(workers);
@@ -94,6 +101,7 @@ async function main() {
     split_sha256: v2SplitSha256(split),
     pool_size: V2_TASKS.filter((task) => task.split === split).length,
     sampled: tasks.length,
+    samples_per_task: samples,
     ...summary,
     wall_clock_s: Math.round((Date.now() - started) / 1000),
     system_prompt_sha256: systemPromptSha256,

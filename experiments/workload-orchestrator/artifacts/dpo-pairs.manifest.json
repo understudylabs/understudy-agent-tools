@@ -1,0 +1,24 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "generated_at": "2026-08-02T02:06:43.951Z",
+  "source": "synthetic fixture synthetic-workflow-shapes-offline-v2 (wl-or-orchestrator-v1); base rollouts only",
+  "slice_id": "wl-or-orchestrator-v1",
+  "workload_code": "WL-OR",
+  "split": "train",
+  "train_split_sha256": "30448f43a2c6d4487b2bfd94e408d31823874b193aa37263db1885936b4cf51f",
+  "rollouts_path": "experiments/workload-orchestrator/artifacts/base-train-rollouts.json",
+  "rollout_model": "nemotron-3-nano-base",
+  "rollout_samples_per_task": 6,
+  "rollout_temperature": 0.8,
+  "pairs": 160,
+  "pairs_by_type": {
+    "outcome": 86,
+    "format": 74
+  },
+  "tasks_with_pairs": 20,
+  "tasks_without_signal": [],
+  "pairs_sha256": "61f5e9d7c49a1b09fd9183167a388e1f22c1ed6d8b7c66f4fb8921bc6e5d55ec",
+  "rollouts_sha256": "0c2ddfba36ee9270a5839e5c0846497c5be5c8e464cddfc3cfb86e828fda923a",
+  "rollouts_committed": false,
+  "rollouts_note": "transcripts are regenerable from the pinned train split with the recorded model/temperature/samples; hash recorded instead of committing 1.8MB"
+}

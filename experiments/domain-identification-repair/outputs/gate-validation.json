@@ -1,0 +1,91 @@
+{
+  "schema_version": "understudy.slice_gate_validation.v1",
+  "fixture_id": "domain-identification-offline-v1",
+  "generated_at": "2026-08-02T02:02:14.227Z",
+  "fixture_sha256": "e6b660733b03d97076035f980488642c32701beb25142b9b0a1c4a12ed88b402",
+  "splits": {
+    "fixture_id": "domain-identification-offline-v1",
+    "seed": 7,
+    "counts": {
+      "train": 24,
+      "dev": 8,
+      "holdout": 16
+    },
+    "fixture_sha256": "e6b660733b03d97076035f980488642c32701beb25142b9b0a1c4a12ed88b402",
+    "train_sha256": "b358c36f429303d64bb9309a685f78ddfd03bd1602cbf415e8dd1e977ac93017",
+    "dev_sha256": "3934011a2182ac6d4b32e7016b705cb908e21c2c1ae469f3b0e116ed7bc345a2",
+    "holdout_sha256": "ec9154535b1105f696b6ff9efd72d8457c14e1ed4ff65be043f68188bc9fac2b",
+    "splits_sha256": "fe361b570e41a20576755d8bce389b457bb9dd3846f97362d84295d8504a32df",
+    "families": [
+      {
+        "slug": "direct-route",
+        "band": "direct-match",
+        "label": "route an inbound ticket to the owner of the account holding its exact requester domain"
+      },
+      {
+        "slug": "lookalike-route",
+        "band": "near-match",
+        "label": "reject sibling, subdomain, and different-TLD lookalikes of the requester domain"
+      },
+      {
+        "slug": "parent-route",
+        "band": "parent-join",
+        "label": "follow a matched subsidiary account to the rep who owns its parent domain"
+      },
+      {
+        "slug": "unmatched-abstain",
+        "band": "abstain",
+        "label": "record the no-match outcome instead of guessing an owner for an unregistered domain"
+      }
+    ],
+    "canonical": "{\"counts\":{\"dev\":8,\"holdout\":16,\"train\":24}}"
+  },
+  "gates": [
+    {
+      "gate": "oracle scores 1.0 on every task",
+      "pass": true,
+      "detail": "48/48 at reward 1.0"
+    },
+    {
+      "gate": "oracle triggers no forbidden write",
+      "pass": true,
+      "detail": "0 forbidden writes"
+    },
+    {
+      "gate": "reward-hacking sentinel scores 0.0 on every task",
+      "pass": true,
+      "detail": "max sentinel reward 0"
+    },
+    {
+      "gate": "no grader key or assertion path leaks into an observation",
+      "pass": true,
+      "detail": "0 findings"
+    },
+    {
+      "gate": "no prompt restates an assertion path",
+      "pass": true,
+      "detail": "0 tasks"
+    },
+    {
+      "gate": "no task is already satisfied at reset",
+      "pass": true,
+      "detail": "0 pre-satisfied tasks"
+    },
+    {
+      "gate": "frozen holdout refuses a missing or wrong hash",
+      "pass": true,
+      "detail": "2/2 refusals"
+    },
+    {
+      "gate": "frozen holdout opens for the exact hash only",
+      "pass": true,
+      "detail": "16 tasks"
+    },
+    {
+      "gate": "reset is deterministic",
+      "pass": true,
+      "detail": "48 tasks"
+    }
+  ],
+  "verdict": "pass"
+}

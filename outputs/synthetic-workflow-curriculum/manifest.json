@@ -1,0 +1,187 @@
+{
+  "schema": "understudy.synthetic_workflow.curriculum_manifest.v1",
+  "run_id": "synthetic-workflow-20260802T015242",
+  "counts": {
+    "episodes": 384,
+    "classes": {
+      "tool_call_failure": 358,
+      "pass": 16,
+      "near_miss": 10,
+      "other_fail": 0
+    },
+    "dpo_pairs": 10,
+    "sft_rows": 358,
+    "by_family": {
+      "action-option-selection": {
+        "episodes": 32,
+        "pass": 2,
+        "near_miss": 0,
+        "tool_call_failure": 30,
+        "other_fail": 0
+      },
+      "agent-state-synchronization": {
+        "episodes": 32,
+        "pass": 8,
+        "near_miss": 0,
+        "tool_call_failure": 24,
+        "other_fail": 0
+      },
+      "analysis-then-persist": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 0,
+        "tool_call_failure": 32,
+        "other_fail": 0
+      },
+      "multi-step-orchestrator-chain": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 5,
+        "tool_call_failure": 27,
+        "other_fail": 0
+      },
+      "document-preservation": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 0,
+        "tool_call_failure": 32,
+        "other_fail": 0
+      },
+      "entity-identification": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 2,
+        "tool_call_failure": 30,
+        "other_fail": 0
+      },
+      "routed-mail-followup": {
+        "episodes": 32,
+        "pass": 3,
+        "near_miss": 0,
+        "tool_call_failure": 29,
+        "other_fail": 0
+      },
+      "meeting-event-orchestration": {
+        "episodes": 32,
+        "pass": 1,
+        "near_miss": 0,
+        "tool_call_failure": 31,
+        "other_fail": 0
+      },
+      "record-observation": {
+        "episodes": 32,
+        "pass": 2,
+        "near_miss": 0,
+        "tool_call_failure": 30,
+        "other_fail": 0
+      },
+      "agent-state-partial-failure": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 2,
+        "tool_call_failure": 30,
+        "other_fail": 0
+      },
+      "event-routing": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 0,
+        "tool_call_failure": 32,
+        "other_fail": 0
+      },
+      "summary-orchestration": {
+        "episodes": 32,
+        "pass": 0,
+        "near_miss": 1,
+        "tool_call_failure": 31,
+        "other_fail": 0
+      }
+    }
+  },
+  "fixture_sha256": "c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412",
+  "split_sha256": {
+    "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5",
+    "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+    "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144"
+  },
+  "sealed_holdout_sha256": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+  "leakage_check": {
+    "passed": true,
+    "mined_task_ids": [
+      "workflow-action-01",
+      "workflow-action-02",
+      "workflow-action-03",
+      "workflow-action-04",
+      "workflow-agent-01",
+      "workflow-agent-02",
+      "workflow-agent-03",
+      "workflow-agent-04",
+      "workflow-analysis-01",
+      "workflow-analysis-02",
+      "workflow-analysis-03",
+      "workflow-analysis-04",
+      "workflow-chain-01",
+      "workflow-chain-02",
+      "workflow-chain-03",
+      "workflow-chain-04",
+      "workflow-document-01",
+      "workflow-document-02",
+      "workflow-document-03",
+      "workflow-document-04",
+      "workflow-entity-01",
+      "workflow-entity-02",
+      "workflow-entity-03",
+      "workflow-entity-04",
+      "workflow-mail-01",
+      "workflow-mail-02",
+      "workflow-mail-03",
+      "workflow-mail-04",
+      "workflow-meeting-01",
+      "workflow-meeting-02",
+      "workflow-meeting-03",
+      "workflow-meeting-04",
+      "workflow-observation-01",
+      "workflow-observation-02",
+      "workflow-observation-03",
+      "workflow-observation-04",
+      "workflow-partial-01",
+      "workflow-partial-02",
+      "workflow-partial-03",
+      "workflow-partial-04",
+      "workflow-route-01",
+      "workflow-route-02",
+      "workflow-route-03",
+      "workflow-route-04",
+      "workflow-summary-01",
+      "workflow-summary-02",
+      "workflow-summary-03",
+      "workflow-summary-04"
+    ],
+    "violations": []
+  },
+  "run_params": {
+    "samples": 8,
+    "temperature": 0.7,
+    "max_turns": 14,
+    "max_tokens": 512,
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "lane": "tinker",
+    "renderer": "nemotron3"
+  },
+  "wall_clock": {
+    "started_at": "2026-08-02T01:52:42.258Z",
+    "ended_at": "2026-08-02T03:05:26.256Z",
+    "seconds": 4364
+  },
+  "token_totals": {
+    "total": 8152233,
+    "prompt": 6594348,
+    "completion": 1557885
+  },
+  "artifacts": {
+    "rollouts.jsonl": "6a1c585f8f6d417482e2a3114e163b99d1aede7b6d3d0abbc9c2bd47160ed73b",
+    "dpo_pairs.jsonl": "4c1ddf51c18378260ba737f212760b48d7e1e0da86786d499c483bdea8ac0144",
+    "sft_toolfail.jsonl": "44965857fb45999b7ea14192d9949c2f7898b375e8226c16042e0266de948f32",
+    "rollouts-summary.json": "756baa6cc431281be5586c6c6e79b59685f7d6079fb58af5a01e512168e91953"
+  }
+}
