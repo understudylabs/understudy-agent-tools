@@ -113,6 +113,37 @@
       .filter(node => node.wave === wave && node.rank_eligible && node.score != null)
       .reduce((best, node) => !best || node.score > best.score ? node : best, null);
 
+    function mergeLiveRun(manifest, run) {
+      const candidates = run?.candidates && typeof run.candidates === "object"
+        ? Object.entries(run.candidates)
+        : [];
+      if (!candidates.length) return manifest;
+      const liveNodes = candidates.map(([node_id, candidate]) => ({
+        node_id,
+        label: candidate.label || node_id,
+        wave: candidate.wave || "wave2",
+        branch_id: candidate.branch_id,
+        stage: candidate.status || "queued",
+        status: candidate.status || "queued",
+        score: candidate.score,
+        rank_eligible: candidate.rank_eligible ?? (candidate.score != null),
+        episode_progress: candidate.episode_progress || {},
+        provenance: candidate.provenance || {},
+        latency_s: candidate.latency_s,
+        cost_usd: candidate.cost_usd,
+      }));
+      const runIsActive = liveNodes.some(node => ACTIVE.has(String(node.stage).toLowerCase()));
+      const manifestIsActive = (manifest.nodes || []).some(node => ACTIVE.has(String(node.stage).toLowerCase()));
+      if (!runIsActive || manifestIsActive) return manifest;
+      return {
+        ...manifest,
+        experiment: "eight-island GEPA · live",
+        nodes: liveNodes,
+        totals: { ...(manifest.totals || {}), state: "running", islands_total: 8,
+          islands_active: liveNodes.filter(node => ACTIVE.has(String(node.stage).toLowerCase())).length },
+      };
+    }
+
     function render(manifest) {
       const nodes = Array.isArray(manifest.nodes) ? manifest.nodes : [];
       const budget = manifest.totals?.budget || {};
@@ -185,8 +216,15 @@
 
     async function poll() {
       try {
-        const response = await fetch("./experiment-manifest.json", { cache: "no-store" });
-        if (response.ok) render(await response.json());
+        const [manifestResponse, runResponse] = await Promise.all([
+          fetch("./experiment-manifest.json", { cache: "no-store" }),
+          fetch("../../run.json", { cache: "no-store" }),
+        ]);
+        if (manifestResponse.ok) {
+          const manifest = await manifestResponse.json();
+          const run = runResponse.ok ? await runResponse.json() : null;
+          render(mergeLiveRun(manifest, run));
+        }
       } catch (_) { /* keep the last good frame */ }
       setTimeout(poll, 2000);
     }

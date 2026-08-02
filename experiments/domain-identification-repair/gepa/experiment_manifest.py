@@ -263,6 +263,12 @@ def run_shaped_from_manifest(manifest, examples):
             "label": n.get("label", nid),
             "wave": n.get("wave"),
             "branch_id": n.get("branch_id"),
+            "rank_eligible": n.get("rank_eligible", False),
+            "episode_progress": n.get("episode_progress"),
+            "provenance": n.get("provenance", {}),
+            "latency_s": n.get("latency_s"),
+            "cost_usd": n.get("cost_usd"),
+            "cost_coverage": n.get("cost_coverage"),
         }
     return {
         "examples": [dict(e) for e in examples],
