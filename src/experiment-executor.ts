@@ -39,49 +39,65 @@ export const ExperimentSubmitRequestSchema = z.object({
 export type ExperimentSubmitRequest = z.infer<typeof ExperimentSubmitRequestSchema>;
 export type ExperimentRequest = Omit<ExperimentSubmitRequest, "schema_version">;
 
-export const ExperimentJobSchema = z.object({
-  job: z.string().min(1),
-  status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+const rfc3339 = z.string().datetime({ offset: true });
+
+export const ExecutorJobRefSchema = z.object({
+  executor: z.enum(["modal", "wafer", "fireworks", "spark", "fixture"]),
+  job_id: z.string().min(1).max(500),
+  idempotency_key: z.string().min(1).max(500),
+  submitted_at: rfc3339,
 }).strict();
 
-export type ExperimentJob = z.infer<typeof ExperimentJobSchema>;
+export type ExecutorJobRef = z.infer<typeof ExecutorJobRefSchema>;
 
-export const ExperimentCancellationSchema = z.object({
-  job: z.string().min(1),
-  disposition: z.literal("cancelled"),
-  observed_at: z.string().min(1),
+export const ExecutorJobStatusSchema = z.object({
+  state: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]),
+  observed_at: rfc3339,
+  artifact_refs: z.array(z.string().min(1).max(1024)).max(256).default([]),
+  failure_code: z.string().min(1).max(160).optional(),
 }).strict();
 
-export type ExperimentCancellation = z.infer<typeof ExperimentCancellationSchema>;
+export type ExecutorJobStatus = z.infer<typeof ExecutorJobStatusSchema>;
 
-export type UsageEvidence = "run_exclusive" | "account_window" | "unknown";
+export const ExecutorCancellationReceiptSchema = z.object({
+  job: ExecutorJobRefSchema,
+  disposition: z.enum(["cancelled", "already_terminal", "not_found"]),
+  observed_at: rfc3339,
+}).strict();
 
-export const ExperimentUsageSchema = z.object({
-  job: z.string().min(1),
+export type ExecutorCancellationReceipt = z.infer<typeof ExecutorCancellationReceiptSchema>;
+
+export const ExecutorUsageReceiptSchema = z.object({
   evidence_scope: z.enum(["run_exclusive", "account_window", "unknown"]),
-  actual_usd: z.number().nullable(),
-  estimated_usd: z.number().nullable(),
-  requests: z.number().nullable(),
-  tokens: z.number().nullable(),
-  gpu_seconds: z.number().nullable(),
+  requests: z.number().int().nonnegative().nullable(),
+  input_tokens: z.number().int().nonnegative().nullable(),
+  output_tokens: z.number().int().nonnegative().nullable(),
+  actual_usd: z.number().nonnegative().nullable(),
+  estimated_usd: z.number().nonnegative().nullable(),
+  upper_bound_usd: z.number().nonnegative().nullable(),
+  observed_at: rfc3339,
 }).strict();
 
-export type ExperimentUsage = z.infer<typeof ExperimentUsageSchema>;
+export type ExecutorUsageReceipt = z.infer<typeof ExecutorUsageReceiptSchema>;
 
 export interface ExperimentExecutor {
-  submit(request: ExperimentRequest): Promise<ExperimentJob>;
-  inspect(jobId: string): Promise<ExperimentJob>;
-  cancel(jobId: string): Promise<ExperimentCancellation>;
-  reconcileUsage(jobId: string): Promise<ExperimentUsage>;
+  submit(request: ExperimentRequest): Promise<ExecutorJobRef>;
+  inspect(job: ExecutorJobRef): Promise<ExecutorJobStatus>;
+  cancel(job: ExecutorJobRef): Promise<ExecutorCancellationReceipt>;
+  reconcileUsage(job: ExecutorJobRef): Promise<ExecutorUsageReceipt>;
 }
 
 export class ModalExperimentExecutor implements ExperimentExecutor {
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey?: string,
-  ) {}
+    private readonly apiKey: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {
+    if (!baseUrl.trim()) throw new Error("Modal executor base URL is required.");
+    if (!apiKey.trim()) throw new Error("Modal executor bearer token is required.");
+  }
 
-  async submit(request: ExperimentRequest): Promise<ExperimentJob> {
+  async submit(request: ExperimentRequest): Promise<ExecutorJobRef> {
     const idempotencyKey = `${request.experiment_id}:${request.candidate.candidate_id}:${request.attempt}`;
     const body = {
       schema_version: "understudy.executor-submit.v1" as const,
@@ -92,27 +108,35 @@ export class ModalExperimentExecutor implements ExperimentExecutor {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(body),
-    }, ExperimentJobSchema);
+    }, ExecutorJobRefSchema);
   }
 
-  async inspect(jobId: string): Promise<ExperimentJob> {
-    return this.request(`/experiments/${encodeURIComponent(jobId)}`, {
+  async inspect(job: ExecutorJobRef): Promise<ExecutorJobStatus> {
+    this.assertModalJob(job);
+    return this.request(`/experiments/${encodeURIComponent(job.job_id)}`, {
       method: "GET",
-    }, ExperimentJobSchema);
+    }, ExecutorJobStatusSchema);
   }
 
-  async cancel(jobId: string): Promise<ExperimentCancellation> {
-    return this.request(`/experiments/${encodeURIComponent(jobId)}`, {
+  async cancel(job: ExecutorJobRef): Promise<ExecutorCancellationReceipt> {
+    this.assertModalJob(job);
+    return this.request(`/experiments/${encodeURIComponent(job.job_id)}`, {
       method: "DELETE",
-    }, ExperimentCancellationSchema);
+    }, ExecutorCancellationReceiptSchema);
   }
 
-  async reconcileUsage(
-    jobId: string,
-  ): Promise<ExperimentUsage> {
-    return this.request(`/experiments/${encodeURIComponent(jobId)}/usage`, {
+  async reconcileUsage(job: ExecutorJobRef): Promise<ExecutorUsageReceipt> {
+    this.assertModalJob(job);
+    return this.request(`/experiments/${encodeURIComponent(job.job_id)}/usage`, {
       method: "GET",
-    }, ExperimentUsageSchema);
+    }, ExecutorUsageReceiptSchema);
+  }
+
+  private assertModalJob(job: ExecutorJobRef): void {
+    ExecutorJobRefSchema.parse(job);
+    if (job.executor !== "modal") {
+      throw new Error("Modal executor received a non-Modal job.");
+    }
   }
 
   private async request<T>(
@@ -122,17 +146,24 @@ export class ModalExperimentExecutor implements ExperimentExecutor {
   ): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("content-type", "application/json");
-    if (this.apiKey) headers.set("authorization", `Bearer ${this.apiKey}`);
-    const response = await fetch(`${this.baseUrl.replace(/\/+$/, "")}${path}`, {
-      ...init,
-      headers,
-    });
+    headers.set("authorization", `Bearer ${this.apiKey}`);
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.baseUrl.replace(/\/+$/, "")}${path}`, {
+        ...init,
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      throw new Error("Modal executor is unavailable.");
+    }
     if (!response.ok) {
       throw new Error(`experiment executor request failed: ${response.status}`);
     }
-    if (response.status === 204) {
-      throw new Error("experiment executor returned an empty response");
+    try {
+      return schema.parse(await response.json());
+    } catch {
+      throw new Error("Modal executor returned an invalid response.");
     }
-    return schema.parse(await response.json());
   }
 }

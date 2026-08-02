@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import subprocess
 import time
+import uuid
 from typing import Any
 
 import modal
@@ -27,8 +28,11 @@ HF_SECRET = "understudy-nemotron-hf"
 AUTH_SECRET = "understudy-nemotron-vllm-auth"
 EXECUTOR_IDEMPOTENCY_DICT = "understudy-nemotron-experiment-idempotency"
 EXECUTOR_JOB_DICT = "understudy-nemotron-experiment-jobs"
+EXECUTOR_LEASE_DICT = "understudy-nemotron-experiment-leases"
+EXECUTOR_ACK_DICT = "understudy-nemotron-experiment-acks"
 H200_PRICE_PER_HOUR = 4.54
 EXECUTOR_AUTH_ENV = "VLLM_API_KEY"
+LEASE_SECONDS = 300
 
 app = modal.App(APP_NAME)
 model_cache = modal.Volume.from_name(MODEL_CACHE_VOLUME, create_if_missing=True)
@@ -37,6 +41,8 @@ idempotency_store = modal.Dict.from_name(
     EXECUTOR_IDEMPOTENCY_DICT, create_if_missing=True
 )
 job_store = modal.Dict.from_name(EXECUTOR_JOB_DICT, create_if_missing=True)
+lease_store = modal.Dict.from_name(EXECUTOR_LEASE_DICT, create_if_missing=True)
+ack_store = modal.Dict.from_name(EXECUTOR_ACK_DICT, create_if_missing=True)
 
 image = (
     modal.Image.from_registry(VLLM_IMAGE, add_python="3.12")
@@ -52,6 +58,22 @@ image = (
     .add_local_file(
         "schemas/understudy.executor-submit.v1.schema.json",
         "/opt/understudy/schemas/understudy.executor-submit.v1.schema.json",
+    )
+    .add_local_file(
+        "schemas/experiment-executor-job-ref.json",
+        "/opt/understudy/schemas/experiment-executor-job-ref.json",
+    )
+    .add_local_file(
+        "schemas/experiment-executor-job-status.json",
+        "/opt/understudy/schemas/experiment-executor-job-status.json",
+    )
+    .add_local_file(
+        "schemas/experiment-executor-cancellation-receipt.json",
+        "/opt/understudy/schemas/experiment-executor-cancellation-receipt.json",
+    )
+    .add_local_file(
+        "schemas/experiment-executor-usage-receipt.json",
+        "/opt/understudy/schemas/experiment-executor-usage-receipt.json",
     )
 )
 
@@ -137,6 +159,91 @@ def submission_action(record: dict[str, Any] | None) -> str:
     return "spawn"
 
 
+def _observed_at() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _lease_key(job_id: str) -> str:
+    return f"lease:{job_id}"
+
+
+def _ack_key(job_id: str) -> str:
+    return f"ack:{job_id}"
+
+
+def lease_expired(lease: dict[str, Any], now: float | None = None) -> bool:
+    return (now if now is not None else time.time()) >= (
+        float(lease.get("acquired_at", 0)) + LEASE_SECONDS
+    )
+
+
+def reconcile_spawn_lease(
+    records: dict[str, dict[str, Any]],
+    leases: dict[str, dict[str, Any]],
+    acks: dict[str, str],
+    job_id: str,
+    now: float,
+    spawn: Any,
+) -> str | None:
+    record = records.get(job_id)
+    if record is None:
+        return None
+    if record.get("status") == "cancelled":
+        return None
+    if record.get("functionCallId"):
+        return record["functionCallId"]
+    if acks.get(_ack_key(job_id)):
+        record["functionCallId"] = acks[_ack_key(job_id)]
+        return record["functionCallId"]
+    lease = leases.get(_lease_key(job_id))
+    if lease is not None and not lease_expired(lease, now):
+        return None
+    candidate = {"token": uuid.uuid4().hex, "acquired_at": now}
+    if lease is None:
+        leases[_lease_key(job_id)] = candidate
+    else:
+        leases[_lease_key(job_id)] = candidate
+    if record.get("status") == "cancelled":
+        return None
+    call_id = spawn()
+    record["functionCallId"] = call_id
+    return call_id
+
+
+def acquire_spawn_lease(
+    leases: dict[str, dict[str, Any]],
+    job_id: str,
+    now: float,
+) -> bool:
+    key = _lease_key(job_id)
+    current = leases.get(key)
+    if current is not None and not lease_expired(current, now):
+        return False
+    leases[key] = {"token": uuid.uuid4().hex, "acquired_at": now}
+    return True
+
+
+def _job_ref(record: dict[str, Any]) -> dict[str, Any]:
+    return dict(record["jobRef"])
+
+
+def _validate_contract(payload: dict[str, Any], filename: str) -> dict[str, Any]:
+    import json
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    with open(f"/opt/understudy/schemas/{filename}", encoding="utf-8") as schema_file:
+        schema = json.load(schema_file)
+    errors = sorted(
+        Draft202012Validator(
+            schema, format_checker=FormatChecker()
+        ).iter_errors(payload),
+        key=str,
+    )
+    if errors:
+        raise RuntimeError(f"invalid executor {filename} receipt")
+    return payload
+
+
 def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
     import json
     from fastapi import HTTPException
@@ -162,6 +269,12 @@ def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
 def execute_experiment(job_id: str, request: dict[str, Any]) -> None:
     started = time.time()
     job = dict(job_store.get(job_id, {}))
+    call_id = getattr(modal, "current_function_call_id", lambda: None)()
+    if call_id:
+        ack_store.put(_ack_key(job_id), call_id, skip_if_exists=True)
+        job = dict(job_store.get(job_id, job))
+    if job.get("status") == "cancelled":
+        return
     if job.get("status") != "cancelled":
         job.update({"status": "running", "startedAt": started})
         job_store.put(job_id, job)
@@ -215,7 +328,7 @@ def executor_api() -> Any:
         if expected_key != idempotency_key:
             raise HTTPException(status_code=409, detail="idempotency key mismatch")
         job_id = deterministic_job_id(idempotency_key)
-        claimed = await idempotency_store.put.aio(
+        await idempotency_store.put.aio(
             idempotency_key, job_id, skip_if_exists=True
         )
         existing_job_id = await idempotency_store.get.aio(idempotency_key)
@@ -224,10 +337,17 @@ def executor_api() -> Any:
         record = await job_store.get.aio(job_id)
         action = submission_action(record)
         if action == "return_existing":
-            return {"job": job_id, "status": record.get("status", "queued")}
+            return _validate_contract(
+                _job_ref(record), "experiment-executor-job-ref.json"
+            )
         if action == "create_record":
             record = {
-                "job": job_id,
+                "jobRef": {
+                    "executor": "modal",
+                    "job_id": job_id,
+                    "idempotency_key": idempotency_key,
+                    "submitted_at": _observed_at(),
+                },
                 "idempotencyKey": idempotency_key,
                 "status": "queued",
                 "request": request,
@@ -235,11 +355,55 @@ def executor_api() -> Any:
             await job_store.put.aio(job_id, record, skip_if_exists=True)
             record = await job_store.get.aio(job_id, record)
         if submission_action(record) == "return_existing":
-            return {"job": job_id, "status": record.get("status", "queued")}
+            return _validate_contract(
+                _job_ref(record), "experiment-executor-job-ref.json"
+            )
+        ack = await ack_store.get.aio(_ack_key(job_id))
+        if ack:
+            record["functionCallId"] = ack
+            await job_store.put.aio(job_id, record)
+            return _validate_contract(
+                _job_ref(record), "experiment-executor-job-ref.json"
+            )
+        lease = {
+            "token": uuid.uuid4().hex,
+            "acquired_at": time.time(),
+        }
+        lease_won = await lease_store.put.aio(
+            _lease_key(job_id), lease, skip_if_exists=True
+        )
+        if not lease_won:
+            current_lease = await lease_store.get.aio(_lease_key(job_id), {})
+            ack = await ack_store.get.aio(_ack_key(job_id))
+            if ack:
+                record["functionCallId"] = ack
+                await job_store.put.aio(job_id, record)
+                return _validate_contract(
+                    _job_ref(record), "experiment-executor-job-ref.json"
+                )
+            if not lease_expired(current_lease):
+                return _validate_contract(
+                    _job_ref(record), "experiment-executor-job-ref.json"
+                )
+            await lease_store.put.aio(
+                _lease_key(job_id), lease, skip_if_exists=False
+            )
+            current_lease = await lease_store.get.aio(_lease_key(job_id), {})
+            if current_lease.get("token") != lease["token"]:
+                return _validate_contract(
+                    _job_ref(record), "experiment-executor-job-ref.json"
+                )
+        latest = await job_store.get.aio(job_id, record)
+        if latest.get("status") == "cancelled":
+            return _validate_contract(
+                _job_ref(latest), "experiment-executor-job-ref.json"
+            )
         call = execute_experiment.spawn(job_id, request)
-        record["functionCallId"] = call.object_id
-        await job_store.put.aio(job_id, record)
-        return {"job": job_id, "status": "queued"}
+        latest["functionCallId"] = call.object_id
+        await job_store.put.aio(job_id, latest)
+        return _validate_contract(
+            _job_ref(latest), "experiment-executor-job-ref.json"
+        )
 
     @api.get("/experiments/{job_id}")
     async def inspect_experiment(
@@ -250,9 +414,14 @@ def executor_api() -> Any:
         record = await job_store.get.aio(job_id)
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
-        public = dict(record)
-        public.pop("request", None)
-        return {"job": job_id, "status": public.get("status", "unknown")}
+        status = {
+            "state": record.get("status", "queued"),
+            "observed_at": _observed_at(),
+            "artifact_refs": record.get("artifact_refs", []),
+        }
+        if record.get("error"):
+            status["failure_code"] = record["error"]
+        return _validate_contract(status, "experiment-executor-job-status.json")
 
     @api.delete("/experiments/{job_id}")
     async def cancel_experiment(
@@ -264,17 +433,24 @@ def executor_api() -> Any:
         if not record:
             raise HTTPException(status_code=404, detail="job not found")
         call_id = record.get("functionCallId")
-        if call_id:
+        disposition = "cancelled"
+        if record.get("status") in {"succeeded", "failed", "cancelled"}:
+            disposition = "already_terminal"
+        elif call_id:
             modal.FunctionCall.from_id(call_id).cancel(terminate_containers=True)
-        record["status"] = "cancelled"
-        cancelled_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if disposition == "cancelled":
+            record["status"] = "cancelled"
+        cancelled_at = _observed_at()
         record["cancelledAt"] = cancelled_at
         await job_store.put.aio(job_id, record)
-        return {
-            "job": job_id,
-            "disposition": "cancelled",
-            "observed_at": cancelled_at,
-        }
+        return _validate_contract(
+            {
+                "job": _job_ref(record),
+                "disposition": disposition,
+                "observed_at": cancelled_at,
+            },
+            "experiment-executor-cancellation-receipt.json",
+        )
 
     @api.get("/experiments/{job_id}/usage")
     async def reconcile_usage(
@@ -289,24 +465,26 @@ def executor_api() -> Any:
         if duration is None and record.get("startedAt"):
             duration = max(0.0, time.time() - record["startedAt"])
         if duration is None:
-            return {
-                "job": job_id,
+            return _validate_contract({
                 "evidence_scope": "unknown",
                 "estimated_usd": None,
                 "actual_usd": None,
                 "requests": None,
-                "tokens": None,
-                "gpu_seconds": None,
-            }
-        return {
-            "job": job_id,
+                "input_tokens": None,
+                "output_tokens": None,
+                "upper_bound_usd": None,
+                "observed_at": _observed_at(),
+            }, "experiment-executor-usage-receipt.json")
+        return _validate_contract({
             "evidence_scope": "unknown",
             "estimated_usd": duration / 3600 * H200_PRICE_PER_HOUR,
             "actual_usd": None,
             "requests": None,
-            "tokens": None,
-            "gpu_seconds": duration,
-        }
+            "input_tokens": None,
+            "output_tokens": None,
+            "upper_bound_usd": None,
+            "observed_at": _observed_at(),
+        }, "experiment-executor-usage-receipt.json")
 
     return api
 

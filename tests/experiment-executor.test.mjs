@@ -54,14 +54,16 @@ test("submit sends matching idempotency header and body with bearer auth", async
   const restore = withFetch(async (url, init) => {
     captured = { url, init, body: JSON.parse(init.body) };
     return new Response(JSON.stringify({
-      job: "job-1",
-      status: "queued",
+      executor: "modal",
+      job_id: "job-1",
+      idempotency_key: "exp-1:candidate-a:2",
+      submitted_at: "2026-08-02T00:00:00Z",
     }), { status: 200, headers: { "content-type": "application/json" } });
   });
   try {
     const client = new ModalExperimentExecutor("https://executor.example/", "secret");
     const result = await client.submit(request);
-    assert.equal(result.job, "job-1");
+    assert.equal(result.job_id, "job-1");
     assert.equal(captured.url, "https://executor.example/experiments");
     assert.equal(captured.init.headers.get("authorization"), "Bearer secret");
     assert.equal(captured.init.headers.get("idempotency-key"), "exp-1:candidate-a:2");
@@ -78,16 +80,27 @@ test("cancel returns a receipt-shaped response", async () => {
     assert.equal(init.method, "DELETE");
     assert.equal(url, "https://executor.example/experiments/job-1");
     return new Response(JSON.stringify({
-      job: "job-1",
+      job: {
+        executor: "modal",
+        job_id: "job-1",
+        idempotency_key: "exp-1:candidate-a:2",
+        submitted_at: "2026-08-02T00:00:00Z",
+      },
       disposition: "cancelled",
       observed_at: "2026-08-02T00:00:00Z",
     }), { status: 200 });
   });
   try {
+    const job = {
+      executor: "modal",
+      job_id: "job-1",
+      idempotency_key: "exp-1:candidate-a:2",
+      submitted_at: "2026-08-02T00:00:00Z",
+    };
     assert.deepEqual(
-      await new ModalExperimentExecutor("https://executor.example").cancel("job-1"),
+      await new ModalExperimentExecutor("https://executor.example", "secret").cancel(job),
       {
-        job: "job-1",
+        job,
         disposition: "cancelled",
         observed_at: "2026-08-02T00:00:00Z",
       },
@@ -99,23 +112,30 @@ test("cancel returns a receipt-shaped response", async () => {
 
 test("reconcileUsage carries evidence", async () => {
   const restore = withFetch(async () => new Response(JSON.stringify({
-    job: "job-1",
     estimated_usd: 1.23,
     actual_usd: null,
     requests: null,
-    tokens: null,
-    gpu_seconds: 975,
+    input_tokens: null,
+    output_tokens: null,
+    upper_bound_usd: null,
+    observed_at: "2026-08-02T00:00:00Z",
     evidence_scope: "unknown",
   }), { status: 200 }));
   try {
-    const usage = await new ModalExperimentExecutor("https://executor.example").reconcileUsage("job-1");
+    const usage = await new ModalExperimentExecutor("https://executor.example", "secret").reconcileUsage({
+      executor: "modal",
+      job_id: "job-1",
+      idempotency_key: "exp-1:candidate-a:2",
+      submitted_at: "2026-08-02T00:00:00Z",
+    });
     assert.deepEqual(usage, {
-      job: "job-1",
       estimated_usd: 1.23,
       actual_usd: null,
       requests: null,
-      tokens: null,
-      gpu_seconds: 975,
+      input_tokens: null,
+      output_tokens: null,
+      upper_bound_usd: null,
+      observed_at: "2026-08-02T00:00:00Z",
       evidence_scope: "unknown",
     });
   } finally {
@@ -125,13 +145,19 @@ test("reconcileUsage carries evidence", async () => {
 
 test("client rejects malformed response bodies", async () => {
   const restore = withFetch(async () => new Response(JSON.stringify({
-    job: "job-1",
-    status: "not-a-real-status",
+    state: "not-a-real-status",
+    observed_at: "2026-08-02T00:00:00Z",
+    artifact_refs: [],
   }), { status: 200 }));
   try {
     await assert.rejects(
-      new ModalExperimentExecutor("https://executor.example").inspect("job-1"),
-      /Invalid option/,
+      new ModalExperimentExecutor("https://executor.example", "secret").inspect({
+        executor: "modal",
+        job_id: "job-1",
+        idempotency_key: "exp-1:candidate-a:2",
+        submitted_at: "2026-08-02T00:00:00Z",
+      }),
+      /invalid response/,
     );
   } finally {
     restore();

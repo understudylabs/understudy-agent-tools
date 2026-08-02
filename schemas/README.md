@@ -231,3 +231,11 @@ contract scorer. Tier-1 boundary: rollouts whose tool effects are not
 observable are recorded with the `app_replay_unobserved` anomaly — honest
 partial evidence, never fabricated scores. Authoring guide:
 [`docs/app-harness.md`](../docs/app-harness.md).
+
+## Executor contract bundle
+
+The five `experiment-executor-*.json` schemas and
+`experiment-executor-contract-manifest.json` are verbatim generated artifacts
+from source commit `804fa3f7`. Their per-file digests and bundle digest are
+checked by the executor contract tests. Do not edit these generated files by
+hand.
