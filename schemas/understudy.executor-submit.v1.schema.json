@@ -1,0 +1,85 @@
+{
+  "$id": "understudy.executor-submit.v1",
+  "$comment": "Vendored from understudylabs/understudy-platform yolo/vercel-experiment-orchestrator at commit c299ca4 (PR #545 head).",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Experiment executor submit request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "experimentId",
+    "candidate",
+    "attempt",
+    "workload",
+    "splits",
+    "limits",
+    "idempotencyKey"
+  ],
+  "properties": {
+    "experimentId": { "type": "string", "minLength": 1 },
+    "idempotencyKey": { "type": "string", "minLength": 1 },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidateId", "model", "policyRef", "policySha256"],
+      "properties": {
+        "candidateId": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "modelRevision": { "type": "string", "minLength": 1 },
+        "policyRef": { "type": "string", "minLength": 1 },
+        "policySha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" }
+      }
+    },
+    "attempt": { "type": "integer", "minimum": 0 },
+    "workload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "datasetManifestRef",
+        "datasetManifestSha256",
+        "verifierEnvironment",
+        "verifierRevision"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "datasetManifestRef": { "type": "string", "minLength": 1 },
+        "datasetManifestSha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$"
+        },
+        "verifierEnvironment": { "type": "string", "minLength": 1 },
+        "verifierRevision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trainManifestRef", "devManifestRef"],
+      "properties": {
+        "trainManifestRef": { "type": "string", "minLength": 1 },
+        "devManifestRef": { "type": "string", "minLength": 1 }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budgetUsd",
+        "maxConcurrentCandidates",
+        "maxConcurrentRequestsPerCandidate",
+        "maxRollouts",
+        "maxRuntimeSeconds"
+      ],
+      "properties": {
+        "budgetUsd": { "type": "number", "minimum": 0 },
+        "maxConcurrentCandidates": { "type": "integer", "minimum": 1 },
+        "maxConcurrentRequestsPerCandidate": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxRollouts": { "type": "integer", "minimum": 1 },
+        "maxRuntimeSeconds": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
