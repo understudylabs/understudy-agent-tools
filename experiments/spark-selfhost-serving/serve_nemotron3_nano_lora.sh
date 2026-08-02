@@ -8,6 +8,10 @@ MODEL="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4"
 REVISION="${REVISION:-ce1b118ae66ec705d02c241525192832eb045fd3}"
 CACHE_DIR="${CACHE_DIR:-$HOME/.cache/huggingface}"
 PORT="${PORT:-5153}"
+# The ACL constrains tailnet reachability only. Publishing on every host
+# interface would expose the endpoint outside that scope, so bind the node's
+# tailnet address instead.
+PUBLISH_ADDR="${PUBLISH_ADDR:-127.0.0.1}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-65536}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.55}"
 MAX_LORAS="${MAX_LORAS:-4}"
@@ -67,6 +71,6 @@ exec docker run --rm --name nemotron3-nano-lora \
   -e VLLM_NVFP4_GEMM_BACKEND=marlin \
   -v "$CACHE_DIR:/root/.cache/huggingface" \
   -v "$PARSER:/app/nano_v3_reasoning_parser.py:ro" \
-  -p "$PORT:$PORT" \
+  -p "$PUBLISH_ADDR:$PORT:$PORT" \
   nvcr.io/nvidia/vllm:26.05.post1-py3 \
   "${vllm_args[@]}"
