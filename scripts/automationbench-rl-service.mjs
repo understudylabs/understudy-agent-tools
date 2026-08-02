@@ -12,9 +12,12 @@ function argValue(args, name) {
 async function main() {
   const args = process.argv.slice(2);
   const port = Number(argValue(args, "--port") ?? "0");
+  const benchmark = argValue(args, "--benchmark") ?? "automationbench";
+  const promptVariant = argValue(args, "--prompt-variant") ?? "default";
   const { server, port: actualPort } = await startEnvService({
     port: Number.isFinite(port) ? port : 0,
-    benchmark: "automationbench",
+    benchmark,
+    promptVariant,
   });
   console.log(actualPort);
   const shutdown = () => server.close(() => process.exit(0));

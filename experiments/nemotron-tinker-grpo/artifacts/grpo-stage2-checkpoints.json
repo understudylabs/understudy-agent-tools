@@ -1,0 +1,59 @@
+{
+  "log_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-stage2-log",
+  "records": [
+    {
+      "batch": 5,
+      "name": "000005",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000005",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000005"
+    },
+    {
+      "batch": 10,
+      "name": "000010",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000010",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000010"
+    },
+    {
+      "batch": 15,
+      "name": "000015",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000015",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000015"
+    },
+    {
+      "batch": 20,
+      "name": "000020",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000020"
+    },
+    {
+      "batch": 25,
+      "name": "000025",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000025",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000025"
+    },
+    {
+      "batch": 30,
+      "name": "000030",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000030",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000030"
+    },
+    {
+      "batch": 35,
+      "name": "000035",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000035",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000035"
+    },
+    {
+      "batch": 40,
+      "name": "000040",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000040",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/000040"
+    },
+    {
+      "batch": 40,
+      "name": "final",
+      "sampler_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/final",
+      "state_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/weights/final"
+    }
+  ]
+}

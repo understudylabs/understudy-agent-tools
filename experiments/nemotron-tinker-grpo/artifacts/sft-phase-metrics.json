@@ -1,0 +1,69 @@
+{
+  "data": {
+    "local_tokens": 26188,
+    "wall_clock_seconds": 2.4860649329998523
+  },
+  "evaluations": [
+    {
+      "phase": "sft-epoch1-dev",
+      "prompt_tokens": 20760,
+      "sampled_tokens": 1265,
+      "split": "dev",
+      "wall_clock_seconds": 27.412,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-epoch2-dev",
+      "prompt_tokens": 17302,
+      "sampled_tokens": 1093,
+      "split": "dev",
+      "wall_clock_seconds": 22.28,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-epoch3-dev",
+      "prompt_tokens": 17660,
+      "sampled_tokens": 1094,
+      "split": "dev",
+      "wall_clock_seconds": 32.688,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-epoch4-dev",
+      "prompt_tokens": 16748,
+      "sampled_tokens": 1007,
+      "split": "dev",
+      "wall_clock_seconds": 22.936,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-selected-train",
+      "prompt_tokens": 66731,
+      "sampled_tokens": 3889,
+      "split": "train",
+      "wall_clock_seconds": 66.62,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-selected-dev",
+      "prompt_tokens": 16739,
+      "sampled_tokens": 1001,
+      "split": "dev",
+      "wall_clock_seconds": 18.276,
+      "wall_clock_source": "artifact_mtime_interval"
+    },
+    {
+      "phase": "sft-selected-variance-train-8x8",
+      "prompt_tokens": 82206,
+      "sampled_tokens": 4415,
+      "split": "train",
+      "wall_clock_seconds": 85.18,
+      "wall_clock_source": "artifact_mtime_interval"
+    }
+  ],
+  "note": "Evaluation wall-clock intervals reconstructed from sequential artifact modification timestamps; future sft.py runs record monotonic durations directly.",
+  "training": {
+    "model_input_tokens": 104752,
+    "wall_clock_seconds": 119.01496680699984
+  }
+}

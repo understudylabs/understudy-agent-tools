@@ -1,0 +1,11 @@
+{
+  "log_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/grpo-stage1-log",
+  "records": [
+    {
+      "batch": 2,
+      "name": "final",
+      "sampler_path": "tinker://91eac422-d401-5833-833f-98c8dad4d4db:train:0/sampler_weights/final",
+      "state_path": "tinker://91eac422-d401-5833-833f-98c8dad4d4db:train:0/weights/final"
+    }
+  ]
+}
