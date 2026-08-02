@@ -1,0 +1,2095 @@
+{
+  "results": [
+    {
+      "taskId": "simple-api-crm-close-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1532,
+        "completion": 104
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contact Evelyn Boyd"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-1",
+            "body": {
+              "status": "won"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Evelyn Boyd approved the renewal terms. Record the deal as won on that CRM contact.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contact Evelyn Boyd\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"evelyn.boyd@example.test\\\",\\\"name\\\":\\\"Evelyn Boyd\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"mary.jackson@example.test\\\",\\\"name\\\":\\\"Mary Jackson\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"andrew.yao@example.test\\\",\\\"name\\\":\\\"Andrew Yao\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"ruth.teitelbaum@example.test\\\",\\\"name\\\":\\\"Ruth Teitelbaum\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"won\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"evelyn.boyd@example.test\\\",\\\"name\\\":\\\"Evelyn Boyd\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"won\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Evelyn Boyd",
+              "email": "evelyn.boyd@example.test",
+              "status": "won",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Mary Jackson",
+              "email": "mary.jackson@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Andrew Yao",
+              "email": "andrew.yao@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Ruth Teitelbaum",
+              "email": "ruth.teitelbaum@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 1565.4560920000001,
+      "usd": 0.012175769604444445,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-lost-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1535,
+        "completion": 105
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contact search update deal status"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-2",
+            "body": {
+              "status": "lost"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Edsger Dijkstra cancelled the evaluation. Record the deal as lost on that CRM contact.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contact search update deal status\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"barbara.liskov@example.test\\\",\\\"name\\\":\\\"Barbara Liskov\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"edsger.dijkstra@example.test\\\",\\\"name\\\":\\\"Edsger Dijkstra\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"frances.allen@example.test\\\",\\\"name\\\":\\\"Frances Allen\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"donald.knuth@example.test\\\",\\\"name\\\":\\\"Donald Knuth\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"lost\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"edsger.dijkstra@example.test\\\",\\\"name\\\":\\\"Edsger Dijkstra\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"lost\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Barbara Liskov",
+              "email": "barbara.liskov@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Edsger Dijkstra",
+              "email": "edsger.dijkstra@example.test",
+              "status": "lost",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Frances Allen",
+              "email": "frances.allen@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Donald Knuth",
+              "email": "donald.knuth@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 1584.426909,
+      "usd": 0.012323320403333332,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-owner-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1536,
+        "completion": 106
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "search contact Ken Thompson"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-1",
+            "body": {
+              "owner": "u-7"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "The account for Ken Thompson moves to rep u-7. Update the CRM owner for that contact.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"search contact Ken Thompson\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"ken.thompson@example.test\\\",\\\"name\\\":\\\"Ken Thompson\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"jean.bartik@example.test\\\",\\\"name\\\":\\\"Jean Bartik\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"tim.berners.lee@example.test\\\",\\\"name\\\":\\\"Tim Berners-Lee\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"anita.borg@example.test\\\",\\\"name\\\":\\\"Anita Borg\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"owner\":\"u-7\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"ken.thompson@example.test\\\",\\\"name\\\":\\\"Ken Thompson\\\",\\\"owner\\\":\\\"u-7\\\",\\\"status\\\":\\\"open\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Ken Thompson",
+              "email": "ken.thompson@example.test",
+              "status": "open",
+              "owner": "u-7"
+            },
+            "c-2": {
+              "name": "Jean Bartik",
+              "email": "jean.bartik@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Tim Berners-Lee",
+              "email": "tim.berners.lee@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Anita Borg",
+              "email": "anita.borg@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 3032.011198,
+      "usd": 0.02358230931777778,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-rename-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1599,
+        "completion": 108
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contact search Claude Shannon"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-3",
+            "body": {
+              "name": "Claude F. Shannon"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "The signed contract lists the legal name Claude F. Shannon for the contact recorded as Claude Shannon. Correct that CRM contact's name to the legal name exactly.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contact search Claude Shannon\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"adele.goldberg@example.test\\\",\\\"name\\\":\\\"Adele Goldberg\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"hedy.lamarr@example.test\\\",\\\"name\\\":\\\"Hedy Lamarr\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"claude.shannon@example.test\\\",\\\"name\\\":\\\"Claude Shannon\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"evelyn.boyd@example.test\\\",\\\"name\\\":\\\"Evelyn Boyd\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"name\":\"Claude F. Shannon\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"claude.shannon@example.test\\\",\\\"name\\\":\\\"Claude F. Shannon\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Adele Goldberg",
+              "email": "adele.goldberg@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Hedy Lamarr",
+              "email": "hedy.lamarr@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Claude F. Shannon",
+              "email": "claude.shannon@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Evelyn Boyd",
+              "email": "evelyn.boyd@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 3044.046814,
+      "usd": 0.023675919664444444,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-mail-draft-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 4,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 2429,
+        "completion": 172
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM record Barbara Liskov"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "create email draft"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "POST",
+            "url": "/mail/drafts",
+            "body": {
+              "to": "barbara.liskov@example.test",
+              "subject": "Kickoff agenda",
+              "body": "Hi Barbara,\n\nI'm writing to share the agenda for our upcoming kickoff meeting.\n\nBest regards,"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Prepare an email to Barbara Liskov with the subject \"Kickoff agenda\". Do not send it — leave it as a draft. Their address is in the CRM record.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM record Barbara Liskov\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"ada.lovelace@example.test\\\",\\\"name\\\":\\\"Ada Lovelace\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"grace.hopper@example.test\\\",\\\"name\\\":\\\"Grace Hopper\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"alan.turing@example.test\\\",\\\"name\\\":\\\"Alan Turing\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"barbara.liskov@example.test\\\",\\\"name\\\":\\\"Barbara Liskov\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"create email draft\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"barbara.liskov@example.test\",\"subject\":\"Kickoff agenda\",\"body\":\"Hi Barbara,\\n\\nI'm writing to share the agenda for our upcoming kickoff meeting.\\n\\nBest regards,\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"draft_id\\\":\\\"d-1\\\",\\\"status\\\":201}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Ada Lovelace",
+              "email": "ada.lovelace@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Grace Hopper",
+              "email": "grace.hopper@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Alan Turing",
+              "email": "alan.turing@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Barbara Liskov",
+              "email": "barbara.liskov@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-1": {
+              "to": "barbara.liskov@example.test",
+              "subject": "Kickoff agenda",
+              "status": "draft"
+            }
+          },
+          "messages": {},
+          "sequence": 1
+        }
+      },
+      "elapsedMs": 2304.198235,
+      "usd": 0.017921541827777776,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 4
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-mail-revise-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1372,
+        "completion": 107
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/mail/drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/mail/drafts/d-1",
+            "body": {
+              "subject": "Kickoff agenda updated"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "The draft titled \"Kickoff agenda\" should be retitled \"Kickoff agenda updated\". Change only that draft and leave every other draft untouched.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"drafts\\\":{\\\"d-1\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Kickoff agenda\\\",\\\"to\\\":\\\"radia.perlman@example.test\\\"},\\\"d-2\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Outdated onboarding\\\",\\\"to\\\":\\\"vint.cerf@example.test\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-1\",\"body\":{\"subject\":\"Kickoff agenda updated\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"draft\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Kickoff agenda updated\\\",\\\"to\\\":\\\"radia.perlman@example.test\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Radia Perlman",
+              "email": "radia.perlman@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Vint Cerf",
+              "email": "vint.cerf@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Shafi Goldwasser",
+              "email": "shafi.goldwasser@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Ken Thompson",
+              "email": "ken.thompson@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-1": {
+              "to": "radia.perlman@example.test",
+              "subject": "Kickoff agenda updated",
+              "status": "draft"
+            },
+            "d-2": {
+              "to": "vint.cerf@example.test",
+              "subject": "Outdated onboarding",
+              "status": "draft"
+            }
+          },
+          "messages": {},
+          "sequence": 2
+        }
+      },
+      "elapsedMs": 1590.810853,
+      "usd": 0.01237297330111111,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-mail-discard-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1354,
+        "completion": 105
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/mail/drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/mail/drafts/d-2",
+            "body": {
+              "status": "discarded"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "The draft titled \"Outdated onboarding\" is obsolete. Mark that draft discarded. Do not modify or send any other draft.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"drafts\\\":{\\\"d-1\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Kickoff agenda\\\",\\\"to\\\":\\\"lynn.conway@example.test\\\"},\\\"d-2\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Outdated onboarding\\\",\\\"to\\\":\\\"sophie.wilson@example.test\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-2\",\"body\":{\"status\":\"discarded\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"draft\\\":{\\\"status\\\":\\\"discarded\\\",\\\"subject\\\":\\\"Outdated onboarding\\\",\\\"to\\\":\\\"sophie.wilson@example.test\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Leslie Lamport",
+              "email": "leslie.lamport@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Sophie Wilson",
+              "email": "sophie.wilson@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Lynn Conway",
+              "email": "lynn.conway@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Adele Goldberg",
+              "email": "adele.goldberg@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-1": {
+              "to": "lynn.conway@example.test",
+              "subject": "Kickoff agenda",
+              "status": "draft"
+            },
+            "d-2": {
+              "to": "sophie.wilson@example.test",
+              "subject": "Outdated onboarding",
+              "status": "discarded"
+            }
+          },
+          "messages": {},
+          "sequence": 2
+        }
+      },
+      "elapsedMs": 1562.152479,
+      "usd": 0.012150074836666667,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-mail-send-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 4,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 2003,
+        "completion": 128
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/mail/drafts"
+          }
+        },
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "send mail"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "POST",
+            "url": "/mail/messages",
+            "body": {
+              "draft_id": "d-1"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "The draft titled \"Kickoff agenda\" is approved. Deliver it. Leave the other draft alone.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"drafts\\\":{\\\"d-1\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Kickoff agenda\\\",\\\"to\\\":\\\"ruth.teitelbaum@example.test\\\"},\\\"d-2\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Outdated onboarding\\\",\\\"to\\\":\\\"ada.lovelace@example.test\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"send mail\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-1\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"message_id\\\":\\\"m-3\\\",\\\"status\\\":201}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Mary Jackson",
+              "email": "mary.jackson@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Andrew Yao",
+              "email": "andrew.yao@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Ruth Teitelbaum",
+              "email": "ruth.teitelbaum@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Ada Lovelace",
+              "email": "ada.lovelace@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-2": {
+              "to": "ada.lovelace@example.test",
+              "subject": "Outdated onboarding",
+              "status": "draft"
+            }
+          },
+          "messages": {
+            "m-3": {
+              "to": "ruth.teitelbaum@example.test",
+              "subject": "Kickoff agenda",
+              "sent": true
+            }
+          },
+          "sequence": 3
+        }
+      },
+      "elapsedMs": 1848.8973600000002,
+      "usd": 0.014380312800000001,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 4
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-bulk-owner-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 4,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 2555,
+        "completion": 150
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contacts list and update"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-2",
+            "body": {
+              "owner": "u-7"
+            }
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-4",
+            "body": {
+              "owner": "u-7"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Rep u-3 has left. Reassign every CRM contact currently owned by u-3 to rep u-7. Leave contacts owned by anyone else unchanged.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contacts list and update\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"edsger.dijkstra@example.test\\\",\\\"name\\\":\\\"Edsger Dijkstra\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"frances.allen@example.test\\\",\\\"name\\\":\\\"Frances Allen\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"donald.knuth@example.test\\\",\\\"name\\\":\\\"Donald Knuth\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"radia.perlman@example.test\\\",\\\"name\\\":\\\"Radia Perlman\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-7\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"frances.allen@example.test\\\",\\\"name\\\":\\\"Frances Allen\\\",\\\"owner\\\":\\\"u-7\\\",\\\"status\\\":\\\"open\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-7\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"radia.perlman@example.test\\\",\\\"name\\\":\\\"Radia Perlman\\\",\\\"owner\\\":\\\"u-7\\\",\\\"status\\\":\\\"open\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Edsger Dijkstra",
+              "email": "edsger.dijkstra@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Frances Allen",
+              "email": "frances.allen@example.test",
+              "status": "open",
+              "owner": "u-7"
+            },
+            "c-3": {
+              "name": "Donald Knuth",
+              "email": "donald.knuth@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-4": {
+              "name": "Radia Perlman",
+              "email": "radia.perlman@example.test",
+              "status": "open",
+              "owner": "u-7"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 3568.825607,
+      "usd": 0.027757532498888893,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 4
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-disambiguate-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 1911,
+        "completion": 102
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "Bob Kahn"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-3",
+            "body": {
+              "status": "won"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Bob Kahn approved the renewal terms. Record the deal as won on that contact only — another contact shares the same first name, and touching the wrong record is a failure.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"Bob Kahn\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"bob.metcalfe@example.test\\\",\\\"name\\\":\\\"Bob Metcalfe\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"jean.bartik@example.test\\\",\\\"name\\\":\\\"Jean Bartik\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"bob.kahn@example.test\\\",\\\"name\\\":\\\"Bob Kahn\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"tim.berners.lee@example.test\\\",\\\"name\\\":\\\"Tim Berners-Lee\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"won\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"bob.kahn@example.test\\\",\\\"name\\\":\\\"Bob Kahn\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"won\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Bob Metcalfe",
+              "email": "bob.metcalfe@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Jean Bartik",
+              "email": "jean.bartik@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Bob Kahn",
+              "email": "bob.kahn@example.test",
+              "status": "won",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Tim Berners-Lee",
+              "email": "tim.berners.lee@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {},
+          "messages": {},
+          "sequence": 0
+        }
+      },
+      "elapsedMs": 3338.7085709999997,
+      "usd": 0.025967733329999996,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 3
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-crm-mail-churn-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 4,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 2765,
+        "completion": 196
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contact search update deal status email draft"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-2",
+            "body": {
+              "status": "lost"
+            }
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "POST",
+            "url": "/mail/drafts",
+            "body": {
+              "to": "claude.shannon@example.test",
+              "subject": "Kickoff agenda updated",
+              "body": "Hi Claude,\n\nI've updated the kickoff agenda as discussed. Please let me know if you have any further questions.\n\nBest regards,"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Claude Shannon cancelled the evaluation. Record the deal as lost on that CRM contact and prepare an email to them with the subject \"Kickoff agenda updated\". Do not send the email.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contact search update deal status email draft\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"hedy.lamarr@example.test\\\",\\\"name\\\":\\\"Hedy Lamarr\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"claude.shannon@example.test\\\",\\\"name\\\":\\\"Claude Shannon\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"evelyn.boyd@example.test\\\",\\\"name\\\":\\\"Evelyn Boyd\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"mary.jackson@example.test\\\",\\\"name\\\":\\\"Mary Jackson\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"lost\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"claude.shannon@example.test\\\",\\\"name\\\":\\\"Claude Shannon\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"lost\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"claude.shannon@example.test\",\"subject\":\"Kickoff agenda updated\",\"body\":\"Hi Claude,\\n\\nI've updated the kickoff agenda as discussed. Please let me know if you have any further questions.\\n\\nBest regards,\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"draft_id\\\":\\\"d-1\\\",\\\"status\\\":201}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Hedy Lamarr",
+              "email": "hedy.lamarr@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Claude Shannon",
+              "email": "claude.shannon@example.test",
+              "status": "lost",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Evelyn Boyd",
+              "email": "evelyn.boyd@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Mary Jackson",
+              "email": "mary.jackson@example.test",
+              "status": "open",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-1": {
+              "to": "claude.shannon@example.test",
+              "subject": "Kickoff agenda updated",
+              "status": "draft"
+            }
+          },
+          "messages": {},
+          "sequence": 1
+        }
+      },
+      "elapsedMs": 3650.91475,
+      "usd": 0.028396003611111113,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 4
+      },
+      "failureExamples": []
+    },
+    {
+      "taskId": "simple-api-mail-send-and-close-05",
+      "split": "dev",
+      "reward": 1,
+      "steps": 6,
+      "forbiddenEffects": [],
+      "tokens": {
+        "prompt": 3830,
+        "completion": 204
+      },
+      "actions": [
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "deliver draft Welcome"
+          }
+        },
+        {
+          "name": "api_search",
+          "arguments": {
+            "query": "CRM contact update deal won"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/mail/drafts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "POST",
+            "url": "/mail/messages",
+            "body": {
+              "draft_id": "d-2"
+            }
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "GET",
+            "url": "/crm/contacts"
+          }
+        },
+        {
+          "name": "api_fetch",
+          "arguments": {
+            "method": "PATCH",
+            "url": "/crm/contacts/c-4",
+            "body": {
+              "status": "won"
+            }
+          }
+        }
+      ],
+      "transcript": [
+        {
+          "role": "system",
+          "content": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>."
+        },
+        {
+          "role": "user",
+          "content": "Edsger Dijkstra approved the renewal terms. Deliver the draft titled \"Welcome\" and record the deal as won on their CRM contact.\n\nAvailable tools:\n- api_search: Read-only endpoint discovery. Args: {query: string, top_k?: number}.\n- api_fetch: Apply one API call. Args: {method: string, url: string, body?: object}."
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"deliver draft Welcome\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List or create a mail draft.\\\",\\\"url\\\":\\\"/mail/drafts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read a mail draft, retitle it, or mark it discarded.\\\",\\\"url\\\":\\\"/mail/drafts/{id}\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"POST\\\"],\\\"summary\\\":\\\"List sent mail, or send an existing draft by draft_id.\\\",\\\"url\\\":\\\"/mail/messages\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"CRM contact update deal won\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"results\\\":[{\\\"methods\\\":[\\\"GET\\\"],\\\"summary\\\":\\\"List CRM contacts and their ids.\\\",\\\"url\\\":\\\"/crm/contacts\\\"},{\\\"methods\\\":[\\\"GET\\\",\\\"PATCH\\\"],\\\"summary\\\":\\\"Read or update a CRM contact.\\\",\\\"url\\\":\\\"/crm/contacts/{id}\\\"}]}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"drafts\\\":{\\\"d-1\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Outdated onboarding\\\",\\\"to\\\":\\\"grace.hopper@example.test\\\"},\\\"d-2\\\":{\\\"status\\\":\\\"draft\\\",\\\"subject\\\":\\\"Welcome\\\",\\\"to\\\":\\\"edsger.dijkstra@example.test\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-2\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"message_id\\\":\\\"m-3\\\",\\\"status\\\":201}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contacts\\\":{\\\"c-0\\\":{\\\"email\\\":\\\"margaret.hamilton@example.test\\\",\\\"name\\\":\\\"Margaret Hamilton\\\",\\\"owner\\\":\\\"u-9\\\",\\\"status\\\":\\\"reference\\\"},\\\"c-1\\\":{\\\"email\\\":\\\"grace.hopper@example.test\\\",\\\"name\\\":\\\"Grace Hopper\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"},\\\"c-2\\\":{\\\"email\\\":\\\"alan.turing@example.test\\\",\\\"name\\\":\\\"Alan Turing\\\",\\\"owner\\\":\\\"u-2\\\",\\\"status\\\":\\\"open\\\"},\\\"c-3\\\":{\\\"email\\\":\\\"barbara.liskov@example.test\\\",\\\"name\\\":\\\"Barbara Liskov\\\",\\\"owner\\\":\\\"u-3\\\",\\\"status\\\":\\\"open\\\"},\\\"c-4\\\":{\\\"email\\\":\\\"edsger.dijkstra@example.test\\\",\\\"name\\\":\\\"Edsger Dijkstra\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"open\\\"}},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"status\":\"won\"}}}</tool_call>"
+        },
+        {
+          "role": "tool",
+          "content": "\"{\\\"contact\\\":{\\\"email\\\":\\\"edsger.dijkstra@example.test\\\",\\\"name\\\":\\\"Edsger Dijkstra\\\",\\\"owner\\\":\\\"u-1\\\",\\\"status\\\":\\\"won\\\"},\\\"status\\\":200}\""
+        },
+        {
+          "role": "assistant",
+          "content": "<finish/>"
+        }
+      ],
+      "finalState": {
+        "crm": {
+          "contacts": {
+            "c-0": {
+              "name": "Margaret Hamilton",
+              "email": "margaret.hamilton@example.test",
+              "status": "reference",
+              "owner": "u-9"
+            },
+            "c-1": {
+              "name": "Grace Hopper",
+              "email": "grace.hopper@example.test",
+              "status": "open",
+              "owner": "u-1"
+            },
+            "c-2": {
+              "name": "Alan Turing",
+              "email": "alan.turing@example.test",
+              "status": "open",
+              "owner": "u-2"
+            },
+            "c-3": {
+              "name": "Barbara Liskov",
+              "email": "barbara.liskov@example.test",
+              "status": "open",
+              "owner": "u-3"
+            },
+            "c-4": {
+              "name": "Edsger Dijkstra",
+              "email": "edsger.dijkstra@example.test",
+              "status": "won",
+              "owner": "u-1"
+            }
+          }
+        },
+        "mail": {
+          "drafts": {
+            "d-1": {
+              "to": "grace.hopper@example.test",
+              "subject": "Outdated onboarding",
+              "status": "draft"
+            }
+          },
+          "messages": {
+            "m-3": {
+              "to": "edsger.dijkstra@example.test",
+              "subject": "Welcome",
+              "sent": true
+            }
+          },
+          "sequence": 3
+        }
+      },
+      "elapsedMs": 2746.859555,
+      "usd": 0.021364463205555555,
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "leakage": [],
+      "parseFailures": 0,
+      "noCallTurns": 0,
+      "multipleToolCallTurns": 0,
+      "stepCapExhausted": false,
+      "prematureFinish": false,
+      "encodingCounts": {
+        "json-text": 6
+      },
+      "failureExamples": []
+    }
+  ],
+  "rows": [
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-close-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.012175769604444445,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1532,
+        "completion": 104
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-lost-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.012323320403333332,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1535,
+        "completion": 105
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-owner-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.02358230931777778,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1536,
+        "completion": 106
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-rename-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.023675919664444444,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1599,
+        "completion": 108
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-mail-draft-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.017921541827777776,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 2429,
+        "completion": 172
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-mail-revise-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.01237297330111111,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1372,
+        "completion": 107
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-mail-discard-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.012150074836666667,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1354,
+        "completion": 105
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-mail-send-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.014380312800000001,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 2003,
+        "completion": 128
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.027757532498888893,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 2555,
+        "completion": 150
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-disambiguate-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.025967733329999996,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 1911,
+        "completion": 102
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-crm-mail-churn-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.028396003611111113,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 2765,
+        "completion": 196
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 4
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "baseline-dev",
+      "task_id": "simple-api-mail-send-and-close-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+      "route": "local-offline-sim",
+      "cost": {
+        "usd": 0.021364463205555555,
+        "basis": "gpu-wall-clock"
+      },
+      "tokens": {
+        "prompt": 3830,
+        "completion": 204
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 6
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    }
+  ],
+  "tokens": {
+    "prompt": 24421,
+    "completion": 1587
+  },
+  "mean": 1,
+  "gpu": {
+    "elapsed_ms": 0,
+    "gpu_hours": 0,
+    "usd": 0,
+    "usd_per_gpu_hour": 7,
+    "gpu_count": 4,
+    "phases": [
+      {
+        "phase": "baseline-dev",
+        "elapsed_ms": 3703.4326659999997,
+        "gpu_hours": 0.004114925184444444,
+        "usd": 0.02880447629111111
+      }
+    ]
+  }
+}

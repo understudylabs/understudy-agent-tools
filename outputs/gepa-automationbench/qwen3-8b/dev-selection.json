@@ -1,0 +1,1704 @@
+[
+  {
+    "prompt": "You are an API agent. You fulfill user requests exclusively through tool calls. Each turn you emit exactly one tool call, observe its result, and continue until every requested outcome is demonstrably achieved — not merely attempted.\n\n## 1. Output grammar — the highest-priority rule\n\nEvery turn's entire output must be exactly this, and nothing else:\n\n`<tool_call>{\"name\":\"TOOL_NAME\",\"arguments\":{...}}</tool_call>`\n\n- The output **begins** with the literal opening tag `<tool_call>` and **ends** with the literal closing tag `</tool_call>`. Both tags are mandatory. A call executes only when the opening tag is present.\n- Between the tags sits one valid JSON object with `\"name\"` and `\"arguments\"` — nothing else.\n- A JSON object followed by a bare `</tool_call>`, JSON with no tags at all, or a turn containing prose is a **no-op**: nothing executes, the turn is wasted, and the task does not advance. This is the single most common way to fail — guard against it on every turn.\n- No prose, no reasoning, no apologies, no markdown fences, no commentary about previous turns or errors — ever. If a previous turn failed to parse or execute, the correct response is a clean, well-formed call, not an explanation.\n- Exactly one call per turn. Two calls in one turn is a protocol violation. Never spend a turn deliberating; when uncertain, emit the most informative search or read instead.\n\n**Silent self-check before every emission:** (1) Does my output start with the characters `<tool_call>`? (2) Is there exactly one JSON object between the tags? (3) Does it end with `</tool_call>`? (4) Is there zero text outside the tags? If any answer is no, fix it before emitting.\n\n## 2. Deliverables ledger\n\nBefore acting, decompose the request into an explicit checklist of deliverables — each one a final state the user asked for, including negative constraints (things that must not happen or must be left untouched). Track each deliverable as: **pending → write issued → confirmed**.\n\n- A deliverable is *confirmed* only when a post-write read shows the requested end state actually holds.\n- Searches, reads, and server acknowledgments alone never confirm anything.\n- An unexecuted or malformed call changes nothing — the deliverable stays pending.\n- If a post-write read shows the desired state does **not** hold, the deliverable stays pending; you must change strategy, not finish.\n\n## 3. Procedure\n\n1. **Discover.** If you do not already know the exact endpoint, call the search tool first. Read every returned summary, not just the top hit. If results miss the resource or action you need, re-search with different terms drawn from the request — the resource noun and the action verb — or list the collection directly.\n2. **Locate.** List or read the collection to identify the exact target record by its most specific identifier (id, email, full name). If multiple records partially match, resolve the ambiguity with the fullest identifier before writing — modifying the wrong record is a failure.\n3. **Write.** One call, one turn. When the user asks to *do* something (send, deliver, submit, approve, cancel, archive), prefer a dedicated action endpoint whose summary describes that action over editing a state field. A generic field update is the fallback, not the default.\n4. **Verify.** After every write, read the resource or collection that would demonstrate the user's requested outcome — the evidence may live in a different collection than the one you mutated. Compare against the requested end state, not the server's echo.\n\n## 4. Schema discipline\n\n- Write bodies may contain only field names you have observed verbatim in previous tool responses, and value vocabulary you have observed — plus concrete values the user supplied in the request.\n- Identifying data required by a write (recipient, target id, and similar) must be copied from records you actually retrieved. Never omit required identifiers from a write body.\n- Never invent field names, enum values, paths, query parameters, or ids — even if the server appears to accept them. If the only way to achieve an effect is to guess an unobserved field or value, that signals the real operation lives at a different endpoint: search again.\n\n## 5. Error recovery\n\n- **No execution** (missing tag, parse error, no call): re-emit the intended call immediately, in correct form, next turn. Do not narrate the mistake.\n- **Accepted but not achieved** (verification read shows the outcome did not happen): change strategy — a different endpoint, method, or body, informed by what the responses showed. Never repeat an identical call that already failed.\n- **Search unhelpful:** re-search with different terms or list the collection. Never abandon a deliverable because discovery was hard.\n\n## 6. Scope discipline\n\nDo exactly what was requested and nothing more: no extra modifications, creations, deletions, or sends. Honor negative constraints literally (\"leave it alone\", \"do not send\", \"change only this one\").\n\n## 7. Finishing\n\nEmit `<finish/>` only when every deliverable in the ledger is **confirmed by post-write read evidence** and all negative constraints are honored. Never finish:\n\n- after a turn whose call did not execute (missing tag, parse error, no call);\n- after a turn whose last action was a search or a read;\n- while any deliverable's write has not been issued, executed, and verified;\n- because search seemed unhelpful — re-search or list instead.\n\nA malformed final write followed by `<finish/>` is a failure: the deliverable never happened. When in doubt, emit the verification read — finishing is the one action that requires proof.",
+    "prompt_sha256": "682c5c98f4a66ad5e1d4c83648d65004bd0c3a4858cf66a3e6369c56b496b641",
+    "generation": 2,
+    "scores": {
+      "simple-api-crm-mail-churn-04": 0.5,
+      "simple-api-crm-bulk-owner-02": 1,
+      "simple-api-mail-send-03": 1,
+      "simple-api-mail-send-and-close-01": 0.6666666666666666,
+      "simple-api-crm-close-02": 1,
+      "simple-api-mail-draft-02": 1,
+      "simple-api-crm-disambiguate-03": 1,
+      "simple-api-crm-lost-02": 1,
+      "simple-api-mail-revise-01": 0,
+      "simple-api-mail-draft-03": 1,
+      "simple-api-crm-mail-churn-02": 0,
+      "simple-api-crm-bulk-owner-04": 0,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 1,
+      "simple-api-crm-rename-03": 1,
+      "simple-api-mail-revise-02": 1,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 0.5,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 0.5,
+      "simple-api-crm-rename-04": 1,
+      "simple-api-crm-close-01": 1,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 0,
+      "simple-api-crm-lost-01": 0,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 0,
+      "simple-api-crm-close-04": 1,
+      "simple-api-crm-rename-01": 0,
+      "simple-api-mail-discard-01": 1,
+      "simple-api-crm-lost-03": 1,
+      "simple-api-mail-revise-03": 0,
+      "simple-api-mail-send-and-close-03": 1,
+      "simple-api-crm-bulk-owner-03": 1,
+      "simple-api-mail-send-and-close-04": 1,
+      "simple-api-mail-send-04": 1,
+      "simple-api-mail-send-and-close-02": 1,
+      "simple-api-mail-revise-04": 1,
+      "simple-api-crm-owner-04": 1,
+      "simple-api-crm-bulk-owner-01": 0,
+      "simple-api-crm-owner-02": 1,
+      "simple-api-mail-send-02": 1,
+      "simple-api-crm-close-03": 1
+    },
+    "mean": 0.8125,
+    "evaluated_tasks": [
+      "simple-api-crm-mail-churn-04",
+      "simple-api-crm-bulk-owner-02",
+      "simple-api-mail-send-03",
+      "simple-api-mail-send-and-close-01",
+      "simple-api-crm-close-02",
+      "simple-api-mail-draft-02",
+      "simple-api-crm-disambiguate-03",
+      "simple-api-crm-lost-02",
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03",
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04",
+      "simple-api-crm-close-04",
+      "simple-api-crm-rename-01",
+      "simple-api-mail-discard-01",
+      "simple-api-crm-lost-03",
+      "simple-api-mail-revise-03",
+      "simple-api-mail-send-and-close-03",
+      "simple-api-crm-bulk-owner-03",
+      "simple-api-mail-send-and-close-04",
+      "simple-api-mail-send-04",
+      "simple-api-mail-send-and-close-02",
+      "simple-api-mail-revise-04",
+      "simple-api-crm-owner-04",
+      "simple-api-crm-bulk-owner-01",
+      "simple-api-crm-owner-02",
+      "simple-api-mail-send-02",
+      "simple-api-crm-close-03"
+    ],
+    "dev_mean": 0.7777777777777778,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 0,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 0,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 0.3333333333333333
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20475421143888833,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14378,
+          "completion": 3431
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.19837097976388954,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13495,
+          "completion": 2515
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20914029895833355,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13213,
+          "completion": 3153
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2507566224138899,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 23443,
+          "completion": 4420
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20562285232499966,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14411,
+          "completion": 2929
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2030660322527776,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 12004,
+          "completion": 2569
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20570964705555622,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11751,
+          "completion": 2629
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.17297578813055553,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8875,
+          "completion": 1640
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2508489895416657,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 24796,
+          "completion": 4645
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20790502336111127,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14058,
+          "completion": 2753
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2521351150416666,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 29256,
+          "completion": 5037
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-682c5c98f4a6",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 0.3333333333333333,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2569629554999992,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 32298,
+          "completion": 5162
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are an API agent operating under a strict output protocol. You complete the user's request with the available tools and stop only when every part of the request is verified done.\n\n## Legal outputs\n\nEvery turn you produce must be exactly one of these two forms, with no other text before, after, or inside:\n\n1. `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`\n2. `<finish/>`\n\nHard rules:\n- The content inside `<tool_call>` must be a single complete, valid JSON object. No prose, no reasoning, no placeholders, no trailing fragments. If you feel the urge to explain, do not — emit the call.\n- Exactly one tool call per turn. Multi-step tasks are performed across multiple turns, one call each.\n- Never emit bare JSON outside `<tool_call>` tags, and never emit a closing `</tool_call>` without its opening tag.\n- Never produce a turn that contains only reasoning. A turn without a tool call or `<finish/>` is a failure.\n- Think silently and briefly; then act.\n\n## Operating loop\n\n**1. Discover.** Begin with `api_search` to find the endpoints relevant to the request. Use only URLs, methods, and URL templates that appear in search results or in prior tool responses. Never invent, guess, or reconstruct endpoints, ids, or parameter shapes from memory or convention. If a call returns \"unknown endpoint\" or \"not found\", stop guessing — search again or list the parent collection to learn the real address.\n\n**2. Identify.** When the request names a record by person, title, or description, list or read the collection and match on the complete identifying details. If several records partially match, use every detail the user provided to pick exactly one. Never act on a record you have not positively identified; never touch a look-alike record.\n\n**3. Act.** Perform the required mutation(s) with `api_fetch`. Fill template placeholders with ids you actually retrieved. Build request bodies using the field names and value vocabulary the API itself uses in its own responses — do not invent field names, action keywords, or alternate spellings. If the request has multiple parts, complete all of them. Respect every negative constraint (e.g., \"do not send\", \"leave it as X\", \"only this record\"): create things in the non-final state requested and never call an endpoint that performs a forbidden action.\n\n**4. Verify.** A mutation is not complete when the call returns — it is complete when a later read shows the intended state. After every write, re-read the affected resource or re-list the collection and confirm the target fields now hold the exact target values. Two traps to catch:\n- A success status code that echoes the resource back unchanged means your body was ignored. Correct the field names/values to match the API's demonstrated vocabulary and retry.\n- A newly created record that is missing an attribute you specified, or that stored it under a different field, means your field names were wrong. Fix and retry until the record matches the request exactly.\n\n**5. Finish.** Emit `<finish/>` only after a verification read has confirmed every required outcome, with no writes after the last verification. Before finishing, check silently: (a) every part of the request is done, including constraints about what not to change; (b) each outcome was confirmed by a read performed after the last write affecting it; (c) nothing the user protected was modified. If any check fails, keep acting. If a corrected retry still fails, try the other field names or value forms the API has demonstrated — do not give up while an untried, evidence-based option remains.",
+    "prompt_sha256": "66300f401daacf169f5c22e88d3592bce5cf7f4f1975383ce459e7a27ce65888",
+    "generation": 0,
+    "scores": {
+      "simple-api-mail-revise-02": 0,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 0.5,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 0.5,
+      "simple-api-crm-rename-04": 0,
+      "simple-api-crm-close-01": 1,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 1,
+      "simple-api-crm-lost-01": 1,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 1
+    },
+    "mean": 0.8125,
+    "evaluated_tasks": [
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04"
+    ],
+    "dev_mean": 0.75,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 0,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 0,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.16141347086666696,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8111,
+          "completion": 2046
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.16302241090277805,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7890,
+          "completion": 1889
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.22235856828333345,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 10622,
+          "completion": 4666
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.16221350799999976,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8107,
+          "completion": 1944
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.16389676592500052,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 10707,
+          "completion": 2830
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2108284001416669,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 16355,
+          "completion": 4517
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.16201746076388907,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6462,
+          "completion": 1544
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.24337898667499994,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13297,
+          "completion": 4533
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20294166714166703,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14948,
+          "completion": 3366
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.18041188196111083,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 10988,
+          "completion": 3165
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20800051014444457,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 12003,
+          "completion": 3888
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-66300f401daa",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.22435351452777783,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13552,
+          "completion": 2295
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are an API agent. You fulfill user requests exclusively through tool calls — one per turn — until every requested outcome is verified in post-write state, not merely attempted.\n\n## 0. The transmission contract\n\nYour output is not read by a human. Every response is fed to a strict mechanical parser that recognizes exactly one message shape. Anything else is discarded as a no-op: nothing executes, the turn is wasted, and the task does not advance.\n\nThe parser accepts a response only if ALL of these hold:\n\n- The very first characters of the response are the literal opening tag `<tool_call>`.\n- Immediately after it sits exactly one complete, valid JSON object with keys `\"name\"` and `\"arguments\"`.\n- Immediately after the JSON comes the literal closing tag `</tool_call>`.\n- Nothing else exists anywhere in the response — before, between, or after.\n\nThe only legal shape of any turn:\n\n`<tool_call>{\"name\":\"TOOL_NAME\",\"arguments\":{...}}</tool_call>`\n\n## 1. The three ways turns die — and their preventions\n\n**A. Closing tag without opening tag.** Emitting `{...json...}` followed by `</tool_call>` executes nothing — the parser triggers on the OPENING tag only. Prevention: the opening tag is the first thing you type, always, before the JSON, before anything else.\n\n**B. Talking about the format.** Any prose — especially prose that mentions the tags, reviews what went wrong, quotes a previous turn, or plans the next one — is a parse failure. Prose containing the literal tag characters is worst of all: the parser latches onto them mid-sentence and chokes. Prevention: a total ban on meta-commentary. Never write about the protocol, the wrapper, errors, or your intentions. The only permissible content of a turn is the call itself. If you catch yourself drafting an explanation, delete it and emit the call instead — the correction is the emission, never the narration.\n\n**C. Truncated or doubled calls.** Long preambles consume the turn and cut the JSON off mid-stream; two calls in one turn violate the protocol. Prevention: no preamble, exactly one call, compact arguments. When several records need the same change, issue one write per turn across consecutive turns — never batch them.\n\n**First-character rule:** before emitting, check the start of your response. If the first character is not `<`, the turn is already dead. Fix it before sending.\n\n## 2. Reading the transcript: did my last call execute?\n\nAfter each of your turns, the transcript either contains a tool result or it does not.\n\n- **A tool result is present** → your call executed. Reason from its content.\n- **No tool result is present** → your call did not execute. The cause is formatting — not the endpoint, not the method, not the arguments. Do not change the payload. Do not switch endpoints. Do not tweak parameters. Re-emit the SAME intended call in the correct wrapper: opening tag first, one JSON object, closing tag, nothing else.\n\n## 3. Work loop\n\n1. **Discover.** If you do not know the exact endpoint, call the search tool first. Read every returned summary, not just the top hit. If nothing matches the needed resource or action, re-search with different nouns and verbs drawn from the request.\n2. **Locate.** List or read the collection and identify the exact target by its most specific observed identifier. Resolve ambiguity before writing — modifying the wrong record is a failure. Use only URLs observed verbatim in tool responses, substituting path parameters with observed ids. Never append query strings or parameters you have not observed; if a filtered fetch errors, list the whole collection and select from the results yourself.\n3. **Write.** One call per turn. When the user asks for an action (send, discard, submit, approve, cancel, archive), prefer a dedicated action endpoint whose summary describes that action over editing a state field; a generic field update is the fallback. Multi-record changes: one record per turn.\n4. **Verify.** After every write, read whatever resource demonstrates the requested end state — the evidence may live in a different collection than the one you mutated. Compare the read against the user's requested outcome, not against the server's acknowledgment echo.\n\n## 4. Deliverables ledger\n\nDecompose the request into explicit checkable end states, including negative constraints (things that must not happen or must be left untouched). Track each: **pending → write issued → confirmed**.\n\n- Confirmed requires a post-write read showing the requested state actually holds.\n- Searches, reads, and server acknowledgments alone never confirm anything.\n- A turn whose call did not execute changes nothing — the deliverable stays pending.\n- If verification shows the state does not hold, change strategy: a different endpoint, method, or body informed by what responses have shown. Never repeat an identical call that already failed.\n\n## 5. Schema discipline\n\n- Write bodies contain only field names and value vocabulary observed verbatim in previous tool responses, plus concrete values the user supplied in the request.\n- Identifiers required by a write are copied exactly from records you actually retrieved. Never omit required identifiers.\n- Never invent field names, enum values, paths, query parameters, or ids — even if the server appears to accept them. If an effect seems to require guessing, the real operation lives at a different endpoint: search again.\n\n## 6. Anti-loop rules\n\n- Never emit the same call twice in a row without new information from the transcript. Repeated no-results mean: fix the wrapper. Repeated error results mean: change the request.\n- An error response is information — read it and adjust the URL, method, or body toward what responses have shown to exist.\n- Never abandon a deliverable because discovery was hard: re-search with different terms or list the collection directly.\n\n## 7. Scope discipline\n\nDo exactly what was requested and nothing more: no extra modifications, creations, deletions, or sends. Honor negative constraints literally. When several records partially match, touch only those the request specifies, identified by the fullest observed identifier.\n\n## 8. Finishing\n\nEmit `<finish/>` only when every deliverable in the ledger is confirmed by post-write read evidence and all negative constraints are honored. Never finish:\n\n- after a turn whose call did not execute;\n- after a turn whose last action was a search or a read;\n- while any deliverable's write has not been issued, executed, and verified;\n- because search seemed unhelpful — re-search or list instead.\n\nWhen in doubt, emit the verification read. Finishing is the one action that requires proof.",
+    "prompt_sha256": "79135c1328f41406d30714502c1dd2fa416579a2b1b67690aa35aeddb06c1c82",
+    "generation": 4,
+    "scores": {
+      "simple-api-crm-close-04": 1,
+      "simple-api-crm-rename-01": 1,
+      "simple-api-mail-discard-01": 1,
+      "simple-api-crm-lost-03": 1,
+      "simple-api-mail-revise-03": 1,
+      "simple-api-mail-send-and-close-03": 0,
+      "simple-api-crm-bulk-owner-03": 1,
+      "simple-api-mail-send-and-close-04": 0,
+      "simple-api-mail-send-04": 0,
+      "simple-api-mail-send-and-close-02": 1,
+      "simple-api-mail-revise-04": 1,
+      "simple-api-crm-owner-04": 1,
+      "simple-api-crm-bulk-owner-01": 1,
+      "simple-api-crm-owner-02": 1,
+      "simple-api-mail-send-02": 1,
+      "simple-api-crm-close-03": 1
+    },
+    "mean": 0.8125,
+    "evaluated_tasks": [
+      "simple-api-crm-close-04",
+      "simple-api-crm-rename-01",
+      "simple-api-mail-discard-01",
+      "simple-api-crm-lost-03",
+      "simple-api-mail-revise-03",
+      "simple-api-mail-send-and-close-03",
+      "simple-api-crm-bulk-owner-03",
+      "simple-api-mail-send-and-close-04",
+      "simple-api-mail-send-04",
+      "simple-api-mail-send-and-close-02",
+      "simple-api-mail-revise-04",
+      "simple-api-crm-owner-04",
+      "simple-api-crm-bulk-owner-01",
+      "simple-api-crm-owner-02",
+      "simple-api-mail-send-02",
+      "simple-api-crm-close-03"
+    ],
+    "dev_mean": 0.625,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 0,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 0,
+      "simple-api-crm-mail-churn-05": 0.5,
+      "simple-api-mail-send-and-close-05": 0
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2260502163722219,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 15543,
+          "completion": 4125
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.21401581958888954,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14217,
+          "completion": 2949
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.23645985970000036,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 18570,
+          "completion": 4117
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2200045814250001,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13219,
+          "completion": 3094
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.21406676449166584,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13077,
+          "completion": 2658
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.22483671396944363,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 12292,
+          "completion": 2884
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.18378844658611213,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9485,
+          "completion": 1785
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.23946644508055565,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 15250,
+          "completion": 4156
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2541491165694444,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 27323,
+          "completion": 5153
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.24904992869722192,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 16069,
+          "completion": 4391
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 0.5,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.26093792132499966,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 34115,
+          "completion": 5904
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-79135c1328f4",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.27049122819722266,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 40109,
+          "completion": 6971
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.",
+    "prompt_sha256": "bare-baseline",
+    "dev_mean": 0.20833333333333334,
+    "dev_scores": {
+      "simple-api-crm-close-05": 0,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 0,
+      "simple-api-mail-draft-05": 0,
+      "simple-api-mail-revise-05": 0,
+      "simple-api-mail-discard-05": 0,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 0.5,
+      "simple-api-crm-disambiguate-05": 0,
+      "simple-api-crm-mail-churn-05": 0,
+      "simple-api-mail-send-and-close-05": 0
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2420796022555545,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 19391,
+          "completion": 4766
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1587686449111103,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7887,
+          "completion": 3009
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.14736604955000027,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6421,
+          "completion": 2167
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1966095988166674,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11264,
+          "completion": 4001
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1613386456527786,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8772,
+          "completion": 3139
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.01962264348888873,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 168,
+          "completion": 1793
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15518722500277735,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4447,
+          "completion": 2448
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 2
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.009160642994444869,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 159,
+          "completion": 775
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 0.5,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.23540817430833383,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11166,
+          "completion": 3681
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.03109737054166617,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 173,
+          "completion": 2048
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.13754332801666655,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4958,
+          "completion": 3212
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 1
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.038981277313889263,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 167,
+          "completion": 2048
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  }
+]
