@@ -17,6 +17,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -211,9 +213,14 @@ class ServerlessBackend:
         return self.service.create_sampling_client(model_path=model_path, tokenizer=tokenizer)
 
     def close(self) -> None:
+        session_id = self.service.training_session_id
         close = getattr(self.service, "close", None)
-        if close:
-            close()
+        try:
+            if close:
+                close()
+        finally:
+            if session_id:
+                _release_serverless_session(session_id)
 
 
 class TinkerBackend:
@@ -540,6 +547,8 @@ def evaluate_model(
     control: str | None = None,
     transcript_dir: Path | None = None,
     limit: int | None = None,
+    temperature: float = 0.0,
+    samples: int = 1,
 ) -> dict[str, Any]:
     tokenizer, renderer, tokenizer_name, renderer_name = _renderer_for(model)
     backend_cls = ServerlessBackend if backend_name == "serverless" else TinkerBackend
@@ -555,35 +564,39 @@ def evaluate_model(
                 tasks = tasks[:limit]
             rows: list[dict[str, Any]] = []
             for task in tasks:
-                transform = _control_transform(control)
-                rollout_result = rollout(
-                    env,
-                    sampler,
-                    renderer,
-                    task,
-                    meter,
-                    temperature=0.0,
-                    tokenizer=tokenizer,
-                    action_transform=transform,
-                    prompt_override="" if control == "blank-prompt" else None,
-                )
-                rows.append(
-                    {
-                        "task_id": rollout_result.task_id,
-                        "split": rollout_result.split,
-                        "reward": rollout_result.reward,
-                        "parse_errors": rollout_result.parse_errors,
-                        "env_steps": rollout_result.env_steps,
-                        "model_turns": len(rollout_result.turns),
-                    }
-                )
-                if transcript_dir is not None and len(rows) <= 3:
-                    _write_transcript(transcript_dir, model, split, control, rollout_result)
-                meter.enforce_cap(cap)
+                for sample_index in range(samples):
+                    transform = _control_transform(control)
+                    rollout_result = rollout(
+                        env,
+                        sampler,
+                        renderer,
+                        task,
+                        meter,
+                        temperature=temperature,
+                        tokenizer=tokenizer,
+                        action_transform=transform,
+                        prompt_override="" if control == "blank-prompt" else None,
+                    )
+                    rows.append(
+                        {
+                            "task_id": rollout_result.task_id,
+                            "split": rollout_result.split,
+                            "sample_index": sample_index,
+                            "reward": rollout_result.reward,
+                            "parse_errors": rollout_result.parse_errors,
+                            "env_steps": rollout_result.env_steps,
+                            "model_turns": len(rollout_result.turns),
+                        }
+                    )
+                    if transcript_dir is not None and len(rows) <= 3:
+                        _write_transcript(transcript_dir, model, split, control, rollout_result)
+                    meter.enforce_cap(cap)
             summary = {
                 "model": model,
                 "backend": backend_name,
                 "control": control,
+                "temperature": temperature,
+                "samples_per_task": samples,
                 "tokenizer": tokenizer_name,
                 "renderer": renderer_name,
                 "split": split,
@@ -606,7 +619,7 @@ def evaluate_model(
 
 
 def _control_transform(control: str | None) -> Any | None:
-    if control is None:
+    if control in {None, "blank-prompt"}:
         return None
     if control == "null":
         return lambda _action: {
@@ -636,6 +649,69 @@ def _control_transform(control: str | None) -> Any | None:
             },
         }
     raise ValueError(f"unknown control: {control}")
+
+
+def _release_serverless_session(session_id: str) -> None:
+    """Release only the serverless session created by this process."""
+    account = os.environ.get("FIREWORKS_ACCOUNT", "understudy-dev")
+    url = f"https://api.fireworks.ai/v1/accounts/{account}/trainingSessions/{session_id}"
+    request = urllib.request.Request(
+        url,
+        method="DELETE",
+        headers={"X-Api-Key": os.environ["FIREWORKS_API_KEY"]},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60):
+            return
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return
+        body = error.read().decode(errors="replace")
+        raise RuntimeError(
+            f"failed to release serverless session {session_id}: "
+            f"HTTP {error.code} {body}"
+        ) from error
+
+
+def _list_serverless_sessions() -> list[dict[str, Any]]:
+    account = os.environ.get("FIREWORKS_ACCOUNT", "understudy-dev")
+    url = f"https://api.fireworks.ai/v1/accounts/{account}/trainingSessions?pageSize=200"
+    request = urllib.request.Request(
+        url,
+        headers={"X-Api-Key": os.environ["FIREWORKS_API_KEY"]},
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        payload = json.load(response)
+    return payload.get("trainingSessions", [])
+
+
+def reclaim_serverless_sessions(
+    session_ids: list[str] | None,
+    created_after: str | None,
+    model: str | None,
+) -> None:
+    if not session_ids and not created_after:
+        raise ValueError("reclaim requires --session-id or --created-after")
+    sessions = _list_serverless_sessions()
+    wanted = set(session_ids or [])
+    selected = []
+    for session in sessions:
+        session_id = str(session.get("name", "")).rsplit("/", 1)[-1]
+        if session.get("state") != "READY":
+            continue
+        if wanted and session_id not in wanted:
+            continue
+        if created_after and str(session.get("createTime", "")) < created_after:
+            continue
+        if model and session.get("baseModel") != model:
+            continue
+        selected.append(session)
+    ready_before = sum(session.get("state") == "READY" for session in sessions)
+    for session in selected:
+        session_id = str(session["name"]).rsplit("/", 1)[-1]
+        _release_serverless_session(session_id)
+        print(json.dumps({"released": session_id, "base_model": session.get("baseModel")}))
+    print(json.dumps({"selected": len(selected), "ready_before": ready_before}))
 
 
 def _write_transcript(
@@ -689,7 +765,7 @@ def preflight(models: list[str], task_count: int, max_tokens: int, cap: float) -
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["gate", "preflight", "eval"])
+    parser.add_argument("command", choices=["gate", "preflight", "eval", "reclaim"])
     parser.add_argument("--model", choices=sorted(RENDERERS))
     parser.add_argument("--backend", choices=["serverless", "tinker"], default="serverless")
     parser.add_argument(
@@ -702,6 +778,10 @@ def main() -> None:
     parser.add_argument("--split", choices=["train", "dev"], default="dev")
     parser.add_argument("--cap", type=float, default=10.0)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--temperature", type=float, default=0.0)
+    parser.add_argument("--samples", type=int, default=1)
+    parser.add_argument("--session-id", action="append")
+    parser.add_argument("--created-after")
     args = parser.parse_args()
     env = EnvService(str(REPO)).start()
     try:
@@ -714,6 +794,8 @@ def main() -> None:
                 DEFAULT_MAX_TOKENS,
                 args.cap,
             )
+        elif args.command == "reclaim":
+            reclaim_serverless_sessions(args.session_id, args.created_after, args.model)
         else:
             if not args.model:
                 parser.error("--model is required for eval")
@@ -728,6 +810,8 @@ def main() -> None:
                 args.control,
                 args.transcript_dir,
                 args.limit,
+                args.temperature,
+                args.samples,
             )
     finally:
         env.stop()
