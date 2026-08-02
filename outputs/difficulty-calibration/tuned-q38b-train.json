@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.600Z",
+  "generated_at": "2026-08-02T02:07:52.507Z",
+  "source_run": {
+    "path": "outputs/tuned-q38b-train.json",
+    "sha256": "990b52e431e9a1dd294b4649799fed34eee378e9f6a56d9ff9ce57fd65ab9c2a"
+  },
   "fixture": "automationbench-simple-api-offline-v1",
   "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
   "split": "train",

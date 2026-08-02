@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.399Z",
+  "generated_at": "2026-08-02T02:07:52.302Z",
+  "source_run": {
+    "path": "outputs/zeroshot-nemotron3-nano-dev.json",
+    "sha256": "fe48d5c1649edc67c88e215d1dedbc2d14e987549240084fbd0e56503d4bd12f"
+  },
   "fixture": "automationbench-simple-api-offline-v2",
   "model": "nemotron-3-nano-30b-a3b",
   "split": "dev",

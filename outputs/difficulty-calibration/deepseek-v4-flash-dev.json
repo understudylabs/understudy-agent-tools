@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.300Z",
+  "generated_at": "2026-08-02T02:07:52.200Z",
+  "source_run": {
+    "path": "outputs/zeroshot-deepseek-v4-flash-dev.json",
+    "sha256": "87eab4e898b96be9d6d7252fe1beaed49cdecb8f110bb66086fa0eca165e53d9"
+  },
   "fixture": "automationbench-simple-api-offline-v2",
   "model": "accounts/fireworks/models/deepseek-v4-flash",
   "split": "dev",

@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.350Z",
+  "generated_at": "2026-08-02T02:07:52.250Z",
+  "source_run": {
+    "path": "outputs/zeroshot-gpt-oss-20b-dev.json",
+    "sha256": "bd23e5e43c62ae65b310d91ee569b77ff757484972b540cce503da905327df8b"
+  },
   "fixture": "automationbench-simple-api-offline-v2",
   "model": "accounts/fireworks/models/gpt-oss-20b",
   "split": "dev",

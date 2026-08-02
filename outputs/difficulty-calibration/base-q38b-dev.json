@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.550Z",
+  "generated_at": "2026-08-02T02:07:52.455Z",
+  "source_run": {
+    "path": "outputs/base-q38b-dev.json",
+    "sha256": "34a342fa27df4e0c183eec5bab04444ec7e65e0d89c782f89dbd2548c76cf94f"
+  },
   "fixture": "automationbench-simple-api-offline-v1",
   "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/abo-q38b-base",
   "split": "dev",

@@ -63,3 +63,10 @@ sample counts, and a status:
 The top-level `gate.worth_investing` is true when at least one measurable band
 has positive headroom. It is a screening gate, not evidence that a particular
 training method will improve the model.
+
+## Workflow integration
+
+This is a deterministic, idempotent verifier step: consume a run artifact
+reference and its SHA256, then emit the calibration report artifact. Pass only
+artifact references and hashes through workflow state; never pass raw traces or
+prompts through workflow state.

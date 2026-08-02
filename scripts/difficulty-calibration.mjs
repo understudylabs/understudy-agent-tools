@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -19,7 +20,8 @@ if (!runPath) throw new Error("--run is required");
 const fixture = argValue("--fixture", "auto");
 if (!["auto", "v1", "v2"].includes(fixture)) throw new Error("--fixture must be auto, v1, or v2");
 
-const run = JSON.parse(readFileSync(runPath, "utf8"));
+const rawRun = readFileSync(runPath);
+const run = JSON.parse(rawRun.toString("utf8"));
 const rows = Array.isArray(run) ? run : run.rows;
 if (!Array.isArray(rows)) throw new Error(`${runPath} has no rows[]`);
 
@@ -29,6 +31,10 @@ const report = buildCalibrationReport(rows, {
   split: typeof run.split === "string" ? run.split : null,
   threshold: argValue("--threshold") === null ? undefined : Number(argValue("--threshold")),
   minSample: argValue("--min-sample") === null ? undefined : Number(argValue("--min-sample")),
+  source: {
+    path: runPath,
+    sha256: createHash("sha256").update(rawRun).digest("hex"),
+  },
 });
 
 console.log(`Difficulty calibration: ${report.model ?? "unknown model"}`);

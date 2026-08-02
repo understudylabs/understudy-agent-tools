@@ -20,6 +20,10 @@ export type CalibrationOptions = {
   threshold?: number;
   minSample?: number;
   generatedAt?: string;
+  source?: {
+    path?: string | null;
+    sha256?: string | null;
+  };
 };
 
 export type BandStatus = "saturated" | "measurable" | "insufficient_sample";
@@ -43,6 +47,10 @@ export type BandSummary = {
 export type CalibrationReport = {
   schema_version: "understudy.difficulty_calibration.v1";
   generated_at: string;
+  source_run: {
+    path: string | null;
+    sha256: string | null;
+  };
   fixture: string;
   model: string | null;
   split: string | null;
@@ -226,6 +234,10 @@ export function buildCalibrationReport(rows: readonly unknown[], options: Calibr
   return {
     schema_version: "understudy.difficulty_calibration.v1",
     generated_at: options.generatedAt ?? new Date().toISOString(),
+    source_run: {
+      path: options.source?.path ?? null,
+      sha256: options.source?.sha256 ?? null,
+    },
     fixture: detectedFixture,
     model: detectedModel,
     split: detectedSplit,

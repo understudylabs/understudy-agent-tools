@@ -34,6 +34,7 @@ describe("difficulty calibration", () => {
     });
 
     assert.equal(report.schema_version, "understudy.difficulty_calibration.v1");
+    assert.deepEqual(report.source_run, { path: null, sha256: null });
     assert.equal(report.overall.tasks, 24);
     assert.equal(report.overall.scored, 22);
     assert.equal(report.bands.saturated.status, "saturated");
@@ -63,9 +64,17 @@ describe("difficulty calibration", () => {
       model: artifact.model,
       split: artifact.split,
       fixture: "auto",
+      source: {
+        path: "outputs/zeroshot-qwen3p7-plus-dev.json",
+        sha256: "fixture-sha256",
+      },
       generatedAt: "2026-01-01T00:00:00.000Z",
     });
     assert.equal(report.schema_version, "understudy.difficulty_calibration.v1");
+    assert.deepEqual(report.source_run, {
+      path: "outputs/zeroshot-qwen3p7-plus-dev.json",
+      sha256: "fixture-sha256",
+    });
     assert.equal(report.fixture, "automationbench-simple-api-offline-v2");
     assert.ok(Object.keys(report.bands).length > 0);
     assert.ok(report.bands["cross-record"]);

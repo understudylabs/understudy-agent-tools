@@ -1,6 +1,10 @@
 {
   "schema_version": "understudy.difficulty_calibration.v1",
-  "generated_at": "2026-08-02T01:47:33.448Z",
+  "generated_at": "2026-08-02T02:07:52.353Z",
+  "source_run": {
+    "path": "outputs/zeroshot-qwen3p7-plus-dev.json",
+    "sha256": "b3b8923c882ab265a841d75815f9ff1fa2c34cbd0ef563fcf1bcaffdb20f2531"
+  },
   "fixture": "automationbench-simple-api-offline-v2",
   "model": "accounts/fireworks/models/qwen3p7-plus",
   "split": "dev",
