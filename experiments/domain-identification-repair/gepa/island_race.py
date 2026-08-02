@@ -106,6 +106,17 @@ class LiveManifest:
     def sync_records(self, records):
         with self._lock:
             self.records.update(records)
+            # Branch receipts become terminal independently. Publish that fact
+            # immediately instead of leaving a finished island white until the
+            # slowest sibling joins.
+            for node_id, rec in records.items():
+                state = self.states.setdefault(node_id, {})
+                if rec.get("status") == "completed" and state.get("status") in em.IN_PROGRESS_STAGES:
+                    state.update(status="completed", outcome="screening_complete")
+                elif rec.get("status") == "failed" and state.get("status") in em.IN_PROGRESS_STAGES:
+                    category, reason = classify_failure(rec)
+                    state.update(status="failed", outcome="failed",
+                                 failure_category=category, failure_reason=reason)
         return self.publish()
 
     def _node(self, node_id, state, rec):

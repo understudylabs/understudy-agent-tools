@@ -22,7 +22,7 @@ if "gepa" not in sys.modules:
     core.adapter = adapter
     gepa.core = core
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
-from island_race import ISLAND_SPECS, classify_failure, prompt_sha, unique_ranked  # noqa: E402
+from island_race import ISLAND_SPECS, LiveManifest, classify_failure, prompt_sha, unique_ranked  # noqa: E402
 
 
 def check(label, condition):
@@ -51,7 +51,20 @@ def main():
     check("429 classified", classify_failure({"detail": "HTTP 429"})[0] == "rate_limit")
     check("timeout classified", classify_failure({"detail": "request timed out"})[0] == "timeout")
     check("fuse classified", classify_failure({"detail": "episode cap"})[0] == "budget_fuse")
-    print("ALL 12 ISLAND TESTS PASSED")
+    # The live state transition itself is exercised without constructing a
+    # manifest or touching a provider.
+    live = object.__new__(LiveManifest)
+    live._lock = __import__("threading").Lock()
+    live.records = {}
+    live.states = {"a": {"status": "screening"}, "b": {"status": "screening"}}
+    live.publish = lambda: live.states
+    LiveManifest.sync_records(live, {"a": {"status": "completed"},
+                                     "b": {"status": "failed", "detail": "HTTP 429"}})
+    check("completed receipt finalizes independently", live.states["a"]["status"] == "completed")
+    check("failed receipt streams reason independently",
+          live.states["b"]["status"] == "failed"
+          and live.states["b"]["failure_category"] == "rate_limit")
+    print("ALL 14 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":
