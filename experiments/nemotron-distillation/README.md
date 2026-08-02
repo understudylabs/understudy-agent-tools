@@ -1,132 +1,212 @@
-# Nemotron-to-Qwen distillation (P3)
+# Nemotron-to-Qwen distillation (P3) — lab note
 
-Phase A prepared the harness; Phase B generates a train-only,
-verifier-checked teacher-rollout corpus and trains a Qwen LoRA adapter. No
-holdout evaluation or GRPO is permitted in Phase B.
+This arm distills the retained Nemotron-3-Nano-30B-A3B GRPO multi-write
+teacher adapter from PR #402/#408 into a smaller Qwen3.5-9B dense student.
+The student uses LoRA rank 32 and SFT on 66 verifier-accepted teacher
+trajectories. The teacher produced 240 candidates (five per each of 48 train
+tasks), with a 27.5% acceptance rate and no task coverage gaps.
 
-The Node AutomationBench service is intentionally run from the PR #402
-runtime worktree:
+The frozen benchmark is `automationbench-simple-api-offline`, fixture
+`automationbench-simple-api-offline-v1`, seed 7, with 48 train, 12 dev, and
+12 holdout tasks. Each split has four tasks in each of `single-write`,
+`discovery`, and `multi-write`. The evaluator is the sole authority for
+state, reward, split membership, and holdout authorization.
+
+## Runtime dependency
+
+The Node AutomationBench service must be run from:
 
 ```text
 /home/ubuntu/wt-402
 ```
 
-That dependency is deliberate: this worktree provides the `nemotron-v1`
-prompt variant, parser, oracle endpoints, and `replayOracleTrajectory`.
-The service path is always supplied through `--service-repo`; no branch code
-is imported into this experiment directory.
+This worktree supplies the `nemotron-v1` prompt variant, parser, oracle
+endpoints, and `replayOracleTrajectory`. PR #402 was not merged into the
+service branch. A future reproduction must provision the same runtime
+worktree, build its `dist`, and pass its path explicitly with
+`--service-repo`; this experiment does not import service code across
+branches.
 
-## Commands
+The repository-check baseline for this lab note is
+`devin/178561-cookbook-audit-and-benchmark-repair`, not `origin/main`; that
+branch also passed the checks.
 
-All Python commands use the isolated bridge:
+All Python commands use isolated runtime glue:
 
 ```text
 uv run --no-project --python 3.12 --with tinker --with tinker-cookbook ...
 ```
 
-Run the fail-closed entry gate before any training spend:
+## What the arm did
+
+- Teacher: Nemotron-3-Nano-30B-A3B GRPO multi-write adapter retained from
+  PR #402/#408.
+- Student: Qwen3.5-9B dense base with LoRA rank 32.
+- Distillation data: 240 on-policy teacher candidates over train only;
+  66 terminal-reward-1.0 trajectories retained; no zero-coverage tasks.
+- SFT: four epochs, batch size 4, learning rate `1e-4`, max length 4096,
+  trained on all assistant messages.
+- Evaluation: greedy temperature `0.0`, with all quality claims made against
+  the offline verifier.
+- GRPO polish: not run; the predeclared decision was that dev provides no
+  quality gap to close.
+
+## Headline finding
+
+Dev is saturated on this fixture. The teacher, untuned student base, and all
+four SFT epochs scored mean reward `1.000` overall and `1.000` in every band.
+There is no quality lift to claim from distillation here.
+
+What SFT actually bought was protocol conformance and efficiency:
+
+| Metric | Student base | Selected SFT epoch 1 |
+|---|---:|---:|
+| Mean reward | 1.000 | 1.000 |
+| Parse-error rate | 16.7% | 0% |
+| Mean prompt+sampled tokens/task | 2,275 | 1,405 |
+| Mean model turns | 4.42 | 3.33 |
+
+The selected candidate was SFT epoch 1 by mean dev reward, with the
+predeclared earliest-epoch tie-break.
+
+## Sealed holdout
+
+The predeclaration in `artifacts/holdout-tolerance.json` was read without
+editing. Its SHA-256 recorded in the single-use lock is:
 
 ```text
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/entry_gate.py --service-repo /home/ubuntu/wt-402
+f2b2037c37c83c7f515251c8c52bf6f831b3df8a8927a33fed24c9064ee4cb2e
 ```
 
-Evaluate a registered model:
+The exact paired model set was `teacher`, `student-base`, and `student-sft`,
+using the frozen holdout hash
+`a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701`.
+Each model received one discarded warm-up rollout followed by the same
+12-task greedy pass.
+
+| Model | Mean reward | Single-write | Discovery | Multi-write | Mean task latency | Mean turn latency | P50 turn | P90 turn | Mean turns | Tokens/task | Parse errors |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Teacher | 1.000 | 1.000 | 1.000 | 1.000 | 7.021 s | 2.106 s | 1.670 s | 4.304 s | 3.33 | 1,444 | 0% |
+| Student base | 1.000 | 1.000 | 1.000 | 1.000 | 5.677 s | 1.239 s | 1.269 s | 1.676 s | 4.58 | 2,371 | 16.7% |
+| Student SFT epoch 1 | 1.000 | 1.000 | 1.000 | 1.000 | 4.147 s | 1.244 s | 1.078 s | 1.670 s | 3.33 | 1,401 | 0% |
+
+The predeclared verdict was **PASS**. Exact checks:
+
+| Condition | Observed | Limit | Result |
+|---|---:|---:|---|
+| Overall teacher-to-student mean reward deficit | 0.000 | 0.084 | PASS |
+| Single-write deficit | 0.000 | 0.25 | PASS |
+| Discovery deficit | 0.000 | 0.25 | PASS |
+| Multi-write deficit (primary band) | 0.000 | 0.25 | PASS |
+| Student hard fails over teacher | 0 | 1 | PASS |
+| Student parse-error rate | 0.000 | 0.1 | PASS |
+
+The combined artifact is `artifacts/sealed-holdout.json`. The single-use
+`artifacts/holdout-lock.json` records the declared model set, frozen hash, and
+tolerance-file hash. A second invocation was attempted after the run and was
+refused before provider initialization:
 
 ```text
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/evaluate.py \
-  --service-repo /home/ubuntu/wt-402 \
-  --split dev --model teacher --one-per-band \
-  --temperature 0 --out artifacts/teacher-smoke.jsonl
+holdout is single-use and already locked: artifacts/holdout-lock.json
 ```
 
-Registered contracts are in `scripts/models.py`: `teacher`,
-`teacher-base`, `student-base`, `student-sft`, `student-base-4b`, and
-`student-sft-4b`. Both teacher and student
-use the exact `nemotron-v1` action protocol; only the model chat renderer
-differs. Every row and summary carries the serving contract, parser ID,
-sample latency, token counts, and Tinker billing receipt reference.
+## Warm-start latency methodology
 
-Generate Phase B teacher data and train the student:
+The published latency values are the warm-start measurements, not the
+original cold-start measurements. Each model used one client-creation
+measurement, one discarded full warm-up rollout, and three timed dev passes
+over all 12 tasks.
 
-```text
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/teacher_trajectories.py --service-repo /home/ubuntu/wt-402
+| Model | Client creation | Warm-up | Mean/turn | P50/turn | P90/turn | Mean task | Across-pass task variance |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Teacher | 0.630 s | 5.301 s | 2.242 s | 2.093 s | 3.252 s | 7.535 s | 0.1872 |
+| Student base | 0.543 s | 4.973 s | 1.206 s | 1.260 s | 1.659 s | 5.324 s | 0.0032 |
+| Student SFT epoch 1 | 0.592 s | 8.869 s | 1.631 s | 1.470 s | 2.735 s | 5.435 s | 0.7189 |
 
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/sft_student.py
-```
+A naive first measurement made the adapter look approximately 2.6x slower
+than its own base. The warm-start measurement reduced SFT from 10.360 s/task
+to 5.435 s/task, close to the base's 5.324 s/task. The original gap was a
+client warm-up/adapter-attach artifact, not steady-state serving cost. This
+is a reusable methodological warning: never publish a first-request latency
+comparison for adapters without a discarded warm-up and repeated timed passes.
 
-Teacher data is sampled on train only and kept only when the evaluator returns
-terminal reward `1.0`; oracle trajectories are gate/reference data, not the
-distillation corpus. `evaluate.py --split holdout` refuses by design.
+The teacher is 30B total / approximately 3B active parameters as a MoE,
+whereas the student is a dense 9B. A latency win therefore does not establish
+a per-token cost win. `cost.usd` remains null because the provider billing
+endpoint returned no dollar amounts.
 
-The sealed holdout runner accepts the full frozen model list and acquires one
-paired lock:
+## Workflow 4.6.0 contract mapping
 
-```text
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/sealed_holdout.py \
-  --models teacher student-base student-sft \
-  --tolerance-file artifacts/holdout-tolerance.json
-```
+This directory is a thin contract layer over the existing phase scripts, not
+a second durable controller:
 
-`artifacts/holdout-lock.json` is created atomically by
-`sealed_holdout.py`, recording the declared model set and tolerance-file
-hash. It must not exist before the candidate set is frozen.
+- Candidate-method: teacher rollout generation, SFT, and evaluation.
+- Verifier/contract pieces: entry gate and the single-use sealed holdout with
+  its predeclared tolerance.
+- `artifacts/artifact-manifest.json`: immutable artifact refs, hashes, sizes,
+  producing steps, phase, frozen hashes, verifier identity, and serving
+  contracts.
+- `artifacts/step-ledger.json`: local file-keyed idempotency ledger.
+- Each phase accepts `--experiment-id`, `--candidate-id`, and `--attempt`.
+- `artifacts/events.jsonl`: small redacted `run`, `candidate`, `rollout`,
+  `score`, `usage`, and `error` event schema with no raw prompts or traces.
 
-## Warm-start latency protocol
+The reference Workflow executor union is
+`'modal' | 'wafer' | 'fireworks' | 'spark'`; it does not include `tinker`.
+The required `'tinker'` executor-union amendment is explicitly recorded in
+the manifest. Tinker calls used here are blocking and expose no asynchronous
+provider job handle, so the executor returns synchronous terminal receipts
+and never fabricates an async job.
 
-The repeated dev latency command uses one sampling client per model, one
-discarded full rollout warm-up, and three timed passes over all 12 dev tasks:
+## Receipts, usage, and cleanup
 
-```text
-uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
-  python scripts/evaluate.py --service-repo /home/ubuntu/wt-402 \
-  --split dev --model teacher --temperature 0 --passes 3 \
-  --warmup-rollouts 1 --out artifacts/teacher-dev-warm.jsonl
-```
+Receipt artifacts exist for:
 
-The same command is used for `student-base` and `student-sft` (with
-`--adapter-path` for the selected SFT checkpoint). Warm-up latency and client
-creation time are excluded from timed rollout distributions and recorded
-separately. `build_dev_artifacts.py` writes the warm-start and preserved
-cold-start sections of `artifacts/latency-cost-delta.json`.
+- teacher trajectory generation,
+- SFT training,
+- three warm-start dev evaluations,
+- the three paired holdout model evaluations.
 
-## Workflow contract layer
+The provider usage endpoint returned empty `data` and `sessions` with an empty
+delta for every receipt. Measured local workload totals remain recorded in the
+artifacts: 240 teacher candidates / 66 retained trajectories, 68 SFT steps,
+and 111 warm-start dev rollouts. The sealed pass added three warm-ups plus 36
+timed holdout rollouts. No dollar spend can be inferred from these receipts;
+all provider-backed artifacts retain `cost.usd: null`.
 
-The arm is a thin contract layer over the existing phase scripts, not a second
-durable controller. `scripts/step_runtime.py` stores a local file-keyed
-`artifacts/step-ledger.json`; every phase accepts:
+No always-on resource or service process remains running. No holdout run,
+GRPO run, or additional provider job was started after the paired pass.
 
-```text
---experiment-id <id> --candidate-id <id> --attempt <integer>
-```
+## What would actually move this
 
-Completed keys return their prior artifact reference immediately and do not
-start another provider operation. The manifest is built and verified with:
+This fixture cannot discriminate these models: 12 dev and 12 holdout tasks,
+with only four tasks per band, make one task approximately `0.083` mean
+reward. The next arm needs a harder fixture or a band with real headroom.
+That is the honest next step rather than dressing up a saturated benchmark.
+
+## Commands
+
+Build and verify the manifest:
 
 ```text
 python scripts/build_manifest.py
 python scripts/build_manifest.py --verify
 ```
 
-The Tinker executor contract is exposed as:
+Prove verdict failure paths without provider calls:
 
 ```text
-python scripts/executor_tinker.py submit \
-  --experiment-id <id> --candidate-id <id> --attempt <n> \
-  --operation <operation> --artifact-ref <ref>
-python scripts/executor_tinker.py inspect --job-ref <ref>
-python scripts/executor_tinker.py cancel --job-ref <ref>
-python scripts/executor_tinker.py reconcile_usage --job-ref <ref> [--receipt <path>]
+PYTHONPATH=scripts uv run --no-project --python 3.12 \
+  --with tinker --with tinker-cookbook \
+  python scripts/holdout_verdict_smoke.py
 ```
 
-Tinker is executor-only. The Workflow 4.6.0 reference executor union is
-`'modal' | 'wafer' | 'fireworks' | 'spark'` and does not include Tinker; the
-required spec amendment is flagged in `artifact-manifest.json`. The Tinker SDK
-calls used here are blocking and expose no asynchronous job handle, so the
-executor reports synchronous terminal receipts rather than pretending to
-submit an asynchronous job. `artifacts/events.jsonl` contains small redacted
-run, candidate, rollout, score, usage, and error events; it has no consumer.
+The sealed runner is intentionally single-use:
+
+```text
+uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
+  python scripts/sealed_holdout.py \
+  --models teacher student-base student-sft \
+  --tolerance-file artifacts/holdout-tolerance.json \
+  --service-repo /home/ubuntu/wt-402
+```

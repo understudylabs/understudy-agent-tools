@@ -46,6 +46,10 @@ def _sha256(path: Path) -> str:
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    turn_latencies = [
+        latency for row in rows for latency in row["sampling_latencies_seconds"]
+    ]
+    task_latencies = [row["sampling_latency_seconds_total"] for row in rows]
     return {
         "row_count": len(rows),
         "mean_reward": statistics.fmean(row["reward"] for row in rows),
@@ -56,6 +60,27 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
             )
             for band in sorted({row["band"] for row in rows})
         },
+        "mean_model_turns": statistics.fmean(row["model_turns"] for row in rows),
+        "mean_per_turn_sampling_latency_seconds": statistics.fmean(turn_latencies),
+        "p50_per_turn_sampling_latency_seconds": statistics.median(turn_latencies),
+        "p90_per_turn_sampling_latency_seconds": (
+            statistics.quantiles(turn_latencies, n=10, method="inclusive")[8]
+            if len(turn_latencies) > 1
+            else turn_latencies[0]
+        ),
+        "mean_per_task_sampling_latency_seconds": statistics.fmean(task_latencies),
+        "mean_prompt_plus_sampled_tokens": statistics.fmean(
+            sum(row["prompt_token_counts"]) + sum(row["sampled_token_counts"])
+            for row in rows
+        ),
+        "total_prompt_tokens": sum(
+            sum(row["prompt_token_counts"]) for row in rows
+        ),
+        "total_sampled_tokens": sum(
+            sum(row["sampled_token_counts"]) for row in rows
+        ),
+        "parse_error_rate": sum(bool(row["parse_errors"]) for row in rows)
+        / len(rows),
     }
 
 
@@ -129,6 +154,8 @@ def _verdict(
 async def _run(args: argparse.Namespace) -> None:
     if args.concurrency < 1 or args.concurrency > 8:
         raise SystemExit("--concurrency must be between 1 and 8")
+    if LOCK_PATH.exists():
+        raise SystemExit(f"holdout is single-use and already locked: {LOCK_PATH}")
     key, replay = replay_or_start(args.experiment_id, args.candidate_id, args.attempt)
     if replay is not None:
         print(json.dumps(replay, indent=2))
@@ -178,6 +205,7 @@ async def _run(args: argparse.Namespace) -> None:
             raise RuntimeError(f"expected 12 holdout tasks, got {len(tasks)}")
         semaphore = asyncio.Semaphore(args.concurrency)
         all_rows: dict[str, list[dict[str, Any]]] = {}
+        summaries: dict[str, dict[str, Any]] = {}
         receipts: dict[str, str] = {}
         for model_name in args.models:
             if model_name == "student-sft":
@@ -198,6 +226,7 @@ async def _run(args: argparse.Namespace) -> None:
             client = tinker.ServiceClient()
             rest_client = client.create_rest_client()
             usage_before = await snapshot_usage_async(rest_client)
+            client_started = asyncio.get_running_loop().time()
             if spec.model_path is None:
                 sampling_client = await client.create_sampling_client_async(
                     base_model=spec.base_model
@@ -206,6 +235,9 @@ async def _run(args: argparse.Namespace) -> None:
                 sampling_client = await client.create_sampling_client_async(
                     model_path=spec.model_path
                 )
+            client_creation_seconds = (
+                asyncio.get_running_loop().time() - client_started
+            )
 
             async def one(
                 task: dict[str, Any],
@@ -227,6 +259,18 @@ async def _run(args: argparse.Namespace) -> None:
                         spec,
                     )
 
+            warmup = await one(tasks[0])
+            warmup_latency_seconds = warmup["sampling_latency_seconds_total"]
+            emit_event(
+                "candidate",
+                "submitted",
+                experiment_id=args.experiment_id,
+                candidate_id=model_name,
+                attempt=args.attempt,
+                model=model_name,
+                client_creation_seconds=client_creation_seconds,
+                warmup_latency_seconds=warmup_latency_seconds,
+            )
             records = await asyncio.gather(*(one(task) for task in tasks))
             rows = [
                 {
@@ -235,6 +279,7 @@ async def _run(args: argparse.Namespace) -> None:
                     "task_id": record["task_id"],
                     "split": record["split"],
                     "score": record["reward"],
+                    "reward": record["reward"],
                     "status": "ok",
                     "model": model_name,
                     "band": record["band"],
@@ -244,6 +289,12 @@ async def _run(args: argparse.Namespace) -> None:
                     "sampled_token_counts": record["sampled_token_counts"],
                     "prompt_token_counts": record["prompt_token_counts"],
                     "sampling_latencies_seconds": record["sampling_latencies_seconds"],
+                    "sampling_latency_seconds_total": record[
+                        "sampling_latency_seconds_total"
+                    ],
+                    "env_steps": record["env_steps"],
+                    "forbidden_effects": record["forbidden_effects"],
+                    "finished_explicitly": record["finished_explicitly"],
                     "latency_ms": record["sampling_latency_seconds_total"] * 1000,
                     "serving_contract": record["serving_contract"],
                     "cost": {"usd": None, "basis": "tinker_billing_usage"},
@@ -251,10 +302,48 @@ async def _run(args: argparse.Namespace) -> None:
                 for record in records
             ]
             all_rows[model_name] = rows
+            summary = _summary(rows)
+            summary["client_creation_seconds"] = client_creation_seconds
+            summary["warmup_latency_seconds"] = warmup_latency_seconds
+            summary["warmup_discarded"] = True
+            summaries[model_name] = summary
             receipt_path = ARTIFACT_DIR / f"sealed-holdout-{model_name}.usage.json"
             usage_after = await snapshot_usage_async(rest_client)
             write_receipt(rest_client, receipt_path, model_name, usage_before, usage_after)
             receipts[model_name] = str(receipt_path)
+            emit_event(
+                "score",
+                "snapshot",
+                experiment_id=args.experiment_id,
+                candidate_id=model_name,
+                attempt=args.attempt,
+                split="holdout",
+                mean_reward=summary["mean_reward"],
+                row_count=summary["row_count"],
+            )
+            emit_event(
+                "usage",
+                "reconciled",
+                experiment_id=args.experiment_id,
+                candidate_id=model_name,
+                attempt=args.attempt,
+                prompt_tokens=summary["total_prompt_tokens"],
+                sampled_tokens=summary["total_sampled_tokens"],
+                cost_usd=None,
+            )
+            for record in rows:
+                emit_event(
+                    "rollout",
+                    "terminal",
+                    experiment_id=args.experiment_id,
+                    candidate_id=model_name,
+                    attempt=args.attempt,
+                    task_id=record["task_id"],
+                    split="holdout",
+                    reward=record["score"],
+                    model_turns=record["model_turns"],
+                    parse_error_count=len(record["parse_errors"]),
+                )
 
         output = Path(args.out)
         verdict = _verdict(all_rows, tolerance)
@@ -265,7 +354,7 @@ async def _run(args: argparse.Namespace) -> None:
                     "lock": descriptor,
                     "models": {
                         model: {
-                            "summary": _summary(rows),
+                            "summary": summaries[model],
                             "rows": rows,
                             "receipt": receipts[model],
                         }

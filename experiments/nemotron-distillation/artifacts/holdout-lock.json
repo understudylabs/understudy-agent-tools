@@ -1,0 +1,12 @@
+{
+  "arm": "P3-nemotron-distillation",
+  "declared_models": [
+    "teacher",
+    "student-base",
+    "student-sft"
+  ],
+  "holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "split": "holdout",
+  "tolerance_file": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/holdout-tolerance.json",
+  "tolerance_file_sha256": "f2b2037c37c83c7f515251c8c52bf6f831b3df8a8927a33fed24c9064ee4cb2e"
+}

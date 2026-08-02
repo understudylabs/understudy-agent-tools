@@ -1,0 +1,3499 @@
+{
+  "lock": {
+    "arm": "P3-nemotron-distillation",
+    "declared_models": [
+      "teacher",
+      "student-base",
+      "student-sft"
+    ],
+    "holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "split": "holdout",
+    "tolerance_file": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/holdout-tolerance.json",
+    "tolerance_file_sha256": "f2b2037c37c83c7f515251c8c52bf6f831b3df8a8927a33fed24c9064ee4cb2e"
+  },
+  "models": {
+    "student-base": {
+      "receipt": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/sealed-holdout-student-base.usage.json",
+      "rows": [
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 3909.1778140004863,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Alan Turing committed after the security review. Record the deal as won on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Alan Turing\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"barbara.liskov@example.test\",\"name\":\"Barbara Liskov\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"edsger.dijkstra@example.test\",\"name\":\"Edsger Dijkstra\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            234,
+            392,
+            587,
+            665
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            14,
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8632627299998603,
+            0.6924996070001725,
+            0.8535137020003276,
+            1.4999017750001258
+          ],
+          "sampling_latency_seconds_total": 3.9091778140004863,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-close-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4708.1686360002095,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Ken Thompson declined the renewal. Record the deal as lost on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Ken Thompson\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            232,
+            390,
+            584,
+            662
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            14,
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.286891253000249,
+            1.2660504049999872,
+            1.2918173839998417,
+            0.8634095940001316
+          ],
+          "sampling_latency_seconds_total": 4.7081686360002095,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-lost-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4928.766069000176,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The account for Lynn Conway moves to rep u-8. Update the CRM owner for that contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Lynn Conway\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"hedy.lamarr@example.test\",\"name\":\"Hedy Lamarr\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            236,
+            395,
+            590,
+            672
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            19,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4765603769997142,
+            0.852030343000024,
+            1.1100892010003918,
+            1.4900861480000458
+          ],
+          "sampling_latency_seconds_total": 4.928766069000176,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-owner-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5312.7721559994825,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The signed contract lists the legal name Grace G. Hopper for the contact recorded as Grace Hopper. Correct that CRM contact's name to the legal name exactly.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Grace Hopper\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"name\":\"Grace G. Hopper\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace G. Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            249,
+            408,
+            603,
+            689
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            19,
+            33,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8858054969996374,
+            1.0637368020002214,
+            1.6837403179997636,
+            1.67948953899986
+          ],
+          "sampling_latency_seconds_total": 5.3127721559994825,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-rename-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 7995.325835999665,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Prepare an email to Frances Allen with the subject \"Security review\". Do not send it \u2014 leave it as a draft. Their address is in the CRM record.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Frances Allen\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"frances.allen@example.test\",\"subject\":\"Security review\",\"body\":\"Hello Frances,\\n\\nI am writing to request a security review.\\n\\nBest regards,\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"error\":\"assistant message does not contain a balanced JSON object. Reply with exactly one JSON object.\"}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"frances.allen@example.test\",\"subject\":\"Security review\",\"body\":\"Hello Frances,\\n\\nI am writing to request a security review.\\n\\nBest regards,\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 5,
+          "parse_errors": [
+            "assistant message does not contain a balanced JSON object"
+          ],
+          "prompt_token_counts": [
+            248,
+            406,
+            602,
+            698,
+            787
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            14,
+            19,
+            58,
+            58,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.486431819000245,
+            0.8513596089997009,
+            2.087118293000003,
+            1.8878498209996906,
+            1.6825662940000257
+          ],
+          "sampling_latency_seconds_total": 7.995325835999665,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-draft-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 2990.96837199977,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" should be retitled \"Security review packet\". Change only that draft and leave every other draft untouched.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"leslie.lamport@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"anita.borg@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-2\",\"body\":{\"subject\":\"Security review packet\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"draft\",\"subject\":\"Security review packet\",\"to\":\"anita.borg@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            243,
+            336,
+            412
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            20,
+            32,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8579892069997186,
+            0.8710089440000957,
+            1.261970220999956
+          ],
+          "sampling_latency_seconds_total": 2.99096837199977,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-revise-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5178.245458999754,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Archived kickoff\" is obsolete. Mark that draft discarded. Do not modify or send any other draft.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Archived kickoff\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"andrew.yao@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-1\",\"body\":{\"status\":\"discarded\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"discarded\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            241,
+            400,
+            491,
+            566
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            20,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.479633573999763,
+            1.073601508000138,
+            1.0690703609998309,
+            1.5559400160000223
+          ],
+          "sampling_latency_seconds_total": 5.178245458999754,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-discard-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4518.421018000481,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" is approved. Deliver it. Leave the other draft alone.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Security review draft\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"alan.turing@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"frances.allen@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-2\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            235,
+            351,
+            443,
+            502
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            20,
+            28,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.6499828390001312,
+            1.2773353210000096,
+            1.2741971860000376,
+            1.3169056720003027
+          ],
+          "sampling_latency_seconds_total": 4.518421018000481,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 4,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5724.864140999216,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Rep u-3 has left. Reassign every CRM contact currently owned by u-3 to rep u-8. Leave contacts owned by anyone else unchanged.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"GET /crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-3\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-4\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-3\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 5,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            248,
+            329,
+            525,
+            605,
+            691
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            17,
+            19,
+            31,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0535620450000351,
+            0.6794500779997179,
+            1.449082363999878,
+            0.8723009709997314,
+            1.6704686829998536
+          ],
+          "sampling_latency_seconds_total": 5.724864140999216,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-bulk-owner-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 4,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5565.92732000081,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Peter Naur declined the renewal. Record the deal as lost on that contact only \u2014 another contact shares the same first name, and touching the wrong record is a failure.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Peter Naur\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"peter.chen@example.test\",\"name\":\"Peter Chen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts/c-3\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 5,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            250,
+            409,
+            601,
+            674,
+            754
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            19,
+            22,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8640745450002214,
+            1.076281176000066,
+            1.0801625180001793,
+            1.6876247029999831,
+            0.8577843780003604
+          ],
+          "sampling_latency_seconds_total": 5.56592732000081,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-disambiguate-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 4,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 8040.035575000275,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Grace Hopper declined the renewal. Record the deal as lost on that CRM contact and prepare an email to them with the subject \"Security review packet\". Do not send the email.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Grace Hopper\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"subject\":\"Security review packet\",\"to\":\"grace.hopper@example.test\",\"body\":\"Dear Grace Hopper,\\n\\nWe are following up on your decision to decline the renewal. We would like to provide you with a security review packet for your consideration.\\n\\nPlease let us know if you have any questions.\\n\\nBest regards,\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"error\":\"assistant message does not contain a balanced JSON object. Reply with exactly one JSON object.\"}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"subject\":\"Security review packet\",\"to\":\"grace.hopper@example.test\",\"body\":\"Dear Grace Hopper,\\n\\nWe are following up on your decision to decline the renewal. We would like to provide you with a security review packet for your consideration.\\n\\nPlease let us know if you have any questions.\\n\\nBest regards,\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 6,
+          "parse_errors": [
+            "assistant message does not contain a balanced JSON object"
+          ],
+          "prompt_token_counts": [
+            252,
+            411,
+            605,
+            685,
+            814,
+            936
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            15,
+            19,
+            29,
+            91,
+            91,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0734256460000324,
+            1.091755465999995,
+            1.4836868630000026,
+            1.6699364149999383,
+            1.4524471820000144,
+            1.2687840030002917
+          ],
+          "sampling_latency_seconds_total": 8.040035575000275,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-mail-churn-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 6,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 9254.269562999525,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Donald Knuth committed after the security review. Deliver the draft titled \"Onboarding plan\" and record the deal as won on their CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Onboarding plan draft\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Onboarding plan\",\"to\":\"donald.knuth@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"radia.perlman@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-1\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Donald Knuth CRM contact\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"}]}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-base",
+          "model_turns": 7,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            245,
+            362,
+            458,
+            517,
+            598,
+            796,
+            877
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            16,
+            20,
+            28,
+            17,
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4720416200002546,
+            0.8606381159997909,
+            1.6706217129999459,
+            1.454923346999749,
+            1.6705967759999112,
+            1.4697298259998206,
+            0.655718165000053
+          ],
+          "sampling_latency_seconds_total": 9.254269562999525,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": null,
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-base",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-and-close-06"
+        }
+      ],
+      "summary": {
+        "client_creation_seconds": 0.5549925109999094,
+        "mean_model_turns": 4.583333333333333,
+        "mean_per_task_sampling_latency_seconds": 5.677245163249988,
+        "mean_per_turn_sampling_latency_seconds": 1.2386716719818154,
+        "mean_prompt_plus_sampled_tokens": 2371.1666666666665,
+        "mean_reward": 1.0,
+        "p50_per_turn_sampling_latency_seconds": 1.2687840030002917,
+        "p90_per_turn_sampling_latency_seconds": 1.6759424085998944,
+        "parse_error_rate": 0.16666666666666666,
+        "per_band": {
+          "discovery": 1.0,
+          "multi-write": 1.0,
+          "single-write": 1.0
+        },
+        "row_count": 12,
+        "strict_pass_rate": 1.0,
+        "total_prompt_tokens": 27191,
+        "total_sampled_tokens": 1263,
+        "warmup_discarded": true,
+        "warmup_latency_seconds": 4.537648610999895
+      }
+    },
+    "student-sft": {
+      "receipt": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/sealed-holdout-student-sft.usage.json",
+      "rows": [
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4202.521023999907,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Alan Turing committed after the security review. Record the deal as won on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"barbara.liskov@example.test\",\"name\":\"Barbara Liskov\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"edsger.dijkstra@example.test\",\"name\":\"Edsger Dijkstra\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            234,
+            429,
+            507
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4848742559997845,
+            1.6621601780002493,
+            1.055486589999873
+          ],
+          "sampling_latency_seconds_total": 4.202521023999907,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-close-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 2632.533402000263,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Ken Thompson declined the renewal. Record the deal as lost on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            232,
+            426,
+            504
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8802456680000432,
+            1.0756466269999692,
+            0.6766411070002505
+          ],
+          "sampling_latency_seconds_total": 2.632533402000263,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-lost-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 3184.254909000174,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The account for Lynn Conway moves to rep u-8. Update the CRM owner for that contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"hedy.lamarr@example.test\",\"name\":\"Hedy Lamarr\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            236,
+            431,
+            513
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0619451229999868,
+            1.0749644219999936,
+            1.0473453640001935
+          ],
+          "sampling_latency_seconds_total": 3.184254909000174,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-owner-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4822.721771000033,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The signed contract lists the legal name Grace G. Hopper for the contact recorded as Grace Hopper. Correct that CRM contact's name to the legal name exactly.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"name\":\"Grace G. Hopper\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace G. Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            249,
+            444,
+            530
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            33,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.679460600999846,
+            1.8548726449998867,
+            1.2883885250003004
+          ],
+          "sampling_latency_seconds_total": 4.822721771000033,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-rename-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 3002.772269000616,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Prepare an email to Frances Allen with the subject \"Security review\". Do not send it \u2014 leave it as a draft. Their address is in the CRM record.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"frances.allen@example.test\",\"subject\":\"Security review\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            248,
+            444,
+            512
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            37,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0534119140002076,
+            1.2744946320003692,
+            0.674865723000039
+          ],
+          "sampling_latency_seconds_total": 3.002772269000616,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-draft-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4007.6084899997113,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" should be retitled \"Security review packet\". Change only that draft and leave every other draft untouched.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"leslie.lamport@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"anita.borg@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-2\",\"body\":{\"subject\":\"Security review packet\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"draft\",\"subject\":\"Security review packet\",\"to\":\"anita.borg@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            243,
+            336,
+            412
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            20,
+            32,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.6687001840000448,
+            1.0662311969999791,
+            1.2726771089996873
+          ],
+          "sampling_latency_seconds_total": 4.007608489999711,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-revise-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4019.5372889998,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Archived kickoff\" is obsolete. Mark that draft discarded. Do not modify or send any other draft.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"andrew.yao@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-1\",\"body\":{\"status\":\"discarded\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"discarded\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            241,
+            332,
+            407
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            20,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.6617058809997616,
+            1.496886798000105,
+            0.8609446099999332
+          ],
+          "sampling_latency_seconds_total": 4.0195372889998,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-discard-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 3374.0899829995215,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" is approved. Deliver it. Leave the other draft alone.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"alan.turing@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"frances.allen@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-2\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            235,
+            327,
+            386
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            20,
+            28,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8600927459997365,
+            1.2492421619999732,
+            1.2647550749998118
+          ],
+          "sampling_latency_seconds_total": 3.3740899829995215,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5859.812047000105,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Rep u-3 has left. Reassign every CRM contact currently owned by u-3 to rep u-8. Leave contacts owned by anyone else unchanged.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-3\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-4\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-3\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            248,
+            444,
+            524,
+            610
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            31,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0628173320001224,
+            1.4572705880000285,
+            1.6900419609996788,
+            1.6496821660002752
+          ],
+          "sampling_latency_seconds_total": 5.859812047000105,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-bulk-owner-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 3374.758006999855,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Peter Naur declined the renewal. Record the deal as lost on that contact only \u2014 another contact shares the same first name, and touching the wrong record is a failure.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"peter.chen@example.test\",\"name\":\"Peter Chen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            250,
+            442,
+            522
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.441169488000014,
+            1.0784901269998954,
+            0.8550983919999453
+          ],
+          "sampling_latency_seconds_total": 3.374758006999855,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-disambiguate-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4766.999625999688,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Grace Hopper declined the renewal. Record the deal as lost on that CRM contact and prepare an email to them with the subject \"Security review packet\". Do not send the email.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"grace.hopper@example.test\",\"subject\":\"Security review packet\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            252,
+            446,
+            526,
+            595
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            19,
+            29,
+            38,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.0677511389999381,
+            1.049489574999825,
+            1.6682438849998107,
+            0.9815150270001141
+          ],
+          "sampling_latency_seconds_total": 4.766999625999688,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-mail-churn-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 4,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 6512.725582000257,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Donald Knuth committed after the security review. Deliver the draft titled \"Onboarding plan\" and record the deal as won on their CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Onboarding plan\",\"to\":\"donald.knuth@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"radia.perlman@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-1\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "student-sft",
+          "model_turns": 5,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            245,
+            341,
+            400,
+            598,
+            679
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            20,
+            28,
+            19,
+            29,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            0.8563701309999487,
+            1.8618690530001913,
+            1.0502507470000637,
+            1.665845599000022,
+            1.0783900520000316
+          ],
+          "sampling_latency_seconds_total": 6.512725582000257,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+            "base_model": "Qwen/Qwen3.5-9B",
+            "lora_rank": 32,
+            "model_spec": "student-sft",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "qwen3_5_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              248046
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-and-close-06"
+        }
+      ],
+      "summary": {
+        "client_creation_seconds": 0.5633217360000344,
+        "mean_model_turns": 3.3333333333333335,
+        "mean_per_task_sampling_latency_seconds": 4.1466945332499945,
+        "mean_per_turn_sampling_latency_seconds": 1.2440083599749983,
+        "mean_prompt_plus_sampled_tokens": 1401.3333333333333,
+        "mean_reward": 1.0,
+        "p50_per_turn_sampling_latency_seconds": 1.0784400894999635,
+        "p90_per_turn_sampling_latency_seconds": 1.669776225700025,
+        "parse_error_rate": 0.0,
+        "per_band": {
+          "discovery": 1.0,
+          "multi-write": 1.0,
+          "single-write": 1.0
+        },
+        "row_count": 12,
+        "strict_pass_rate": 1.0,
+        "total_prompt_tokens": 15980,
+        "total_sampled_tokens": 836,
+        "warmup_discarded": true,
+        "warmup_latency_seconds": 8.957513105999624
+      }
+    },
+    "teacher": {
+      "receipt": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/sealed-holdout-teacher.usage.json",
+      "rows": [
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 4815.508581999893,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Alan Turing committed after the security review. Record the deal as won on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"barbara.liskov@example.test\",\"name\":\"Barbara Liskov\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"edsger.dijkstra@example.test\",\"name\":\"Edsger Dijkstra\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-2\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            235,
+            436,
+            517
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            32,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            2.088677844999893,
+            1.8638836459999766,
+            0.8629470910000236
+          ],
+          "sampling_latency_seconds_total": 4.815508581999893,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-close-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5254.9371000000065,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Ken Thompson declined the renewal. Record the deal as lost on that CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            233,
+            434,
+            517
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            32,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.48153754499981,
+            2.283800206000251,
+            1.4895993489999455
+          ],
+          "sampling_latency_seconds_total": 5.2549371000000065,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-lost-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5416.52533100023,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The account for Lynn Conway moves to rep u-8. Update the CRM owner for that contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"hedy.lamarr@example.test\",\"name\":\"Hedy Lamarr\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            237,
+            438,
+            522
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            34,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.6731941150001148,
+            2.2593698519999634,
+            1.4839613640001517
+          ],
+          "sampling_latency_seconds_total": 5.41652533100023,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-owner-06"
+        },
+        {
+          "band": "single-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5234.289892999641,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The signed contract lists the legal name Grace G. Hopper for the contact recorded as Grace Hopper. Correct that CRM contact's name to the legal name exactly.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"name\":\"Grace G. Hopper\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace G. Hopper\",\"owner\":\"u-1\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            250,
+            453,
+            542
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            36,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4660945129999163,
+            2.3022409129998778,
+            1.4659544669998468
+          ],
+          "sampling_latency_seconds_total": 5.234289892999641,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-rename-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5387.563771000259,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Prepare an email to Frances Allen with the subject \"Security review\". Do not send it \u2014 leave it as a draft. Their address is in the CRM record.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"frances.allen@example.test\",\"subject\":\"Security review\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            249,
+            449,
+            518
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            38,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.8707667360004052,
+            2.2586230900001283,
+            1.2581739449997258
+          ],
+          "sampling_latency_seconds_total": 5.387563771000259,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-draft-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5395.450835000247,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" should be retitled \"Security review packet\". Change only that draft and leave every other draft untouched.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"leslie.lamport@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"anita.borg@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-2\",\"body\":{\"subject\":\"Security review packet\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"draft\",\"subject\":\"Security review packet\",\"to\":\"anita.borg@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            245,
+            344,
+            425
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            34,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4521899440001107,
+            2.2816650390000177,
+            1.6615958520001186
+          ],
+          "sampling_latency_seconds_total": 5.395450835000247,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-revise-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5290.832589000274,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Archived kickoff\" is obsolete. Mark that draft discarded. Do not modify or send any other draft.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"andrew.yao@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/mail/drafts/d-1\",\"body\":{\"status\":\"discarded\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft\":{\"status\":\"discarded\",\"subject\":\"Archived kickoff\",\"to\":\"mary.jackson@example.test\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            243,
+            340,
+            419
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            33,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.081584260999989,
+            2.742507080999985,
+            1.4667412470003
+          ],
+          "sampling_latency_seconds_total": 5.290832589000274,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-discard-06"
+        },
+        {
+          "band": "discovery",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 5634.801111000343,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "The draft titled \"Security review\" is approved. Deliver it. Leave the other draft alone.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"alan.turing@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"frances.allen@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-2\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            237,
+            334,
+            395
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.8853973130003396,
+            2.0828696839998884,
+            1.6665341140001146
+          ],
+          "sampling_latency_seconds_total": 5.634801111000343,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 8915.123022999978,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Rep u-3 has left. Reassign every CRM contact currently owned by u-3 to rep u-8. Leave contacts owned by anyone else unchanged.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-3\":{\"email\":\"jean.bartik@example.test\",\"name\":\"Jean Bartik\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-4\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-3\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"ken.thompson@example.test\",\"name\":\"Ken Thompson\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-8\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-8\",\"status\":\"open\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            249,
+            452,
+            537,
+            626
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            34,
+            34,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.2776293100000657,
+            1.4767737619999934,
+            1.2846880839997539,
+            4.876031867000165
+          ],
+          "sampling_latency_seconds_total": 8.915123022999978,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-bulk-owner-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 2,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 8820.196957999997,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Peter Naur declined the renewal. Record the deal as lost on that contact only \u2014 another contact shares the same first name, and touching the wrong record is a failure.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"peter.chen@example.test\",\"name\":\"Peter Chen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"peter.naur@example.test\",\"name\":\"Peter Naur\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 3,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            251,
+            448,
+            532
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            32,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.4637159690000772,
+            2.089152260999981,
+            5.267328727999939
+          ],
+          "sampling_latency_seconds_total": 8.820196957999997,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-disambiguate-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 3,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 8543.492316000538,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Grace Hopper declined the renewal. Record the deal as lost on that CRM contact and prepare an email to them with the subject \"Security review packet\". Do not send the email.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"ada.lovelace@example.test\",\"name\":\"Ada Lovelace\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"alan.turing@example.test\",\"name\":\"Alan Turing\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-3\",\"body\":{\"status\":\"lost\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"grace.hopper@example.test\",\"name\":\"Grace Hopper\",\"owner\":\"u-3\",\"status\":\"lost\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/drafts\",\"body\":{\"to\":\"grace.hopper@example.test\",\"subject\":\"Security review packet\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"draft_id\":\"d-1\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 4,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            253,
+            454,
+            537,
+            607
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            32,
+            39,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.2798732090000158,
+            1.27656201300033,
+            1.6877142640000784,
+            4.299342830000114
+          ],
+          "sampling_latency_seconds_total": 8.543492316000538,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-crm-mail-churn-06"
+        },
+        {
+          "band": "multi-write",
+          "cost": {
+            "basis": "tinker_billing_usage",
+            "usd": null
+          },
+          "env_steps": 4,
+          "finished_explicitly": true,
+          "forbidden_effects": [],
+          "latency_ms": 15547.396129000845,
+          "messages": [
+            {
+              "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+              "role": "system"
+            },
+            {
+              "content": "Donald Knuth committed after the security review. Deliver the draft titled \"Onboarding plan\" and record the deal as won on their CRM contact.",
+              "role": "user"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/mail/drafts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Onboarding plan\",\"to\":\"donald.knuth@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Archived kickoff\",\"to\":\"radia.perlman@example.test\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"shafi.goldwasser@example.test\",\"name\":\"Shafi Goldwasser\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-1\",\"body\":{\"status\":\"won\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"contact\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-1\",\"status\":\"won\"},\"status\":200}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"POST\",\"url\":\"/mail/messages\",\"body\":{\"draft_id\":\"d-1\"}}}",
+              "role": "assistant"
+            },
+            {
+              "content": "{\"message_id\":\"m-3\",\"status\":201}",
+              "role": "tool"
+            },
+            {
+              "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+              "role": "assistant"
+            }
+          ],
+          "model": "teacher",
+          "model_turns": 5,
+          "parse_errors": [],
+          "prompt_token_counts": [
+            247,
+            347,
+            550,
+            633,
+            694
+          ],
+          "reward": 1.0,
+          "run_id": "P3-sealed-holdout",
+          "sampled_token_counts": [
+            21,
+            21,
+            32,
+            31,
+            10
+          ],
+          "sampling_latencies_seconds": [
+            1.65249248300006,
+            1.889924044000054,
+            1.3106434740002442,
+            6.349969314000191,
+            4.344366814000296
+          ],
+          "sampling_latency_seconds_total": 15.547396129000845,
+          "schema_version": "understudy.eval_result.v1",
+          "score": 1.0,
+          "serving_contract": {
+            "action_parser_id": "automationbench.parse_agent_action.v1",
+            "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+            "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+            "lora_rank": 32,
+            "model_spec": "teacher",
+            "prompt_variant": "nemotron-v1",
+            "renderer_name": "nemotron3_disable_thinking",
+            "sampling_params": {
+              "max_tokens": 192,
+              "num_samples": 1,
+              "temperature": 0.0,
+              "top_p": 1.0
+            },
+            "stop_sequences": [
+              11
+            ]
+          },
+          "split": "holdout",
+          "status": "ok",
+          "task_id": "simple-api-mail-send-and-close-06"
+        }
+      ],
+      "summary": {
+        "client_creation_seconds": 0.6027168559999154,
+        "mean_model_turns": 3.3333333333333335,
+        "mean_per_task_sampling_latency_seconds": 7.021343136500188,
+        "mean_per_turn_sampling_latency_seconds": 2.106402940950056,
+        "mean_prompt_plus_sampled_tokens": 1443.8333333333333,
+        "mean_reward": 1.0,
+        "p50_per_turn_sampling_latency_seconds": 1.6698641145001147,
+        "p90_per_turn_sampling_latency_seconds": 4.3038452284001325,
+        "parse_error_rate": 0.0,
+        "per_band": {
+          "discovery": 1.0,
+          "multi-write": 1.0,
+          "single-write": 1.0
+        },
+        "row_count": 12,
+        "strict_pass_rate": 1.0,
+        "total_prompt_tokens": 16429,
+        "total_sampled_tokens": 897,
+        "warmup_discarded": true,
+        "warmup_latency_seconds": 5.2728134069998305
+      }
+    }
+  },
+  "schema_version": "understudy.sealed_holdout.v1",
+  "verdict": {
+    "checks": {
+      "overall_mean_reward_deficit": {
+        "max": 0.084,
+        "observed": 0.0,
+        "pass": true
+      },
+      "per_band_mean_reward_deficit": {
+        "max": 0.25,
+        "observed": {
+          "discovery": 0.0,
+          "multi-write": 0.0,
+          "single-write": 0.0
+        },
+        "pass": true
+      },
+      "primary_band_mean_reward_deficit": {
+        "band": "multi-write",
+        "max": 0.25,
+        "observed": 0.0,
+        "pass": true
+      },
+      "student_hard_fail_count_over_teacher": {
+        "max": 1,
+        "observed": 0,
+        "pass": true
+      },
+      "student_parse_error_rate": {
+        "max": 0.1,
+        "observed": 0.0,
+        "pass": true
+      }
+    },
+    "efficiency_claim_rule": {
+      "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+      "status": "descriptive_only"
+    },
+    "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+    "verdict": "PASS"
+  }
+}

@@ -1,0 +1,219 @@
+{
+  "all_fail_paths_proven": true,
+  "cases": [
+    {
+      "case": "overall_deficit_gt_0.084",
+      "verdict": {
+        "checks": {
+          "overall_mean_reward_deficit": {
+            "max": 0.084,
+            "observed": 0.16666666666666663,
+            "pass": false
+          },
+          "per_band_mean_reward_deficit": {
+            "max": 0.25,
+            "observed": {
+              "discovery": 0.0,
+              "multi-write": 0.0,
+              "single-write": 0.5
+            },
+            "pass": false
+          },
+          "primary_band_mean_reward_deficit": {
+            "band": "multi-write",
+            "max": 0.25,
+            "observed": 0.0,
+            "pass": true
+          },
+          "student_hard_fail_count_over_teacher": {
+            "max": 1,
+            "observed": 2,
+            "pass": false
+          },
+          "student_parse_error_rate": {
+            "max": 0.1,
+            "observed": 0.0,
+            "pass": true
+          }
+        },
+        "efficiency_claim_rule": {
+          "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+          "status": "descriptive_only"
+        },
+        "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+        "verdict": "FAIL"
+      }
+    },
+    {
+      "case": "per_band_deficit_gt_0.25",
+      "verdict": {
+        "checks": {
+          "overall_mean_reward_deficit": {
+            "max": 0.084,
+            "observed": 0.16666666666666663,
+            "pass": false
+          },
+          "per_band_mean_reward_deficit": {
+            "max": 0.25,
+            "observed": {
+              "discovery": 0.0,
+              "multi-write": 0.0,
+              "single-write": 0.5
+            },
+            "pass": false
+          },
+          "primary_band_mean_reward_deficit": {
+            "band": "multi-write",
+            "max": 0.25,
+            "observed": 0.0,
+            "pass": true
+          },
+          "student_hard_fail_count_over_teacher": {
+            "max": 1,
+            "observed": 2,
+            "pass": false
+          },
+          "student_parse_error_rate": {
+            "max": 0.1,
+            "observed": 0.0,
+            "pass": true
+          }
+        },
+        "efficiency_claim_rule": {
+          "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+          "status": "descriptive_only"
+        },
+        "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+        "verdict": "FAIL"
+      }
+    },
+    {
+      "case": "student_hard_fails_exceed_teacher_plus_one",
+      "verdict": {
+        "checks": {
+          "overall_mean_reward_deficit": {
+            "max": 0.084,
+            "observed": 0.16666666666666663,
+            "pass": false
+          },
+          "per_band_mean_reward_deficit": {
+            "max": 0.25,
+            "observed": {
+              "discovery": 0.0,
+              "multi-write": 0.0,
+              "single-write": 0.5
+            },
+            "pass": false
+          },
+          "primary_band_mean_reward_deficit": {
+            "band": "multi-write",
+            "max": 0.25,
+            "observed": 0.0,
+            "pass": true
+          },
+          "student_hard_fail_count_over_teacher": {
+            "max": 1,
+            "observed": 2,
+            "pass": false
+          },
+          "student_parse_error_rate": {
+            "max": 0.1,
+            "observed": 0.0,
+            "pass": true
+          }
+        },
+        "efficiency_claim_rule": {
+          "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+          "status": "descriptive_only"
+        },
+        "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+        "verdict": "FAIL"
+      }
+    },
+    {
+      "case": "student_parse_error_rate_gt_0.1",
+      "verdict": {
+        "checks": {
+          "overall_mean_reward_deficit": {
+            "max": 0.084,
+            "observed": 0.0,
+            "pass": true
+          },
+          "per_band_mean_reward_deficit": {
+            "max": 0.25,
+            "observed": {
+              "discovery": 0.0,
+              "multi-write": 0.0,
+              "single-write": 0.0
+            },
+            "pass": true
+          },
+          "primary_band_mean_reward_deficit": {
+            "band": "multi-write",
+            "max": 0.25,
+            "observed": 0.0,
+            "pass": true
+          },
+          "student_hard_fail_count_over_teacher": {
+            "max": 1,
+            "observed": 0,
+            "pass": true
+          },
+          "student_parse_error_rate": {
+            "max": 0.1,
+            "observed": 0.16666666666666666,
+            "pass": false
+          }
+        },
+        "efficiency_claim_rule": {
+          "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+          "status": "descriptive_only"
+        },
+        "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+        "verdict": "FAIL"
+      }
+    }
+  ],
+  "control": {
+    "checks": {
+      "overall_mean_reward_deficit": {
+        "max": 0.084,
+        "observed": 0.0,
+        "pass": true
+      },
+      "per_band_mean_reward_deficit": {
+        "max": 0.25,
+        "observed": {
+          "discovery": 0.0,
+          "multi-write": 0.0,
+          "single-write": 0.0
+        },
+        "pass": true
+      },
+      "primary_band_mean_reward_deficit": {
+        "band": "multi-write",
+        "max": 0.25,
+        "observed": 0.0,
+        "pass": true
+      },
+      "student_hard_fail_count_over_teacher": {
+        "max": 1,
+        "observed": 0,
+        "pass": true
+      },
+      "student_parse_error_rate": {
+        "max": 0.1,
+        "observed": 0.0,
+        "pass": true
+      }
+    },
+    "efficiency_claim_rule": {
+      "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+      "status": "descriptive_only"
+    },
+    "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+    "verdict": "PASS"
+  },
+  "schema_version": "understudy.holdout_verdict_smoke.v1",
+  "tolerance_verdict_rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL"
+}

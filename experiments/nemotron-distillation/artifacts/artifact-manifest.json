@@ -16,11 +16,18 @@
       "sha256": "ea921556505cd584befb1ce8cb3e5c5c30896f78a6dc3164c2b24056cd17b783"
     },
     {
-      "bytes": 39694,
+      "bytes": 55071,
       "phase": "C",
       "produced_by_step": "phase_event_emission",
       "ref": "artifact://nemotron-distillation/events.jsonl",
-      "sha256": "39e499e06ea7adb995cde6d9cc954925b9eaf0c631f2f19bdfaf3ecfac5cee28"
+      "sha256": "1c8072952d547aa210022149ad2ddfb7d942190671367186a945049ffc288554"
+    },
+    {
+      "bytes": 458,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/holdout-lock.json",
+      "sha256": "7df209aecd67a2cc4be33a3c23a3d492e6133697bd003a73b949ff0eb93c219a"
     },
     {
       "bytes": 2557,
@@ -30,11 +37,46 @@
       "sha256": "f2b2037c37c83c7f515251c8c52bf6f831b3df8a8927a33fed24c9064ee4cb2e"
     },
     {
+      "bytes": 7603,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/holdout-verdict-smoke.json",
+      "sha256": "1d7876bdec676f6c30888caf9ed7e8bec3a0ac697684df13c7dbf915c065e750"
+    },
+    {
       "bytes": 23069,
       "phase": "B3/B4",
       "produced_by_step": "build_manifest",
       "ref": "artifact://nemotron-distillation/latency-cost-delta.json",
       "sha256": "85800c8de50cfceebabb9500eca933fddba23c4249598e4b29479a5112925fc5"
+    },
+    {
+      "bytes": 384,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/sealed-holdout-student-base.usage.json",
+      "sha256": "e514d21fddf0a86a3f99a7e8aa025b42df948ad33e8a64d519c26f08d40b4c2b"
+    },
+    {
+      "bytes": 383,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/sealed-holdout-student-sft.usage.json",
+      "sha256": "a9243a3a570f5f5468757bc24053188c1ed668571f3371fc9a0098baf9a6f197"
+    },
+    {
+      "bytes": 379,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/sealed-holdout-teacher.usage.json",
+      "sha256": "d832295e773293d5807d07fda752796f1a843b7675e093d0c89a282d30b07afe"
+    },
+    {
+      "bytes": 174518,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/sealed-holdout.json",
+      "sha256": "31ca99afdb80b9515f15ef325d7da47bf0dddcfa81311c7287f116aec1cd784d"
     },
     {
       "bytes": 532,
@@ -72,11 +114,11 @@
       "sha256": "266b661fc6103e4ee0580f98d9a30d9d95bf0a0bc01808f18116da11c28ce167"
     },
     {
-      "bytes": 1550,
+      "bytes": 4086,
       "phase": "C",
       "produced_by_step": "step_ledger",
       "ref": "artifact://nemotron-distillation/step-ledger.json",
-      "sha256": "131a87519a7b4c10a414d9cc8c31b4ec858c3ba6e0fec40ff3dbcbeed6e03776"
+      "sha256": "516ce7d734ebed43345b6a8ccdf75f769788c3a1ec2e16ddd133bda1e516ba22"
     },
     {
       "bytes": 158178,

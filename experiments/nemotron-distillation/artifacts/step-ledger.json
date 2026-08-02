@@ -1,6 +1,73 @@
 {
   "schema_version": "understudy.step_ledger.v1",
   "steps": {
+    "5aa3f09b1fe91518c90e12acc7f6fd107837c0abb9f7a66f068ba228a5b53bc1": {
+      "attempt": 1,
+      "candidate_id": "sealed-holdout",
+      "experiment_id": "P3-nemotron-distillation-D",
+      "result": {
+        "job_ref": "tinker://sync/5aa3f09b1fe91518c90e12acc7f6fd107837c0abb9f7a66f068ba228a5b53bc1",
+        "models": [
+          "teacher",
+          "student-base",
+          "student-sft"
+        ],
+        "out": "artifacts/sealed-holdout.json",
+        "verdict": {
+          "checks": {
+            "overall_mean_reward_deficit": {
+              "max": 0.084,
+              "observed": 0.0,
+              "pass": true
+            },
+            "per_band_mean_reward_deficit": {
+              "max": 0.25,
+              "observed": {
+                "discovery": 0.0,
+                "multi-write": 0.0,
+                "single-write": 0.0
+              },
+              "pass": true
+            },
+            "primary_band_mean_reward_deficit": {
+              "band": "multi-write",
+              "max": 0.25,
+              "observed": 0.0,
+              "pass": true
+            },
+            "student_hard_fail_count_over_teacher": {
+              "max": 1,
+              "observed": 0,
+              "pass": true
+            },
+            "student_parse_error_rate": {
+              "max": 0.1,
+              "observed": 0.0,
+              "pass": true
+            }
+          },
+          "efficiency_claim_rule": {
+            "detail": "latency, turn-count, and token deltas are reported but never used to override a quality FAIL; a latency or cost win is claimed only from warm-start measurements taken in the same pass, and cost.usd stays null while the provider billing endpoint returns no dollar amounts",
+            "status": "descriptive_only"
+          },
+          "rule": "PASS only if every quality_tolerance and guardrail condition holds; any single violation is a FAIL and is reported as a FAIL",
+          "verdict": "PASS"
+        }
+      },
+      "status": "completed"
+    },
+    "68075eea13ca1d3fdda5534342c5e344ea0c3546fd76dfac11c937eddde9f120": {
+      "attempt": 1,
+      "candidate_id": "entry-gate-preflight",
+      "experiment_id": "P3-nemotron-distillation-D",
+      "result": {
+        "job_ref": "tinker://sync/68075eea13ca1d3fdda5534342c5e344ea0c3546fd76dfac11c937eddde9f120",
+        "out": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/entry-gate.json",
+        "score": 1.0,
+        "status": "ok"
+      },
+      "status": "completed"
+    },
     "6bb4261849fad790bb2a61a92ffbc74c127223211a4af63211b9e7f2e71739bf": {
       "attempt": 1,
       "candidate_id": "student-sft-warm",
