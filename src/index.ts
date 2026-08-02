@@ -57,6 +57,7 @@ import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerInstrumentCommand } from "./commands/instrument.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
+import { registerRepairTargetsCommand } from "./commands/repair-targets.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
 import { daemonStatus } from "./internal/daemon.js";
@@ -892,6 +893,7 @@ export function buildProgram(): Command {
     });
 
   registerOptimizeWorkloadCommand(program);
+  registerRepairTargetsCommand(program);
 
   registerCaptureImportCommands(program);
   registerRouteDecisionCommands(program);
