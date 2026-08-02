@@ -34,6 +34,7 @@ class EnvService:
     """One reusable subprocess-backed AutomationBench service."""
 
     repo: str
+    fixture: str = "automationbench"
     process: subprocess.Popen[str] | None = None
     port: int | None = None
 
@@ -41,7 +42,7 @@ class EnvService:
         if self.process is not None:
             return self
         self.process = subprocess.Popen(
-            ["node", "scripts/automationbench-rl-service.mjs"],
+            ["node", "scripts/automationbench-rl-service.mjs", "--fixture", self.fixture],
             cwd=self.repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -128,12 +129,12 @@ class EnvService:
 _SERVICE: EnvService | None = None
 
 
-def get_service(repo: str) -> EnvService:
+def get_service(repo: str, fixture: str = "automationbench") -> EnvService:
     """Return the process-wide service instance, starting it on first use."""
 
     global _SERVICE
     if _SERVICE is None:
-        _SERVICE = EnvService(repo).start()
+        _SERVICE = EnvService(repo, fixture=fixture).start()
     return _SERVICE
 
 

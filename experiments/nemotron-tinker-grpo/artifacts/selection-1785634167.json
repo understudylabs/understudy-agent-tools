@@ -1,0 +1,267 @@
+{
+  "evaluated_steps_by_config": {
+    "r16-shaped": [
+      15,
+      30,
+      45,
+      60,
+      75,
+      90,
+      105
+    ],
+    "r32-none": [
+      15,
+      30,
+      45,
+      60,
+      75,
+      90,
+      105
+    ],
+    "r32-shaped": [
+      15,
+      30,
+      45,
+      60,
+      75,
+      90,
+      105
+    ]
+  },
+  "holdout_accessed": false,
+  "leaderboard": [
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://bfeea200-4634-58ae-b3e5-81f973e5d684:train:0/sampler_weights/000015",
+      "step": 15,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000015",
+      "step": 15,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://b94dcdfe-9269-5801-b3ec-707764c94f6b:train:0/sampler_weights/000015",
+      "step": 15,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://bfeea200-4634-58ae-b3e5-81f973e5d684:train:0/sampler_weights/000030",
+      "step": 30,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000030",
+      "step": 30,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://b94dcdfe-9269-5801-b3ec-707764c94f6b:train:0/sampler_weights/000030",
+      "step": 30,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://bfeea200-4634-58ae-b3e5-81f973e5d684:train:0/sampler_weights/000045",
+      "step": 45,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000045",
+      "step": 45,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://b94dcdfe-9269-5801-b3ec-707764c94f6b:train:0/sampler_weights/000045",
+      "step": 45,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://bfeea200-4634-58ae-b3e5-81f973e5d684:train:0/sampler_weights/000060",
+      "step": 60,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000060",
+      "step": 60,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://b94dcdfe-9269-5801-b3ec-707764c94f6b:train:0/sampler_weights/000060",
+      "step": 60,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://cfc80cdc-c6ea-5aa3-a647-cdba7564cbfe:train:0/sampler_weights/000075",
+      "step": 75,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://eb6eed84-3bc0-5041-a87d-8cac5f954eed:train:0/sampler_weights/000075",
+      "step": 75,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://d5e03f7a-3301-5679-8f18-b1a00ec3b55e:train:0/sampler_weights/000075",
+      "step": 75,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://cfc80cdc-c6ea-5aa3-a647-cdba7564cbfe:train:0/sampler_weights/000090",
+      "step": 90,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://eb6eed84-3bc0-5041-a87d-8cac5f954eed:train:0/sampler_weights/000090",
+      "step": 90,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://d5e03f7a-3301-5679-8f18-b1a00ec3b55e:train:0/sampler_weights/000090",
+      "step": 90,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-none",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://cfc80cdc-c6ea-5aa3-a647-cdba7564cbfe:train:0/sampler_weights/000090",
+      "step": 105,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r32-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://eb6eed84-3bc0-5041-a87d-8cac5f954eed:train:0/sampler_weights/000090",
+      "step": 105,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-shaped-dev-curve.jsonl"
+    },
+    {
+      "forbidden_effect_rate": 0.0,
+      "label": "r16-shaped",
+      "mean_env_steps": 2.3333333333333335,
+      "raw_dev_mean": 1.0,
+      "sampler_path": "tinker://d5e03f7a-3301-5679-8f18-b1a00ec3b55e:train:0/sampler_weights/000090",
+      "step": 105,
+      "strict_pass_rate": 1.0,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r16-shaped-dev-curve.jsonl"
+    }
+  ],
+  "leaderboard_row_count_by_config": {
+    "r16-shaped": 7,
+    "r32-none": 7,
+    "r32-shaped": 7
+  },
+  "raw_dev_ceiling_statement": "Raw DEV partialCredit is pinned at its 1.0000 ceiling across all evaluated configurations/checkpoints; tie-breakers decide when applicable.",
+  "selected": {
+    "forbidden_effect_rate": 0.0,
+    "label": "r32-none",
+    "mean_env_steps": 2.3333333333333335,
+    "raw_dev_mean": 1.0,
+    "sampler_path": "tinker://bfeea200-4634-58ae-b3e5-81f973e5d684:train:0/sampler_weights/000015",
+    "step": 15,
+    "strict_pass_rate": 1.0,
+    "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-grpo/artifacts/r32-none-dev-curve.jsonl"
+  },
+  "selection_rule": [
+    "highest raw dev mean partialCredit",
+    "lower mean env_steps",
+    "fewer dev forbidden effects",
+    "earliest step"
+  ],
+  "synthetic_transfer_excluded": true
+}

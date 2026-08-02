@@ -1,0 +1,23 @@
+{
+  "window": [
+    "2026-08-01T23:00:00Z",
+    "2026-08-02T03:00:00Z"
+  ],
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "matching_rows": 114,
+  "token_totals_by_event": {
+    "training": 811444,
+    "sampling_prefill": 4070930,
+    "sampling_sample": 355268,
+    "checkpoint": 0
+  },
+  "count_totals_by_event": {
+    "training": 0,
+    "sampling_prefill": 0,
+    "sampling_sample": 0,
+    "checkpoint": 24
+  },
+  "total_tokens": 5237642,
+  "dollars": null,
+  "source": "tinker billing usage CLI"
+}

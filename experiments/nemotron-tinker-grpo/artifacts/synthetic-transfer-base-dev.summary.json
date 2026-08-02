@@ -1,0 +1,69 @@
+{
+  "benchmark_id": "synthetic-workflow-shapes-offline",
+  "fixture": "synthetic-workflow",
+  "groups": [
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "saw-analysis-001"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "saw-doc-001"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 2,
+      "holdout": 2,
+      "train": 5
+    },
+    "fixture": "synthetic-workflow",
+    "fixture_sha256": "5f8d2aa038fa06afe579595aec82ca4c08c17c01c912ebdca4cd0cb9cc94ca9b",
+    "split_sha256": {
+      "dev": "8b7dec5f251c8b43b8e3540fd3ef26adc367494be3b13bebf6e65dc930fd3b0e",
+      "holdout": "01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326",
+      "train": "4ad271dc23278f696dcea670bf5ebb6fdd35fb8cd4fe76c38a07ace17ca4bf9b"
+    }
+  },
+  "label": "synthetic-transfer-base-dev-v2",
+  "lora_rank": 32,
+  "mean_model_turns": 9.0,
+  "mean_reward": 0.0,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "base",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "discovery": {
+      "count": 1,
+      "explicit_finish_rate": 1.0,
+      "forbidden_effect_rate": 1.0,
+      "mean_env_steps": 5.0,
+      "mean_model_turns": 6.0,
+      "mean_reward": 0.0,
+      "parse_error_rate": 0.0
+    },
+    "multi-write": {
+      "count": 1,
+      "explicit_finish_rate": 0.0,
+      "forbidden_effect_rate": 0.0,
+      "mean_env_steps": 12.0,
+      "mean_model_turns": 12.0,
+      "mean_reward": 0.0,
+      "parse_error_rate": 0.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 2,
+  "samples_per_task": 1,
+  "split": "dev",
+  "strict_pass_rate": 0.0,
+  "task_count": 2,
+  "temperature": 0.0,
+  "total_prompt_tokens": 13673,
+  "total_sampled_tokens": 674
+}

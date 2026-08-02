@@ -1,0 +1,120 @@
+{
+  "groups": [
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-05"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-05"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 12,
+      "holdout": 12,
+      "train": 48
+    },
+    "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+    "split_sha256": {
+      "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+      "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+      "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+    }
+  },
+  "label": "sft-epoch4-dev",
+  "lora_rank": 32,
+  "mean_model_turns": 3.4166666666666665,
+  "mean_reward": 0.9444444444444445,
+  "model": "tinker://50b15891-db7d-58c5-b3fd-f6649186b020:train:0/sampler_weights/sft-epoch4",
+  "model_path": "tinker://50b15891-db7d-58c5-b3fd-f6649186b020:train:0/sampler_weights/sft-epoch4",
+  "parse_error_rate": 0.08333333333333333,
+  "per_band": {
+    "discovery": {
+      "count": 4,
+      "mean_reward": 1.0
+    },
+    "multi-write": {
+      "count": 4,
+      "mean_reward": 0.8333333333333334
+    },
+    "single-write": {
+      "count": 4,
+      "mean_reward": 1.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 12,
+  "samples_per_task": 1,
+  "split": "dev",
+  "strict_pass_rate": 0.9166666666666666,
+  "task_count": 12,
+  "temperature": 0.0,
+  "total_prompt_tokens": 17660,
+  "total_sampled_tokens": 1094
+}

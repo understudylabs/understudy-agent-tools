@@ -37,6 +37,12 @@ EPOCHS = 4
 LEARNING_RATE = 1e-4
 VARIANCE_LIMIT = 8
 VARIANCE_SAMPLES = 8
+RUN_LABEL: str | None = None
+
+
+def _artifact(suffix: str) -> Path:
+    prefix = f"{RUN_LABEL}-" if RUN_LABEL else ""
+    return ARTIFACT_DIR / f"{prefix}{suffix}"
 
 
 def _args() -> argparse.Namespace:
@@ -46,6 +52,8 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--max-length", type=int, default=MAX_LENGTH)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE)
+    parser.add_argument("--lora-rank", type=int, default=LORA_RANK)
+    parser.add_argument("--run-label")
     return parser.parse_args()
 
 
@@ -56,7 +64,7 @@ def _run_node_export() -> None:
             "node",
             "scripts/automationbench-oracle-trajectories.mjs",
             "--out",
-            str(ORACLE_PATH),
+            str(_artifact("oracle-train.jsonl")),
         ],
         cwd=REPO,
         check=True,
@@ -64,7 +72,8 @@ def _run_node_export() -> None:
 
 
 def _load_oracle_rows() -> list[dict[str, Any]]:
-    rows = [json.loads(line) for line in ORACLE_PATH.read_text().splitlines() if line.strip()]
+    oracle_path = _artifact("oracle-train.jsonl")
+    rows = [json.loads(line) for line in oracle_path.read_text().splitlines() if line.strip()]
     if len(rows) != 48:
         raise RuntimeError(f"expected 48 oracle rows, got {len(rows)}")
     for row in rows:
@@ -173,12 +182,13 @@ def _train(
     epochs: int,
     batch_size: int,
     learning_rate: float,
+    lora_rank: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(datums) % batch_size:
         raise RuntimeError("batch size must divide 48 so every epoch has exactly 3 steps")
     training_client = service_client.create_lora_training_client(
         base_model=MODEL_NAME,
-        rank=LORA_RANK,
+        rank=lora_rank,
     )
     steps_per_epoch = len(datums) // batch_size
     total_steps = epochs * steps_per_epoch
@@ -240,16 +250,16 @@ def _train(
         "wall_clock_seconds": time.monotonic() - started,
         "step_logs": logs,
         "checkpoints": checkpoints,
-        "lora_rank": LORA_RANK,
+        "lora_rank": lora_rank,
         "learning_rate": learning_rate,
         "renderer": RENDERER_NAME,
         "renderer_deviation": RENDERER_DEVIATION,
     }
-    (ARTIFACT_DIR / "sft-checkpoints.json").write_text(
+    _artifact("sft-checkpoints.json").write_text(
         json.dumps({"checkpoints": checkpoints, "last_state_path": checkpoints[-1].get("state_path")}, indent=2)
         + "\n"
     )
-    (ARTIFACT_DIR / "sft-step-log.jsonl").write_text(
+    _artifact("sft-step-log.jsonl").write_text(
         "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in logs)
     )
     return checkpoints, metrics
@@ -294,6 +304,8 @@ def _select_sft_checkpoint(dev_results: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     args = _args()
+    global RUN_LABEL
+    RUN_LABEL = args.run_label
     if args.epochs < 1 or args.batch_size < 1 or args.max_length < 1:
         raise SystemExit("epochs, batch size, and max length must be positive")
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -309,8 +321,9 @@ def main() -> None:
     datums, data_metrics = _build_datums(rows, renderer, args.max_length, tokenizer)
     data_metrics["wall_clock_seconds"] = time.monotonic() - data_started
     data_metrics["token_count_total"] = sum(datum.model_input.length for datum in datums)
-    data_metrics["oracle_path"] = str(ORACLE_PATH)
-    (ARTIFACT_DIR / "sft-data-metrics.json").write_text(
+    data_metrics["oracle_path"] = str(_artifact("oracle-train.jsonl"))
+    data_metrics["run_label"] = RUN_LABEL
+    _artifact("sft-data-metrics.json").write_text(
         json.dumps(data_metrics, indent=2, sort_keys=True) + "\n"
     )
     print(json.dumps({"sft_data": data_metrics}, indent=2), flush=True)
@@ -320,7 +333,7 @@ def main() -> None:
         "sft-data",
         data_before,
         data_after,
-        ARTIFACT_DIR / "sft-data.usage.json",
+        _artifact("sft-data.usage.json"),
     )
 
     if args.skip_training:
@@ -335,9 +348,11 @@ def main() -> None:
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        lora_rank=args.lora_rank,
     )
     train_metrics["wall_clock_seconds"] = time.monotonic() - train_started
-    (ARTIFACT_DIR / "sft-training-metrics.json").write_text(
+    train_metrics["run_label"] = RUN_LABEL
+    _artifact("sft-training-metrics.json").write_text(
         json.dumps(train_metrics, indent=2, sort_keys=True) + "\n"
     )
     train_after = snapshot_usage(rest_client)
@@ -346,7 +361,7 @@ def main() -> None:
         "sft-training",
         train_before,
         train_after,
-        ARTIFACT_DIR / "sft-training.usage.json",
+        _artifact("sft-training.usage.json"),
     )
 
     dev_results: list[dict[str, Any]] = []
@@ -358,7 +373,7 @@ def main() -> None:
             f"sft-epoch{epoch}-dev",
             "dev",
             checkpoint["sampler_path"],
-            ARTIFACT_DIR / f"sft-epoch{epoch}-dev.jsonl",
+            _artifact(f"sft-epoch{epoch}-dev.jsonl"),
         )
         dev_results.append(
             {
@@ -366,7 +381,7 @@ def main() -> None:
                 "sampler_path": checkpoint["sampler_path"],
                 "mean_reward": summary["mean_reward"],
                 "strict_pass_rate": summary["strict_pass_rate"],
-                "summary_path": str(ARTIFACT_DIR / f"sft-epoch{epoch}-dev.summary.json"),
+                "summary_path": str(_artifact(f"sft-epoch{epoch}-dev.summary.json")),
             }
         )
         evaluation_phases.append(
@@ -385,7 +400,7 @@ def main() -> None:
         "sft-selected-train",
         "train",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-train.jsonl",
+        _artifact("sft-selected-train.jsonl"),
     )
     evaluation_phases.append(
         {
@@ -401,7 +416,7 @@ def main() -> None:
         "sft-selected-dev",
         "dev",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-dev.jsonl",
+        _artifact("sft-selected-dev.jsonl"),
     )
     evaluation_phases.append(
         {
@@ -417,7 +432,7 @@ def main() -> None:
         "sft-selected-variance-train-8x8",
         "train",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-variance-train-8x8.jsonl",
+        _artifact("sft-selected-variance-train-8x8.jsonl"),
         samples=VARIANCE_SAMPLES,
         temperature=1.0,
         limit=VARIANCE_LIMIT,
@@ -431,7 +446,7 @@ def main() -> None:
             "sampled_tokens": selected_variance["total_sampled_tokens"],
         }
     )
-    (ARTIFACT_DIR / "sft-phase-metrics.json").write_text(
+    _artifact("sft-phase-metrics.json").write_text(
         json.dumps(
             {
                 "data": {
@@ -449,7 +464,7 @@ def main() -> None:
         )
         + "\n"
     )
-    (ARTIFACT_DIR / "sft-selection.json").write_text(
+    _artifact("sft-selection.json").write_text(
         json.dumps(
             {
                 "per_epoch_dev": dev_results,
@@ -465,9 +480,9 @@ def main() -> None:
                 "selected_dev_summary": selected_dev,
                 "selected_variance_summary": selected_variance,
                 "baseline_summary_paths": [
-                    str(ARTIFACT_DIR / "baseline-train.summary.json"),
-                    str(ARTIFACT_DIR / "baseline-dev.summary.json"),
-                    str(ARTIFACT_DIR / "variance-train-8x8.summary.json"),
+                    str(_artifact("baseline-train.summary.json")),
+                    str(_artifact("baseline-dev.summary.json")),
+                    str(_artifact("variance-train-8x8.summary.json")),
                 ],
             },
             indent=2,

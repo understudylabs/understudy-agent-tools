@@ -151,6 +151,10 @@ const TOOL_CATALOG: Observation["tools"] = [
   { name: "api_fetch", description: "Apply one API call. Args: {method: string, url: string, body?: object}." },
 ];
 
+export function toolCatalog(): Observation["tools"] {
+  return TOOL_CATALOG.map((tool) => ({ ...tool }));
+}
+
 const ENDPOINTS = [
   { url: "/crm/contacts", methods: ["GET"], summary: "List CRM contacts and their ids." },
   { url: "/crm/contacts/{id}", methods: ["GET", "PATCH"], summary: "Read or update a CRM contact." },

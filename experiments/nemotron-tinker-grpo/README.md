@@ -193,6 +193,238 @@ The sealed holdout commands used for this arm were:
 
 The three holdout runs were executed exactly once. They must not be rerun.
 
+## Scale-up arm addendum
+
+This addendum records the longer SFT-warm-start plus GRPO comparison run on
+the same public synthetic AutomationBench fixture. It does not replace the
+earlier #402 reproduction sections above.
+
+### Configurations and isolation
+
+The arm compares:
+
+| label | LoRA rank | shaping |
+| --- | ---: | --- |
+| `r32-none` | 32 | off |
+| `r32-shaped` | 32 | on |
+| `r16-shaped` | 16 | on |
+
+All three use seed 7, 48 train tasks, group size 16, six groups per batch,
+learning rate `1e-5`, importance sampling, constant-reward group removal, and
+up to 150 GRPO steps. The rank-32 runs resume the #402 rank-32 SFT epoch-4
+state. The rank-16 run uses a separately trained rank-16 SFT epoch-4 state.
+Every RL task is asserted to have `split == "train"`. Synthetic workflow tasks
+are used only for transfer evaluation and never enter GRPO training or
+AutomationBench checkpoint selection.
+
+### Train-time reward shaping
+
+The evaluator remains authoritative for every reported score. Intermediate
+transitions receive reward `0.0`; shaping is applied only to the terminal
+transition and only to the scalar seen by GRPO:
+
+```text
+excess_ratio = clamp(
+  (env_steps - oracle_steps[task_id]) / max(1, oracle_steps[task_id]),
+  0,
+  1,
+)
+noexit = 1.0 if max_turns ended the episode, otherwise 0.0
+soft = min(
+  0.20,
+  0.10 * excess_ratio + 0.10 * noexit,
+)
+shaped = terminal_partial_credit * (1 - soft)
+       - 0.15 * min(1, forbidden_effect_count)
+```
+
+`terminal_reward` is always the raw evaluator `partialCredit`; `shaped_reward`
+is the optimization scalar. The length/no-clean-stop term is multiplicative
+and capped at 20%, so it cannot outweigh an outcome difference and cannot
+create an incentive to quit before earning terminal credit. The
+forbidden-write term is additive because `partialCredit` already returns zero
+for forbidden effects; a multiplicative penalty would therefore have zero
+additional learning signal. Doing nothing still earns zero.
+
+Oracle step counts are derived once from train-only oracle trajectories and
+missing train counts are fatal. Forbidden effects are read from terminal
+`/finish`.
+
+### DEV saturation and stopping rule
+
+The initial DEV curve reached raw mean `1.0000` almost immediately on the
+12-task DEV split. Because one task is approximately `0.0833` of the mean,
+raw reward alone is too coarse to justify stopping. The arm therefore requires
+at least 100 GRPO steps. Early stopping is permitted only after both raw DEV
+reward and all of these behavioral metrics have remained unchanged for three
+consecutive DEV evaluations:
+
+- mean environment steps;
+- explicit-finish rate;
+- forbidden-effect rate;
+- parse-error rate.
+
+The complete curves are recorded in:
+
+```text
+artifacts/r32-none-dev-curve.jsonl
+artifacts/r32-shaped-dev-curve.jsonl
+artifacts/r16-shaped-dev-curve.jsonl
+```
+
+The runs reached the required floor; all three raw DEV curves stayed at
+`1.0000` after their initial evaluation. Current final values and selection
+are:
+
+```text
+GRPO DEV floor reached:      r32-none=105, r32-shaped=105, r16-shaped=105
+DEV leaderboard:             artifacts/selection-1785634167.json
+DEV tie-break winner:        r32-none step 15
+20-step vs 100+ conclusion:  no measurable DEV improvement; curves flat
+```
+
+All 21 evaluated DEV leaderboard rows (7 per configuration, steps 15 through
+105) have raw mean `1.0000`, mean environment steps `2.3333`, and zero
+forbidden effects. The first three tie-break criteria therefore remain tied;
+the earliest evaluated checkpoint, step 15, decides. The label ordering makes
+`r32-none` the artifact's representative winner, but this is not evidence that
+unshaped rank 32 is better than either shaped arm.
+
+In plain terms, the three arms are indistinguishable on DEV. The selection was
+decided by the arbitrary, pre-registered earliest-step tie-break, not by a
+measurable quality or behavioral difference.
+
+The former `_evaluate_stage2_checkpoints` helper is retained as historical
+#402 workflow code. It is superseded by the in-process DEV curve and the
+DEV-only selection artifact above; it is not called by `main()`, so no
+evaluation coverage was lost.
+
+### DEV-only selection
+
+Before either holdout is accessed, the selection helper writes:
+
+```text
+artifacts/selection-<timestamp>.json
+```
+
+It includes every checkpoint from all three configurations and applies this
+rule, in order:
+
+1. highest raw DEV `partialCredit` mean;
+2. lower mean DEV `env_steps`;
+3. fewer DEV forbidden effects;
+4. earliest step.
+
+Because raw DEV reward is pinned at its ceiling, the artifact must state
+explicitly when a behavioral tie-break decides the winner. Synthetic transfer
+metrics are descriptive only and must not enter this selection.
+
+### Synthetic workflow transfer probe
+
+The separate `synthetic-workflow` backend is an offline sibling fixture with
+9 tasks (5 train, 2 DEV, 2 holdout), six families, seed 7, and a wider
+endpoint/state surface. Its benchmark and hashes are distinct:
+
+```text
+benchmark: synthetic-workflow-shapes-offline
+fixture:   5f8d2aa038fa06afe579595aec82ca4c08c17c01c912ebdca4cd0cb9cc94ca9b
+train:     4ad271dc23278f696dcea670bf5ebb6fdd35fb8cd4fe76c38a07ace17ca4bf9b
+dev:       8b7dec5f251c8b43b8e3540fd3ef26adc367494be3b13bebf6e65dc930fd3b0e
+holdout:   01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326
+```
+
+Transfer evaluations use train+DEV only, greedy decoding, and are reported
+separately from AutomationBench. The
+selected checkpoint evaluations are:
+
+```text
+base train / DEV:           0.200 / 0.000
+#402 rank-32 SFT train/DEV: 0.333 / 0.000
+selected r32-none:          0.333 / 0.000
+selected r32-shaped:        0.333 / 0.000
+selected r16-shaped:        0.333 / 0.000
+```
+
+The three selected GRPO checkpoints are all their respective step-15
+samplers. On the corrected synthetic DEV probe, each had zero reward, mean
+model turns `8.0`, `100%` explicit finish, `50%` parse-error rate, and
+`100%` forbidden-effect rate. These are descriptive transfer results only;
+they did not affect the AutomationBench selection.
+
+An adapter gate was added before interpreting transfer results. Oracle replay
+through the HTTP adapter scores 1.0 with zero forbidden effects on all 5
+synthetic train and 2 synthetic DEV tasks. A do-nothing policy scores 0.0,
+and an out-of-scope write scores 0.0 while recording its forbidden effect.
+
+The first transfer run was invalid: the adapter's synthetic `/reset` response
+accidentally returned the AutomationBench system prompt. Those artifacts must
+not be used as results. The adapter was corrected to return the synthetic
+protocol, endpoint catalog, and tool schemas, and the transfer runs were
+repeated. Corrected base results were `0.200` train / `0.000` DEV; corrected
+#402 rank-32 SFT results were `0.333` train / `0.000` DEV. The corrected
+failure-mode artifact is:
+
+```text
+artifacts/synthetic-transfer-v2-failure-modes.json
+```
+
+These corrected results show genuine remaining transfer difficulty, including
+incorrect endpoint/method behavior and forbidden effects on DEV. The transfer
+probe is the surface with meaningful headroom; it is a generalization probe,
+not an upstream AutomationBench result or a model-selection input.
+
+After approval, each sealed holdout was evaluated exactly once on the selected
+`r32-none` step-15 checkpoint. AutomationBench holdout scored `1.0000`
+(`12/12` strict passes); the synthetic transfer holdout scored `0.2500`
+(`0/2` strict passes). The AutomationBench result is recorded in
+`artifacts/automationbench-r32-none-selected-holdout.summary.json`; the
+synthetic transfer result is recorded separately in
+`artifacts/synthetic-transfer-r32-none-selected-holdout.summary.json`.
+
+### Scale-up results
+
+All values are raw evaluator `partialCredit`, greedy, one sample per task.
+Base and SFT holdout rows are the #402 sealed values and were not rerun.
+
+| Arm | Train | Dev | Holdout |
+| --- | ---: | ---: | ---: |
+| Base | 0.8958 | 0.8611 | 0.9444 |
+| SFT epoch 4 (rank 32, #402) | 0.9757 | 0.9444 | 0.9444 |
+| `r32-none` step 15 | 0.9792 | 1.0000 | 1.0000 (sealed) |
+| `r32-shaped` step 15 | 1.0000 | 1.0000 | not run |
+| `r16-shaped` step 15 | 1.0000 | 1.0000 | not run |
+
+Train is the only split with enough resolution to separate the arms, and it
+separates them in one place: the unshaped control leaves the multi-write band
+at `0.9375`, while both shaped arms reach `1.0000` on every band. That the
+effect appears independently at rank 32 and rank 16 makes it more than a single
+lucky run, but it is a **train** result on the split the policy was optimized
+against, so it is not evidence of generalization. Dev and holdout cannot
+confirm or refute it: both are saturated at `1.0000` for every arm.
+
+### Caveats and reporting index
+
+Per-config raw/shaped learning curves, per-band train/DEV results, over-acting
+metrics, token and wall-clock receipts, and the final billing-usage query:
+
+```text
+learning curves:             artifacts/*-learning-curve.jsonl
+single-write/discovery/multi-write: artifacts/*selected-*.summary.json
+env steps/model turns:       artifacts/scaleup-report.json
+explicit-finish rate:        artifacts/scaleup-report.json
+parse-error rate:            artifacts/scaleup-report.json
+forbidden-effect rate:       artifacts/scaleup-report.json
+token totals and receipts:   artifacts/*grpo-stage2*.usage.json
+get_billing_usage:           artifacts/billing-usage-final.json
+```
+
+The 12-task AutomationBench DEV and holdout splits are coarse (one task is
+about `0.0833` of a mean), so a saturated DEV score is weak evidence by itself.
+The synthetic fixture is an offline public test fixture with its own verifier
+and hashes; it is not an upstream AutomationBench result. Both holdouts were
+accessed exactly once, after the DEV selection artifact and every descriptive
+transfer evaluation were already written; neither may be rerun.
+
 ## Cost, receipts, and cleanup
 
 Measured token totals are prompt plus sampled/model-input tokens. The

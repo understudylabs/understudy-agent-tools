@@ -31,6 +31,11 @@ DEFAULT_ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=("train", "dev", "holdout"), required=True)
+    parser.add_argument(
+        "--fixture",
+        choices=("automationbench", "synthetic-workflow"),
+        default="automationbench",
+    )
     parser.add_argument("--model-path", required=True, help="base or a saved tinker:// model path")
     parser.add_argument("--label", default="eval")
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -43,11 +48,23 @@ def _args() -> argparse.Namespace:
 
 
 def _family_stats(records: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
-    by_band: dict[str, list[float]] = {}
+    by_band: dict[str, list[dict[str, Any]]] = {}
     for record in records:
-        by_band.setdefault(record["band"], []).append(record["reward"])
+        by_band.setdefault(record["band"], []).append(record)
     return {
-        band: {"count": len(values), "mean_reward": statistics.fmean(values)}
+        band: {
+            "count": len(values),
+            "mean_reward": statistics.fmean(row["reward"] for row in values),
+            "mean_env_steps": statistics.fmean(row["env_steps"] for row in values),
+            "mean_model_turns": statistics.fmean(row["model_turns"] for row in values),
+            "parse_error_rate": statistics.fmean(bool(row["parse_errors"]) for row in values),
+            "explicit_finish_rate": statistics.fmean(
+                row["finished_explicitly"] for row in values
+            ),
+            "forbidden_effect_rate": statistics.fmean(
+                bool(row["forbidden_effects"]) for row in values
+            ),
+        }
         for band, values in sorted(by_band.items())
     }
 
@@ -77,7 +94,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     if args.split == "holdout" and not args.frozen_holdout_sha256:
         raise SystemExit("--frozen-holdout-sha256 is required for --split holdout")
 
-    service = get_service(str(REPO))
+    service = get_service(str(REPO), fixture=args.fixture)
     hashes = service.hashes()
     tasks = service.tasks(args.split, args.frozen_holdout_sha256)
     if args.limit is not None:
@@ -120,6 +137,16 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     model_label = MODEL_NAME if args.model_path == "base" else args.model_path
     split_sha = hashes["split_sha256"][args.split]
+    benchmark_id = (
+        "synthetic-workflow-shapes-offline"
+        if args.fixture == "synthetic-workflow"
+        else "automationbench-simple-api-offline"
+    )
+    fixture_ref = (
+        "fixture://synthetic-workflow-shapes-offline-v1"
+        if args.fixture == "synthetic-workflow"
+        else "fixture://automationbench-simple-api-offline-v1"
+    )
     rows = []
     for record in records:
         rows.append(
@@ -133,7 +160,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "model": model_label,
                 "route": "tinker",
                 "cost": {"usd": None, "basis": "tinker_billing_usage"},
-                "benchmark_id": "automationbench-simple-api-offline",
+                "benchmark_id": benchmark_id,
                 "subscores": {
                     "forbidden_effects": len(record["forbidden_effects"]),
                     "steps": record["env_steps"],
@@ -141,7 +168,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "provenance": {
                     "harness_sha256": hashes["fixture_sha256"],
                     "split_sha256": split_sha,
-                    "artifact_refs": ["fixture://automationbench-simple-api-offline-v1"],
+                    "artifact_refs": [fixture_ref],
                 },
                 "family": record["family"],
                 "band": record["band"],
@@ -159,6 +186,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     summary = {
         "label": args.label,
+        "fixture": args.fixture,
         "split": args.split,
         "model_path": args.model_path,
         "model": model_label,
@@ -182,6 +210,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "total_prompt_tokens": sum(sum(record["prompt_token_counts"]) for record in records),
         "groups": _group_stats(records),
         "hashes": hashes,
+        "benchmark_id": benchmark_id,
     }
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
