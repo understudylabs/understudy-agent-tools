@@ -1,0 +1,102 @@
+{
+  "schema_version": "understudy.workload_aggregates.v1",
+  "workload_code": "WL-AU",
+  "workload_shape": "agentic multi-step business automation over a tool/API surface",
+  "source": "gateway telemetry, outer spans only, AGGREGATES ONLY (counts, tokens, USD, distributions). No prompts, completions, payloads, ids, or per-request rows are recorded here or anywhere in this arm.",
+  "window": { "first_event": "2026-06-03T11:00:23Z", "last_event": "2026-08-02T01:21:45Z", "days": 60 },
+  "totals": {
+    "requests": 92177,
+    "uncached_input_tokens": 1145542758,
+    "cache_read_input_tokens": 6389258280,
+    "cache_creation_input_tokens": 866430546,
+    "output_tokens": 65587341,
+    "customer_cost_usd": 8395.01,
+    "cache_read_share_of_input": 0.761,
+    "streaming_share": 0.0,
+    "total_ms_p50": 6307,
+    "total_ms_p95": 48899
+  },
+  "project_context": {
+    "project_requests": 915296,
+    "project_customer_cost_usd": 31382.71,
+    "workload_request_share": 0.101,
+    "workload_cost_share": 0.268,
+    "cost_rank_in_project": 2,
+    "workloads_in_project": 21
+  },
+  "recent_14d": {
+    "requests": 66833,
+    "customer_cost_usd": 4172.82,
+    "output_tokens_p50": 322,
+    "output_tokens_p95": 4096,
+    "note": "72.5% of the window's lifetime requests landed in the last 14 days; the workload is ramping, not decaying."
+  },
+  "by_served_model": [
+    {
+      "provider": "anthropic",
+      "served_model": "claude-sonnet-4-6",
+      "requests": 57326,
+      "customer_cost_usd": 5985.76,
+      "output_tokens": 24938393,
+      "output_p50": 230,
+      "output_p95": 1905,
+      "output_p99": 3631,
+      "output_max": 8707,
+      "provider_equivalent_input_p50": 63560,
+      "pct_bounded_le_512": 82.36,
+      "pct_at_or_above_4096": 0.57
+    },
+    {
+      "provider": "anthropic",
+      "served_model": "claude-sonnet-5",
+      "requests": 33885,
+      "customer_cost_usd": 2285.91,
+      "output_tokens": 39997711,
+      "output_p50": 443,
+      "output_p95": 4096,
+      "output_p99": 4096,
+      "output_max": 4096,
+      "provider_equivalent_input_p50": 92813,
+      "pct_bounded_le_512": 56.59,
+      "pct_at_or_above_4096": 14.32
+    },
+    {
+      "provider": "other-managed-a",
+      "served_model": "open-weight-moe-a",
+      "requests": 576,
+      "customer_cost_usd": 69.71,
+      "output_p50": 279,
+      "output_p95": 2069,
+      "pct_bounded_le_512": 69.62,
+      "pct_at_or_above_4096": 0.52
+    },
+    {
+      "provider": "other-managed-b",
+      "served_model": "open-weight-moe-a",
+      "requests": 390,
+      "customer_cost_usd": 53.64,
+      "output_p50": 504,
+      "output_p95": 2480,
+      "pct_bounded_le_512": 51.54,
+      "pct_at_or_above_4096": 1.28
+    }
+  ],
+  "output_length_bands": [
+    { "band": "0-128", "requests": 18118, "pct_requests": 19.66, "customer_cost_usd": 1201.97 },
+    { "band": "129-512", "requests": 48873, "pct_requests": 53.02, "customer_cost_usd": 4350.28 },
+    { "band": "513-1024", "requests": 9880, "pct_requests": 10.72, "customer_cost_usd": 967.88 },
+    { "band": "1025-2048", "requests": 4967, "pct_requests": 5.39, "customer_cost_usd": 637.66 },
+    { "band": "2049-4096", "requests": 10005, "pct_requests": 10.85, "customer_cost_usd": 1186.78 },
+    { "band": "4097+", "requests": 334, "pct_requests": 0.36, "customer_cost_usd": 50.44 }
+  ],
+  "bounded_vs_variable": {
+    "bounded_le_512": { "requests": 66991, "pct_requests": 72.68, "customer_cost_usd": 5552.25, "mean_total_ms": 6255 },
+    "variable_gt_512": { "requests": 25186, "pct_requests": 27.32, "customer_cost_usd": 2842.76, "mean_total_ms": 29986 }
+  },
+  "reliability": {
+    "success_requests": 91269,
+    "error_requests": 908,
+    "error_rate": 0.0098,
+    "error_origin": "all upstream (502/400/503/524/429/529/500); none billed"
+  }
+}
