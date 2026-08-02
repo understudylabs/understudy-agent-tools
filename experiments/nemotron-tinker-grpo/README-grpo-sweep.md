@@ -78,7 +78,8 @@ tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state
 ```
 
 Full per-epoch URIs are in `artifacts/sft-selection-rank16.json` and
-`artifacts/sft-selection-rank32.json`.
+`artifacts/sft-selection-rank32.json`; their row-level summaries live under
+`artifacts/sweep/rank16/legacy/` and `artifacts/sweep/rank32/legacy/`.
 
 ## Greedy GRPO learning curve
 
@@ -102,7 +103,8 @@ free per-step aggregate extracted from `metrics.jsonl`.
 
 The chart is `artifacts/grpo-sweep-learning-curve.svg`. Source curve artifacts
 are `grpo-rank16-train-vs-dev-curve.json` and
-`grpo-rank32-train-vs-dev-curve.json`.
+`grpo-rank32-train-vs-dev-curve.json`; their checkpoint/metrics sources are
+under `artifacts/sweep/rank16/` and `artifacts/sweep/rank32/`.
 
 The greedy dev metric is saturated: rank-16 SFT already reached 1.000000, and
 every GRPO checkpoint for both ranks also reached 1.000000. With 12 tasks, one

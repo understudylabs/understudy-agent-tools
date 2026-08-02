@@ -1,0 +1,11 @@
+{
+  "log_path": "experiments/nemotron-tinker-grpo/artifacts/grpo-rank32-stage1-smoke-log",
+  "records": [
+    {
+      "batch": 2,
+      "name": "final",
+      "sampler_path": "tinker://a5346260-7d3e-586c-b325-6670bc8faaef:train:0/sampler_weights/final",
+      "state_path": "tinker://a5346260-7d3e-586c-b325-6670bc8faaef:train:0/weights/final"
+    }
+  ]
+}

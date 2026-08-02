@@ -92,6 +92,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     rest_client = client.create_rest_client()
     receipt_path = Path(args.out).with_suffix(".usage.json")
     usage_before = await snapshot_usage_async(rest_client)
+    effective_checkpoint_lora_rank = None
+    if args.model_path != "base":
+        weights_info = rest_client.get_weights_info_by_tinker_path(args.model_path).result()
+        effective_checkpoint_lora_rank = weights_info.lora_rank
     if args.model_path == "base":
         sampling_client = await client.create_sampling_client_async(base_model=MODEL_NAME)
     else:
@@ -168,7 +172,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "model": model_label,
         "renderer": RENDERER_NAME,
         "renderer_deviation": RENDERER_DEVIATION,
-        "lora_rank": args.lora_rank,
+        # The flag configures rollout metadata; checkpoint_lora_rank is authoritative
+        # for a saved adapter because the loaded checkpoint determines its rank.
+        "requested_lora_rank": args.lora_rank,
+        "checkpoint_lora_rank": effective_checkpoint_lora_rank,
         "temperature": args.temperature,
         "samples_per_task": args.samples,
         "task_count": len(tasks),

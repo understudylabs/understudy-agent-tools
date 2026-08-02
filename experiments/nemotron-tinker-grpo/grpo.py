@@ -486,12 +486,15 @@ def _checkpoint_records(log_path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-async def _run_stage(args: argparse.Namespace) -> None:
+async def _run_stage(args: argparse.Namespace) -> tuple[Path, Path]:
     max_steps = args.max_steps or (2 if args.stage == "1" else 40)
     if max_steps < 1 or args.lora_rank < 1 or any(step < 1 for step in args.eval_steps):
         raise SystemExit("max steps, LoRA rank, and eval steps must be positive")
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = Path(args.log_path or (ARTIFACT_DIR / f"grpo-stage{args.stage}-log"))
+    artifact_dir = ARTIFACT_DIR / "sweep" / f"rank{args.lora_rank}"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    log_path = Path(
+        args.log_path or (artifact_dir / f"grpo-stage{args.stage}-log")
+    )
     log_path.mkdir(parents=True, exist_ok=True)
 
     client = service_client()
@@ -558,7 +561,7 @@ async def _run_stage(args: argparse.Namespace) -> None:
             "rl_deviation": RL_DEVIATION,
         }
     )
-    telemetry_path = ARTIFACT_DIR / f"grpo-stage{args.stage}-telemetry.json"
+    telemetry_path = artifact_dir / f"grpo-stage{args.stage}-telemetry.json"
     telemetry_path.write_text(json.dumps(telemetry, indent=2, sort_keys=True) + "\n")
     receipt = {
         "phase": f"grpo-stage{args.stage}",
@@ -566,11 +569,11 @@ async def _run_stage(args: argparse.Namespace) -> None:
         "after": usage_after,
         "delta": usage_delta(usage_before, usage_after),
     }
-    (ARTIFACT_DIR / f"grpo-stage{args.stage}.usage.json").write_text(
+    (artifact_dir / f"grpo-stage{args.stage}.usage.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     )
     checkpoint_records = _checkpoint_records(log_path)
-    (ARTIFACT_DIR / f"grpo-stage{args.stage}-checkpoints.json").write_text(
+    (artifact_dir / f"grpo-stage{args.stage}-checkpoints.json").write_text(
         json.dumps(
             {
                 "log_path": str(log_path),
@@ -598,16 +601,18 @@ async def _run_stage(args: argparse.Namespace) -> None:
                 statistics.fmean(wall) * 40 if wall else 0.0
             ),
         }
-        (ARTIFACT_DIR / "grpo-stage1-projection.json").write_text(
+        (artifact_dir / "grpo-stage1-projection.json").write_text(
             json.dumps(projection, indent=2, sort_keys=True) + "\n"
         )
     print(json.dumps({"telemetry": telemetry, "checkpoints": checkpoint_records}, indent=2))
+    return artifact_dir, log_path
 
 
 def _evaluate_stage2_checkpoints(
     log_path: Path,
     eval_steps: Sequence[int],
     lora_rank: int,
+    artifact_dir: Path,
 ) -> None:
     records = _checkpoint_records(log_path)
     table: list[dict[str, Any]] = []
@@ -620,7 +625,7 @@ def _evaluate_stage2_checkpoints(
         if not matches:
             raise RuntimeError(f"missing sampler checkpoint for step {step}")
         checkpoint = matches[-1]
-        output = ARTIFACT_DIR / f"grpo-step{step}-dev.jsonl"
+        output = artifact_dir / f"grpo-step{step}-dev.jsonl"
         command = [
             sys.executable,
             str(EXPERIMENT_DIR / "evaluate.py"),
@@ -631,7 +636,7 @@ def _evaluate_stage2_checkpoints(
             "--lora-rank",
             str(lora_rank),
             "--label",
-            f"grpo-step{step}-dev",
+            f"grpo-rank{lora_rank}-step{step}-dev",
             "--temperature",
             "0.0",
             "--samples",
@@ -652,16 +657,15 @@ def _evaluate_stage2_checkpoints(
                 "summary_path": str(output.with_suffix(".summary.json")),
             }
         )
-    sft_dev = json.loads(
-        (ARTIFACT_DIR / "sft-epoch4-dev.summary.json").read_text()
-    )
-    (ARTIFACT_DIR / "grpo-dev-table.json").write_text(
+    selection_path = ARTIFACT_DIR / f"sft-selection-rank{lora_rank}.json"
+    selection = json.loads(selection_path.read_text())
+    (artifact_dir / "grpo-dev-table.json").write_text(
         json.dumps(
             {
-                "sft_epoch4": {
-                    "mean_reward": sft_dev["mean_reward"],
-                    "strict_pass_rate": sft_dev["strict_pass_rate"],
-                    "summary_path": str(ARTIFACT_DIR / "sft-epoch4-dev.summary.json"),
+                "sft_selected": {
+                    "mean_reward": selection["selected_dev_summary"]["mean_reward"],
+                    "strict_pass_rate": selection["selected_dev_summary"]["strict_pass_rate"],
+                    "summary_path": selection["selected_dev_summary_path"],
                 },
                 "grpo_checkpoints": table,
             },
@@ -674,12 +678,13 @@ def _evaluate_stage2_checkpoints(
 
 async def main() -> None:
     args = _parse_args()
-    await _run_stage(args)
+    artifact_dir, log_path = await _run_stage(args)
     if args.stage == "2":
         _evaluate_stage2_checkpoints(
-            Path(args.log_path or (ARTIFACT_DIR / "grpo-stage2-log")),
+            log_path,
             args.eval_steps,
             args.lora_rank,
+            artifact_dir,
         )
 
 

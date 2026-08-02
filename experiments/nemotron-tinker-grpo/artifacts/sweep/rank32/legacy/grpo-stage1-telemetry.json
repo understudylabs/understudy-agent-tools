@@ -1,0 +1,82 @@
+{
+  "constant_group_fraction": 0.375,
+  "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
+  "dataset_seed": 7,
+  "eval_steps": [
+    10,
+    20,
+    30,
+    40
+  ],
+  "exemplar": {
+    "messages": [
+      {
+        "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {\"draft_id\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "role": "system"
+      },
+      {
+        "content": "The account for Vint Cerf moves to rep u-6. Update the CRM owner for that contact.",
+        "role": "user"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"url\":\"/crm/contacts\"}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-6\"}}}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"contact\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-6\",\"status\":\"open\"},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\"tool\":\"finish\",\"arguments\":{}}",
+        "role": "assistant"
+      }
+    ],
+    "reward": 1.0,
+    "step": 0,
+    "task_id": "simple-api-crm-owner-04"
+  },
+  "group_size": 8,
+  "groups_per_batch": 8,
+  "load_checkpoint_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state",
+  "lora_rank": 32,
+  "max_steps": 2,
+  "max_tokens": 192,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "remove_constant_reward_groups": true,
+  "renderer": "nemotron3_disable_thinking",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node AutomationBench service is the verifier; its terminal reward is literally partialCredit from src/automationbench-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "stage": "1",
+  "steps": [
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.8697916666666666,
+      "prompt_tokens": 106935,
+      "sampled_tokens": 5361,
+      "step": 0,
+      "wall_clock_seconds": 32.32330248800008
+    },
+    {
+      "constant_group_fraction": 0.25,
+      "constant_groups": 2,
+      "groups": 8,
+      "mean_group_reward": 0.796875,
+      "prompt_tokens": 95395,
+      "sampled_tokens": 5450,
+      "step": 1,
+      "wall_clock_seconds": 33.591944362000504
+    }
+  ],
+  "total_constant_groups": 6,
+  "total_groups": 16,
+  "wall_clock_seconds": 131.7158990100006
+}

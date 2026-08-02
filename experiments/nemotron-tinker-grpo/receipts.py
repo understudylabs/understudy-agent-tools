@@ -24,6 +24,8 @@ def service_client() -> tinker.ServiceClient:
     api_key = os.environ.get("TINKER_API_KEY")
     if not api_key:
         return TinkerServiceClient()
+    # This box's pyqwest transport raised UnknownIssuer; use the working
+    # X-Api-Key REST setup and reuse its session instead.
     headers = {"X-Api-Key": api_key}
     with httpx.Client(base_url=BASE_URL, headers=headers, timeout=20.0) as client:
         config = client.post(

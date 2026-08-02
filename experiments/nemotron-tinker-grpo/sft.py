@@ -30,7 +30,6 @@ from rollout import LORA_RANK, MODEL_NAME, RENDERER_DEVIATION, RENDERER_NAME
 REPO = Path(__file__).resolve().parents[2]
 EXPERIMENT_DIR = Path(__file__).resolve().parent
 ARTIFACT_DIR = EXPERIMENT_DIR / "artifacts"
-ORACLE_PATH = ARTIFACT_DIR / "oracle-train.jsonl"
 MAX_LENGTH = 4096
 BATCH_SIZE = 16
 EPOCHS = 4
@@ -50,22 +49,22 @@ def _args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _run_node_export() -> None:
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+def _run_node_export(oracle_path: Path) -> None:
+    oracle_path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
             "node",
             "scripts/automationbench-oracle-trajectories.mjs",
             "--out",
-            str(ORACLE_PATH),
+            str(oracle_path),
         ],
         cwd=REPO,
         check=True,
     )
 
 
-def _load_oracle_rows() -> list[dict[str, Any]]:
-    rows = [json.loads(line) for line in ORACLE_PATH.read_text().splitlines() if line.strip()]
+def _load_oracle_rows(oracle_path: Path) -> list[dict[str, Any]]:
+    rows = [json.loads(line) for line in oracle_path.read_text().splitlines() if line.strip()]
     if len(rows) != 48:
         raise RuntimeError(f"expected 48 oracle rows, got {len(rows)}")
     for row in rows:
@@ -175,6 +174,7 @@ def _train(
     batch_size: int,
     learning_rate: float,
     lora_rank: int,
+    artifact_dir: Path,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(datums) % batch_size:
         raise RuntimeError("batch size must divide 48 so every epoch has exactly 3 steps")
@@ -246,11 +246,11 @@ def _train(
         "renderer": RENDERER_NAME,
         "renderer_deviation": RENDERER_DEVIATION,
     }
-    (ARTIFACT_DIR / "sft-checkpoints.json").write_text(
+    (artifact_dir / "sft-checkpoints.json").write_text(
         json.dumps({"checkpoints": checkpoints, "last_state_path": checkpoints[-1].get("state_path")}, indent=2)
         + "\n"
     )
-    (ARTIFACT_DIR / "sft-step-log.jsonl").write_text(
+    (artifact_dir / "sft-step-log.jsonl").write_text(
         "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in logs)
     )
     return checkpoints, metrics
@@ -305,21 +305,23 @@ def main() -> None:
         or args.lora_rank < 1
     ):
         raise SystemExit("epochs, batch size, max length, and LoRA rank must be positive")
-    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    artifact_dir = ARTIFACT_DIR / "sweep" / f"rank{args.lora_rank}"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    oracle_path = artifact_dir / "oracle-train.jsonl"
     client = service_client()
     rest_client = client.create_rest_client()
 
     data_before = snapshot_usage(rest_client)
     data_started = time.monotonic()
-    _run_node_export()
-    rows = _load_oracle_rows()
+    _run_node_export(oracle_path)
+    rows = _load_oracle_rows(oracle_path)
     tokenizer = get_tokenizer(MODEL_NAME)
     renderer = renderers.get_renderer(RENDERER_NAME, tokenizer, model_name=MODEL_NAME)
     datums, data_metrics = _build_datums(rows, renderer, args.max_length, tokenizer)
     data_metrics["wall_clock_seconds"] = time.monotonic() - data_started
     data_metrics["token_count_total"] = sum(datum.model_input.length for datum in datums)
-    data_metrics["oracle_path"] = str(ORACLE_PATH)
-    (ARTIFACT_DIR / "sft-data-metrics.json").write_text(
+    data_metrics["oracle_path"] = str(oracle_path)
+    (artifact_dir / "sft-data-metrics.json").write_text(
         json.dumps(data_metrics, indent=2, sort_keys=True) + "\n"
     )
     print(json.dumps({"sft_data": data_metrics}, indent=2), flush=True)
@@ -329,7 +331,7 @@ def main() -> None:
         "sft-data",
         data_before,
         data_after,
-        ARTIFACT_DIR / "sft-data.usage.json",
+        artifact_dir / "sft-data.usage.json",
     )
 
     if args.skip_training:
@@ -345,9 +347,10 @@ def main() -> None:
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
         lora_rank=args.lora_rank,
+        artifact_dir=artifact_dir,
     )
     train_metrics["wall_clock_seconds"] = time.monotonic() - train_started
-    (ARTIFACT_DIR / "sft-training-metrics.json").write_text(
+    (artifact_dir / "sft-training-metrics.json").write_text(
         json.dumps(train_metrics, indent=2, sort_keys=True) + "\n"
     )
     train_after = snapshot_usage(rest_client)
@@ -356,7 +359,7 @@ def main() -> None:
         "sft-training",
         train_before,
         train_after,
-        ARTIFACT_DIR / "sft-training.usage.json",
+        artifact_dir / "sft-training.usage.json",
     )
 
     dev_results: list[dict[str, Any]] = []
@@ -368,7 +371,7 @@ def main() -> None:
             f"sft-epoch{epoch}-dev",
             "dev",
             checkpoint["sampler_path"],
-            ARTIFACT_DIR / f"sft-epoch{epoch}-dev.jsonl",
+            artifact_dir / f"sft-epoch{epoch}-dev.jsonl",
             lora_rank=args.lora_rank,
         )
         dev_results.append(
@@ -378,7 +381,7 @@ def main() -> None:
                 "state_path": checkpoint["state_path"],
                 "mean_reward": summary["mean_reward"],
                 "strict_pass_rate": summary["strict_pass_rate"],
-                "summary_path": str(ARTIFACT_DIR / f"sft-epoch{epoch}-dev.summary.json"),
+                "summary_path": str(artifact_dir / f"sft-epoch{epoch}-dev.summary.json"),
             }
         )
         evaluation_phases.append(
@@ -397,7 +400,7 @@ def main() -> None:
         "sft-selected-train",
         "train",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-train.jsonl",
+        artifact_dir / "sft-selected-train.jsonl",
         lora_rank=args.lora_rank,
     )
     evaluation_phases.append(
@@ -414,7 +417,7 @@ def main() -> None:
         "sft-selected-dev",
         "dev",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-dev.jsonl",
+        artifact_dir / "sft-selected-dev.jsonl",
         lora_rank=args.lora_rank,
     )
     evaluation_phases.append(
@@ -431,7 +434,7 @@ def main() -> None:
         "sft-selected-variance-train-8x8",
         "train",
         selected_path,
-        ARTIFACT_DIR / "sft-selected-variance-train-8x8.jsonl",
+        artifact_dir / "sft-selected-variance-train-8x8.jsonl",
         samples=VARIANCE_SAMPLES,
         temperature=1.0,
         limit=VARIANCE_LIMIT,
@@ -446,7 +449,7 @@ def main() -> None:
             "sampled_tokens": selected_variance["total_sampled_tokens"],
         }
     )
-    (ARTIFACT_DIR / "sft-phase-metrics.json").write_text(
+    (artifact_dir / "sft-phase-metrics.json").write_text(
         json.dumps(
             {
                 "data": {
@@ -478,6 +481,11 @@ def main() -> None:
         "selected_train_summary": selected_train,
         "selected_dev_summary": selected_dev,
         "selected_variance_summary": selected_variance,
+        "selected_train_summary_path": str(artifact_dir / "sft-selected-train.summary.json"),
+        "selected_dev_summary_path": str(artifact_dir / "sft-selected-dev.summary.json"),
+        "selected_variance_summary_path": str(
+            artifact_dir / "sft-selected-variance-train-8x8.summary.json"
+        ),
         "baseline_summary_paths": [
             str(ARTIFACT_DIR / "baseline-train.summary.json"),
             str(ARTIFACT_DIR / "baseline-dev.summary.json"),
@@ -485,7 +493,6 @@ def main() -> None:
         ],
     }
     selection_json = json.dumps(selection, indent=2, sort_keys=True) + "\n"
-    (ARTIFACT_DIR / "sft-selection.json").write_text(selection_json)
     (ARTIFACT_DIR / f"sft-selection-rank{args.lora_rank}.json").write_text(selection_json)
     print(
         json.dumps(

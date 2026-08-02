@@ -1,0 +1,25 @@
+{
+  "checkpoints": [
+    {
+      "epoch": 1,
+      "sampler_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch1",
+      "state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch1-state"
+    },
+    {
+      "epoch": 2,
+      "sampler_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch2",
+      "state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch2-state"
+    },
+    {
+      "epoch": 3,
+      "sampler_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch3",
+      "state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch3-state"
+    },
+    {
+      "epoch": 4,
+      "sampler_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state"
+    }
+  ],
+  "last_state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state"
+}
