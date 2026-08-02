@@ -7,13 +7,13 @@
       "task_id": "workflow-action-05"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-agent-05"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-analysis-05"
@@ -25,7 +25,7 @@
       "task_id": "workflow-chain-05"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 0.3333333333333333,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-document-05"
@@ -88,33 +88,35 @@
   },
   "label": "grpo-step20-dev",
   "lora_rank": 32,
-  "mean_model_turns": 10.166666666666666,
-  "mean_reward": 0.08333333333333333,
-  "model": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000020",
-  "model_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000020",
-  "parse_error_rate": 0.08333333333333333,
+  "mean_model_turns": 6.166666666666667,
+  "mean_reward": 0.2777777777777778,
+  "model": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000020",
+  "model_path": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000020",
+  "parse_error_rate": 0.0,
   "per_band": {
     "discovery": {
       "count": 5,
-      "mean_reward": 0.2
+      "mean_reward": 0.4
     },
     "multi-write": {
       "count": 4,
-      "mean_reward": 0.0
+      "mean_reward": 0.08333333333333333
     },
     "single-write": {
       "count": 3,
-      "mean_reward": 0.0
+      "mean_reward": 0.3333333333333333
     }
   },
+  "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+  "prompt_variant": "cedar-v1",
   "renderer": "nemotron3_disable_thinking",
   "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
   "row_count": 12,
   "samples_per_task": 1,
   "split": "dev",
-  "strict_pass_rate": 0.08333333333333333,
+  "strict_pass_rate": 0.25,
   "task_count": 12,
   "temperature": 0.0,
-  "total_prompt_tokens": 81881,
-  "total_sampled_tokens": 4617
+  "total_prompt_tokens": 55024,
+  "total_sampled_tokens": 3071
 }

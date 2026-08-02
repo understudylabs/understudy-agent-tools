@@ -1,0 +1,453 @@
+{
+  "checkpoints": {
+    "tinker://002f372f-6842-52fc-b0a7-ff2005ba418f:train:0/sampler_weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage1",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://002f372f-6842-52fc-b0a7-ff2005ba418f:train:0/weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage1",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://33d6f89f-61ad-5a6b-abdd-84615594dfe8:train:0/sampler_weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://33d6f89f-61ad-5a6b-abdd-84615594dfe8:train:0/weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000005": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000010": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000015": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000020": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000025": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000030": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000035": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/000040": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/sampler_weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000005": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000010": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000015": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000020": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000025": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000030": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000035": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/000040": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://5f4aee4b-b0c1-59a3-8626-6e458eb0fdff:train:0/weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000005": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000010": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000015": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000020": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000025": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000030": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000035": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000040": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000005": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000010": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000015": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000020": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000025": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000030": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000035": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/000040": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/weights/final": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "grpo-stage2",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch2": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch3": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch4": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch1-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch2-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch3-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch4-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "sft",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/sampler_weights/sft-epoch1": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/sampler_weights/sft-epoch2": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/sampler_weights/sft-epoch3": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/sampler_weights/sft-epoch4": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/weights/sft-epoch1-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/weights/sft-epoch2-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/weights/sft-epoch3-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    },
+    "tinker://bc22f93c-bf3c-5f14-a8e4-244f8d5f75af:train:0/weights/sft-epoch4-state": {
+      "lora_rank": 32,
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "phase": "final-parity",
+      "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+      "prompt_variant": "cedar-v1",
+      "renderer": "nemotron3_disable_thinking"
+    }
+  },
+  "schema_version": "cedar.checkpoint_identity.v1"
+}

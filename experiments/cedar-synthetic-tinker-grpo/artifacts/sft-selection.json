@@ -7,34 +7,34 @@
   "per_epoch_dev": [
     {
       "epoch": 1,
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
-      "strict_pass_rate": 0.08333333333333333,
+      "mean_reward": 0.2777777777777778,
+      "sampler_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+      "state_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch1-state",
+      "strict_pass_rate": 0.25,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch1-dev.summary.json"
     },
     {
       "epoch": 2,
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch2",
-      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch2-state",
-      "strict_pass_rate": 0.08333333333333333,
+      "mean_reward": 0.2777777777777778,
+      "sampler_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch2",
+      "state_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch2-state",
+      "strict_pass_rate": 0.25,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch2-dev.summary.json"
     },
     {
       "epoch": 3,
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch3",
-      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch3-state",
-      "strict_pass_rate": 0.08333333333333333,
+      "mean_reward": 0.16666666666666666,
+      "sampler_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch3",
+      "state_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch3-state",
+      "strict_pass_rate": 0.16666666666666666,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch3-dev.summary.json"
     },
     {
       "epoch": 4,
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch4",
-      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch4-state",
-      "strict_pass_rate": 0.08333333333333333,
+      "mean_reward": 0.25,
+      "sampler_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch4-state",
+      "strict_pass_rate": 0.25,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch4-dev.summary.json"
     }
   ],
@@ -47,7 +47,7 @@
         "task_id": "workflow-action-05"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-agent-05"
@@ -59,7 +59,7 @@
         "task_id": "workflow-analysis-05"
       },
       {
-        "reward_mean": 0.25,
+        "reward_mean": 0.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-chain-05"
@@ -128,10 +128,10 @@
     },
     "label": "sft-selected-dev",
     "lora_rank": 32,
-    "mean_model_turns": 8.416666666666666,
-    "mean_reward": 0.10416666666666667,
-    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "mean_model_turns": 8.5,
+    "mean_reward": 0.16666666666666666,
+    "model": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
     "parse_error_rate": 0.0,
     "per_band": {
       "discovery": {
@@ -140,27 +140,29 @@
       },
       "multi-write": {
         "count": 4,
-        "mean_reward": 0.0625
+        "mean_reward": 0.0
       },
       "single-write": {
         "count": 3,
-        "mean_reward": 0.0
+        "mean_reward": 0.3333333333333333
       }
     },
+    "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+    "prompt_variant": "cedar-v1",
     "renderer": "nemotron3_disable_thinking",
     "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
     "row_count": 12,
     "samples_per_task": 1,
     "split": "dev",
-    "strict_pass_rate": 0.08333333333333333,
+    "strict_pass_rate": 0.16666666666666666,
     "task_count": 12,
     "temperature": 0.0,
-    "total_prompt_tokens": 64143,
-    "total_sampled_tokens": 3760
+    "total_prompt_tokens": 86457,
+    "total_sampled_tokens": 4159
   },
   "selected_epoch": 1,
-  "selected_sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-  "selected_state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
+  "selected_sampler_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+  "selected_state_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch1-state",
   "selected_train_summary": {
     "groups": [
       {
@@ -188,55 +190,55 @@
         "task_id": "workflow-action-04"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-agent-01"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-agent-02"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-agent-03"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-agent-04"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-analysis-01"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-analysis-02"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-analysis-03"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-analysis-04"
       },
       {
-        "reward_mean": 0.25,
+        "reward_mean": 0.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-chain-01"
@@ -314,13 +316,13 @@
         "task_id": "workflow-mail-01"
       },
       {
-        "reward_mean": 0.0,
+        "reward_mean": 1.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-mail-02"
       },
       {
-        "reward_mean": 1.0,
+        "reward_mean": 0.0,
         "reward_std": 0.0,
         "samples": 1,
         "task_id": "workflow-mail-03"
@@ -467,59 +469,61 @@
     },
     "label": "sft-selected-train",
     "lora_rank": 32,
-    "mean_model_turns": 8.395833333333334,
-    "mean_reward": 0.06770833333333333,
-    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-    "parse_error_rate": 0.041666666666666664,
+    "mean_model_turns": 8.833333333333334,
+    "mean_reward": 0.22916666666666666,
+    "model": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+    "parse_error_rate": 0.0,
     "per_band": {
       "discovery": {
         "count": 20,
-        "mean_reward": 0.15
+        "mean_reward": 0.35
       },
       "multi-write": {
         "count": 16,
-        "mean_reward": 0.015625
+        "mean_reward": 0.0
       },
       "single-write": {
         "count": 12,
-        "mean_reward": 0.0
+        "mean_reward": 0.3333333333333333
       }
     },
+    "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+    "prompt_variant": "cedar-v1",
     "renderer": "nemotron3_disable_thinking",
     "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
     "row_count": 48,
     "samples_per_task": 1,
     "split": "train",
-    "strict_pass_rate": 0.0625,
+    "strict_pass_rate": 0.22916666666666666,
     "task_count": 48,
     "temperature": 0.0,
-    "total_prompt_tokens": 250011,
-    "total_sampled_tokens": 14926
+    "total_prompt_tokens": 363080,
+    "total_sampled_tokens": 17437
   },
   "selected_variance_summary": {
     "groups": [
       {
-        "reward_mean": 0.0,
-        "reward_std": 0.0,
+        "reward_mean": 0.25,
+        "reward_std": 0.4330127018922193,
         "samples": 8,
         "task_id": "workflow-meeting-01"
       },
       {
-        "reward_mean": 0.125,
-        "reward_std": 0.33071891388307384,
+        "reward_mean": 0.25,
+        "reward_std": 0.4330127018922193,
         "samples": 8,
         "task_id": "workflow-meeting-02"
       },
       {
-        "reward_mean": 0.0,
-        "reward_std": 0.0,
+        "reward_mean": 0.25,
+        "reward_std": 0.4330127018922193,
         "samples": 8,
         "task_id": "workflow-meeting-03"
       },
       {
-        "reward_mean": 0.0,
-        "reward_std": 0.0,
+        "reward_mean": 0.125,
+        "reward_std": 0.33071891388307384,
         "samples": 8,
         "task_id": "workflow-meeting-04"
       },
@@ -563,27 +567,29 @@
     },
     "label": "sft-selected-variance-train-8x8",
     "lora_rank": 32,
-    "mean_model_turns": 6.09375,
-    "mean_reward": 0.015625,
-    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "mean_model_turns": 5.96875,
+    "mean_reward": 0.109375,
+    "model": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
     "parse_error_rate": 0.03125,
     "per_band": {
       "discovery": {
         "count": 64,
-        "mean_reward": 0.015625
+        "mean_reward": 0.109375
       }
     },
+    "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+    "prompt_variant": "cedar-v1",
     "renderer": "nemotron3_disable_thinking",
     "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
     "row_count": 64,
     "samples_per_task": 8,
     "split": "train",
-    "strict_pass_rate": 0.015625,
+    "strict_pass_rate": 0.109375,
     "task_count": 8,
     "temperature": 1.0,
-    "total_prompt_tokens": 227757,
-    "total_sampled_tokens": 14566
+    "total_prompt_tokens": 292412,
+    "total_sampled_tokens": 15570
   },
   "selection_rationale": "Select the highest dev reward with earliest-epoch tie-break; every epoch now has a resumable state so GRPO starts from the same dev-selected checkpoint as the reported SFT arm."
 }

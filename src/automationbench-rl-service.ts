@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   fixtureSha256 as automationFixtureSha256,
@@ -26,17 +26,39 @@ import {
   taskPool as syntheticTaskPool,
 } from "./synthetic-workflow-offline.js";
 
-export const ACTION_PROTOCOL_SYSTEM_PROMPT = `You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+export const AUTOMATIONBENCH_NEMOTRON_V1_PROMPT = `You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
 
 Allowed replies:
 {"tool":"api_search","arguments":{"query":"<text>"}}
 {"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"<path>","body":{...}}}
 {"tool":"finish","arguments":{}}
 
-Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
+api_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {"draft_id":"..."}).
+
+Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
+
+export const CEDAR_V1_PROMPT = `You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+
+Allowed replies:
+{"tool":"api_search","arguments":{"query":"<text>"}}
+{"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"<path>","body":{...}}}
+{"tool":"finish","arguments":{}}
+
+api_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /conversations (GET), /conversations/{id} (GET), /documents (GET), /documents/{id} (GET, PATCH, POST with {"append":[...]}), /records (GET), /records/{id} (GET, PATCH with {"stage":"...","observations":[...]}), /drafts (GET, POST with {"to":"...","subject":"...","body":"..."}), /meetings (GET, POST with {"attendee":"...","slot":"...","durationMin":...}), /agent-state/{id} (GET, PATCH with {"awake":...,"reasoning":"..."}), /summaries (GET, POST with {"status":"...","summary":"...","toolsCalled":[...]}), /analysis (GET, POST with {"recordRef":"...","category":"...","priority":"...","finding":"..."}).
+
+Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
 
 export const MAX_MODEL_TURNS = 12;
 export type BenchmarkName = "automationbench" | "synthetic-workflow";
+export type PromptVariant = "nemotron-v1" | "cedar-v1";
+const PROMPTS: Record<PromptVariant, string> = {
+  "nemotron-v1": AUTOMATIONBENCH_NEMOTRON_V1_PROMPT,
+  "cedar-v1": CEDAR_V1_PROMPT,
+};
+export const PROMPT_IDENTITIES: Record<PromptVariant, string> = {
+  "nemotron-v1": createHash("sha256").update(AUTOMATIONBENCH_NEMOTRON_V1_PROMPT).digest("hex"),
+  "cedar-v1": createHash("sha256").update(CEDAR_V1_PROMPT).digest("hex"),
+};
 type Split = "train" | "dev" | "holdout";
 type Adapter = {
   fixtureSha256: () => string;
@@ -143,6 +165,7 @@ type Episode = {
   finished: boolean;
   task: any;
   benchmark: BenchmarkName;
+  promptVariant: PromptVariant;
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -156,6 +179,18 @@ async function readBody(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   return Buffer.concat(chunks).toString("utf8");
+}
+
+function promptForVariant(
+  value: unknown,
+  fallback: PromptVariant,
+): { variant: PromptVariant; prompt: string; identity: string } {
+  const variant = value === undefined ? fallback : String(value);
+  if (!(variant in PROMPTS)) {
+    throw new Error(`unknown prompt variant: ${variant}`);
+  }
+  const promptVariant = variant as PromptVariant;
+  return { variant: promptVariant, prompt: PROMPTS[promptVariant], identity: PROMPT_IDENTITIES[promptVariant] };
 }
 
 function taskFamily(task: any): string {
@@ -186,12 +221,23 @@ async function route(
   request: IncomingMessage,
   episodes: Map<string, Episode>,
   benchmark: BenchmarkName,
+  defaultPromptVariant: PromptVariant,
 ): Promise<Response> {
   const env = adapter(benchmark);
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (request.method === "GET" && url.pathname === "/health") return jsonResponse({ ok: true, benchmark });
   if (request.method === "GET" && url.pathname === "/protocol") {
-    return jsonResponse({ system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT, max_model_turns: MAX_MODEL_TURNS });
+    try {
+      const selected = promptForVariant(url.searchParams.get("prompt_variant") ?? undefined, defaultPromptVariant);
+      return jsonResponse({
+        prompt_variant: selected.variant,
+        prompt_identity: selected.identity,
+        system_prompt: selected.prompt,
+        max_model_turns: MAX_MODEL_TURNS,
+      });
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
   }
   if (request.method === "GET" && url.pathname === "/hashes") {
     return jsonResponse({
@@ -219,12 +265,28 @@ async function route(
       const body = parseBody(await readBody(request));
       const taskId = typeof body.task_id === "string" ? body.task_id : "";
       if (!taskId) return jsonResponse({ error: "task_id is required" }, 400);
+      const selected = promptForVariant(body.prompt_variant, defaultPromptVariant);
       const task = env.getTask(taskId);
       env.taskPool({ split: task.split, frozenHoldoutSha256: typeof body.frozen_holdout_sha256 === "string" ? body.frozen_holdout_sha256 : undefined });
       const { handle } = env.reset(taskId);
       const episodeId = randomUUID();
-      episodes.set(episodeId, { episodeId, taskId, handle, task, finished: false, benchmark });
-      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT });
+      episodes.set(episodeId, {
+        episodeId,
+        taskId,
+        handle,
+        task,
+        finished: false,
+        benchmark,
+        promptVariant: selected.variant,
+      });
+      return jsonResponse({
+        episode_id: episodeId,
+        task_id: taskId,
+        prompt: task.prompt,
+        prompt_variant: selected.variant,
+        prompt_identity: selected.identity,
+        system_prompt: selected.prompt,
+      });
     } catch (error) {
       return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
     }
@@ -266,11 +328,15 @@ async function route(
 }
 
 export async function startEnvService(
-  { port = 0, benchmark = "automationbench" }: { port?: number; benchmark?: BenchmarkName } = {},
+  {
+    port = 0,
+    benchmark = "automationbench",
+    promptVariant = benchmark === "automationbench" ? "nemotron-v1" : "cedar-v1",
+  }: { port?: number; benchmark?: BenchmarkName; promptVariant?: PromptVariant } = {},
 ): Promise<{ server: Server; port: number }> {
   const episodes = new Map<string, Episode>();
   const server = createServer((request, response) => {
-    void route(request, episodes, benchmark).then(async (result) => {
+    void route(request, episodes, benchmark, promptVariant).then(async (result) => {
       response.statusCode = result.status;
       for (const [key, value] of result.headers.entries()) response.setHeader(key, value);
       response.end(await result.text());

@@ -1,93 +1,85 @@
 {
-  "constant_group_fraction": 0.875,
+  "constant_group_fraction": 0.1875,
   "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
   "dataset_seed": 7,
   "exemplar": {
     "messages": [
       {
-        "content": "You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\nLook up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "content": "You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\napi_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /conversations (GET), /conversations/{id} (GET), /documents (GET), /documents/{id} (GET, PATCH, POST with {\"append\":[...]}), /records (GET), /records/{id} (GET, PATCH with {\"stage\":\"...\",\"observations\":[...]}), /drafts (GET, POST with {\"to\":\"...\",\"subject\":\"...\",\"body\":\"...\"}), /meetings (GET, POST with {\"attendee\":\"...\",\"slot\":\"...\",\"durationMin\":...}), /agent-state/{id} (GET, PATCH with {\"awake\":...,\"reasoning\":\"...\"}), /summaries (GET, POST with {\"status\":\"...\",\"summary\":\"...\",\"toolsCalled\":[...]}), /analysis (GET, POST with {\"recordRef\":\"...\",\"category\":\"...\",\"priority\":\"...\",\"finding\":\"...\"}).\n\nEach tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
         "role": "system"
       },
       {
-        "content": "Read conv_entity_3 and the account list, identify the requested account, then update only that account.",
+        "content": "Read conv_observation_3 and the account list, then append the requested observation to the referenced account only.",
         "role": "user"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/conversations/conv_observation_3\"\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /v1/accounts\",\"status\":404}",
+        "content": "{\"conversation\":{\"agentStateConfigured\":true,\"events\":[{\"note\":\"append note-3 to rec_observation_3\",\"type\":\"observation-request\"}],\"id\":\"conv_observation_3\",\"summary\":\"append one observation\"},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts.list\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/records\"\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /v1/accounts.list\",\"status\":404}",
+        "content": "{\"records\":{\"rec_guard\":{\"id\":\"rec_guard\",\"name\":\"Guard account\",\"observations\":[\"leave unchanged\"],\"stage\":\"open\"},\"rec_observation_3\":{\"id\":\"rec_observation_3\",\"name\":\"Observation target\",\"observations\":[\"existing\"],\"stage\":\"open\"}},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"accounts endpoint\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/records/rec_observation_3\"\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "content": "{\"record\":{\"id\":\"rec_observation_3\",\"name\":\"Observation target\",\"observations\":[\"existing\"],\"stage\":\"open\"},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"accounts\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/records/rec_guard\"\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "content": "{\"record\":{\"id\":\"rec_guard\",\"name\":\"Guard account\",\"observations\":[\"leave unchanged\"],\"stage\":\"open\"},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/documents\"\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /v1/accounts\",\"status\":404}",
+        "content": "{\"documents\":{},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/accounts\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"POST\",\n        \"url\": \"/records/rec_observation_3\",\n        \"body\": {\n            \"append\": [\n                {\n                    \"observation\": \"temporary holding pattern\"\n                }\n            ]\n        }\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /accounts\",\"status\":404}",
+        "content": "{\"error\":\"method not allowed: POST\",\"status\":405}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1\"\n  }\n}",
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"PATCH\",\n        \"url\": \"/records/rec_observation_3\",\n        \"body\": {\n            \"observations\": [\n                \"temporary holding pattern\"\n            ]\n        }\n    }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /v1\",\"status\":404}",
+        "content": "{\"record\":{\"id\":\"rec_observation_3\",\"name\":\"Observation target\",\"observations\":[\"temporary holding pattern\"],\"stage\":\"open\"},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"v1 endpoint docs\"\n  }\n}",
-        "role": "assistant"
-      },
-      {
-        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
-        "role": "tool"
-      },
-      {
-        "content": "{\n  \"tool\": \"finish\",\n  \"arguments\": {}\n}",
+        "content": "{\n    \"tool\": \"finish\",\n    \"arguments\": {}\n}",
         "role": "assistant"
       }
     ],
     "reward": 0.0,
     "step": 0,
-    "task_id": "workflow-entity-03"
+    "task_id": "workflow-observation-03"
   },
   "group_size": 8,
   "groups_per_batch": 8,
-  "load_checkpoint_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
+  "load_checkpoint_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch1-state",
   "lora_rank": 32,
   "max_steps": 2,
   "max_tokens": 192,
@@ -98,27 +90,27 @@
   "stage": "1",
   "steps": [
     {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
+      "constant_group_fraction": 0.125,
+      "constant_groups": 1,
       "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 242791,
-      "sampled_tokens": 13958,
+      "mean_group_reward": 0.3203125,
+      "prompt_tokens": 489077,
+      "sampled_tokens": 21879,
       "step": 0,
-      "wall_clock_seconds": 51.630421509998996
+      "wall_clock_seconds": 78.01756485200167
     },
     {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
+      "constant_group_fraction": 0.25,
+      "constant_groups": 2,
       "groups": 8,
-      "mean_group_reward": 0.01171875,
-      "prompt_tokens": 295393,
-      "sampled_tokens": 18540,
+      "mean_group_reward": 0.07942708333333333,
+      "prompt_tokens": 397822,
+      "sampled_tokens": 21526,
       "step": 1,
-      "wall_clock_seconds": 52.7679624400007
+      "wall_clock_seconds": 59.0735226120014
     }
   ],
-  "total_constant_groups": 14,
+  "total_constant_groups": 3,
   "total_groups": 16,
-  "wall_clock_seconds": 176.83685675999914
+  "wall_clock_seconds": 189.3673162289997
 }

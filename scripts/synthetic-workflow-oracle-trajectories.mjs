@@ -7,6 +7,7 @@ import {
   step,
   taskPool,
 } from "../dist/synthetic-workflow-offline.js";
+import { CEDAR_V1_PROMPT } from "../dist/automationbench-rl-service.js";
 
 const args = process.argv.slice(2);
 const outputIndex = args.indexOf("--out");
@@ -20,6 +21,7 @@ const rows = [];
 for (const task of tasks) {
   const { handle, obs } = reset(task.taskId);
   const messages = obs.messages.map((message) => ({ ...message }));
+  messages[0] = { role: "system", content: CEDAR_V1_PROMPT };
   const policy = oraclePolicy(task.taskId);
   let current = obs;
   while (!handle.done) {

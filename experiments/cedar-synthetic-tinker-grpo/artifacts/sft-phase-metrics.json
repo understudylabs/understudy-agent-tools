@@ -1,61 +1,61 @@
 {
   "data": {
-    "local_tokens": 20139,
-    "wall_clock_seconds": 2.5173926510005913
+    "local_tokens": 34971,
+    "wall_clock_seconds": 2.80393759800063
   },
   "evaluations": [
     {
       "phase": "sft-epoch1-dev",
-      "prompt_tokens": 73380,
-      "sampled_tokens": 4079,
+      "prompt_tokens": 74663,
+      "sampled_tokens": 3707,
       "split": "dev",
-      "wall_clock_seconds": 70.4391122220004
+      "wall_clock_seconds": 70.83721868499924
     },
     {
       "phase": "sft-epoch2-dev",
-      "prompt_tokens": 77791,
-      "sampled_tokens": 4194,
+      "prompt_tokens": 74720,
+      "sampled_tokens": 3768,
       "split": "dev",
-      "wall_clock_seconds": 89.1001629250004
+      "wall_clock_seconds": 58.84371098799966
     },
     {
       "phase": "sft-epoch3-dev",
-      "prompt_tokens": 74370,
-      "sampled_tokens": 4306,
+      "prompt_tokens": 74879,
+      "sampled_tokens": 3794,
       "split": "dev",
-      "wall_clock_seconds": 75.21432754800026
+      "wall_clock_seconds": 45.51121780000176
     },
     {
       "phase": "sft-epoch4-dev",
-      "prompt_tokens": 75853,
-      "sampled_tokens": 4625,
+      "prompt_tokens": 87146,
+      "sampled_tokens": 4211,
       "split": "dev",
-      "wall_clock_seconds": 71.270204989999
+      "wall_clock_seconds": 69.3209885920005
     },
     {
       "phase": "sft-selected-train",
-      "prompt_tokens": 250011,
-      "sampled_tokens": 14926,
+      "prompt_tokens": 363080,
+      "sampled_tokens": 17437,
       "split": "train",
-      "wall_clock_seconds": 147.74775074900026
+      "wall_clock_seconds": 150.6344751079996
     },
     {
       "phase": "sft-selected-dev",
-      "prompt_tokens": 64143,
-      "sampled_tokens": 3760,
+      "prompt_tokens": 86457,
+      "sampled_tokens": 4159,
       "split": "dev",
-      "wall_clock_seconds": 72.58982697500142
+      "wall_clock_seconds": 37.84699039499901
     },
     {
       "phase": "sft-selected-variance-train-8x8",
-      "prompt_tokens": 227757,
-      "sampled_tokens": 14566,
+      "prompt_tokens": 292412,
+      "sampled_tokens": 15570,
       "split": "train",
-      "wall_clock_seconds": 165.23857945599957
+      "wall_clock_seconds": 171.7773491250009
     }
   ],
   "training": {
-    "model_input_tokens": 80556,
-    "wall_clock_seconds": 114.55851914899995
+    "model_input_tokens": 139884,
+    "wall_clock_seconds": 91.79166379600065
   }
 }

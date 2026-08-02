@@ -1,11 +1,11 @@
 {
-  "log_path": "artifacts/grpo-stage1-log-rerun",
+  "log_path": "artifacts/grpo-parity-stage1-log",
   "records": [
     {
       "batch": 2,
       "name": "final",
-      "sampler_path": "tinker://cd4a0005-e7eb-5b38-9241-d9c7da3883f0:train:0/sampler_weights/final",
-      "state_path": "tinker://cd4a0005-e7eb-5b38-9241-d9c7da3883f0:train:0/weights/final"
+      "sampler_path": "tinker://002f372f-6842-52fc-b0a7-ff2005ba418f:train:0/sampler_weights/final",
+      "state_path": "tinker://002f372f-6842-52fc-b0a7-ff2005ba418f:train:0/weights/final"
     }
   ]
 }

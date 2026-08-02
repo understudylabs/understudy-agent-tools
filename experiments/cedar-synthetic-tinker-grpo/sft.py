@@ -24,8 +24,15 @@ from tinker_cookbook.supervised.common import compute_mean_nll
 from tinker_cookbook.supervised.data import conversation_to_datum
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
+from checkpoint_metadata import register
 from receipts import snapshot_usage, usage_delta
-from rollout import LORA_RANK, MODEL_NAME, RENDERER_DEVIATION, RENDERER_NAME
+from rollout import (
+    LORA_RANK,
+    MODEL_NAME,
+    PROMPT_VARIANT,
+    RENDERER_DEVIATION,
+    RENDERER_NAME,
+)
 
 REPO = Path(__file__).resolve().parents[2]
 EXPERIMENT_DIR = Path(__file__).resolve().parent
@@ -242,11 +249,20 @@ def _train(
         "lora_rank": LORA_RANK,
         "learning_rate": learning_rate,
         "renderer": RENDERER_NAME,
+        "prompt_variant": PROMPT_VARIANT,
         "renderer_deviation": RENDERER_DEVIATION,
     }
     (ARTIFACT_DIR / "sft-checkpoints.json").write_text(
         json.dumps({"checkpoints": checkpoints, "last_state_path": checkpoints[-1].get("state_path")}, indent=2)
         + "\n"
+    )
+    register(
+        [
+            path
+            for checkpoint in checkpoints
+            for path in (checkpoint["sampler_path"], checkpoint["state_path"])
+        ],
+        "sft",
     )
     (ARTIFACT_DIR / "sft-step-log.jsonl").write_text(
         "".join(json.dumps(entry, separators=(",", ":")) + "\n" for entry in logs)

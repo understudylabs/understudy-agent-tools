@@ -34,6 +34,7 @@ class EnvService:
     """One reusable subprocess-backed Cedar-synthetic service."""
 
     repo: str
+    prompt_variant: str = "cedar-v1"
     process: subprocess.Popen[str] | None = None
     port: int | None = None
 
@@ -41,7 +42,12 @@ class EnvService:
         if self.process is not None:
             return self
         self.process = subprocess.Popen(
-            ["node", "scripts/synthetic-workflow-rl-service.mjs"],
+            [
+                "node",
+                "scripts/synthetic-workflow-rl-service.mjs",
+                "--prompt-variant",
+                self.prompt_variant,
+            ],
             cwd=self.repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -94,7 +100,7 @@ class EnvService:
         return self._json("/health")
 
     def protocol(self) -> dict[str, Any]:
-        return self._json("/protocol")
+        return self._json(f"/protocol?prompt_variant={self.prompt_variant}")
 
     def hashes(self) -> dict[str, Any]:
         return self._json("/hashes")
@@ -109,6 +115,7 @@ class EnvService:
         body: dict[str, Any] = {"task_id": task_id}
         if frozen_holdout_sha256:
             body["frozen_holdout_sha256"] = frozen_holdout_sha256
+        body["prompt_variant"] = self.prompt_variant
         return self._json("/reset", "POST", body)
 
     def step(self, episode_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

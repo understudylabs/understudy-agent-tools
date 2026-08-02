@@ -41,6 +41,7 @@ from tinker_cookbook.rl.types import (
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 from env_client import close_service, get_service
+from checkpoint_metadata import register, require
 from receipts import snapshot_usage_async, usage_delta
 from rollout import (
     LORA_RANK,
@@ -486,6 +487,7 @@ async def _run_stage(args: argparse.Namespace) -> None:
     if max_steps < 1:
         raise SystemExit("--max-steps must be positive")
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    require(args.load_checkpoint_path)
     log_path = Path(args.log_path or (ARTIFACT_DIR / f"grpo-stage{args.stage}-log"))
     log_path.mkdir(parents=True, exist_ok=True)
 
@@ -559,6 +561,15 @@ async def _run_stage(args: argparse.Namespace) -> None:
         json.dumps(receipt, indent=2, sort_keys=True) + "\n"
     )
     checkpoint_records = _checkpoint_records(log_path)
+    register(
+        [
+            path
+            for record in checkpoint_records
+            for path in (record.get("sampler_path"), record.get("state_path"))
+            if path
+        ],
+        f"grpo-stage{args.stage}",
+    )
     (ARTIFACT_DIR / f"grpo-stage{args.stage}-checkpoints.json").write_text(
         json.dumps(
             {
@@ -661,6 +672,18 @@ async def main() -> None:
     args = _parse_args()
     await _run_stage(args)
     if args.stage == "2":
+        records = _checkpoint_records(
+            Path(args.log_path or (ARTIFACT_DIR / "grpo-stage2-log"))
+        )
+        register(
+            [
+                path
+                for record in records
+                for path in (record.get("sampler_path"), record.get("state_path"))
+                if path
+            ],
+            "grpo-stage2",
+        )
         _evaluate_stage2_checkpoints(
             Path(args.log_path or (ARTIFACT_DIR / "grpo-stage2-log"))
         )

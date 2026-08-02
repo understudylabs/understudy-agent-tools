@@ -25,55 +25,55 @@
       "task_id": "workflow-action-04"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-agent-01"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-agent-02"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-agent-03"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-agent-04"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-analysis-01"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-analysis-02"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-analysis-03"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-analysis-04"
     },
     {
-      "reward_mean": 0.25,
+      "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-chain-01"
@@ -151,13 +151,13 @@
       "task_id": "workflow-mail-01"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-mail-02"
     },
     {
-      "reward_mean": 1.0,
+      "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-mail-03"
@@ -304,33 +304,35 @@
   },
   "label": "sft-selected-train",
   "lora_rank": 32,
-  "mean_model_turns": 8.395833333333334,
-  "mean_reward": 0.06770833333333333,
-  "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-  "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-  "parse_error_rate": 0.041666666666666664,
+  "mean_model_turns": 8.833333333333334,
+  "mean_reward": 0.22916666666666666,
+  "model": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+  "model_path": "tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/sampler_weights/sft-epoch1",
+  "parse_error_rate": 0.0,
   "per_band": {
     "discovery": {
       "count": 20,
-      "mean_reward": 0.15
+      "mean_reward": 0.35
     },
     "multi-write": {
       "count": 16,
-      "mean_reward": 0.015625
+      "mean_reward": 0.0
     },
     "single-write": {
       "count": 12,
-      "mean_reward": 0.0
+      "mean_reward": 0.3333333333333333
     }
   },
+  "prompt_identity": "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11",
+  "prompt_variant": "cedar-v1",
   "renderer": "nemotron3_disable_thinking",
   "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
   "row_count": 48,
   "samples_per_task": 1,
   "split": "train",
-  "strict_pass_rate": 0.0625,
+  "strict_pass_rate": 0.22916666666666666,
   "task_count": 48,
   "temperature": 0.0,
-  "total_prompt_tokens": 250011,
-  "total_sampled_tokens": 14926
+  "total_prompt_tokens": 363080,
+  "total_sampled_tokens": 17437
 }

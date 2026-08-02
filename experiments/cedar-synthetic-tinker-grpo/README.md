@@ -245,3 +245,271 @@ process remained listening.
 All fixture contacts, tasks, tool observations, and trajectories in these
 artifacts are synthetic public-test data; no customer or private trace data is
 included.
+
+## Final parity round
+
+The earlier repaired Cedar scores in this note are superseded. They used the
+generic service prompt while the historical AutomationBench checkpoints were
+trained with `nemotron-v1`, so they did not constitute a comparable
+experiment. The final round uses the real service path with explicit prompt
+variants and checkpoint identity checks.
+
+The Cedar contract is `cedar-v1`, whose SHA-256 identity is
+`1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11`.
+The AutomationBench control uses `nemotron-v1`, whose SHA-256 identity is
+`85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738`.
+Both use renderer `nemotron3_disable_thinking`. Unknown variants now fail with
+an HTTP error; reset and protocol responses return the selected variant and
+identity.
+
+### Same-day AutomationBench control
+
+The fresh base and existing #402 checkpoints were evaluated through the real
+service path on train and dev only. AutomationBench holdout was not accessed.
+The #402 checkpoint results recover the historical range, confirming that the
+earlier “serving drift” diagnosis was wrong: the causal defect was silent
+fallback from the requested `nemotron-v1` prompt to the generic prompt.
+
+| Arm | Train mean | Dev mean | Dev discovery | Dev multi-write | Dev single-write |
+|---|---:|---:|---:|---:|---:|
+| #402 SFT epoch 4 | 0.954861 | 0.944444 | 1.000000 | 0.833333 | 1.000000 |
+| #402 GRPO step 20 | 1.000000 | 1.000000 | 1.000000 | 1.000000 | 1.000000 |
+
+### Cedar final results
+
+The final Cedar arm used `cedar-v1`, train-only SFT/GRPO data, dev-only
+selection, and a resumable SFT state at every epoch. Epoch 1 was selected by
+the dev tie-break, and GRPO started from that epoch-1 state. Values are means
+over all tasks in the split.
+
+| Arm | Train mean | Dev mean | Holdout mean |
+|---|---:|---:|---:|
+| Base | 0.208333 | 0.250000 | 0.166667 |
+| SFT epoch 1 | 0.229167 | 0.250000 | 0.166667 |
+| SFT + GRPO step 40 | 0.496528 | 0.416667 | 0.375000 |
+
+Final Cedar per-band means:
+
+| Arm / split | Discovery | Multi-write | Single-write |
+|---|---:|---:|---:|
+| Base train | 0.300000 | 0.000000 | 0.333333 |
+| Base dev | 0.400000 | 0.000000 | 0.333333 |
+| Base holdout | 0.200000 | 0.000000 | 0.333333 |
+| SFT train | 0.350000 | 0.000000 | 0.333333 |
+| SFT dev | 0.400000 | 0.083333 | 0.333333 |
+| SFT holdout | 0.200000 | 0.000000 | 0.333333 |
+| GRPO train | 0.475000 | 0.531250 | 0.500000 |
+| GRPO dev | 0.600000 | 0.000000 | 0.666667 |
+| GRPO holdout | 0.500000 | 0.000000 | 0.666667 |
+
+Relative to base, Cedar's final training-response deltas are:
+
+| Split | SFT − base | GRPO − base |
+|---|---:|---:|
+| Train | +0.020833 | +0.288194 |
+| Dev | 0.000000 | +0.166667 |
+| Holdout | 0.000000 | +0.208333 |
+
+These results should not be interpreted as a clean workload-family effect:
+the AutomationBench controls are near ceiling under their historical prompt,
+while Cedar remains a different synthetic API surface despite the structural
+prompt parity. The transferable result is that prompt contracts must be held
+constant and identified before comparing training response.
+
+### Holdout disclosure
+
+The Cedar holdout was evaluated on three occasions overall. Two evaluations
+belonged to earlier superseded/voided runs: the first used the uncalibrated
+fixture and the second used the generic Cedar prompt. The three evaluations
+in the final round above are the only valid final-round holdout results. No
+holdout result from any occasion was used for training or checkpoint
+selection. The final round passed the frozen holdout hash shown above and
+performed one holdout pass per selected arm, concurrently; no second final
+pass was run.
+
+### Failure modes and repairs
+
+1. **Vacuous reachability gate.** The original gate treated grader-side
+   initial state as candidate-visible and skipped body values, so it could
+   pass an unreachable protocol. The repaired gate replays read-only prefixes
+   through the environment and requires every oracle write endpoint, method,
+   literal, and required body key to be discoverable from candidate-visible
+   data.
+2. **Undiscoverable write protocol.** Cedar's generic resource catalog did not
+   explain that semantic operations persisted through resources such as
+   `/summaries`, and it omitted required body shapes. The fixture now exposes
+   semantic persistence targets in readable events and method-specific
+   `body_schema` key lists in the catalog. Natural-language prefixes and
+   excessive verbatim document assertions were also removed or calibrated.
+3. **Silent prompt-variant fallback.** The service ignored both CLI and reset
+   prompt variants, returning the generic prompt. This made #402 checkpoints
+   appear to fail and gave Cedar an unequal contract. The service now resolves
+   `nemotron-v1` and `cedar-v1` strictly, returns prompt identity, and rejects
+   unknown variants. Checkpoint metadata pins model, LoRA, renderer, prompt
+   variant, and prompt identity; evaluation refuses a mismatch before model
+   calls.
+
+The final machine-readable results and provenance are in
+`artifacts/final-results-parity.json`. Raw hosted training logs remain ignored;
+only their retained tails and the JSON/JSONL receipts are intended for
+version control.
+
+## Final corrected result and answer
+
+The section above is retained as superseded history where it conflicts with
+this section. The final corrected run regenerated the 48 train-only oracle
+trajectories with `cedar-v1`; the earlier final run had generated them with a
+different offline prompt and is void. The final corrected run used:
+
+- Provider: Tinker hosted training and sampling service.
+- Model: `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16`.
+- Renderer: `nemotron3_disable_thinking`.
+- LoRA rank: `32`.
+- SFT: four epochs, train split only, resumable state after every epoch.
+- GRPO: stage 1 warm-up 2 steps, then stage 2 for 40 steps; group size 8,
+  8 groups per batch, learning rate `1e-5`, dataset seed `7`.
+- Evaluation: greedy (`temperature=0`), one sample per task, with
+  `max_model_turns=12`.
+- Cedar prompt: `cedar-v1`,
+  `1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11`.
+
+### Same-day AutomationBench reference
+
+This reference was produced through the **real** AutomationBench service path,
+not the temporary patched service: fresh base plus the existing #402 SFT and
+GRPO checkpoint URIs, under `nemotron-v1`, train and dev only. AutomationBench
+holdout was not accessed.
+
+| Arm | Train mean | Dev mean |
+|---|---:|---:|
+| Fresh base | 0.704861 | 0.666667 |
+| #402 SFT epoch 4 | 0.954861 | 0.944444 |
+| #402 GRPO step 20 | 1.000000 | 1.000000 |
+
+AutomationBench dev per-band means:
+
+| Arm | Discovery | Multi-write | Single-write |
+|---|---:|---:|---:|
+| Fresh base | 0.500000 | 0.500000 | 1.000000 |
+| #402 SFT epoch 4 | 1.000000 | 0.833333 | 1.000000 |
+| #402 GRPO step 20 | 1.000000 | 1.000000 | 1.000000 |
+
+The earlier serving-drift conclusion was wrong. The #402 control recovered
+when the service honored the historical `nemotron-v1` prompt, proving that
+the causal issue was prompt mismatch caused by silent fallback.
+
+### Final Cedar results
+
+The final corrected Cedar results are:
+
+| Arm | Train mean | Dev mean | Holdout mean |
+|---|---:|---:|---:|
+| Base | 0.208333 | 0.250000 | 0.166667 |
+| SFT epoch 1 | 0.229167 | 0.166667 | 0.250000 |
+| SFT + GRPO step 30 | 0.479167 | 0.500000 | 0.375000 |
+
+Per-band means:
+
+| Arm / split | Discovery | Multi-write | Single-write |
+|---|---:|---:|---:|
+| Base train | 0.300000 | 0.000000 | 0.333333 |
+| Base dev | 0.400000 | 0.000000 | 0.333333 |
+| Base holdout | 0.200000 | 0.000000 | 0.333333 |
+| SFT train | 0.350000 | 0.000000 | 0.333333 |
+| SFT dev | 0.200000 | 0.000000 | 0.333333 |
+| SFT holdout | 0.400000 | 0.000000 | 0.333333 |
+| GRPO train | 0.750000 | 0.000000 | 0.666667 |
+| GRPO dev | 0.800000 | 0.000000 | 0.666667 |
+| GRPO holdout | 0.500000 | 0.000000 | 0.666667 |
+
+### Answer to the training-response question
+
+Nemotron responds to Cedar-shaped training in the same broad **optimization
+shape** as AutomationBench—GRPO is the dominant improvement over the selected
+SFT arm—but not in the same **behavioral allocation**. AutomationBench's
+training response reaches the multi-write band: its dev multi-write rises from
+`0.500000` for base to `0.833333` after SFT and `1.000000` after GRPO. Cedar's
+dev response is SFT `0.166667` to GRPO `0.500000`, but the gain is concentrated
+in discovery and single-write; multi-write remains exactly `0.000000` for
+base, SFT, GRPO, and all three holdout arms.
+
+The Cedar multi-write floor is not explained by an HTTP plumbing failure:
+the Python-path oracle reaches reward `1.0` on all 72 tasks, the endpoint and
+body-schema reachability gate passes, and final evaluation has zero parse-error
+and forbidden-effect rates. The remaining evidence points to a genuine
+calibration/difficulty problem in the multi-write workload shape, rather than
+lost writes: multi-write tasks require longer chains with preservation,
+append/move semantics, and several dependent writes, and the model's
+transcripts show it often spends the turn budget exploring or emits malformed
+actions before completing the chain. Because the floor is still absolute,
+this should not be claimed as proof that Cedar multi-write is intrinsically
+harder; it is a headline finding that warrants a follow-up calibration study
+of chain length and recovery, not a clean cross-benchmark conclusion.
+
+### Four failure modes and guards
+
+1. **Vacuous reachability gate.** Symptom: the gate passed protocols whose
+   literals were reachable only from grader-side state. It was caught when
+   initial-state/tool-name shortcuts admitted unreachable writes. The guard now
+   replays candidate-visible read prefixes and requires endpoint, method,
+   literal, and every required body-schema key for every oracle write.
+2. **Undiscoverable write protocol.** Symptom: models read the right event,
+   then guessed `/conversations/{id}/route`, `/accounts`, or other nonexistent
+   paths and never reached the graded resource. It was caught by the oracle
+   round-trip plus transcript inspection. The fixture now exposes semantic
+   persistence targets in readable events and method-specific `body_schema`
+   keys in the catalog; natural-language value prefixes and excessive exact
+   long-string assertions were calibrated.
+3. **Silent prompt-variant fallback.** Symptom: #402 checkpoints collapsed
+   from their historical scores to near zero under the generic prompt. It was
+   caught by the real-service AutomationBench control and restored by the
+   historical prompt. The service now honors CLI, reset, and protocol
+   variants, returns prompt identity, and hard-fails unknown variants.
+4. **Oracle trajectories under a different prompt.** Symptom: corrected Cedar
+   evaluation still used SFT trajectories whose offline system message was
+   generic while evaluation used `cedar-v1`. It was caught by inspecting the
+   actual serialized oracle trajectory after the prompt-identity fix. The
+   trajectory generator now injects the exact Cedar prompt, and checkpoint
+   metadata/evaluation pin model, renderer, LoRA rank, prompt variant, and
+   prompt identity.
+
+### Holdout exposure disclosure
+
+The Cedar holdout was evaluated on four occasions per arm:
+
+1. The uncalibrated fixture run; voided after the vacuous reachability and
+   undiscoverable-write-protocol defects.
+2. The repaired-fixture run under the generic prompt; voided after the
+   silent-prompt-fallback defect was established.
+3. The prompt-parity run whose SFT oracle trajectories were still generated
+   under the offline generic prompt; voided after direct trajectory inspection.
+4. This final corrected run under `cedar-v1`; valid and reported above.
+
+Across all four occasions, training used train only and checkpoint selection
+used dev only. No holdout result influenced training, checkpoint choice, or a
+fixture edit. The exposure risk is therefore reporting bias, addressed here
+by explicit disclosure; the three earlier arms no longer exist as valid
+comparisons. Holdout is now permanently sealed and will not be touched again.
+
+### Receipts
+
+Evaluation summaries and JSONL rows record model/provider route, renderer,
+prompt identity, LoRA rank, split and fixture hashes, sampled/prompt tokens,
+wall-clock measurements, parse errors, forbidden effects, and checkpoint
+paths. The selected checkpoints were:
+
+```text
+SFT state:
+tinker://74e21a53-27e7-5773-84e3-f11897e96789:train:0/weights/sft-epoch1-state
+
+GRPO stage 1 final state:
+tinker://002f372f-6842-52fc-b0a7-ff2005ba418f:train:0/weights/final
+
+GRPO selected step 30 sampler:
+tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000030
+```
+
+Final Cedar evaluation parse-error rates and forbidden-effect counts were zero.
+Tinker billing snapshots returned empty usage data (`{"data":[],"sessions":{}}`);
+no dollar figure is fabricated. Machine-readable final provenance is in
+`artifacts/final-results-corrected.json`.

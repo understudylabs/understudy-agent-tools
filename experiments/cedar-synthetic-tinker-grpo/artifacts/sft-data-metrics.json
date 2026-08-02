@@ -96,12 +96,12 @@
     ],
     "task_id": "workflow-route-01"
   },
-  "token_count_total": 20139,
+  "token_count_total": 34971,
   "token_lengths": {
-    "max": 708,
-    "mean": 419.5625,
-    "median": 381.0,
-    "min": 221
+    "max": 1017,
+    "mean": 728.5625,
+    "median": 690.0,
+    "min": 530
   },
-  "wall_clock_seconds": 2.5173926510005913
+  "wall_clock_seconds": 2.80393759800063
 }

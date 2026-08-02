@@ -4,3 +4,5 @@ __pycache__/
 # Raw hosted training logs are local-only; retain checked-in tails.
 artifacts/grpo-stage*-log/
 artifacts/grpo-stage*-log/**
+artifacts/grpo-parity-stage*-log/
+artifacts/grpo-parity-stage*-log/**

@@ -1,37 +1,38 @@
 {
   "grpo_checkpoints": [
     {
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000010",
+      "mean_reward": 0.25,
+      "sampler_path": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000010",
       "step": 10,
-      "strict_pass_rate": 0.08333333333333333,
+      "strict_pass_rate": 0.25,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/grpo-step10-dev.summary.json"
     },
     {
-      "mean_reward": 0.08333333333333333,
-      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000020",
+      "mean_reward": 0.2777777777777778,
+      "sampler_path": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000020",
       "step": 20,
-      "strict_pass_rate": 0.08333333333333333,
+      "strict_pass_rate": 0.25,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/grpo-step20-dev.summary.json"
     },
     {
-      "mean_reward": 0.10416666666666667,
-      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000030",
+      "mean_reward": 0.5,
+      "sampler_path": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/000030",
       "step": 30,
-      "strict_pass_rate": 0.08333333333333333,
+      "strict_pass_rate": 0.5,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/grpo-step30-dev.summary.json"
     },
     {
-      "mean_reward": 0.16666666666666666,
-      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/final",
+      "mean_reward": 0.5,
+      "sampler_path": "tinker://6b50e148-2329-5f10-ae63-dfc59e3b421b:train:0/sampler_weights/final",
       "step": 40,
-      "strict_pass_rate": 0.16666666666666666,
+      "strict_pass_rate": 0.5,
       "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/grpo-step40-dev.summary.json"
     }
   ],
-  "sft_epoch4": {
-    "mean_reward": 0.08333333333333333,
-    "strict_pass_rate": 0.08333333333333333,
-    "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch4-dev.summary.json"
+  "sft_selected": {
+    "epoch": 1,
+    "mean_reward": 0.2777777777777778,
+    "strict_pass_rate": 0.25,
+    "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch1-dev.summary.json"
   }
 }

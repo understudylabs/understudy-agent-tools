@@ -13,6 +13,7 @@ import tinker
 from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
+from checkpoint_metadata import PROMPT_IDENTITY, require
 from env_client import close_service, get_service
 from receipts import snapshot_usage_async, write_receipt
 from rollout import (
@@ -76,6 +77,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("--concurrency must be positive")
     if args.split == "holdout" and not args.frozen_holdout_sha256:
         raise SystemExit("--frozen-holdout-sha256 is required for --split holdout")
+    if args.model_path != "base":
+        require(args.model_path)
 
     service = get_service(str(REPO))
     hashes = service.hashes()
@@ -141,6 +144,9 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "provenance": {
                     "harness_sha256": hashes["fixture_sha256"],
                     "split_sha256": split_sha,
+                    "prompt_variant": "cedar-v1",
+                    "prompt_identity": PROMPT_IDENTITY,
+                    "renderer": RENDERER_NAME,
                     "artifact_refs": ["fixture://synthetic-workflow-shapes-offline-v2"],
                 },
                 "family": record["family"],
@@ -163,6 +169,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "model_path": args.model_path,
         "model": model_label,
         "renderer": RENDERER_NAME,
+        "prompt_variant": "cedar-v1",
+        "prompt_identity": PROMPT_IDENTITY,
         "renderer_deviation": RENDERER_DEVIATION,
         "lora_rank": LORA_RANK,
         "temperature": args.temperature,

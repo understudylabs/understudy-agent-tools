@@ -15,6 +15,8 @@ from env_client import EnvService
 
 MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 RENDERER_NAME = "nemotron3_disable_thinking"
+PROMPT_VARIANT = "cedar-v1"
+PROMPT_IDENTITY = "1a50541f7c25da20bbcd407c3f736560797107fb84aaec7725473153488a1a11"
 LORA_RANK = 32
 MAX_MODEL_TURNS = 12
 MAX_TOKENS = 192
@@ -122,6 +124,16 @@ async def rollout_task(
     config: RolloutConfig,
 ) -> dict[str, Any]:
     reset = service.reset(task["task_id"], config.frozen_holdout_sha256)
+    if reset.get("prompt_variant") != PROMPT_VARIANT:
+        raise RuntimeError(
+            f"service prompt variant mismatch: expected {PROMPT_VARIANT}, "
+            f"got {reset.get('prompt_variant')}"
+        )
+    if reset.get("prompt_identity") != PROMPT_IDENTITY:
+        raise RuntimeError(
+            f"service prompt identity mismatch: expected {PROMPT_IDENTITY}, "
+            f"got {reset.get('prompt_identity')}"
+        )
     episode_id = reset["episode_id"]
     messages: list[Message] = [
         {"role": "system", "content": reset["system_prompt"]},
