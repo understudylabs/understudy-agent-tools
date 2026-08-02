@@ -7,6 +7,10 @@ import {
   normalizeSupportedModels,
   catalogCurlExample,
 } from "../apps/homescreen/app/lib/model-catalog.mjs";
+import {
+  groupByProvider,
+  rateCardFor,
+} from "../apps/homescreen/app/lib/model-providers.mjs";
 
 test("normalizeSupportedModels maps the admin payload to display rows", () => {
   const rows = normalizeSupportedModels([
@@ -53,4 +57,50 @@ test("catalogCurlExample falls back to the placeholder id and trims gateway slas
   const curl = catalogCurlExample(null, "https://gw.example.com///");
   assert.ok(curl.startsWith("curl https://gw.example.com/v1/chat/completions"));
   assert.ok(curl.includes('"model": "model-id"'));
+});
+
+test("new platform catalog families group under their model providers", () => {
+  const groups = groupByProvider([
+    { id: "gemini-3.6-flash" },
+    { id: "grok-4.5" },
+    { id: "qwen3.7-max" },
+    { id: "nemotron-3-nano-omni" },
+    { id: "step-3-7-flash" },
+    { id: "command-a-vision" },
+  ]);
+  assert.deepEqual(
+    groups.map(({ provider, models }) => [provider.label, models.map((model) => model.id)]),
+    [
+      ["Google", ["gemini-3.6-flash"]],
+      ["Qwen", ["qwen3.7-max"]],
+      ["xAI", ["grok-4.5"]],
+      ["NVIDIA", ["nemotron-3-nano-omni"]],
+      ["StepFun", ["step-3-7-flash"]],
+      ["Cohere", ["command-a-vision"]],
+    ],
+  );
+});
+
+test("new platform catalog uses the published customer rate cards", () => {
+  assert.deepEqual(rateCardFor("gemini-3.5-flash-lite"), {
+    local: false, input: 0.6, cached: 0.09, output: 7.5,
+  });
+  assert.deepEqual(rateCardFor("gemma-4-31b"), {
+    local: false, input: 0.28, cached: 0, output: 1.2,
+  });
+  assert.deepEqual(rateCardFor("grok-4.20-0309-reasoning"), {
+    local: false, input: 4, cached: 0.6, output: 18,
+  });
+  assert.deepEqual(rateCardFor("qwen3.6-35b"), {
+    local: false, input: 0.496, cached: 0, output: 4.455,
+  });
+  assert.deepEqual(rateCardFor("nemotron-3-ultra-nvfp4"), {
+    local: false, input: 1.2, cached: 0.4, output: 7.2,
+  });
+  assert.deepEqual(rateCardFor("step-3-7-flash"), {
+    local: false, input: 0.4, cached: 0.12, output: 3.45,
+  });
+  assert.deepEqual(rateCardFor("command-a-vision"), {
+    local: false, input: 5, cached: 0, output: 30,
+  });
 });
