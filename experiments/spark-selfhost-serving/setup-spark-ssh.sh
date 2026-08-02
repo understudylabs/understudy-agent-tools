@@ -55,6 +55,6 @@ $END
 EOF
 mv "$tmp_config" "$CONFIG_PATH"
 
-# This box has no nc, and its socat lacks SOCKS5 support; tailscale nc is the
-# working ProxyCommand under userspace networking.
+# Userspace networking has no TUN interface; this box has no nc, and its socat
+# lacks SOCKS5 support, so tailscale nc is the required ProxyCommand.
 echo "SSH config entries installed for understudy-alpha and understudy-bravo"

@@ -10,6 +10,27 @@ This note records the read-only preflight for a `tag:devin` userspace access
 lane. The permitted destinations are only ports 22, 443, and 5153 on the two
 Spark nodes.
 
+# Relationship to the canonical lane
+
+The canonical entrypoint is `scripts/spark-lane-bootstrap.sh`. This directory
+holds only evidence artifacts not covered by that entrypoint: SSH and
+ProxyCommand setup, the two-node permission smoke test, the denied-destination
+scope probe, and the prepared-but-unlaunched multi-LoRA serving variant.
+
+The canonical bootstrap now uses separate userspace proxy ports:
+SOCKS5 defaults to `localhost:1055` and the outbound HTTP proxy defaults to
+`localhost:1056`; using 1055 for both collides. Tag advertisement is opt-in
+through `SPARK_ADVERTISE_TAGS`; the bootstrap always asserts that
+`Self.Tags` contains `tag:devin` after enrollment. In the verified enrollment,
+the ephemeral auth key supplied the tag and no `--advertise-tags` flag was
+passed.
+
+The canonical reachability probe routes TCP and `/v1/models` checks through
+the local SOCKS5 proxy. Direct dials to the 100.x addresses fail under
+userspace networking because there is no TUN interface. Endpoint registration,
+when the runtime is unblocked, goes through `src/serving-registry.ts` as
+specified by `docs/unified-serving-router.md`; it was **NOT** performed.
+
 # Enrollment and identity
 
 - Tailscale mode: userspace `tailscaled`, no sudo.
@@ -118,16 +139,6 @@ LORA_MODULES='adapter-a=/approved/adapters/adapter-a,adapter-b=/approved/adapter
 
 - No runbook document named `DEVIN_SPARK_ACCESS.md` exists in the Spark Lab
   repository on any branch inspected.
-- At the time of the original reconnaissance, no prior Spark bootstrap,
-  recipe, or router scripts were present in the checked-out branch. A serving
-  lane contract was integrated concurrently afterward; the current branch
-  now contains `src/serving-registry.ts`,
-  `docs/unified-serving-router.md`, and
-  `scripts/spark-lane-bootstrap.sh`. That registry explicitly models both
-  `spark` and `modal` lanes and is the concrete unified endpoint mechanism.
-- Endpoint registration was not performed because the runtime remained paused.
-  The earlier closest artifacts, before that concurrent integration, were
-  `buzz-experiments/contracts/registry.v1.json` (experiment contract schemas)
-  and `src/local-classifier/registry.ts` plus `src/local-serving.ts` (per-run
-  local artifacts and serving).
-- No endpoint registration was performed.
+- The canonical lane files now provide the shared Spark/Modal registry and
+  bootstrap path. No endpoint registration was performed because the runtime
+  remained paused.
