@@ -65,6 +65,7 @@ const groupId = allowed(args.group, [
 const split = allowed(args.split, ["train", "dev", "holdout"], "--split");
 const samplerUrl = String(args.sampler_url ?? process.env.TINKER_SAMPLER_URL ?? "");
 if (!samplerUrl) throw new Error("--sampler-url or TINKER_SAMPLER_URL is required");
+const outRoot = args.out_dir ? resolve(root, String(args.out_dir)) : artifactRoot;
 
 const sanity = existsSync(sanityPath) ? JSON.parse(readFileSync(sanityPath, "utf8")) : null;
 if (!sanity?.passed) throw new Error(`sanity gate is missing or failed: ${sanityPath}`);
@@ -103,7 +104,6 @@ const taskSets = {
 };
 const adapter = adapterFactories[groupId]();
 const promptSystem = promptSystems[groupId];
-const tasks = taskSets[groupId];
 const firstTaskId = adapter.taskIds({
   split,
   ...(split === "holdout" ? { frozenHoldoutSha256: args.frozen_holdout_sha256 } : {}),
@@ -117,7 +117,7 @@ const promptRecord = {
   user: firstEpisode.messages.find((message) => message.role === "user")?.content ?? "",
 };
 const promptHash = createHash("sha256").update(JSON.stringify(promptRecord)).digest("hex");
-const promptsPath = resolve(artifactRoot, "prompts.json");
+const promptsPath = resolve(outRoot, "prompts.json");
 mkdirSync(dirname(promptsPath), { recursive: true });
 let promptsArtifact = {};
 if (existsSync(promptsPath)) promptsArtifact = JSON.parse(readFileSync(promptsPath, "utf8"));
@@ -131,9 +131,9 @@ const healthResponse = await fetch(`${samplerUrl.replace(/\/$/, "")}/health`);
 if (!healthResponse.ok) throw new Error(`sampler health failed: HTTP ${healthResponse.status}`);
 const health = await healthResponse.json();
 const runId = `transfer-${arm}-${groupId}-${split}-${Date.now()}`;
-const rowsDir = resolve(artifactRoot, "rows");
-const receiptDir = resolve(artifactRoot, "receipts");
-const transcriptDir = resolve(artifactRoot, "transcripts");
+const rowsDir = resolve(outRoot, "rows");
+const receiptDir = resolve(outRoot, "receipts");
+const transcriptDir = resolve(outRoot, "transcripts");
 mkdirSync(rowsDir, { recursive: true });
 mkdirSync(receiptDir, { recursive: true });
 mkdirSync(transcriptDir, { recursive: true });
@@ -190,5 +190,5 @@ const summary = {
   },
   artifacts: { rows: rowsPath, receipts: receiptPath, transcripts: transcriptPath, prompts: promptsPath, sanity_gate: sanityPath },
 };
-writeFileSync(resolve(artifactRoot, `${arm}-${groupId}-${split}.summary.json`), `${JSON.stringify(summary, null, 2)}\n`);
+writeFileSync(resolve(outRoot, `${arm}-${groupId}-${split}.summary.json`), `${JSON.stringify(summary, null, 2)}\n`);
 console.log(JSON.stringify(summary, null, 2));
