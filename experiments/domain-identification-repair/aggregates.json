@@ -1,0 +1,73 @@
+{
+  "schema_version": "understudy.workload_aggregate.v1",
+  "workload": "domain-identification",
+  "code": "WL-DI",
+  "source": "gateway telemetry, outer spans only; aggregates computed in the warehouse and exported as counts/tokens/USD/quantiles",
+  "privacy": "AGGREGATES ONLY. No prompts, completions, request ids, tenant ids, key ids, or raw rows are exported here or anywhere in this directory.",
+  "window": { "first_seen": "2026-06-26", "last_seen": "2026-08-02", "days": 37 },
+  "incumbent": {
+    "served_model": "gpt-4o",
+    "requests": 149577,
+    "share_of_workload_requests_pct": 99.8,
+    "provider_equivalent_tokens": {
+      "uncached_input": 227776504,
+      "cache_read_input": 449855488,
+      "cache_creation_input": 0,
+      "output": 9659170
+    },
+    "cache_read_share_of_input_pct": 66.39,
+    "customer_cost_usd": 1228.33,
+    "usd_per_1k_requests": 8.212,
+    "latency_ms": { "p50": 1148, "p95": 2576 }
+  },
+  "project_position": {
+    "rank_by_requests": 2,
+    "share_of_project_requests_pct": 16.37,
+    "rank_by_cost": 5,
+    "share_of_project_cost_usd_pct": 3.93
+  },
+  "output_length": {
+    "p50": 74,
+    "p90": 107,
+    "p95": 114,
+    "p99": 130,
+    "max": 2555,
+    "mean": 65.1,
+    "stddev": 39.7,
+    "bounded_le_150_pct": 99.85,
+    "verdict": "bounded"
+  },
+  "input_length": { "p50": 3948, "p95": 7886, "p99": 12135 },
+  "output_bands": [
+    { "band": "lt_40", "requests": 58980, "pct": 39.43, "mean_output_tokens": 26.1, "mean_input_tokens": 4514, "customer_cost_usd": 491.67 },
+    { "band": "40_79", "requests": 23903, "pct": 15.98, "mean_output_tokens": 66.0, "mean_input_tokens": 4173, "customer_cost_usd": 181.41 },
+    { "band": "80_119", "requests": 63036, "pct": 42.14, "mean_output_tokens": 96.2, "mean_input_tokens": 4671, "customer_cost_usd": 524.24 },
+    { "band": "120_159", "requests": 3488, "pct": 2.33, "mean_output_tokens": 127.3, "mean_input_tokens": 4692, "customer_cost_usd": 29.15 },
+    { "band": "gte_160", "requests": 166, "pct": 0.11, "mean_output_tokens": 202.7, "mean_input_tokens": 4954, "customer_cost_usd": 1.83 }
+  ],
+  "weekly": [
+    { "week_start": "2026-06-21", "requests": 200, "customer_cost_usd": 1.45, "p50_output": 75, "p95_output": 114 },
+    { "week_start": "2026-06-28", "requests": 541, "customer_cost_usd": 4.15, "p50_output": 76, "p95_output": 112 },
+    { "week_start": "2026-07-05", "requests": 17698, "customer_cost_usd": 164.41, "p50_output": 71, "p95_output": 104 },
+    { "week_start": "2026-07-12", "requests": 36813, "customer_cost_usd": 358.57, "p50_output": 74, "p95_output": 111 },
+    { "week_start": "2026-07-19", "requests": 28110, "customer_cost_usd": 189.75, "p50_output": 74, "p95_output": 115 },
+    { "week_start": "2026-07-26", "requests": 66016, "customer_cost_usd": 508.70, "p50_output": 72, "p95_output": 115 },
+    { "week_start": "2026-08-02", "requests": 199, "customer_cost_usd": 1.30, "p50_output": 71, "p95_output": 118 }
+  ],
+  "reliability": {
+    "success_pct": 100.0,
+    "error_events": 7,
+    "error_note": "5x 503 and 2x 502, all upstream-origin; no client-side or gateway-origin failures in the window",
+    "fallbacks": 0,
+    "streaming_share": 0.0
+  },
+  "open_model_side_arms": [
+    {
+      "served_model": "an open-weight MoE candidate served through a partner endpoint",
+      "requests": 302,
+      "mean_output_tokens": 341.0,
+      "bounded_le_150_pct": 20.2,
+      "note": "Same requested model, same workload: the open-model arm's completions run ~5x longer than the incumbent's and fall outside the incumbent's bounded envelope on ~80% of calls. Length discipline — not identification — is the visible open-model gap."
+    }
+  ]
+}
