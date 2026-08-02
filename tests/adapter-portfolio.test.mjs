@@ -193,6 +193,45 @@ describe("adapter portfolio", () => {
     assert.match(sealed.detail, /executed|dirtied/i);
   });
 
+  it("derives request isolation from consumed evidence scope and does not invent quality", () => {
+    const isolated = candidateFixture();
+    const scopedEvidence = {
+      metric: "band_mean_score", row_count: 2, context: { loaded_adapters: [] },
+      evidence_scope: "run_exclusive",
+    };
+    add(isolated.registryPath, "adapter-a", {
+      ...scopedEvidence, subject: "adapter", adapter_name: "adapter-a",
+      suite: "workload-band-a", split: "dev", score: 0.9,
+      dataset_sha256: sha("isolated-dev"), recorded_at: "2026-01-01T00:00:00.000Z",
+    });
+    add(isolated.registryPath, "adapter-a", {
+      ...scopedEvidence, subject: "adapter", adapter_name: "adapter-a",
+      suite: "workload-band-a", split: "holdout", score: 0.9,
+      dataset_sha256: holdoutSha, recorded_at: "2026-01-01T00:01:00.000Z",
+    });
+    const isolatedDecision = evaluatePromotion(JSON.parse(readFileSync(isolated.registryPath)), "adapter-a");
+    assert.equal(isolatedDecision.request_isolation_proven, true);
+    assert.equal(isolatedDecision.quality_evidence.status, "not_measured");
+    assert.doesNotMatch(isolatedDecision.quality_evidence.status, /^measured$/);
+    assert.equal("failure_clusters" in isolatedDecision, false);
+    assert.equal("artifact_refs" in isolatedDecision, false);
+
+    const accountWindow = candidateFixture();
+    add(accountWindow.registryPath, "adapter-a", {
+      ...scopedEvidence, subject: "adapter", adapter_name: "adapter-a",
+      suite: "workload-band-a", split: "dev", score: 0.9,
+      evidence_scope: "account_window",
+      dataset_sha256: sha("account-dev"), recorded_at: "2026-01-01T00:00:00.000Z",
+    });
+    add(accountWindow.registryPath, "adapter-a", {
+      ...scopedEvidence, subject: "adapter", adapter_name: "adapter-a",
+      suite: "workload-band-a", split: "holdout", score: 0.9,
+      dataset_sha256: holdoutSha, recorded_at: "2026-01-01T00:01:00.000Z",
+    });
+    const accountDecision = evaluatePromotion(JSON.parse(readFileSync(accountWindow.registryPath)), "adapter-a");
+    assert.equal(accountDecision.request_isolation_proven, false);
+  });
+
   it("scores the worst holdout rerun instead of rescuing a failing candidate", () => {
     const data = candidateFixture();
     add(data.registryPath, "adapter-a", {

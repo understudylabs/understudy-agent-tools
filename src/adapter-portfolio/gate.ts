@@ -45,6 +45,13 @@ function policyFor(policy: PromotionPolicy | undefined, registry: AdapterPortfol
   return { ...registry.policy, ...policy };
 }
 
+function isolationFromEvidence(rows: EvidenceRow[]): boolean | null {
+  if (rows.length === 0 || rows.some((row) => row.evidence_scope === undefined)) {
+    return rows.some((row) => row.evidence_scope === "account_window") ? false : null;
+  }
+  return !rows.some((row) => row.evidence_scope === "account_window");
+}
+
 export function evaluatePromotion(
   registryInput: AdapterPortfolioRegistry,
   candidateName: string,
@@ -64,9 +71,15 @@ export function evaluatePromotion(
   else if (candidate.status === "promoted") checks.push(check("status", "fail", "Adapter is already promoted; promotion is a no-op."));
   else checks.push(check("status", "fail", `Adapter status ${candidate.status} cannot be promoted.`));
 
+  const consumedEvidence = new Map<string, EvidenceRow>();
+  const consume = (row: EvidenceRow | undefined): void => {
+    if (row) consumedEvidence.set(row.evidence_id, row);
+  };
   const dev = best(candidateRows(candidate, candidate.suite, "dev"));
+  consume(dev);
   const devBases = best(baseRows(registry, candidate.suite, "dev")
     .filter((row) => !row.context.loaded_adapters.includes(candidateName)));
+  consume(devBases);
   if (!dev) checks.push(check("dev_pass", "missing_evidence", `No adapter evidence for ${candidateName} on ${candidate.suite}/dev.`));
   else if (policy.min_dev_score !== undefined && dev.score < policy.min_dev_score) {
     checks.push(check("dev_pass", "fail", `Dev score ${dev.score} is below minimum ${policy.min_dev_score}.`));
@@ -75,12 +88,14 @@ export function evaluatePromotion(
   } else checks.push(check("dev_pass", "pass", `Dev score ${dev.score} passes.`));
 
   const holdoutRows = candidateRows(candidate, candidate.suite, "holdout");
+  for (const row of holdoutRows) consume(row);
   const holdout = worst(holdoutRows);
   const holdoutRunDetail = holdoutRows.length > 1
     ? `${holdoutRows.length} holdout runs recorded; scoring the worst. `
     : "";
   const holdoutBases = best(baseRows(registry, candidate.suite, "holdout")
     .filter((row) => !row.context.loaded_adapters.includes(candidateName)));
+  consume(holdoutBases);
   if (!holdout) checks.push(check("holdout_pass", "missing_evidence", `No adapter evidence for ${candidateName} on ${candidate.suite}/holdout.`));
   else if (policy.min_holdout_score !== undefined && holdout.score < policy.min_holdout_score) {
     checks.push(check("holdout_pass", "fail", `${holdoutRunDetail}Holdout score ${holdout.score} is below minimum ${policy.min_holdout_score}.`));
@@ -121,6 +136,7 @@ export function evaluatePromotion(
       rowsFor(adapter, baseline.subject, baseline.suite, "holdout", baseline.adapterName),
     ).filter((row) => !row.context.loaded_adapters.includes(candidateName));
     const reference = latest(referenceRows);
+    consume(reference);
     if (!reference) {
       missing.push(`${baseline.subject}${baseline.adapterName ? ` ${baseline.adapterName}` : ""} ${baseline.suite}`);
       continue;
@@ -132,6 +148,7 @@ export function evaluatePromotion(
       row.recorded_at >= reference.recorded_at,
     );
     const recheck = latest(recheckRows);
+    consume(recheck);
     if (!recheck) {
       missing.push(`${baseline.subject}${baseline.adapterName ? ` ${baseline.adapterName}` : ""} ${baseline.suite} recheck`);
     } else if (recheck.score < reference.score - policy.max_regression) {
@@ -151,15 +168,13 @@ export function evaluatePromotion(
     decision: checks.every((item) => item.status === "pass") ? "promote" : "blocked",
     holdout_executed: candidate.holdout_executed,
     holdout_clean: candidate.holdout_clean,
-    request_isolation_proven: checks.some((item) => item.check === "no_forgetting" && item.status === "pass"),
+    request_isolation_proven: isolationFromEvidence([...consumedEvidence.values()]),
     quality_evidence: {
-      status: "measured",
-      reason: null,
+      status: "not_measured",
+      reason: "No calibration evidence is recorded in the portfolio.",
       required_calibration: null,
       calibration_artifact_refs: [],
     },
-    failure_clusters: [],
-    artifact_refs: [],
     claim_boundary: "Promotion decision covers recorded adapter evidence and transfer checks only; it is not an executor usage or model-quality guarantee.",
   };
 }

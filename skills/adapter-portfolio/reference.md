@@ -67,12 +67,16 @@ reinterpret it. The no-forgetting context is also the portfolio's
 request-isolation evidence: baseline rows exclude the candidate from
 `loaded_adapters`, and rechecks include it.
 
-The decision artifact optionally records canonical quality/calibration status,
-calibration artifact refs, failure clusters, artifact refs, a claim boundary,
-and whether request isolation was proven. These are verifier-owned evidence
-summaries, not raw content. Budget and actual/estimated/upper-bound usage
-remain executor-owned because this module performs no provider work and does
-not reconcile usage.
+The decision artifact records canonical quality/calibration status and a claim
+boundary. With no calibration evidence recorded, quality status is
+`not_measured` with an explanatory reason; it is never inferred as measured.
+Failure clusters and artifact refs are omitted unless recorded evidence
+actually supplies them. Request isolation is `true` only when every consumed
+row has `evidence_scope: "run_exclusive"`, `false` when any consumed row has
+`"account_window"`, and `null` when scope is missing. These are verifier-owned
+evidence summaries, not raw content. Budget and actual/estimated/upper-bound
+usage remain executor-owned because this module performs no provider work and
+does not reconcile usage.
 
 Executor adapters, not this verifier/contract module, own `submit`, `inspect`,
 and `cancel`. Cancellation must reach the adapter and produce a

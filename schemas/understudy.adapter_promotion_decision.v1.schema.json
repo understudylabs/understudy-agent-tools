@@ -26,7 +26,7 @@
     "decision": { "enum": ["promote", "blocked"] },
     "holdout_executed": { "type": "boolean" },
     "holdout_clean": { "type": ["boolean", "null"] },
-    "request_isolation_proven": { "type": "boolean" },
+    "request_isolation_proven": { "type": ["boolean", "null"] },
     "quality_evidence": { "$ref": "#/$defs/quality_evidence" },
     "failure_clusters": {
       "type": "array",

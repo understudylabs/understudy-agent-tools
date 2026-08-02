@@ -140,7 +140,7 @@ export const AdapterPromotionDecisionSchema = z.object({
   decision: z.enum(["promote", "blocked"]),
   holdout_executed: z.boolean().optional(),
   holdout_clean: z.boolean().nullable().optional(),
-  request_isolation_proven: z.boolean().optional(),
+  request_isolation_proven: z.boolean().nullable().optional(),
   quality_evidence: QualityEvidenceSchema.optional(),
   failure_clusters: z.array(FailureClusterSchema).max(256).optional(),
   artifact_refs: z.array(ArtifactRefSchema).max(512).optional(),
