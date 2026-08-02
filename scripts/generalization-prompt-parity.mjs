@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 const root = resolve(new URL("..", import.meta.url).pathname);
 const artifactRoot = resolve(root, "experiments/nemotron-generalization-transfer/artifacts");
 const groups = ["automationbench-simple-api", "event-categorizer", "synthetic-workflow-shapes"];
-const splits = ["train", "dev"];
 const parseArgs = () => {
   const args = {};
   for (let index = 2; index < process.argv.length; index += 1) {
@@ -17,6 +16,10 @@ const parseArgs = () => {
 };
 const args = parseArgs();
 const outRoot = resolve(root, String(args.artifacts ?? artifactRoot));
+const splits = String(args.splits ?? "train,dev").split(",").map((split) => split.trim()).filter(Boolean);
+if (splits.some((split) => !["train", "dev", "holdout"].includes(split))) {
+  throw new Error("--splits must be a comma-separated list of train,dev,holdout");
+}
 const failures = [];
 const checks = [];
 for (const group of groups) {

@@ -1,0 +1,61 @@
+{
+  "schema_version": "understudy.generalization_transfer_summary.v1",
+  "run_id": "transfer-tuned-event-categorizer-holdout-1785629825402",
+  "arm": "tuned",
+  "group": "event-categorizer",
+  "split": "holdout",
+  "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+  "route": "tinker-sampling",
+  "sampler_url": "http://127.0.0.1:8791",
+  "sampler_health": {
+    "ok": true,
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+    "renderer": "nemotron3_disable_thinking",
+    "lora_rank": 32,
+    "checkpoint_base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "weights_info": {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "is_lora": true,
+      "lora_rank": 32,
+      "train_unembed": true,
+      "train_mlp": true,
+      "train_attn": true
+    },
+    "sampling_defaults": {
+      "temperature": 0,
+      "max_tokens": 192,
+      "max_model_turns": 12
+    }
+  },
+  "prompt": {
+    "system_sha256": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6c",
+    "task_id": "evt-011",
+    "task_prompt_sha256": "7d381593f41af1092b7ee7315d83ee2b2ec21492a0dcf0f92079e9c01d2f0f88"
+  },
+  "task_count": 2,
+  "mean_score": 1,
+  "strict_pass_rate": 1,
+  "parse_failure_rows": 0,
+  "error_rate": 0,
+  "tokens": {
+    "prompt": 1141,
+    "completion": 59,
+    "total": 1200
+  },
+  "wall_clock_ms": 27962,
+  "estimated_cost": {
+    "usd": 0.001377,
+    "inputUsdPerMillion": 1,
+    "outputUsdPerMillion": 4,
+    "basis": "estimated Tinker-equivalent price; Tinker exposes no USD accounting"
+  },
+  "artifacts": {
+    "rows": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/rows/tuned-event-categorizer-holdout.jsonl",
+    "receipts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/receipts/tuned-event-categorizer-holdout.jsonl",
+    "transcripts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/transcripts/tuned-event-categorizer-holdout.jsonl",
+    "prompts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/prompts.json",
+    "prompt_parity": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-event-categorizer-holdout.prompt-parity.json",
+    "sanity_gate": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/sanity-gate.json"
+  }
+}

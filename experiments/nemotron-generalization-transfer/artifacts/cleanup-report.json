@@ -1,0 +1,31 @@
+{
+  "schema_version": "understudy.generalization_cleanup_report.v1",
+  "generated_at": "2026-08-02T00:20:47Z",
+  "holdout_runs_completed": 6,
+  "sampler_shims": {
+    "base_port": 8790,
+    "tuned_port": 8791,
+    "base_stopped": true,
+    "tuned_stopped": true,
+    "listening_ports_after_cleanup": []
+  },
+  "node_processes": {
+    "transfer_runners_after_cleanup": [],
+    "other_started_node_processes_after_cleanup": []
+  },
+  "tinker_resources": {
+    "serving_or_deployment_resource_created_by_us": false,
+    "sampling_clients_ephemeral": true,
+    "billable_resources_created_by_us": [],
+    "billable_resources_deleted_by_us": [],
+    "sampling_requests_only": true
+  },
+  "checkpoints": {
+    "pr_402_step_20_checkpoint": "retained",
+    "deleted_by_us": []
+  },
+  "artifacts": {
+    "holdout_access_markers": 6,
+    "rows_receipts_transcripts_and_summaries_written": true
+  }
+}

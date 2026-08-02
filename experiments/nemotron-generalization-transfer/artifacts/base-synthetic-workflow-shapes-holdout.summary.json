@@ -1,0 +1,54 @@
+{
+  "schema_version": "understudy.generalization_transfer_summary.v1",
+  "run_id": "transfer-base-synthetic-workflow-shapes-holdout-1785629825382",
+  "arm": "base",
+  "group": "synthetic-workflow-shapes",
+  "split": "holdout",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "route": "tinker-sampling",
+  "sampler_url": "http://127.0.0.1:8790",
+  "sampler_health": {
+    "ok": true,
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "model_path": null,
+    "renderer": "nemotron3_disable_thinking",
+    "lora_rank": null,
+    "checkpoint_base_model": null,
+    "weights_info": null,
+    "sampling_defaults": {
+      "temperature": 0,
+      "max_tokens": 192,
+      "max_model_turns": 12
+    }
+  },
+  "prompt": {
+    "system_sha256": "672b1970057a039b0cf910bac6d966032fa345af8a6086ea6602ed52f0f2eee7",
+    "task_id": "saw-doc-002",
+    "task_prompt_sha256": "dba51e734c83d70c9693b7276a091a0986d08d47ad5e9568270ca64d8660e087"
+  },
+  "task_count": 2,
+  "mean_score": 0,
+  "strict_pass_rate": 0,
+  "parse_failure_rows": 0,
+  "error_rate": 0,
+  "tokens": {
+    "prompt": 11951,
+    "completion": 704,
+    "total": 12655
+  },
+  "wall_clock_ms": 44158,
+  "estimated_cost": {
+    "usd": 0.014766999999999999,
+    "inputUsdPerMillion": 1,
+    "outputUsdPerMillion": 4,
+    "basis": "estimated Tinker-equivalent price; Tinker exposes no USD accounting"
+  },
+  "artifacts": {
+    "rows": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/rows/base-synthetic-workflow-shapes-holdout.jsonl",
+    "receipts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/receipts/base-synthetic-workflow-shapes-holdout.jsonl",
+    "transcripts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/transcripts/base-synthetic-workflow-shapes-holdout.jsonl",
+    "prompts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/prompts.json",
+    "prompt_parity": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-synthetic-workflow-shapes-holdout.prompt-parity.json",
+    "sanity_gate": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/sanity-gate.json"
+  }
+}

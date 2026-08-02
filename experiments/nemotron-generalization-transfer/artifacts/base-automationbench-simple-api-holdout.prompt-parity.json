@@ -1,0 +1,56 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "automationbench-simple-api",
+  "split": "holdout",
+  "arm": "base",
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-06",
+      "sha256": "b8591a8377717227be0fa464eb0aa343e6a301580e6a17b80d4a363fef2ed035"
+    },
+    {
+      "task_id": "simple-api-crm-lost-06",
+      "sha256": "180f53c0f8f605d1db21307fa8a8b41a5616a731f0bcf8a2e6b842f517850c90"
+    },
+    {
+      "task_id": "simple-api-crm-owner-06",
+      "sha256": "f8e5a9686f0d53f5f1eb9aed4a5b0402b5ee57baae87a2877b58fb07918d6245"
+    },
+    {
+      "task_id": "simple-api-crm-rename-06",
+      "sha256": "6b93c5b773f11b05b81a5b306416a6fc1ce98b74f0838857183e498f57f7e848"
+    },
+    {
+      "task_id": "simple-api-mail-draft-06",
+      "sha256": "b4422711b84f20a7e00a945a9442701158549f9bd97414f9a8d4fa48a42c321b"
+    },
+    {
+      "task_id": "simple-api-mail-revise-06",
+      "sha256": "b7e76d6e4d0342a5188466c0b988f2451ff9d277e73d01d16660188e24edf253"
+    },
+    {
+      "task_id": "simple-api-mail-discard-06",
+      "sha256": "a637e3284ad0f33c919fdc1a38522931289134a9cfd197e629a8886450004c5b"
+    },
+    {
+      "task_id": "simple-api-mail-send-06",
+      "sha256": "6b65d2f94752cc491dfc06e7d9f06511001dde309adfbbea9030397fa6340c4b"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-06",
+      "sha256": "290edae46c751d4c74b893d964d5c1b6922e43c2cc06d5273ac12dae4eac1ca2"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-06",
+      "sha256": "04d0b62e02a001a54d8fbcf3fa61a79e6b90320b8a1b0e6ded757417b37bffc5"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-06",
+      "sha256": "0c08a30f894c9d2434d0c3e48a067efcdda06b08f051915404d4191ea3da74aa"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-06",
+      "sha256": "d37bd35d089f3fa6f04cf89a2c4e2a3611e1b66587885a5500572b10490299e6"
+    }
+  ]
+}

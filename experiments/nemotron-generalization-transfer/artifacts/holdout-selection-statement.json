@@ -1,0 +1,14 @@
+{
+  "schema_version": "understudy.generalization_holdout_selection_statement.v1",
+  "statement": "The checkpoint and transfer protocol were selected before this sealed holdout pass. The retained PR #402 step-20 checkpoint was selected on its existing dev evaluation, and no holdout result was used for model, prompt, protocol, or scoring choices.",
+  "checkpoint_selection": "pre-existing PR #402 dev selection",
+  "holdout_influenced_any_choice": false,
+  "holdout_runs_authorized": 6,
+  "holdout_runs_completed": 6,
+  "arms": ["base", "tuned"],
+  "groups": [
+    "automationbench-simple-api",
+    "event-categorizer",
+    "synthetic-workflow-shapes"
+  ]
+}
