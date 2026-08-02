@@ -41,6 +41,8 @@ const temperature = Number(argValue("--temperature", "0"));
 // A malformed emission is always rejected (never executed); this only bounds how
 // many consecutive rejections an episode survives before it is abandoned.
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
+const samples = Number(argValue("--samples", "1")) || 1;
+const keepTranscripts = process.argv.includes("--transcripts");
 const maxTokens = Number(argValue("--max-tokens", "512"));
 const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
@@ -126,7 +128,7 @@ async function chat(messages, attempt = 0) {
   };
 }
 
-async function runTask(task) {
+async function runTask(task, sample = 0) {
   const { handle } = reset(task.taskId);
   const messages = [
     { role: "system", content: SYSTEM },
@@ -138,14 +140,18 @@ async function runTask(task) {
   let consecutiveMalformed = 0;
   let ended = "budget";
   let error = null;
+  /** Per-turn record: the prefix the model saw, what it emitted, whether it was rejected. */
+  const transcript = [];
 
   try {
     for (let turn = 0; turn < maxTurns && !handle.done; turn += 1) {
+      const prefix = keepTranscripts ? messages.map((message) => ({ ...message })) : null;
       const reply = await chat(messages);
       promptTokens += reply.promptTokens;
       completionTokens += reply.completionTokens;
       messages.push({ role: "assistant", content: reply.text || "(empty)" });
       const parsed = parseAction(reply.text);
+      if (keepTranscripts) transcript.push({ turn, prefix, emission: reply.text ?? "", rejected: Boolean(parsed.error) });
       if (parsed.finish) {
         ended = "finish";
         break;
@@ -174,6 +180,7 @@ async function runTask(task) {
   const family = task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   return {
     task_id: task.taskId,
+    sample,
     family,
     band: BANDS[family] ?? "unknown",
     tier: task.taskId.startsWith("hard-") ? "hard" : "v1",
@@ -186,6 +193,7 @@ async function runTask(task) {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     error,
+    ...(keepTranscripts ? { transcript } : {}),
   };
 }
 
@@ -193,11 +201,12 @@ async function main() {
   const started = Date.now();
   const rows = [];
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < tasks.length) {
-      const task = tasks[cursor++];
-      rows.push(await runTask(task));
-      process.stderr.write(`\r${rows.length}/${tasks.length} done`);
+  const episodes = tasks.flatMap((task) => Array.from({ length: samples }, (_unused, sample) => ({ task, sample })));
+  const workers = Array.from({ length: Math.min(concurrency, episodes.length) }, async () => {
+    while (cursor < episodes.length) {
+      const { task, sample } = episodes[cursor++];
+      rows.push(await runTask(task, sample));
+      process.stderr.write(`\r${rows.length}/${episodes.length} done`);
     }
   });
   await Promise.all(workers);
@@ -220,6 +229,9 @@ async function main() {
     split_sha256: v2SplitSha256(split),
     pool_size: V2_TASKS.filter((task) => task.split === split).length,
     sampled: tasks.length,
+    samples_per_task: samples,
+    temperature,
+    max_tokens: maxTokens,
     scored: scored.length,
     errors: rows.length - scored.length,
     mean_score: mean(scored.map((row) => row.score)),

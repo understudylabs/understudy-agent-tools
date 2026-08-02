@@ -1,0 +1,24 @@
+{
+  "schema_version": "understudy.dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T02:22:50.682Z",
+  "fixture_id": "domain-identification-offline-v1",
+  "pairs_path": "experiments/domain-identification-repair/outputs/dpo_pairs.jsonl",
+  "manifest_path": "experiments/domain-identification-repair/outputs/dpo_pairs.manifest.json",
+  "pairs_sha256": "0babec62da22760a0ca409f32a11df4f2e5a91b906e93dcd2796c1250a36a744",
+  "manifest_declared_sha256": "0babec62da22760a0ca409f32a11df4f2e5a91b906e93dcd2796c1250a36a744",
+  "lines": 22,
+  "accepted": 22,
+  "rejected": 0,
+  "split_counts": {
+    "train": 22
+  },
+  "band_counts": {
+    "near-match": 4,
+    "parent-join": 4,
+    "abstain": 14
+  },
+  "train_split_sha256": "b358c36f429303d64bb9309a685f78ddfd03bd1602cbf415e8dd1e977ac93017",
+  "holdout_split_sha256": "ec9154535b1105f696b6ff9efd72d8457c14e1ed4ff65be043f68188bc9fac2b",
+  "failures": [],
+  "verdict": "pass"
+}

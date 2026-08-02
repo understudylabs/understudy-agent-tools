@@ -111,15 +111,25 @@
           "minLength": 1,
           "maxLength": 1024
         },
+        "train_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
         "dev_manifest_ref": {
           "type": "string",
           "minLength": 1,
           "maxLength": 1024
+        },
+        "dev_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
         }
       },
       "required": [
         "train_manifest_ref",
-        "dev_manifest_ref"
+        "train_manifest_sha256",
+        "dev_manifest_ref",
+        "dev_manifest_sha256"
       ],
       "additionalProperties": false
     },
