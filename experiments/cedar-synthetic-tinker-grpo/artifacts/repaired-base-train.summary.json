@@ -79,7 +79,7 @@
       "task_id": "workflow-chain-01"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 0.25,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-chain-02"
@@ -157,7 +157,7 @@
       "task_id": "workflow-mail-02"
     },
     {
-      "reward_mean": 1.0,
+      "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-mail-03"
@@ -302,21 +302,21 @@
       "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
     }
   },
-  "label": "sft-selected-train",
+  "label": "repaired-base-train",
   "lora_rank": 32,
-  "mean_model_turns": 8.395833333333334,
-  "mean_reward": 0.06770833333333333,
-  "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
-  "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+  "mean_model_turns": 8.020833333333334,
+  "mean_reward": 0.052083333333333336,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "base",
   "parse_error_rate": 0.041666666666666664,
   "per_band": {
     "discovery": {
       "count": 20,
-      "mean_reward": 0.15
+      "mean_reward": 0.1
     },
     "multi-write": {
       "count": 16,
-      "mean_reward": 0.015625
+      "mean_reward": 0.03125
     },
     "single-write": {
       "count": 12,
@@ -328,9 +328,9 @@
   "row_count": 48,
   "samples_per_task": 1,
   "split": "train",
-  "strict_pass_rate": 0.0625,
+  "strict_pass_rate": 0.041666666666666664,
   "task_count": 48,
   "temperature": 0.0,
-  "total_prompt_tokens": 250011,
-  "total_sampled_tokens": 14926
+  "total_prompt_tokens": 225701,
+  "total_sampled_tokens": 14257
 }

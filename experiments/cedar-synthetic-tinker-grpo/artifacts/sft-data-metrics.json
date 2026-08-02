@@ -1,9 +1,9 @@
 {
   "count": 48,
   "masked_token_lengths": {
-    "max": 234,
-    "mean": 117.875,
-    "median": 94.5,
+    "max": 229,
+    "mean": 118.0,
+    "median": 95.5,
     "min": 65
   },
   "max_length": 4096,
@@ -96,12 +96,12 @@
     ],
     "task_id": "workflow-route-01"
   },
-  "token_count_total": 19861,
+  "token_count_total": 20139,
   "token_lengths": {
-    "max": 702,
-    "mean": 413.7708333333333,
-    "median": 375.5,
+    "max": 708,
+    "mean": 419.5625,
+    "median": 381.0,
     "min": 221
   },
-  "wall_clock_seconds": 2.6125020720000975
+  "wall_clock_seconds": 2.5173926510005913
 }

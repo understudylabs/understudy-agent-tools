@@ -19,7 +19,7 @@
       "task_id": "workflow-analysis-05"
     },
     {
-      "reward_mean": 0.0,
+      "reward_mean": 0.25,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "workflow-chain-05"
@@ -86,12 +86,12 @@
       "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
     }
   },
-  "label": "sft-epoch2-dev",
+  "label": "sft-selected-dev",
   "lora_rank": 32,
-  "mean_model_turns": 9.583333333333334,
-  "mean_reward": 0.08333333333333333,
-  "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch2",
-  "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch2",
+  "mean_model_turns": 8.416666666666666,
+  "mean_reward": 0.10416666666666667,
+  "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+  "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
   "parse_error_rate": 0.0,
   "per_band": {
     "discovery": {
@@ -100,7 +100,7 @@
     },
     "multi-write": {
       "count": 4,
-      "mean_reward": 0.0
+      "mean_reward": 0.0625
     },
     "single-write": {
       "count": 3,
@@ -115,6 +115,6 @@
   "strict_pass_rate": 0.08333333333333333,
   "task_count": 12,
   "temperature": 0.0,
-  "total_prompt_tokens": 77791,
-  "total_sampled_tokens": 4194
+  "total_prompt_tokens": 64143,
+  "total_sampled_tokens": 3760
 }

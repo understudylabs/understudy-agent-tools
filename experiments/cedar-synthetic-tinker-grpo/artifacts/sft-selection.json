@@ -1,0 +1,589 @@
+{
+  "baseline_summary_paths": [
+    "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/baseline-train.summary.json",
+    "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/baseline-dev.summary.json",
+    "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/variance-train-8x8.summary.json"
+  ],
+  "per_epoch_dev": [
+    {
+      "epoch": 1,
+      "mean_reward": 0.08333333333333333,
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
+      "strict_pass_rate": 0.08333333333333333,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch1-dev.summary.json"
+    },
+    {
+      "epoch": 2,
+      "mean_reward": 0.08333333333333333,
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch2",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch2-state",
+      "strict_pass_rate": 0.08333333333333333,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch2-dev.summary.json"
+    },
+    {
+      "epoch": 3,
+      "mean_reward": 0.08333333333333333,
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch3",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch3-state",
+      "strict_pass_rate": 0.08333333333333333,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch3-dev.summary.json"
+    },
+    {
+      "epoch": 4,
+      "mean_reward": 0.08333333333333333,
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch4-state",
+      "strict_pass_rate": 0.08333333333333333,
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/sft-epoch4-dev.summary.json"
+    }
+  ],
+  "selected_dev_summary": {
+    "groups": [
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-action-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-agent-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-analysis-05"
+      },
+      {
+        "reward_mean": 0.25,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-chain-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-document-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-entity-05"
+      },
+      {
+        "reward_mean": 1.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-mail-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-meeting-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-observation-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-partial-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-route-05"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-summary-05"
+      }
+    ],
+    "hashes": {
+      "counts": {
+        "dev": 12,
+        "holdout": 12,
+        "train": 48
+      },
+      "fixture_sha256": "eb1ba85916c7a026928399d448cd1d9f9db7d1f8043b4208690d61c7ced707a7",
+      "split_sha256": {
+        "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+        "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+        "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+      }
+    },
+    "label": "sft-selected-dev",
+    "lora_rank": 32,
+    "mean_model_turns": 8.416666666666666,
+    "mean_reward": 0.10416666666666667,
+    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "parse_error_rate": 0.0,
+    "per_band": {
+      "discovery": {
+        "count": 5,
+        "mean_reward": 0.2
+      },
+      "multi-write": {
+        "count": 4,
+        "mean_reward": 0.0625
+      },
+      "single-write": {
+        "count": 3,
+        "mean_reward": 0.0
+      }
+    },
+    "renderer": "nemotron3_disable_thinking",
+    "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+    "row_count": 12,
+    "samples_per_task": 1,
+    "split": "dev",
+    "strict_pass_rate": 0.08333333333333333,
+    "task_count": 12,
+    "temperature": 0.0,
+    "total_prompt_tokens": 64143,
+    "total_sampled_tokens": 3760
+  },
+  "selected_epoch": 1,
+  "selected_sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+  "selected_state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
+  "selected_train_summary": {
+    "groups": [
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-action-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-action-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-action-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-action-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-agent-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-agent-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-agent-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-agent-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-analysis-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-analysis-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-analysis-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-analysis-04"
+      },
+      {
+        "reward_mean": 0.25,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-chain-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-chain-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-chain-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-chain-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-document-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-document-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-document-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-document-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-entity-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-entity-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-entity-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-entity-04"
+      },
+      {
+        "reward_mean": 1.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-mail-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-mail-02"
+      },
+      {
+        "reward_mean": 1.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-mail-03"
+      },
+      {
+        "reward_mean": 1.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-mail-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-meeting-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-meeting-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-meeting-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-meeting-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-observation-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-observation-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-observation-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-observation-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-partial-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-partial-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-partial-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-partial-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-route-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-route-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-route-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-route-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-summary-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-summary-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-summary-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 1,
+        "task_id": "workflow-summary-04"
+      }
+    ],
+    "hashes": {
+      "counts": {
+        "dev": 12,
+        "holdout": 12,
+        "train": 48
+      },
+      "fixture_sha256": "eb1ba85916c7a026928399d448cd1d9f9db7d1f8043b4208690d61c7ced707a7",
+      "split_sha256": {
+        "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+        "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+        "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+      }
+    },
+    "label": "sft-selected-train",
+    "lora_rank": 32,
+    "mean_model_turns": 8.395833333333334,
+    "mean_reward": 0.06770833333333333,
+    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "parse_error_rate": 0.041666666666666664,
+    "per_band": {
+      "discovery": {
+        "count": 20,
+        "mean_reward": 0.15
+      },
+      "multi-write": {
+        "count": 16,
+        "mean_reward": 0.015625
+      },
+      "single-write": {
+        "count": 12,
+        "mean_reward": 0.0
+      }
+    },
+    "renderer": "nemotron3_disable_thinking",
+    "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+    "row_count": 48,
+    "samples_per_task": 1,
+    "split": "train",
+    "strict_pass_rate": 0.0625,
+    "task_count": 48,
+    "temperature": 0.0,
+    "total_prompt_tokens": 250011,
+    "total_sampled_tokens": 14926
+  },
+  "selected_variance_summary": {
+    "groups": [
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-meeting-01"
+      },
+      {
+        "reward_mean": 0.125,
+        "reward_std": 0.33071891388307384,
+        "samples": 8,
+        "task_id": "workflow-meeting-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-meeting-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-meeting-04"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-route-01"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-route-02"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-route-03"
+      },
+      {
+        "reward_mean": 0.0,
+        "reward_std": 0.0,
+        "samples": 8,
+        "task_id": "workflow-route-04"
+      }
+    ],
+    "hashes": {
+      "counts": {
+        "dev": 12,
+        "holdout": 12,
+        "train": 48
+      },
+      "fixture_sha256": "eb1ba85916c7a026928399d448cd1d9f9db7d1f8043b4208690d61c7ced707a7",
+      "split_sha256": {
+        "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+        "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+        "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+      }
+    },
+    "label": "sft-selected-variance-train-8x8",
+    "lora_rank": 32,
+    "mean_model_turns": 6.09375,
+    "mean_reward": 0.015625,
+    "model": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "model_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+    "parse_error_rate": 0.03125,
+    "per_band": {
+      "discovery": {
+        "count": 64,
+        "mean_reward": 0.015625
+      }
+    },
+    "renderer": "nemotron3_disable_thinking",
+    "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+    "row_count": 64,
+    "samples_per_task": 8,
+    "split": "train",
+    "strict_pass_rate": 0.015625,
+    "task_count": 8,
+    "temperature": 1.0,
+    "total_prompt_tokens": 227757,
+    "total_sampled_tokens": 14566
+  },
+  "selection_rationale": "Select the highest dev reward with earliest-epoch tie-break; every epoch now has a resumable state so GRPO starts from the same dev-selected checkpoint as the reported SFT arm."
+}

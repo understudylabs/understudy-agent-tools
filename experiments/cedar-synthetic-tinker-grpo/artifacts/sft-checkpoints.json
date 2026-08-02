@@ -2,21 +2,24 @@
   "checkpoints": [
     {
       "epoch": 1,
-      "sampler_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/sampler_weights/sft-epoch1"
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch1",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state"
     },
     {
       "epoch": 2,
-      "sampler_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/sampler_weights/sft-epoch2"
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch2",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch2-state"
     },
     {
       "epoch": 3,
-      "sampler_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/sampler_weights/sft-epoch3"
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch3",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch3-state"
     },
     {
       "epoch": 4,
-      "sampler_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/sampler_weights/sft-epoch4",
-      "state_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/weights/sft-epoch4-state"
+      "sampler_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch4-state"
     }
   ],
-  "last_state_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/weights/sft-epoch4-state"
+  "last_state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch4-state"
 }
