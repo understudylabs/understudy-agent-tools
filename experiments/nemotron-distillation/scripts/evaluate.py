@@ -6,14 +6,17 @@ import argparse
 import asyncio
 import json
 import statistics
+import time
 from pathlib import Path
 from typing import Any
 
 import tinker
 from env_client import close_service, get_service
+from events import emit_event
 from models import MODEL_SPECS, get_model_spec
 from receipts import snapshot_usage_async, write_receipt
 from rollout import RolloutConfig, rollout_task
+from step_runtime import record_completed, replay_or_start, synchronous_job_ref
 from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
@@ -34,6 +37,11 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--frozen-holdout-sha256")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--one-per-band", action="store_true")
+    parser.add_argument("--passes", type=int, default=1)
+    parser.add_argument("--warmup-rollouts", type=int, default=0)
+    parser.add_argument("--experiment-id", default="P3-nemotron-distillation")
+    parser.add_argument("--candidate-id")
+    parser.add_argument("--attempt", type=int, default=1)
     return parser.parse_args()
 
 
@@ -69,10 +77,17 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("--samples must be positive")
     if args.concurrency < 1:
         raise SystemExit("--concurrency must be positive")
+    if args.passes < 1 or args.warmup_rollouts < 0:
+        raise SystemExit("--passes must be positive and warmup-rollouts non-negative")
     if args.split == "holdout":
         raise SystemExit(
             "evaluate.py refuses --split holdout; use sealed_holdout.py for one paired pass"
         )
+    candidate_id = args.candidate_id or args.model
+    key, replay = replay_or_start(args.experiment_id, candidate_id, args.attempt)
+    if replay is not None:
+        print(json.dumps(replay, indent=2))
+        return replay
 
     spec = get_model_spec(args.model, args.adapter_path)
     service = get_service(args.service_repo)
@@ -92,10 +107,21 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     rest_client = service_client.create_rest_client()
     receipt_path = Path(args.out).with_suffix(".usage.json")
     usage_before = await snapshot_usage_async(rest_client)
+    client_started = time.perf_counter()
     if spec.model_path is None:
         sampling_client = await service_client.create_sampling_client_async(base_model=spec.base_model)
     else:
         sampling_client = await service_client.create_sampling_client_async(model_path=spec.model_path)
+    client_creation_seconds = time.perf_counter() - client_started
+    emit_event(
+        "candidate",
+        "submitted",
+        experiment_id=args.experiment_id,
+        candidate_id=candidate_id,
+        attempt=args.attempt,
+        model=args.model,
+        client_creation_seconds=client_creation_seconds,
+    )
 
     semaphore = asyncio.Semaphore(args.concurrency)
 
@@ -116,12 +142,23 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             result["sample_index"] = sample_index
             return result
 
-    jobs = [
-        asyncio.create_task(one(task, sample_index))
-        for task in tasks
-        for sample_index in range(args.samples)
-    ]
-    records = await asyncio.gather(*jobs)
+    warmup_records: list[dict[str, Any]] = []
+    for warmup_index in range(args.warmup_rollouts):
+        warmup_task = tasks[warmup_index % len(tasks)]
+        warmup_records.append(await one(warmup_task, warmup_index))
+    records: list[dict[str, Any]] = []
+    pass_records: list[list[dict[str, Any]]] = []
+    for pass_index in range(args.passes):
+        jobs = [
+            asyncio.create_task(one(task, sample_index))
+            for task in tasks
+            for sample_index in range(args.samples)
+        ]
+        current = await asyncio.gather(*jobs)
+        for record in current:
+            record["pass_index"] = pass_index + 1
+        pass_records.append(current)
+        records.extend(current)
 
     model_label = spec.name
     split_sha = hashes["split_sha256"][args.split]
@@ -153,6 +190,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 "family": record["family"],
                 "band": record["band"],
                 "sample_index": record["sample_index"],
+                "pass_index": record["pass_index"],
                 "model_turns": record["model_turns"],
                 "env_steps": record["env_steps"],
                 "forbidden_effects": record["forbidden_effects"],
@@ -184,6 +222,12 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "temperature": args.temperature,
         "samples_per_task": args.samples,
+        "passes": args.passes,
+        "warmup_rollouts": args.warmup_rollouts,
+        "client_creation_seconds": client_creation_seconds,
+        "warmup_latency_seconds": [
+            record["sampling_latency_seconds_total"] for record in warmup_records
+        ],
         "task_count": len(tasks),
         "row_count": len(rows),
         "mean_reward": statistics.fmean(record["reward"] for record in records) if records else 0.0,
@@ -217,6 +261,44 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "groups": _group_stats(records),
         "hashes": hashes,
     }
+    all_turn_latencies = [
+        latency
+        for record in records
+        for latency in record["sampling_latencies_seconds"]
+    ]
+    summary["per_turn_latency_distribution_seconds"] = {
+        "count": len(all_turn_latencies),
+        "mean": statistics.fmean(all_turn_latencies) if all_turn_latencies else 0.0,
+        "p50": statistics.median(all_turn_latencies) if all_turn_latencies else 0.0,
+        "p90": (
+            statistics.quantiles(all_turn_latencies, n=10, method="inclusive")[8]
+            if len(all_turn_latencies) > 1
+            else (all_turn_latencies[0] if all_turn_latencies else 0.0)
+        ),
+    }
+    summary["per_pass"] = [
+        {
+            "pass_index": index + 1,
+            "mean_reward": statistics.fmean(row["reward"] for row in current),
+            "strict_pass_rate": sum(row["reward"] == 1.0 for row in current)
+            / len(current),
+            "mean_per_task_sampling_latency_seconds": statistics.fmean(
+                row["sampling_latency_seconds_total"] for row in current
+            ),
+        }
+        for index, current in enumerate(pass_records)
+    ]
+    by_task_pass_rewards: dict[str, list[float]] = {}
+    for record in records:
+        by_task_pass_rewards.setdefault(record["task_id"], []).append(record["reward"])
+    summary["reward_nondeterminism"] = {
+        "observed": any(len(set(rewards)) > 1 for rewards in by_task_pass_rewards.values()),
+        "tasks_with_multiple_rewards": {
+            task_id: rewards
+            for task_id, rewards in by_task_pass_rewards.items()
+            if len(set(rewards)) > 1
+        },
+    }
     output = Path(args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
@@ -227,7 +309,49 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     usage_after = await snapshot_usage_async(rest_client)
     write_receipt(rest_client, receipt_path, args.label, usage_before, usage_after)
-    print(json.dumps({"out": str(output), "summary": str(summary_path), "rows": len(rows)}, indent=2))
+    result = {
+        "out": str(output),
+        "summary": str(summary_path),
+        "rows": len(rows),
+        "job_ref": synchronous_job_ref(key),
+    }
+    record_completed(key, args.experiment_id, candidate_id, args.attempt, result)
+    for record in records:
+        emit_event(
+            "rollout",
+            "terminal",
+            experiment_id=args.experiment_id,
+            candidate_id=candidate_id,
+            attempt=args.attempt,
+            task_id=record["task_id"],
+            split=record["split"],
+            pass_index=record["pass_index"],
+            reward=record["reward"],
+            model_turns=record["model_turns"],
+            parse_error_count=len(record["parse_errors"]),
+        )
+    emit_event(
+        "score",
+        "snapshot",
+        experiment_id=args.experiment_id,
+        candidate_id=candidate_id,
+        attempt=args.attempt,
+        split=args.split,
+        mean_reward=summary["mean_reward"],
+        passes=args.passes,
+        row_count=len(rows),
+    )
+    emit_event(
+        "usage",
+        "reconciled",
+        experiment_id=args.experiment_id,
+        candidate_id=candidate_id,
+        attempt=args.attempt,
+        prompt_tokens=summary["total_prompt_tokens"],
+        sampled_tokens=summary["total_sampled_tokens"],
+        cost_usd=None,
+    )
+    print(json.dumps(result, indent=2))
     return summary
 
 

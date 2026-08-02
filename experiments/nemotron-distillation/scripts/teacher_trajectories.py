@@ -11,9 +11,11 @@ from typing import Any
 
 import tinker
 from env_client import close_service, get_service
+from events import emit_event
 from models import get_model_spec
 from receipts import snapshot_usage_async, write_receipt
 from rollout import RolloutConfig, parse_agent_action, rollout_task
+from step_runtime import record_completed, replay_or_start, synchronous_job_ref
 from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
@@ -29,6 +31,9 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--k", type=int, default=4)
     parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument("--experiment-id", default="P3-nemotron-distillation")
+    parser.add_argument("--candidate-id", default="teacher-trajectories")
+    parser.add_argument("--attempt", type=int, default=1)
     return parser.parse_args()
 
 
@@ -64,6 +69,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("--k must be positive")
     if args.concurrency < 1 or args.concurrency > 8:
         raise SystemExit("--concurrency must be between 1 and 8")
+    key, replay = replay_or_start(args.experiment_id, args.candidate_id, args.attempt)
+    if replay is not None:
+        print(json.dumps(replay, indent=2))
+        return replay
 
     started = time.perf_counter()
     service = get_service(args.service_repo)
@@ -83,6 +92,15 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     service_client = tinker.ServiceClient()
     rest_client = service_client.create_rest_client()
     usage_before = await snapshot_usage_async(rest_client)
+    emit_event(
+        "run",
+        "phase_started",
+        experiment_id=args.experiment_id,
+        candidate_id=args.candidate_id,
+        attempt=args.attempt,
+        phase="teacher-trajectories",
+        split="train",
+    )
     sampling_client = await service_client.create_sampling_client_async(model_path=spec.model_path)
     semaphore = asyncio.Semaphore(args.concurrency)
 
@@ -217,6 +235,47 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     summary_path = output.with_suffix(".summary.json")
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps({"out": str(output), "summary": str(summary_path), "kept": len(kept)}))
+    result = {
+        "out": str(output),
+        "summary": str(summary_path),
+        "kept": len(kept),
+        "job_ref": synchronous_job_ref(key),
+    }
+    record_completed(key, args.experiment_id, args.candidate_id, args.attempt, result)
+    for candidate in candidates:
+        emit_event(
+            "rollout",
+            "terminal",
+            experiment_id=args.experiment_id,
+            candidate_id=args.candidate_id,
+            attempt=args.attempt,
+            task_id=candidate["task_id"],
+            split=candidate["split"],
+            reward=candidate["reward"],
+            model_turns=candidate["model_turns"],
+            parse_error_count=len(candidate["parse_errors"]),
+        )
+    emit_event(
+        "score",
+        "snapshot",
+        experiment_id=args.experiment_id,
+        candidate_id=args.candidate_id,
+        attempt=args.attempt,
+        split="train",
+        accepted_count=len(kept),
+        candidate_count=len(candidates),
+        zero_accepted_count=len(summary["tasks_with_zero_accepted"]),
+    )
+    emit_event(
+        "usage",
+        "reconciled",
+        experiment_id=args.experiment_id,
+        candidate_id=args.candidate_id,
+        attempt=args.attempt,
+        prompt_tokens=summary["total_prompt_tokens"],
+        sampled_tokens=summary["total_sampled_tokens"],
+        cost_usd=None,
+    )
     return summary
 
 

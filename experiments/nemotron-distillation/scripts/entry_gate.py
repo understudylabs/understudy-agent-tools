@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 
 from env_client import EnvService, EnvServiceError
+from events import emit_event
+from step_runtime import record_completed, replay_or_start, synchronous_job_ref
 
 SERVICE_REPO_DEFAULT = "/home/ubuntu/wt-402"
 FIXTURE_SHA256 = "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f"
@@ -23,6 +25,9 @@ def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--service-repo", default=SERVICE_REPO_DEFAULT)
     parser.add_argument("--out", default=str(ARTIFACT))
+    parser.add_argument("--experiment-id", default="P3-nemotron-distillation")
+    parser.add_argument("--candidate-id", default="entry-gate")
+    parser.add_argument("--attempt", type=int, default=1)
     return parser.parse_args()
 
 
@@ -48,6 +53,10 @@ console.log(JSON.stringify(rows));
 
 def main() -> None:
     args = _args()
+    key, replay = replay_or_start(args.experiment_id, args.candidate_id, args.attempt)
+    if replay is not None:
+        print(json.dumps(replay, indent=2))
+        return
     service = EnvService(args.service_repo).start()
     try:
         hashes = service.hashes()
@@ -140,6 +149,33 @@ def main() -> None:
         output = Path(args.out)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+        replay_result = {
+            "out": str(output),
+            "status": result["status"],
+            "score": result["score"],
+            "job_ref": synchronous_job_ref(key),
+        }
+        record_completed(
+            key, args.experiment_id, args.candidate_id, args.attempt, replay_result
+        )
+        emit_event(
+            "run",
+            "phase_completed",
+            experiment_id=args.experiment_id,
+            candidate_id=args.candidate_id,
+            attempt=args.attempt,
+            phase="entry-gate",
+            status=result["status"],
+        )
+        emit_event(
+            "score",
+            "snapshot",
+            experiment_id=args.experiment_id,
+            candidate_id=args.candidate_id,
+            attempt=args.attempt,
+            phase="entry-gate",
+            score=result["score"],
+        )
         print(json.dumps(result, indent=2))
         if result["status"] != "ok":
             raise SystemExit(1)

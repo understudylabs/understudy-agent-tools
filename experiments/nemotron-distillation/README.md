@@ -75,3 +75,58 @@ uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
 `artifacts/holdout-lock.json` is created atomically by
 `sealed_holdout.py`, recording the declared model set and tolerance-file
 hash. It must not exist before the candidate set is frozen.
+
+## Warm-start latency protocol
+
+The repeated dev latency command uses one sampling client per model, one
+discarded full rollout warm-up, and three timed passes over all 12 dev tasks:
+
+```text
+uv run --no-project --python 3.12 --with tinker --with tinker-cookbook \
+  python scripts/evaluate.py --service-repo /home/ubuntu/wt-402 \
+  --split dev --model teacher --temperature 0 --passes 3 \
+  --warmup-rollouts 1 --out artifacts/teacher-dev-warm.jsonl
+```
+
+The same command is used for `student-base` and `student-sft` (with
+`--adapter-path` for the selected SFT checkpoint). Warm-up latency and client
+creation time are excluded from timed rollout distributions and recorded
+separately. `build_dev_artifacts.py` writes the warm-start and preserved
+cold-start sections of `artifacts/latency-cost-delta.json`.
+
+## Workflow contract layer
+
+The arm is a thin contract layer over the existing phase scripts, not a second
+durable controller. `scripts/step_runtime.py` stores a local file-keyed
+`artifacts/step-ledger.json`; every phase accepts:
+
+```text
+--experiment-id <id> --candidate-id <id> --attempt <integer>
+```
+
+Completed keys return their prior artifact reference immediately and do not
+start another provider operation. The manifest is built and verified with:
+
+```text
+python scripts/build_manifest.py
+python scripts/build_manifest.py --verify
+```
+
+The Tinker executor contract is exposed as:
+
+```text
+python scripts/executor_tinker.py submit \
+  --experiment-id <id> --candidate-id <id> --attempt <n> \
+  --operation <operation> --artifact-ref <ref>
+python scripts/executor_tinker.py inspect --job-ref <ref>
+python scripts/executor_tinker.py cancel --job-ref <ref>
+python scripts/executor_tinker.py reconcile_usage --job-ref <ref> [--receipt <path>]
+```
+
+Tinker is executor-only. The Workflow 4.6.0 reference executor union is
+`'modal' | 'wafer' | 'fireworks' | 'spark'` and does not include Tinker; the
+required spec amendment is flagged in `artifact-manifest.json`. The Tinker SDK
+calls used here are blocking and expose no asynchronous job handle, so the
+executor reports synchronous terminal receipts rather than pretending to
+submit an asynchronous job. `artifacts/events.jsonl` contains small redacted
+run, candidate, rollout, score, usage, and error events; it has no consumer.

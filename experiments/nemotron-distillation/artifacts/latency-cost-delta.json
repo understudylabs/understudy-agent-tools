@@ -1,28 +1,107 @@
 {
-  "comparison": {
-    "mean_model_turns": {
-      "student": 3.3333333333333335,
-      "teacher": 3.3333333333333335
+  "cold_start": {
+    "note": "The cold-start gap was an adapter-attach/first-request artifact, not steady-state serving cost.",
+    "selected_student": {
+      "base_model": "Qwen/Qwen3.5-9B",
+      "label": "student-sft-epoch1",
+      "mean_model_turns": 3.3333333333333335,
+      "mean_per_task_sampling_latency_seconds": 10.35953392983339,
+      "mean_per_turn_sampling_latency_seconds": 3.107860178950017,
+      "mean_prompt_plus_sampled_tokens": 1404.8333333333333,
+      "mean_reward": 1.0,
+      "model": "student-sft",
+      "model_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+      "p50_per_turn_sampling_latency_seconds": 2.394379056499929,
+      "parse_error_rate": 0.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "receipt_path": "artifacts/student-sft-epoch1-dev.usage.json",
+      "renderer": "qwen3_5_disable_thinking",
+      "serving_contract": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+        "base_model": "Qwen/Qwen3.5-9B",
+        "lora_rank": 32,
+        "model_spec": "student-sft",
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "qwen3_5_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          248046
+        ]
+      },
+      "strict_pass_rate": 1.0,
+      "summary_path": "artifacts/student-sft-epoch1-dev.summary.json",
+      "total_prompt_tokens": 16019,
+      "total_sampled_tokens": 839
     },
-    "mean_per_task_sampling_latency_seconds": {
-      "student": 10.35953392983339,
-      "teacher": 12.490433803416673
-    },
-    "mean_per_turn_sampling_latency_seconds": {
-      "student": 3.107860178950017,
-      "teacher": 3.747130141025002
-    },
-    "mean_prompt_plus_sampled_tokens": {
-      "student": 1404.8333333333333,
-      "teacher": 1459.1666666666667
-    },
-    "p50_per_turn_sampling_latency_seconds": {
-      "student": 2.394379056499929,
-      "teacher": 3.444125508999946
-    },
-    "parse_error_rate": {
-      "student": 0.0,
-      "teacher": 0.0
+    "teacher": {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "label": "teacher",
+      "mean_model_turns": 3.3333333333333335,
+      "mean_per_task_sampling_latency_seconds": 12.490433803416673,
+      "mean_per_turn_sampling_latency_seconds": 3.747130141025002,
+      "mean_prompt_plus_sampled_tokens": 1459.1666666666667,
+      "mean_reward": 1.0,
+      "model": "teacher",
+      "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "p50_per_turn_sampling_latency_seconds": 3.444125508999946,
+      "parse_error_rate": 0.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "receipt_path": "artifacts/teacher-dev.usage.json",
+      "renderer": "nemotron3_disable_thinking",
+      "serving_contract": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "lora_rank": 32,
+        "model_spec": "teacher",
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "nemotron3_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          11
+        ]
+      },
+      "strict_pass_rate": 1.0,
+      "summary_path": "artifacts/teacher-dev.summary.json",
+      "total_prompt_tokens": 16606,
+      "total_sampled_tokens": 904
     }
   },
   "cost": {
@@ -38,111 +117,615 @@
   },
   "model_size_caveat": "Teacher is a 30B-A3B MoE with approximately 3B active parameters; student is a dense 9B. A latency or cost win is not automatic.",
   "receipts": {
-    "student": "artifacts/student-sft-epoch1-dev.usage.json",
-    "teacher": "artifacts/teacher-dev.usage.json"
+    "student": "artifacts/student-sft-epoch1-dev-warm.usage.json",
+    "teacher": "artifacts/teacher-dev-warm.usage.json"
   },
   "schema_version": "understudy.latency_cost_delta.v1",
-  "selected_student": {
-    "base_model": "Qwen/Qwen3.5-9B",
-    "label": "student-sft-epoch1",
-    "mean_model_turns": 3.3333333333333335,
-    "mean_per_task_sampling_latency_seconds": 10.35953392983339,
-    "mean_per_turn_sampling_latency_seconds": 3.107860178950017,
-    "mean_prompt_plus_sampled_tokens": 1404.8333333333333,
-    "mean_reward": 1.0,
-    "model": "student-sft",
-    "model_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
-    "p50_per_turn_sampling_latency_seconds": 2.394379056499929,
-    "parse_error_rate": 0.0,
-    "per_band": {
-      "discovery": {
-        "count": 4,
-        "mean_reward": 1.0
-      },
-      "multi-write": {
-        "count": 4,
-        "mean_reward": 1.0
-      },
-      "single-write": {
-        "count": 4,
-        "mean_reward": 1.0
-      }
-    },
-    "receipt_path": "artifacts/student-sft-epoch1-dev.usage.json",
-    "renderer": "qwen3_5_disable_thinking",
-    "serving_contract": {
-      "action_parser_id": "automationbench.parse_agent_action.v1",
-      "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
-      "base_model": "Qwen/Qwen3.5-9B",
-      "lora_rank": 32,
-      "model_spec": "student-sft",
-      "prompt_variant": "nemotron-v1",
-      "renderer_name": "qwen3_5_disable_thinking",
-      "sampling_params": {
-        "max_tokens": 192,
-        "num_samples": 1,
-        "temperature": 0.0,
-        "top_p": 1.0
-      },
-      "stop_sequences": [
-        248046
-      ]
-    },
-    "strict_pass_rate": 1.0,
-    "summary_path": "artifacts/student-sft-epoch1-dev.summary.json",
-    "total_prompt_tokens": 16019,
-    "total_sampled_tokens": 839
-  },
   "split": "dev",
-  "teacher": {
-    "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-    "label": "teacher",
-    "mean_model_turns": 3.3333333333333335,
-    "mean_per_task_sampling_latency_seconds": 12.490433803416673,
-    "mean_per_turn_sampling_latency_seconds": 3.747130141025002,
-    "mean_prompt_plus_sampled_tokens": 1459.1666666666667,
-    "mean_reward": 1.0,
-    "model": "teacher",
-    "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
-    "p50_per_turn_sampling_latency_seconds": 3.444125508999946,
-    "parse_error_rate": 0.0,
-    "per_band": {
-      "discovery": {
-        "count": 4,
-        "mean_reward": 1.0
+  "warm_start": {
+    "comparison": {
+      "mean_model_turns": {
+        "student": 3.3333333333333335,
+        "teacher": 3.361111111111111
       },
-      "multi-write": {
-        "count": 4,
-        "mean_reward": 1.0
+      "mean_per_task_sampling_latency_seconds": {
+        "student": 5.435351025083315,
+        "teacher": 7.534979762111068
       },
-      "single-write": {
-        "count": 4,
-        "mean_reward": 1.0
+      "mean_per_turn_sampling_latency_seconds": {
+        "student": 1.6306053075249944,
+        "teacher": 2.2418121606280867
+      },
+      "mean_prompt_plus_sampled_tokens": {
+        "student": 1404.8333333333333,
+        "teacher": 1478.388888888889
+      },
+      "p50_per_turn_sampling_latency_seconds": {
+        "student": 1.469731611000043,
+        "teacher": 2.0930324889998246
+      },
+      "p90_per_turn_sampling_latency_seconds": {
+        "student": 2.7348160095998764,
+        "teacher": 3.2519481619999624
+      },
+      "parse_error_rate": {
+        "student": 0.0,
+        "teacher": 0.0
       }
     },
-    "receipt_path": "artifacts/teacher-dev.usage.json",
-    "renderer": "nemotron3_disable_thinking",
-    "serving_contract": {
-      "action_parser_id": "automationbench.parse_agent_action.v1",
-      "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
-      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-      "lora_rank": 32,
-      "model_spec": "teacher",
-      "prompt_variant": "nemotron-v1",
-      "renderer_name": "nemotron3_disable_thinking",
-      "sampling_params": {
-        "max_tokens": 192,
-        "num_samples": 1,
-        "temperature": 0.0,
-        "top_p": 1.0
-      },
-      "stop_sequences": [
-        11
-      ]
+    "protocol": {
+      "tasks_per_pass": 12,
+      "temperature": 0.0,
+      "timed_passes": 3,
+      "warmup_rollouts_per_sampling_client": 1,
+      "warmup_timings_excluded": true
     },
-    "strict_pass_rate": 1.0,
-    "summary_path": "artifacts/teacher-dev.summary.json",
-    "total_prompt_tokens": 16606,
-    "total_sampled_tokens": 904
+    "selected_student": {
+      "across_pass_variance": {
+        "mean_per_task_sampling_latency_seconds": 0.7189254920459759,
+        "mean_per_turn_sampling_latency_seconds": 0.0647032942841378
+      },
+      "base_model": "Qwen/Qwen3.5-9B",
+      "client_creation_seconds": 0.5921068869999999,
+      "groups": [
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-bulk-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-close-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-disambiguate-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-lost-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-mail-churn-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-rename-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-discard-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-draft-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-revise-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-and-close-05"
+        }
+      ],
+      "hashes": {
+        "counts": {
+          "dev": 12,
+          "holdout": 12,
+          "train": 48
+        },
+        "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": {
+          "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+          "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+        }
+      },
+      "label": "student-sft-epoch1",
+      "lora_rank": 32,
+      "mean_model_turns": 3.3333333333333335,
+      "mean_per_task_sampling_latency_seconds": 5.435351025083315,
+      "mean_per_turn_sampling_latency_seconds": 1.6306053075249944,
+      "mean_prompt_plus_sampled_tokens": 1404.8333333333333,
+      "mean_reward": 1.0,
+      "model": "student-sft",
+      "model_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+      "p50_per_turn_sampling_latency_seconds": 1.469731611000043,
+      "parse_error_rate": 0.0,
+      "passes": 3,
+      "per_band": {
+        "discovery": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        }
+      },
+      "per_pass": [
+        {
+          "mean_per_task_sampling_latency_seconds": 6.457494414999947,
+          "mean_per_turn_sampling_latency_seconds": 1.937248324499984,
+          "mean_reward": 1.0,
+          "pass_index": 1,
+          "stddev_per_task_sampling_latency_seconds": 2.6268450339433382,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 5.467239186750021,
+          "mean_per_turn_sampling_latency_seconds": 1.6401717560250062,
+          "mean_reward": 1.0,
+          "pass_index": 2,
+          "stddev_per_task_sampling_latency_seconds": 1.2873612157566585,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 4.381319473499976,
+          "mean_per_turn_sampling_latency_seconds": 1.3143958420499928,
+          "mean_reward": 1.0,
+          "pass_index": 3,
+          "stddev_per_task_sampling_latency_seconds": 0.9812976116569054,
+          "strict_pass_rate": 1.0
+        }
+      ],
+      "per_turn_latency_distribution_seconds": {
+        "count": 120,
+        "mean": 1.6306053075249944,
+        "p50": 1.469731611000043,
+        "p90": 2.7348160095998764
+      },
+      "prompt_variant": "nemotron-v1",
+      "renderer": "qwen3_5_disable_thinking",
+      "reward_nondeterminism": {
+        "observed": false,
+        "tasks_with_multiple_rewards": {}
+      },
+      "row_count": 36,
+      "samples_per_task": 1,
+      "serving_contract": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+        "base_model": "Qwen/Qwen3.5-9B",
+        "lora_rank": 32,
+        "model_spec": "student-sft",
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "qwen3_5_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          248046
+        ]
+      },
+      "split": "dev",
+      "strict_pass_rate": 1.0,
+      "task_count": 12,
+      "temperature": 0.0,
+      "total_prompt_tokens": 48057,
+      "total_sampled_tokens": 2517,
+      "warmup_latency_seconds": [
+        8.869228953000174
+      ],
+      "warmup_rollouts": 1
+    },
+    "student_base": {
+      "across_pass_variance": {
+        "mean_per_task_sampling_latency_seconds": 0.0031554780996736072,
+        "mean_per_turn_sampling_latency_seconds": 0.00016176178225453967
+      },
+      "base_model": "Qwen/Qwen3.5-9B",
+      "client_creation_seconds": 0.5426442989999032,
+      "groups": [
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-bulk-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-close-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-disambiguate-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-lost-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-mail-churn-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-rename-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-discard-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-draft-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-revise-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-and-close-05"
+        }
+      ],
+      "hashes": {
+        "counts": {
+          "dev": 12,
+          "holdout": 12,
+          "train": 48
+        },
+        "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": {
+          "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+          "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+        }
+      },
+      "label": "student-base",
+      "lora_rank": 32,
+      "mean_model_turns": 4.416666666666667,
+      "mean_per_task_sampling_latency_seconds": 5.324492961972232,
+      "mean_per_turn_sampling_latency_seconds": 1.2055455762955998,
+      "mean_prompt_plus_sampled_tokens": 2274.8333333333335,
+      "mean_reward": 1.0,
+      "model": "student-base",
+      "model_path": null,
+      "p50_per_turn_sampling_latency_seconds": 1.2602122010000585,
+      "parse_error_rate": 0.16666666666666666,
+      "passes": 3,
+      "per_band": {
+        "discovery": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        }
+      },
+      "per_pass": [
+        {
+          "mean_per_task_sampling_latency_seconds": 5.251803021083314,
+          "mean_per_turn_sampling_latency_seconds": 1.1890874764716937,
+          "mean_reward": 1.0,
+          "pass_index": 1,
+          "stddev_per_task_sampling_latency_seconds": 1.276178351159881,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 5.333082815416674,
+          "mean_per_turn_sampling_latency_seconds": 1.2074904487735865,
+          "mean_reward": 1.0,
+          "pass_index": 2,
+          "stddev_per_task_sampling_latency_seconds": 0.9977424668744762,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 5.388593049416708,
+          "mean_per_turn_sampling_latency_seconds": 1.2200588036415188,
+          "mean_reward": 1.0,
+          "pass_index": 3,
+          "stddev_per_task_sampling_latency_seconds": 1.4964614818844455,
+          "strict_pass_rate": 1.0
+        }
+      ],
+      "per_turn_latency_distribution_seconds": {
+        "count": 159,
+        "mean": 1.2055455762955998,
+        "p50": 1.2602122010000585,
+        "p90": 1.6593563994000307
+      },
+      "prompt_variant": "nemotron-v1",
+      "renderer": "qwen3_5_disable_thinking",
+      "reward_nondeterminism": {
+        "observed": false,
+        "tasks_with_multiple_rewards": {}
+      },
+      "row_count": 36,
+      "samples_per_task": 1,
+      "serving_contract": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": null,
+        "base_model": "Qwen/Qwen3.5-9B",
+        "lora_rank": 32,
+        "model_spec": "student-base",
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "qwen3_5_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          248046
+        ]
+      },
+      "split": "dev",
+      "strict_pass_rate": 1.0,
+      "task_count": 12,
+      "temperature": 0.0,
+      "total_prompt_tokens": 78393,
+      "total_sampled_tokens": 3501,
+      "warmup_latency_seconds": [
+        4.972757248999869
+      ],
+      "warmup_rollouts": 1
+    },
+    "teacher": {
+      "across_pass_variance": {
+        "mean_per_task_sampling_latency_seconds": 0.1871565210414735,
+        "mean_per_turn_sampling_latency_seconds": 0.022467030965456936
+      },
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "client_creation_seconds": 0.6299703650001902,
+      "groups": [
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-bulk-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-close-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-disambiguate-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-lost-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-mail-churn-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-owner-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-crm-rename-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-discard-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-draft-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-revise-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-05"
+        },
+        {
+          "reward_mean": 1.0,
+          "reward_std": 0.0,
+          "samples": 3,
+          "task_id": "simple-api-mail-send-and-close-05"
+        }
+      ],
+      "hashes": {
+        "counts": {
+          "dev": 12,
+          "holdout": 12,
+          "train": 48
+        },
+        "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": {
+          "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+          "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+        }
+      },
+      "label": "teacher",
+      "lora_rank": 32,
+      "mean_model_turns": 3.361111111111111,
+      "mean_per_task_sampling_latency_seconds": 7.534979762111068,
+      "mean_per_turn_sampling_latency_seconds": 2.2418121606280867,
+      "mean_prompt_plus_sampled_tokens": 1478.388888888889,
+      "mean_reward": 1.0,
+      "model": "teacher",
+      "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "p50_per_turn_sampling_latency_seconds": 2.0930324889998246,
+      "parse_error_rate": 0.0,
+      "passes": 3,
+      "per_band": {
+        "discovery": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 12,
+          "mean_reward": 1.0
+        }
+      },
+      "per_pass": [
+        {
+          "mean_per_task_sampling_latency_seconds": 7.459325204750011,
+          "mean_per_turn_sampling_latency_seconds": 2.2377975614250034,
+          "mean_reward": 1.0,
+          "pass_index": 1,
+          "stddev_per_task_sampling_latency_seconds": 1.438671591767769,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 8.098584629249956,
+          "mean_per_turn_sampling_latency_seconds": 2.4295753887749867,
+          "mean_reward": 1.0,
+          "pass_index": 2,
+          "stddev_per_task_sampling_latency_seconds": 1.8048310391994222,
+          "strict_pass_rate": 1.0
+        },
+        {
+          "mean_per_task_sampling_latency_seconds": 7.047029452333239,
+          "mean_per_turn_sampling_latency_seconds": 2.062545205560948,
+          "mean_reward": 1.0,
+          "pass_index": 3,
+          "stddev_per_task_sampling_latency_seconds": 1.9916998385173625,
+          "strict_pass_rate": 1.0
+        }
+      ],
+      "per_turn_latency_distribution_seconds": {
+        "count": 121,
+        "mean": 2.2418121606280867,
+        "p50": 2.0930324889998246,
+        "p90": 3.2519481619999624
+      },
+      "prompt_variant": "nemotron-v1",
+      "renderer": "nemotron3_disable_thinking",
+      "reward_nondeterminism": {
+        "observed": false,
+        "tasks_with_multiple_rewards": {}
+      },
+      "row_count": 36,
+      "samples_per_task": 1,
+      "serving_contract": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "lora_rank": 32,
+        "model_spec": "teacher",
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "nemotron3_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          11
+        ]
+      },
+      "split": "dev",
+      "strict_pass_rate": 1.0,
+      "task_count": 12,
+      "temperature": 0.0,
+      "total_prompt_tokens": 50486,
+      "total_sampled_tokens": 2736,
+      "warmup_latency_seconds": [
+        5.301339391999818
+      ],
+      "warmup_rollouts": 1
+    }
   }
 }

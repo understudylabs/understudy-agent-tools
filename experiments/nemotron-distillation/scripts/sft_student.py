@@ -10,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import tinker
+from events import emit_event
 from models import get_model_spec
 from receipts import snapshot_usage, usage_delta
+from step_runtime import record_completed, replay_or_start, synchronous_job_ref
 from tinker_cookbook import renderers
 from tinker_cookbook.renderers import TrainOnWhat
 from tinker_cookbook.supervised.common import compute_mean_nll
@@ -37,6 +39,9 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE)
     parser.add_argument("--max-length", type=int, default=MAX_LENGTH)
+    parser.add_argument("--experiment-id", default="P3-nemotron-distillation")
+    parser.add_argument("--candidate-id", default="student-sft")
+    parser.add_argument("--attempt", type=int, default=1)
     return parser.parse_args()
 
 
@@ -92,6 +97,10 @@ def main() -> None:
     args = _args()
     if args.epochs < 1 or args.batch_size < 1 or args.max_length < 1:
         raise SystemExit("epochs, batch-size, and max-length must be positive")
+    key, replay = replay_or_start(args.experiment_id, args.candidate_id, args.attempt)
+    if replay is not None:
+        print(json.dumps(replay, indent=2))
+        return
     rows = _load_rows(Path(args.data))
     spec = get_model_spec("student-base")
     tokenizer = get_tokenizer(spec.base_model)
@@ -139,6 +148,15 @@ def main() -> None:
     training_client = service_client.create_lora_training_client(
         base_model=MODEL_NAME,
         rank=LORA_RANK,
+    )
+    emit_event(
+        "candidate",
+        "submitted",
+        experiment_id=args.experiment_id,
+        candidate_id=args.candidate_id,
+        attempt=args.attempt,
+        model=MODEL_NAME,
+        operation="sft",
     )
     steps_per_epoch = (len(datums) + args.batch_size - 1) // args.batch_size
     total_steps = args.epochs * steps_per_epoch
@@ -230,16 +248,24 @@ def main() -> None:
         )
         + "\n"
     )
-    print(
-        json.dumps(
-            {
-                "checkpoints": len(checkpoints),
-                "state_path": state_path,
-                "rows": len(rows),
-            },
-            indent=2,
-        )
+    result = {
+        "checkpoints": len(checkpoints),
+        "state_path": state_path,
+        "rows": len(rows),
+        "job_ref": synchronous_job_ref(key),
+    }
+    record_completed(key, args.experiment_id, args.candidate_id, args.attempt, result)
+    emit_event(
+        "usage",
+        "reconciled",
+        experiment_id=args.experiment_id,
+        candidate_id=args.candidate_id,
+        attempt=args.attempt,
+        prompt_tokens=0,
+        sampled_tokens=0,
+        cost_usd=None,
     )
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":

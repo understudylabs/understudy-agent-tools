@@ -1,0 +1,445 @@
+{
+  "artifact_refs_only": true,
+  "artifacts": [
+    {
+      "bytes": 10683,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/dev-table.json",
+      "sha256": "d5fbe8ccb2c8678b078e82be5de00a6960b3f9911305ee5213d3cbd70b05c7f3"
+    },
+    {
+      "bytes": 3866,
+      "phase": "A",
+      "produced_by_step": "entry_gate",
+      "ref": "artifact://nemotron-distillation/entry-gate.json",
+      "sha256": "ea921556505cd584befb1ce8cb3e5c5c30896f78a6dc3164c2b24056cd17b783"
+    },
+    {
+      "bytes": 39694,
+      "phase": "C",
+      "produced_by_step": "phase_event_emission",
+      "ref": "artifact://nemotron-distillation/events.jsonl",
+      "sha256": "39e499e06ea7adb995cde6d9cc954925b9eaf0c631f2f19bdfaf3ecfac5cee28"
+    },
+    {
+      "bytes": 2557,
+      "phase": "C2-claim-boundary",
+      "produced_by_step": "sealed_holdout",
+      "ref": "artifact://nemotron-distillation/holdout-tolerance.json",
+      "sha256": "f2b2037c37c83c7f515251c8c52bf6f831b3df8a8927a33fed24c9064ee4cb2e"
+    },
+    {
+      "bytes": 23069,
+      "phase": "B3/B4",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/latency-cost-delta.json",
+      "sha256": "85800c8de50cfceebabb9500eca933fddba23c4249598e4b29479a5112925fc5"
+    },
+    {
+      "bytes": 532,
+      "phase": "B3/B4",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/selection.json",
+      "sha256": "63bcf7b102b967a06c70084c4ac39fd25a1ba33526012e0093ea8c7981c7c039"
+    },
+    {
+      "bytes": 2147,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/serving-contracts.json",
+      "sha256": "06688fde08fc5f523a27514673fc7f0a7bc14e6793dfd50af26c3d0cbf39e12f"
+    },
+    {
+      "bytes": 2101,
+      "phase": "B2",
+      "produced_by_step": "sft_student",
+      "ref": "artifact://nemotron-distillation/sft-checkpoints.json",
+      "sha256": "dc4308a65cb85ea968e558e13d6b49da1fbb7624c7f6e4f5bb95e6fca7788b8c"
+    },
+    {
+      "bytes": 338,
+      "phase": "B2",
+      "produced_by_step": "sft_student",
+      "ref": "artifact://nemotron-distillation/sft-data-selection.json",
+      "sha256": "1c4d874bb65788ae5a3a3ed2d985fded81a02a2e51e9149f9167a1f17296cd01"
+    },
+    {
+      "bytes": 12681,
+      "phase": "B2",
+      "produced_by_step": "sft_student",
+      "ref": "artifact://nemotron-distillation/sft-training-metrics.json",
+      "sha256": "266b661fc6103e4ee0580f98d9a30d9d95bf0a0bc01808f18116da11c28ce167"
+    },
+    {
+      "bytes": 1550,
+      "phase": "C",
+      "produced_by_step": "step_ledger",
+      "ref": "artifact://nemotron-distillation/step-ledger.json",
+      "sha256": "131a87519a7b4c10a414d9cc8c31b4ec858c3ba6e0fec40ff3dbcbeed6e03776"
+    },
+    {
+      "bytes": 158178,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-base-dev-warm.jsonl",
+      "sha256": "49f14cc2130324f6557a3e937e2333e2565bd4f85a91a7613736517c81e1d8d7"
+    },
+    {
+      "bytes": 4406,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-base-dev-warm.summary.json",
+      "sha256": "18460136ddc6b34fc039b9d107fd8c87bca5eff2447197551bc438be9f119deb"
+    },
+    {
+      "bytes": 393,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-base-dev-warm.usage.json",
+      "sha256": "5a7021101a32b34bb2bf36074473e81c95df179e312481f0cc17583c25b99d28"
+    },
+    {
+      "bytes": 52540,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-base-dev.jsonl",
+      "sha256": "136ada86db9dd26207926644fe73cf5e1e838f00613017bb3f903b33b936f84d"
+    },
+    {
+      "bytes": 3502,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-base-dev.summary.json",
+      "sha256": "e1d5f94f344ae4d6f5df8ec10e2edacc440b0326aabdd6d7bb5386d676b0aa99"
+    },
+    {
+      "bytes": 393,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-base-dev.usage.json",
+      "sha256": "b9674d58993efb91de117d83d9447b32fa4d07f6e4a3887a9ec83a25d507e37f"
+    },
+    {
+      "bytes": 13686,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/student-base-smoke.jsonl",
+      "sha256": "520aa152e31b21174297908663fa93e11e39c0d7edf86ed5c0b0290043dc9998"
+    },
+    {
+      "bytes": 2324,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/student-base-smoke.summary.json",
+      "sha256": "43fea8b920851a29d326efb02dd7b4741eb53b54d8c8e0f89e1835114768ee10"
+    },
+    {
+      "bytes": 376,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/student-base-smoke.usage.json",
+      "sha256": "a1e2097fbfa7c3fe829373993513c84228ae32fcf31b93ac07f5dff2ba350e81"
+    },
+    {
+      "bytes": 137836,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev-warm.jsonl",
+      "sha256": "a879cc6008787cb4671b29d163333c15cc8f2a148baf15208086bbe0f5778f53"
+    },
+    {
+      "bytes": 4565,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev-warm.summary.json",
+      "sha256": "61b01bbec90dd8d34dbbecebd8a59033acfe3dd390f2f72f28da43853c694d27"
+    },
+    {
+      "bytes": 399,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev-warm.usage.json",
+      "sha256": "23cce107279d62931adf911f65742909457f8a036888f1bb9004fe3b111ad98d"
+    },
+    {
+      "bytes": 45693,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev.jsonl",
+      "sha256": "9e92f89a3c4601a78b9a19afc6e430641669ead46e78ef4748dfcd25b399661f"
+    },
+    {
+      "bytes": 3658,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev.summary.json",
+      "sha256": "4405a6523b3b9ecb94ed26ecd0a81461420688e3e3c006e2a0de0a9a91718aa8"
+    },
+    {
+      "bytes": 394,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev.usage.json",
+      "sha256": "318e3f40fed06f7d63a93b9d03e155a69fb38e0ffa8bb7080aac5331442097dd"
+    },
+    {
+      "bytes": 45692,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch2-dev.jsonl",
+      "sha256": "d84d38a999c8cdcce3df96409acea94262da9a2f383ff7c763f2f09b820e315f"
+    },
+    {
+      "bytes": 3660,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch2-dev.summary.json",
+      "sha256": "f8f07b66e8ad6fa41efea4d619eefa1ec44b46ec1853f95b39dd9115c47c6d32"
+    },
+    {
+      "bytes": 394,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch2-dev.usage.json",
+      "sha256": "4fc21568887ead311fed05d0dad6d087042f544e76561ef00049dfdc2a2dbe2c"
+    },
+    {
+      "bytes": 46003,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch3-dev.jsonl",
+      "sha256": "412606adf0d80d9689167cdd3d5d7b1aecf7f900d27fe42e83980edbd61a95be"
+    },
+    {
+      "bytes": 3645,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch3-dev.summary.json",
+      "sha256": "846c19245813a468a0a2bffca607e3b2cd5f4dbc2d6c93d9ef0f07a16096ca39"
+    },
+    {
+      "bytes": 394,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch3-dev.usage.json",
+      "sha256": "ca34a0e765a2fe068ed95943d835ad47f8cae276c36e725f4441bc594cc8843a"
+    },
+    {
+      "bytes": 45691,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch4-dev.jsonl",
+      "sha256": "603d81c0a6697b70d9e25fda565a6bf4f129267f7730c97ef496afbe0b1e2aca"
+    },
+    {
+      "bytes": 3659,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch4-dev.summary.json",
+      "sha256": "6c34045d824b439c87bdc3cadec1f04b4e531887becd3ede0af164b1c79f90b8"
+    },
+    {
+      "bytes": 394,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch4-dev.usage.json",
+      "sha256": "13ab05bd6b7137e9633daac809e674f72fcacb2f73611d4259ab7350aed883a2"
+    },
+    {
+      "bytes": 138420,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/teacher-dev-warm.jsonl",
+      "sha256": "a907ede2a5d4eb08866f9421ed8016cb478fb0f9fa02017d8f012a699065c5d3"
+    },
+    {
+      "bytes": 4576,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/teacher-dev-warm.summary.json",
+      "sha256": "42cc67346abf0474fbd40bcf70a70b03b38b5581f533c03c8076b556d5ce589d"
+    },
+    {
+      "bytes": 388,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_warm",
+      "ref": "artifact://nemotron-distillation/teacher-dev-warm.usage.json",
+      "sha256": "42d67773134348bb9ff49bfd7715ae1c7cf76bc0d2363c7aadafa76ac4a97e41"
+    },
+    {
+      "bytes": 45859,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/teacher-dev.jsonl",
+      "sha256": "77f22d7a5ac5b6bbd4d97b50e863d8f6e803699f8bb7bfc76607d2586759292e"
+    },
+    {
+      "bytes": 3675,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/teacher-dev.summary.json",
+      "sha256": "5308b4c028d7cdb2cd12ca11c2310e63590bd220629aa517883853b81cb59add"
+    },
+    {
+      "bytes": 388,
+      "phase": "B3/B4",
+      "produced_by_step": "evaluate_dev",
+      "ref": "artifact://nemotron-distillation/teacher-dev.usage.json",
+      "sha256": "373c740bb14ee62aa1aacd837376be5f46466c46e0e69af709dd89da7b572937"
+    },
+    {
+      "bytes": 11773,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/teacher-smoke.jsonl",
+      "sha256": "f907b9f7eac706e0b3f6c081d569add98106a63b41d6793052c0bfc0fbc8b336"
+    },
+    {
+      "bytes": 2493,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/teacher-smoke.summary.json",
+      "sha256": "b22ec3d123ef24e06d3ddee46d85ec2bd5aa326f5f52b8ce831d7b4cbf1331df"
+    },
+    {
+      "bytes": 376,
+      "phase": "C",
+      "produced_by_step": "build_manifest",
+      "ref": "artifact://nemotron-distillation/teacher-smoke.usage.json",
+      "sha256": "a1e2097fbfa7c3fe829373993513c84228ae32fcf31b93ac07f5dff2ba350e81"
+    },
+    {
+      "bytes": 222112,
+      "phase": "B1",
+      "produced_by_step": "teacher_trajectories",
+      "ref": "artifact://nemotron-distillation/teacher-trajectories.jsonl",
+      "sha256": "764e07c618a4969f162fe832b2a80f4d39eb0659678eeb15f17a84b5d6e58774"
+    },
+    {
+      "bytes": 16217,
+      "phase": "B1",
+      "produced_by_step": "teacher_trajectories",
+      "ref": "artifact://nemotron-distillation/teacher-trajectories.summary.json",
+      "sha256": "e0f453e279010a1157c357961d04abcc31f5eb29f3879192144efb70c3aab399"
+    },
+    {
+      "bytes": 392,
+      "phase": "B1",
+      "produced_by_step": "teacher_trajectories",
+      "ref": "artifact://nemotron-distillation/teacher-trajectories.usage.json",
+      "sha256": "7f86ebe0d8ece2eccfb95c7c0c2a3a7638947ad23914173228a9395a629d3949"
+    }
+  ],
+  "candidate_id": "student-sft-epoch1",
+  "claim_boundary": {
+    "holdout_sealed": true,
+    "sealed_runner_ref": "experiment-script://scripts/sealed_holdout.py",
+    "tolerance_ref": "artifact://nemotron-distillation/holdout-tolerance.json"
+  },
+  "dataset": {
+    "dev_rows": 12,
+    "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+    "holdout_rows": 12,
+    "split_sha256": {
+      "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+      "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+      "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+    },
+    "train_rows": 48
+  },
+  "executor": {
+    "limitation": "The Tinker SDK calls used by this arm are blocking and do not return an async provider job handle; executor_tinker reports synchronous terminal receipts rather than faking async state.",
+    "requested": "tinker",
+    "spec_amendment_required": true,
+    "workflow_spec_union": [
+      "modal",
+      "wafer",
+      "fireworks",
+      "spark"
+    ]
+  },
+  "experiment_id": "P3-nemotron-distillation",
+  "model_serving_contracts": {
+    "action_parser_id": "automationbench.parse_agent_action.v1",
+    "contracts": {
+      "student-base": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": null,
+        "base_model": "Qwen/Qwen3.5-9B",
+        "lora_rank": 32,
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "qwen3_5_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          248046
+        ]
+      },
+      "student-sft": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": null,
+        "base_model": "Qwen/Qwen3.5-9B",
+        "lora_rank": 32,
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "qwen3_5_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          248046
+        ]
+      },
+      "teacher": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "lora_rank": 32,
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "nemotron3_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          11
+        ]
+      },
+      "teacher-base": {
+        "action_parser_id": "automationbench.parse_agent_action.v1",
+        "adapter_path": null,
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "lora_rank": 32,
+        "prompt_variant": "nemotron-v1",
+        "renderer_name": "nemotron3_disable_thinking",
+        "sampling_params": {
+          "max_tokens": 192,
+          "num_samples": 1,
+          "temperature": 0.0,
+          "top_p": 1.0
+        },
+        "stop_sequences": [
+          11
+        ]
+      }
+    },
+    "prompt_variant": "nemotron-v1",
+    "schema_version": "understudy.serving_contracts.v1"
+  },
+  "schema_version": "understudy.distillation_artifact.v1",
+  "self_reference_excluded": true,
+  "verifier": {
+    "identity": "automationbench-simple-api-offline",
+    "revision": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+    "service_runtime": "/home/ubuntu/wt-402"
+  }
+}

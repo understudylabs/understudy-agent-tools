@@ -13,9 +13,11 @@ from typing import Any
 
 import tinker
 from env_client import close_service, get_service
+from events import emit_event
 from models import MODEL_SPECS, get_model_spec
 from receipts import snapshot_usage_async, write_receipt
 from rollout import RolloutConfig, rollout_task
+from step_runtime import record_completed, replay_or_start, synchronous_job_ref
 from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
@@ -33,6 +35,9 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--service-repo", default=DEFAULT_SERVICE_REPO)
     parser.add_argument("--out", default=str(ARTIFACT_DIR / "sealed-holdout.json"))
     parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument("--experiment-id", default="P3-nemotron-distillation")
+    parser.add_argument("--candidate-id", default="sealed-holdout")
+    parser.add_argument("--attempt", type=int, default=1)
     return parser.parse_args()
 
 
@@ -54,9 +59,80 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _verdict(
+    all_rows: dict[str, list[dict[str, Any]]], tolerance: dict[str, Any]
+) -> dict[str, Any]:
+    quality = tolerance["quality_tolerance"]
+    guardrails = tolerance["guardrails"]
+    teacher_rows = all_rows["teacher"]
+    student_rows = all_rows["student-sft"]
+    teacher_mean = statistics.fmean(row["reward"] for row in teacher_rows)
+    student_mean = statistics.fmean(row["reward"] for row in student_rows)
+    per_band_deficit = {}
+    for band in ("single-write", "discovery", "multi-write"):
+        teacher_band = statistics.fmean(
+            row["reward"] for row in teacher_rows if row["band"] == band
+        )
+        student_band = statistics.fmean(
+            row["reward"] for row in student_rows if row["band"] == band
+        )
+        per_band_deficit[band] = teacher_band - student_band
+    hard_fail_count = sum(
+        student["reward"] == 0.0 and teacher["reward"] > student["reward"]
+        for teacher, student in zip(teacher_rows, student_rows, strict=True)
+    )
+    parse_error_rate = sum(bool(row["parse_errors"]) for row in student_rows) / len(
+        student_rows
+    )
+    checks = {
+        "overall_mean_reward_deficit": {
+            "observed": teacher_mean - student_mean,
+            "max": quality["overall_mean_reward_deficit_max"],
+            "pass": teacher_mean - student_mean
+            <= quality["overall_mean_reward_deficit_max"],
+        },
+        "per_band_mean_reward_deficit": {
+            "observed": per_band_deficit,
+            "max": quality["per_band_mean_reward_deficit_max"],
+            "pass": all(
+                deficit <= quality["per_band_mean_reward_deficit_max"]
+                for deficit in per_band_deficit.values()
+            ),
+        },
+        "primary_band_mean_reward_deficit": {
+            "band": quality["primary_band"],
+            "observed": per_band_deficit[quality["primary_band"]],
+            "max": quality["per_band_mean_reward_deficit_max"],
+            "pass": per_band_deficit[quality["primary_band"]]
+            <= quality["per_band_mean_reward_deficit_max"],
+        },
+        "student_hard_fail_count_over_teacher": {
+            "observed": hard_fail_count,
+            "max": guardrails["student_hard_fail_count_max_over_teacher"],
+            "pass": hard_fail_count
+            <= guardrails["student_hard_fail_count_max_over_teacher"],
+        },
+        "student_parse_error_rate": {
+            "observed": parse_error_rate,
+            "max": guardrails["student_parse_error_rate_max"],
+            "pass": parse_error_rate <= guardrails["student_parse_error_rate_max"],
+        },
+    }
+    return {
+        "verdict": "PASS" if all(check["pass"] for check in checks.values()) else "FAIL",
+        "checks": checks,
+        "rule": tolerance["verdict_rule"],
+        "efficiency_claim_rule": tolerance["efficiency_claim_rule"],
+    }
+
+
 async def _run(args: argparse.Namespace) -> None:
     if args.concurrency < 1 or args.concurrency > 8:
         raise SystemExit("--concurrency must be between 1 and 8")
+    key, replay = replay_or_start(args.experiment_id, args.candidate_id, args.attempt)
+    if replay is not None:
+        print(json.dumps(replay, indent=2))
+        return
     if len(set(args.models)) != len(args.models):
         raise SystemExit("--models must not contain duplicates")
     unknown = sorted(set(args.models) - set(MODEL_SPECS))
@@ -66,6 +142,10 @@ async def _run(args: argparse.Namespace) -> None:
     if not tolerance_file.is_file():
         raise SystemExit(f"tolerance file does not exist: {tolerance_file}")
     tolerance_sha256 = _sha256(tolerance_file)
+    tolerance = json.loads(tolerance_file.read_text())
+    declared_models = tolerance.get("declared_models")
+    if declared_models is not None and args.models != declared_models:
+        raise SystemExit("declared model list must match the predeclared tolerance file")
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     descriptor = {
         "arm": "P3-nemotron-distillation",
@@ -85,6 +165,14 @@ async def _run(args: argparse.Namespace) -> None:
 
     service = get_service(args.service_repo)
     try:
+        emit_event(
+            "run",
+            "phase_started",
+            experiment_id=args.experiment_id,
+            candidate_id=args.candidate_id,
+            attempt=args.attempt,
+            phase="sealed-holdout",
+        )
         tasks = service.tasks("holdout", HOLDOUT_SHA256)
         if len(tasks) != 12:
             raise RuntimeError(f"expected 12 holdout tasks, got {len(tasks)}")
@@ -92,7 +180,15 @@ async def _run(args: argparse.Namespace) -> None:
         all_rows: dict[str, list[dict[str, Any]]] = {}
         receipts: dict[str, str] = {}
         for model_name in args.models:
-            spec = get_model_spec(model_name)
+            if model_name == "student-sft":
+                selection = json.loads(
+                    (ARTIFACT_DIR / "selection.json").read_text()
+                )
+                spec = get_model_spec(
+                    model_name, selection["selected_adapter_path"]
+                )
+            else:
+                spec = get_model_spec(model_name)
             tokenizer = get_tokenizer(spec.base_model)
             renderer = renderers.get_renderer(
                 spec.renderer_name,
@@ -161,6 +257,7 @@ async def _run(args: argparse.Namespace) -> None:
             receipts[model_name] = str(receipt_path)
 
         output = Path(args.out)
+        verdict = _verdict(all_rows, tolerance)
         output.write_text(
             json.dumps(
                 {
@@ -174,13 +271,30 @@ async def _run(args: argparse.Namespace) -> None:
                         }
                         for model, rows in all_rows.items()
                     },
+                    "verdict": verdict,
                 },
                 indent=2,
                 sort_keys=True,
             )
             + "\n"
         )
-        print(json.dumps({"out": str(output), "models": args.models}))
+        result = {
+            "out": str(output),
+            "models": args.models,
+            "verdict": verdict,
+            "job_ref": synchronous_job_ref(key),
+        }
+        record_completed(key, args.experiment_id, args.candidate_id, args.attempt, result)
+        emit_event(
+            "score",
+            "snapshot",
+            experiment_id=args.experiment_id,
+            candidate_id=args.candidate_id,
+            attempt=args.attempt,
+            phase="sealed-holdout",
+            verdict=verdict["verdict"],
+        )
+        print(json.dumps(result))
     finally:
         close_service()
 

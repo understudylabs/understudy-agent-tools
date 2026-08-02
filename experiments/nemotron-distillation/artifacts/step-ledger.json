@@ -1,0 +1,41 @@
+{
+  "schema_version": "understudy.step_ledger.v1",
+  "steps": {
+    "6bb4261849fad790bb2a61a92ffbc74c127223211a4af63211b9e7f2e71739bf": {
+      "attempt": 1,
+      "candidate_id": "student-sft-warm",
+      "experiment_id": "P3-nemotron-distillation-C",
+      "result": {
+        "job_ref": "tinker://sync/6bb4261849fad790bb2a61a92ffbc74c127223211a4af63211b9e7f2e71739bf",
+        "out": "artifacts/student-sft-epoch1-dev-warm.jsonl",
+        "rows": 36,
+        "summary": "artifacts/student-sft-epoch1-dev-warm.summary.json"
+      },
+      "status": "completed"
+    },
+    "6f48b088d29363a96fa7b084996efe156b10dae7fa8821029f5f8f40f6e4f326": {
+      "attempt": 1,
+      "candidate_id": "teacher-warm",
+      "experiment_id": "P3-nemotron-distillation-C",
+      "result": {
+        "job_ref": "tinker://sync/6f48b088d29363a96fa7b084996efe156b10dae7fa8821029f5f8f40f6e4f326",
+        "out": "artifacts/teacher-dev-warm.jsonl",
+        "rows": 36,
+        "summary": "artifacts/teacher-dev-warm.summary.json"
+      },
+      "status": "completed"
+    },
+    "e34eceb3d7f2568dd756611f2395e100a0b7fef1b788a33f4425572aaa4fe7ee": {
+      "attempt": 1,
+      "candidate_id": "student-base-warm",
+      "experiment_id": "P3-nemotron-distillation-C",
+      "result": {
+        "job_ref": "tinker://sync/e34eceb3d7f2568dd756611f2395e100a0b7fef1b788a33f4425572aaa4fe7ee",
+        "out": "artifacts/student-base-dev-warm.jsonl",
+        "rows": 36,
+        "summary": "artifacts/student-base-dev-warm.summary.json"
+      },
+      "status": "completed"
+    }
+  }
+}
