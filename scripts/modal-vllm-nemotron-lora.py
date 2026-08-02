@@ -118,6 +118,7 @@ def deterministic_job_id(idempotency_key: str) -> str:
 
 def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
     import json
+    from fastapi import HTTPException
     from jsonschema import Draft202012Validator
 
     with open(
@@ -273,7 +274,7 @@ def executor_api() -> Any:
         call_id = record.get("functionCallId")
         if call_id:
             modal.FunctionCall.from_id(call_id).cancel(terminate_containers=True)
-        record["status"] = "canceled"
+        record["status"] = "cancelled"
         cancelled_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         record["cancelledAt"] = cancelled_at
         await job_store.put.aio(job_id, record)

@@ -6,7 +6,7 @@ export type ArtifactRef = {
 };
 
 // Derived from schemas/understudy.executor-submit.v1.schema.json, vendored
-// from understudy-platform commit 585d8e1.
+// from understudy-platform commit c299ca4.
 export const ExperimentSubmitRequestSchema = z.object({
   experimentId: z.string().min(1),
   idempotencyKey: z.string().min(1),
