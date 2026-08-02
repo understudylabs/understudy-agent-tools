@@ -1,5 +1,5 @@
 {
-  "constant_group_fraction": 0.8,
+  "constant_group_fraction": 0.721875,
   "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
   "dataset_seed": 7,
   "exemplar": {
@@ -9,45 +9,45 @@
         "role": "system"
       },
       {
-        "content": "Read conv_analysis_1, inspect its referenced document and account, then persist the resulting finding without modifying either source.",
+        "content": "Read conv_entity_3 and the account list, identify the requested account, then update only that account.",
         "role": "user"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/conversation/analysis/v1/conv_analysis_1\",\n    \"body\": {}\n  }\n}",
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"api/v1/accounts\"}}",
         "role": "assistant"
       },
       {
-        "content": "{\"error\":\"unknown endpoint: /conversation/analysis/v1/conv_analysis_1\",\"status\":404}",
+        "content": "{\"error\":\"unknown endpoint: api/v1/accounts\",\"status\":404}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"conv_analysis_id\"\n  }\n}",
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"url\":\"api/account/list\",\"method\":\"GET\"}}",
         "role": "assistant"
       },
       {
-        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or write a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist summaries.\",\"url\":\"/summaries\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "content": "{\"error\":\"unknown endpoint: api/account/list\",\"status\":404}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/analysis\",\n    \"body\": {}\n  }\n}",
+        "content": "{\"tool\":\"api_search\",\"arguments\":{\"query\":\"account list endpoint\"}},",
         "role": "assistant"
       },
       {
-        "content": "{\"analysis\":{},\"status\":200}",
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
         "role": "tool"
       },
       {
-        "content": "{\n  \"tool\": \"finish\",\n  \"arguments\": {}\n}",
+        "content": "{\"tool\":\"finish\",\"arguments\":{}}",
         "role": "assistant"
       }
     ],
     "reward": 0.0,
     "step": 0,
-    "task_id": "workflow-analysis-01"
+    "task_id": "workflow-entity-03"
   },
   "group_size": 8,
   "groups_per_batch": 8,
-  "load_checkpoint_path": "tinker://ad079385-37d3-5fc3-b8a7-582817e4b826:train:0/weights/final",
+  "load_checkpoint_path": "tinker://cd4a0005-e7eb-5b38-9241-d9c7da3883f0:train:0/weights/final",
   "lora_rank": 32,
   "max_steps": 40,
   "max_tokens": 192,
@@ -58,407 +58,407 @@
   "stage": "2",
   "steps": [
     {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 245922,
-      "sampled_tokens": 14605,
+      "mean_group_reward": 0.0,
+      "prompt_tokens": 263485,
+      "sampled_tokens": 13360,
       "step": 0,
-      "wall_clock_seconds": 45.61462210100035
+      "wall_clock_seconds": 42.00488612799927
     },
     {
       "constant_group_fraction": 0.75,
       "constant_groups": 6,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 260451,
-      "sampled_tokens": 15046,
+      "mean_group_reward": 0.01953125,
+      "prompt_tokens": 224934,
+      "sampled_tokens": 15377,
       "step": 1,
-      "wall_clock_seconds": 112.7958132169997
+      "wall_clock_seconds": 43.169528952999826
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 205466,
-      "sampled_tokens": 12563,
+      "mean_group_reward": 0.015625,
+      "prompt_tokens": 300761,
+      "sampled_tokens": 17540,
       "step": 2,
-      "wall_clock_seconds": 82.8467683619997
+      "wall_clock_seconds": 67.23257722100061
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 167491,
-      "sampled_tokens": 11236,
+      "mean_group_reward": 0.015625,
+      "prompt_tokens": 219894,
+      "sampled_tokens": 11874,
       "step": 3,
-      "wall_clock_seconds": 50.23330020200001
+      "wall_clock_seconds": 79.41154939099943
     },
     {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 243133,
-      "sampled_tokens": 14953,
+      "mean_group_reward": 0.01953125,
+      "prompt_tokens": 256768,
+      "sampled_tokens": 15127,
       "step": 4,
-      "wall_clock_seconds": 52.34836393700016
+      "wall_clock_seconds": 45.65782204499919
     },
     {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
       "groups": 8,
-      "mean_group_reward": 0.015625,
-      "prompt_tokens": 235204,
-      "sampled_tokens": 14987,
+      "mean_group_reward": 0.03125,
+      "prompt_tokens": 309497,
+      "sampled_tokens": 15540,
       "step": 5,
-      "wall_clock_seconds": 53.08429819599996
+      "wall_clock_seconds": 43.74094705300013
     },
     {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
       "groups": 8,
-      "mean_group_reward": 0.015625,
-      "prompt_tokens": 304768,
-      "sampled_tokens": 17987,
+      "mean_group_reward": 0.03515625,
+      "prompt_tokens": 273035,
+      "sampled_tokens": 15890,
       "step": 6,
-      "wall_clock_seconds": 56.187197304000165
+      "wall_clock_seconds": 54.09020426799907
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.046875,
+      "prompt_tokens": 279608,
+      "sampled_tokens": 15423,
+      "step": 7,
+      "wall_clock_seconds": 51.23623069999849
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.0703125,
+      "prompt_tokens": 283083,
+      "sampled_tokens": 16516,
+      "step": 8,
+      "wall_clock_seconds": 32.68362156200055
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.03515625,
+      "prompt_tokens": 288569,
+      "sampled_tokens": 15878,
+      "step": 9,
+      "wall_clock_seconds": 41.03881795199959
     },
     {
       "constant_group_fraction": 1.0,
       "constant_groups": 8,
       "groups": 8,
       "mean_group_reward": 0.0,
-      "prompt_tokens": 207267,
-      "sampled_tokens": 12565,
-      "step": 7,
-      "wall_clock_seconds": 63.111045529999956
+      "prompt_tokens": 259542,
+      "sampled_tokens": 13751,
+      "step": 10,
+      "wall_clock_seconds": 39.01959919799992
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.03125,
+      "prompt_tokens": 334812,
+      "sampled_tokens": 17535,
+      "step": 11,
+      "wall_clock_seconds": 30.459319453000717
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.06640625,
+      "prompt_tokens": 242968,
+      "sampled_tokens": 14482,
+      "step": 12,
+      "wall_clock_seconds": 38.52420204699956
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.0078125,
+      "prompt_tokens": 347448,
+      "sampled_tokens": 17878,
+      "step": 13,
+      "wall_clock_seconds": 38.01266985399889
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.03125,
+      "prompt_tokens": 255955,
+      "sampled_tokens": 13660,
+      "step": 14,
+      "wall_clock_seconds": 45.87502476000009
     },
     {
       "constant_group_fraction": 0.5,
       "constant_groups": 4,
       "groups": 8,
-      "mean_group_reward": 0.05078125,
-      "prompt_tokens": 294303,
-      "sampled_tokens": 15834,
-      "step": 8,
-      "wall_clock_seconds": 46.04158790800011
-    },
-    {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
-      "groups": 8,
-      "mean_group_reward": 0.0234375,
-      "prompt_tokens": 256964,
-      "sampled_tokens": 16477,
-      "step": 9,
-      "wall_clock_seconds": 38.21883075699998
-    },
-    {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
-      "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 172514,
-      "sampled_tokens": 10893,
-      "step": 10,
-      "wall_clock_seconds": 47.65817473700008
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 308859,
-      "sampled_tokens": 18529,
-      "step": 11,
-      "wall_clock_seconds": 55.065262475000054
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 262569,
-      "sampled_tokens": 15110,
-      "step": 12,
-      "wall_clock_seconds": 49.11766601699992
-    },
-    {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
-      "groups": 8,
-      "mean_group_reward": 0.0390625,
-      "prompt_tokens": 294979,
-      "sampled_tokens": 16208,
-      "step": 13,
-      "wall_clock_seconds": 54.430469252999956
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.0234375,
-      "prompt_tokens": 238509,
-      "sampled_tokens": 15735,
-      "step": 14,
-      "wall_clock_seconds": 55.60145069800001
-    },
-    {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
-      "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 262093,
-      "sampled_tokens": 15985,
+      "mean_group_reward": 0.0546875,
+      "prompt_tokens": 246739,
+      "sampled_tokens": 14301,
       "step": 15,
-      "wall_clock_seconds": 43.70721658399998
+      "wall_clock_seconds": 53.54841323100118
     },
     {
       "constant_group_fraction": 1.0,
       "constant_groups": 8,
       "groups": 8,
       "mean_group_reward": 0.0,
-      "prompt_tokens": 285350,
-      "sampled_tokens": 16787,
+      "prompt_tokens": 305100,
+      "sampled_tokens": 15535,
       "step": 16,
-      "wall_clock_seconds": 50.20848142599971
+      "wall_clock_seconds": 46.82962057400073
     },
     {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
       "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 344842,
-      "sampled_tokens": 20493,
+      "mean_group_reward": 0.0078125,
+      "prompt_tokens": 326028,
+      "sampled_tokens": 18874,
       "step": 17,
-      "wall_clock_seconds": 144.49179661000016
+      "wall_clock_seconds": 106.65433947900056
     },
     {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
       "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 215498,
-      "sampled_tokens": 13847,
+      "mean_group_reward": 0.08984375,
+      "prompt_tokens": 273562,
+      "sampled_tokens": 15291,
       "step": 18,
-      "wall_clock_seconds": 57.91409434599973
-    },
-    {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
-      "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 293142,
-      "sampled_tokens": 17323,
-      "step": 19,
-      "wall_clock_seconds": 52.9888046330002
+      "wall_clock_seconds": 43.2166623209996
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
-      "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 322353,
-      "sampled_tokens": 17126,
-      "step": 20,
-      "wall_clock_seconds": 58.26678089400002
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.01953125,
-      "prompt_tokens": 304640,
-      "sampled_tokens": 17596,
-      "step": 21,
-      "wall_clock_seconds": 60.221545934999995
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 331822,
-      "sampled_tokens": 19009,
-      "step": 22,
-      "wall_clock_seconds": 36.30107804499994
-    },
-    {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
-      "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 280846,
-      "sampled_tokens": 16560,
-      "step": 23,
-      "wall_clock_seconds": 42.61991774699982
-    },
-    {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
-      "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 295957,
-      "sampled_tokens": 16229,
-      "step": 24,
-      "wall_clock_seconds": 55.15279293200001
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
       "groups": 8,
       "mean_group_reward": 0.015625,
-      "prompt_tokens": 356929,
-      "sampled_tokens": 20263,
-      "step": 25,
-      "wall_clock_seconds": 47.33640524299972
-    },
-    {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
-      "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 220283,
-      "sampled_tokens": 14590,
-      "step": 26,
-      "wall_clock_seconds": 69.94504762100041
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.01953125,
-      "prompt_tokens": 362354,
-      "sampled_tokens": 20067,
-      "step": 27,
-      "wall_clock_seconds": 52.60134461600046
-    },
-    {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
-      "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 316376,
-      "sampled_tokens": 18639,
-      "step": 28,
-      "wall_clock_seconds": 45.339700006000385
+      "prompt_tokens": 346889,
+      "sampled_tokens": 19796,
+      "step": 19,
+      "wall_clock_seconds": 50.58315199199933
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 256746,
-      "sampled_tokens": 14975,
-      "step": 29,
-      "wall_clock_seconds": 55.710631218000344
+      "mean_group_reward": 0.015625,
+      "prompt_tokens": 353780,
+      "sampled_tokens": 18092,
+      "step": 20,
+      "wall_clock_seconds": 142.56194227700144
     },
     {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
       "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 347280,
-      "sampled_tokens": 18456,
-      "step": 30,
-      "wall_clock_seconds": 40.86835621599948
+      "mean_group_reward": 0.0,
+      "prompt_tokens": 287869,
+      "sampled_tokens": 15507,
+      "step": 21,
+      "wall_clock_seconds": 98.83168290199865
     },
     {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
       "groups": 8,
-      "mean_group_reward": 0.013020833333333332,
-      "prompt_tokens": 382331,
-      "sampled_tokens": 21742,
-      "step": 31,
-      "wall_clock_seconds": 59.80303393899976
+      "mean_group_reward": 0.0546875,
+      "prompt_tokens": 365716,
+      "sampled_tokens": 18234,
+      "step": 22,
+      "wall_clock_seconds": 69.06699629499963
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.015625,
+      "prompt_tokens": 208775,
+      "sampled_tokens": 13143,
+      "step": 23,
+      "wall_clock_seconds": 37.35993471199981
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
       "groups": 8,
       "mean_group_reward": 0.005208333333333333,
-      "prompt_tokens": 294078,
-      "sampled_tokens": 16942,
-      "step": 32,
-      "wall_clock_seconds": 32.760760942999696
+      "prompt_tokens": 363778,
+      "sampled_tokens": 19433,
+      "step": 24,
+      "wall_clock_seconds": 94.09333208300086
     },
     {
       "constant_group_fraction": 0.75,
       "constant_groups": 6,
       "groups": 8,
       "mean_group_reward": 0.0234375,
-      "prompt_tokens": 302121,
-      "sampled_tokens": 19236,
-      "step": 33,
-      "wall_clock_seconds": 93.01166561399987
+      "prompt_tokens": 352285,
+      "sampled_tokens": 19234,
+      "step": 25,
+      "wall_clock_seconds": 51.70880342900091
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.0234375,
+      "prompt_tokens": 230654,
+      "sampled_tokens": 13925,
+      "step": 26,
+      "wall_clock_seconds": 47.87529015799919
     },
     {
       "constant_group_fraction": 0.625,
       "constant_groups": 5,
       "groups": 8,
-      "mean_group_reward": 0.024739583333333332,
-      "prompt_tokens": 390632,
-      "sampled_tokens": 20852,
-      "step": 34,
-      "wall_clock_seconds": 57.73495982799977
+      "mean_group_reward": 0.05078125,
+      "prompt_tokens": 344249,
+      "sampled_tokens": 18871,
+      "step": 27,
+      "wall_clock_seconds": 68.79376175200014
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.02734375,
+      "prompt_tokens": 321947,
+      "sampled_tokens": 17731,
+      "step": 28,
+      "wall_clock_seconds": 41.82920761400055
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.03125,
+      "prompt_tokens": 381098,
+      "sampled_tokens": 19234,
+      "step": 29,
+      "wall_clock_seconds": 39.812428061999526
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.0390625,
+      "prompt_tokens": 300707,
+      "sampled_tokens": 15796,
+      "step": 30,
+      "wall_clock_seconds": 35.64695140599906
     },
     {
       "constant_group_fraction": 0.5,
       "constant_groups": 4,
       "groups": 8,
-      "mean_group_reward": 0.024739583333333332,
-      "prompt_tokens": 356322,
-      "sampled_tokens": 19773,
-      "step": 35,
-      "wall_clock_seconds": 48.269008564000615
+      "mean_group_reward": 0.08984375,
+      "prompt_tokens": 379394,
+      "sampled_tokens": 18820,
+      "step": 31,
+      "wall_clock_seconds": 49.26382636100061
     },
     {
-      "constant_group_fraction": 1.0,
-      "constant_groups": 8,
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
       "groups": 8,
-      "mean_group_reward": 0.0,
-      "prompt_tokens": 382281,
-      "sampled_tokens": 22798,
+      "mean_group_reward": 0.078125,
+      "prompt_tokens": 301189,
+      "sampled_tokens": 15839,
+      "step": 32,
+      "wall_clock_seconds": 98.00244955500057
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.046875,
+      "prompt_tokens": 324232,
+      "sampled_tokens": 16958,
+      "step": 33,
+      "wall_clock_seconds": 49.429167455000425
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.03125,
+      "prompt_tokens": 380373,
+      "sampled_tokens": 19352,
+      "step": 34,
+      "wall_clock_seconds": 40.55601588600075
+    },
+    {
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
+      "groups": 8,
+      "mean_group_reward": 0.05859375,
+      "prompt_tokens": 366024,
+      "sampled_tokens": 18627,
+      "step": 35,
+      "wall_clock_seconds": 54.27724625600058
+    },
+    {
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
+      "groups": 8,
+      "mean_group_reward": 0.013020833333333332,
+      "prompt_tokens": 333978,
+      "sampled_tokens": 18641,
       "step": 36,
-      "wall_clock_seconds": 98.5114852630004
+      "wall_clock_seconds": 124.61313812599838
+    },
+    {
+      "constant_group_fraction": 0.625,
+      "constant_groups": 5,
+      "groups": 8,
+      "mean_group_reward": 0.03515625,
+      "prompt_tokens": 378691,
+      "sampled_tokens": 17681,
+      "step": 37,
+      "wall_clock_seconds": 49.37651963499957
+    },
+    {
+      "constant_group_fraction": 0.375,
+      "constant_groups": 3,
+      "groups": 8,
+      "mean_group_reward": 0.109375,
+      "prompt_tokens": 279915,
+      "sampled_tokens": 17299,
+      "step": 38,
+      "wall_clock_seconds": 93.55851450900082
     },
     {
       "constant_group_fraction": 0.875,
       "constant_groups": 7,
       "groups": 8,
       "mean_group_reward": 0.015625,
-      "prompt_tokens": 359423,
-      "sampled_tokens": 20589,
-      "step": 37,
-      "wall_clock_seconds": 54.87801731399941
-    },
-    {
-      "constant_group_fraction": 0.625,
-      "constant_groups": 5,
-      "groups": 8,
-      "mean_group_reward": 0.0546875,
-      "prompt_tokens": 301521,
-      "sampled_tokens": 18959,
-      "step": 38,
-      "wall_clock_seconds": 41.16762630100038
-    },
-    {
-      "constant_group_fraction": 0.75,
-      "constant_groups": 6,
-      "groups": 8,
-      "mean_group_reward": 0.03125,
-      "prompt_tokens": 302078,
-      "sampled_tokens": 19839,
+      "prompt_tokens": 290278,
+      "sampled_tokens": 17203,
       "step": 39,
-      "wall_clock_seconds": 40.98037340500014
+      "wall_clock_seconds": 44.730087183999785
     }
   ],
-  "total_constant_groups": 256,
+  "total_constant_groups": 231,
   "total_groups": 320,
-  "wall_clock_seconds": 2637.768894967
+  "wall_clock_seconds": 2664.456158721001
 }

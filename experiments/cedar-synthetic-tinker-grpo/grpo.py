@@ -635,16 +635,18 @@ def _evaluate_stage2_checkpoints(log_path: Path) -> None:
                 "summary_path": str(output.with_suffix(".summary.json")),
             }
         )
-    sft_dev = json.loads(
-        (ARTIFACT_DIR / "sft-epoch4-dev.summary.json").read_text()
-    )
+    sft_selection = json.loads((ARTIFACT_DIR / "sft-selection.json").read_text())
+    selected_epoch = int(sft_selection["selected_epoch"])
+    sft_dev_path = ARTIFACT_DIR / f"sft-epoch{selected_epoch}-dev.summary.json"
+    sft_dev = json.loads(sft_dev_path.read_text())
     (ARTIFACT_DIR / "grpo-dev-table.json").write_text(
         json.dumps(
             {
-                "sft_epoch4": {
+                "sft_selected": {
+                    "epoch": selected_epoch,
                     "mean_reward": sft_dev["mean_reward"],
                     "strict_pass_rate": sft_dev["strict_pass_rate"],
-                    "summary_path": str(ARTIFACT_DIR / "sft-epoch4-dev.summary.json"),
+                    "summary_path": str(sft_dev_path),
                 },
                 "grpo_checkpoints": table,
             },

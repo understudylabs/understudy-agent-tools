@@ -4,73 +4,73 @@
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-action-05"
+      "task_id": "workflow-action-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-agent-05"
+      "task_id": "workflow-agent-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-analysis-05"
+      "task_id": "workflow-analysis-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-chain-05"
+      "task_id": "workflow-chain-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-document-05"
+      "task_id": "workflow-document-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-entity-05"
-    },
-    {
-      "reward_mean": 1.0,
-      "reward_std": 0.0,
-      "samples": 1,
-      "task_id": "workflow-mail-05"
-    },
-    {
-      "reward_mean": 1.0,
-      "reward_std": 0.0,
-      "samples": 1,
-      "task_id": "workflow-meeting-05"
+      "task_id": "workflow-entity-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-observation-05"
+      "task_id": "workflow-mail-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-partial-05"
+      "task_id": "workflow-meeting-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-route-05"
+      "task_id": "workflow-observation-06"
     },
     {
       "reward_mean": 0.0,
       "reward_std": 0.0,
       "samples": 1,
-      "task_id": "workflow-summary-05"
+      "task_id": "workflow-partial-06"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-route-06"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-summary-06"
     }
   ],
   "hashes": {
@@ -86,17 +86,17 @@
       "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
     }
   },
-  "label": "grpo-step40-dev",
+  "label": "holdout-repaired-grpo-step40-sealed",
   "lora_rank": 32,
-  "mean_model_turns": 9.166666666666666,
-  "mean_reward": 0.16666666666666666,
-  "model": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/final",
-  "model_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/final",
+  "mean_model_turns": 10.416666666666666,
+  "mean_reward": 0.0,
+  "model": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000040",
+  "model_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000040",
   "parse_error_rate": 0.08333333333333333,
   "per_band": {
     "discovery": {
       "count": 5,
-      "mean_reward": 0.4
+      "mean_reward": 0.0
     },
     "multi-write": {
       "count": 4,
@@ -111,10 +111,10 @@
   "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
   "row_count": 12,
   "samples_per_task": 1,
-  "split": "dev",
-  "strict_pass_rate": 0.16666666666666666,
+  "split": "holdout",
+  "strict_pass_rate": 0.0,
   "task_count": 12,
   "temperature": 0.0,
-  "total_prompt_tokens": 78098,
-  "total_sampled_tokens": 4103
+  "total_prompt_tokens": 87451,
+  "total_sampled_tokens": 4998
 }

@@ -1,7 +1,7 @@
 {
-  "mean_rollout_wall_clock_seconds_per_step": 56.659983560499995,
-  "mean_sampled_tokens_per_step": 17170.0,
+  "mean_rollout_wall_clock_seconds_per_step": 52.19919197499985,
+  "mean_sampled_tokens_per_step": 16249.0,
   "measured_steps": 2,
-  "projected_40_step_rollout_wall_clock_seconds": 2266.39934242,
-  "projected_40_step_sampled_tokens": 686800.0
+  "projected_40_step_rollout_wall_clock_seconds": 2087.967678999994,
+  "projected_40_step_sampled_tokens": 649960.0
 }

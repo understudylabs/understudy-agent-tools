@@ -1,15 +1,40 @@
 {
-  "selected_step": 10,
-  "selected_sampler_path": "tinker://58055612-dcc4-5fae-a14b-f1f8156ca380:train:0/sampler_weights/000010",
-  "selected_state_path": "tinker://58055612-dcc4-5fae-a14b-f1f8156ca380:train:0/weights/000010",
+  "selected_step": 40,
+  "selected_sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000040",
+  "selected_state_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/weights/000040",
   "selection_rule": "highest dev mean reward, earliest-step tie-break",
-  "sft_selected_epoch": 2,
-  "sft_selected_dev_mean_reward": 0.125,
+  "sft_selected_epoch": 1,
+  "sft_selected_state_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
+  "sft_selected_dev_mean_reward": 0.08333333333333333,
   "per_step_dev": [
-    {"step": 10, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
-    {"step": 20, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
-    {"step": 30, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
-    {"step": 40, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333}
+    {
+      "step": 10,
+      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000010",
+      "state_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/weights/000010",
+      "mean_reward": 0.08333333333333333,
+      "strict_pass_rate": 0.08333333333333333
+    },
+    {
+      "step": 20,
+      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000020",
+      "state_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/weights/000020",
+      "mean_reward": 0.08333333333333333,
+      "strict_pass_rate": 0.08333333333333333
+    },
+    {
+      "step": 30,
+      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000030",
+      "state_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/weights/000030",
+      "mean_reward": 0.10416666666666667,
+      "strict_pass_rate": 0.08333333333333333
+    },
+    {
+      "step": 40,
+      "sampler_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/sampler_weights/000040",
+      "state_path": "tinker://38efaa3b-6435-5237-9518-622caca4bd11:train:0/weights/000040",
+      "mean_reward": 0.16666666666666666,
+      "strict_pass_rate": 0.16666666666666666
+    }
   ],
-  "state_deviation": "GRPO initialized from the epoch-4 resumable SFT state because only epoch 4 had a saved training state; the SFT evaluation winner remains epoch 2."
+  "state_deviation": "None: GRPO initialized from the dev-selected SFT epoch 1 resumable state."
 }

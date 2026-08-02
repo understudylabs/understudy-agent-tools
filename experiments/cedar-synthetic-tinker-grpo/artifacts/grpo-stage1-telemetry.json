@@ -1,5 +1,5 @@
 {
-  "constant_group_fraction": 0.9375,
+  "constant_group_fraction": 0.875,
   "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
   "dataset_seed": 7,
   "exemplar": {
@@ -9,37 +9,85 @@
         "role": "system"
       },
       {
-        "content": "Read conv_analysis_1, inspect its referenced document and account, then persist the resulting finding without modifying either source.",
+        "content": "Read conv_entity_3 and the account list, identify the requested account, then update only that account.",
         "role": "user"
       },
       {
-        "content": "{\n    \"tool\": \"api_search\",\n    \"arguments\": {\n        \"query\": \"\\\"conv_analysis_1\\\"\"\n    }\n}",
+        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts\"\n  }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or write a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist summaries.\",\"url\":\"/summaries\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "content": "{\"error\":\"unknown endpoint: /v1/accounts\",\"status\":404}",
         "role": "tool"
       },
       {
-        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/analysis\",\n        \"body\": {}\n    }\n}",
+        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts.list\"\n  }\n}",
         "role": "assistant"
       },
       {
-        "content": "{\"analysis\":{},\"status\":200}",
+        "content": "{\"error\":\"unknown endpoint: /v1/accounts.list\",\"status\":404}",
         "role": "tool"
       },
       {
-        "content": "{\n    \"tool\": \"finish\",\n    \"arguments\": {}\n}",
+        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"accounts endpoint\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"accounts\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1/accounts\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"error\":\"unknown endpoint: /v1/accounts\",\"status\":404}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/accounts\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"error\":\"unknown endpoint: /accounts\",\"status\":404}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"api_fetch\",\n  \"arguments\": {\n    \"method\": \"GET\",\n    \"url\": \"/v1\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"error\":\"unknown endpoint: /v1\",\"status\":404}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"api_search\",\n  \"arguments\": {\n    \"query\": \"v1 endpoint docs\"\n  }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"body_schema\":{\"PATCH\":[\"path\"],\"POST\":[\"append\"]},\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or append to a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"body_schema\":{\"PATCH\":[\"stage\",\"observations\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"body_schema\":{\"POST\":[\"to\",\"subject\",\"body\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"body_schema\":{\"POST\":[\"attendee\",\"slot\",\"durationMin\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"body_schema\":{\"PATCH\":[\"awake\",\"reasoning\"]},\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"body_schema\":{\"POST\":[\"status\",\"summary\",\"toolsCalled\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist workflow summaries.\",\"url\":\"/summaries\"},{\"body_schema\":{\"POST\":[\"recordRef\",\"category\",\"priority\",\"finding\"]},\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n  \"tool\": \"finish\",\n  \"arguments\": {}\n}",
         "role": "assistant"
       }
     ],
     "reward": 0.0,
     "step": 0,
-    "task_id": "workflow-analysis-01"
+    "task_id": "workflow-entity-03"
   },
   "group_size": 8,
   "groups_per_batch": 8,
-  "load_checkpoint_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/weights/sft-epoch4-state",
+  "load_checkpoint_path": "tinker://c75ead63-8bef-54ff-a89f-b4fdc22bcbc8:train:0/weights/sft-epoch1-state",
   "lora_rank": 32,
   "max_steps": 2,
   "max_tokens": 192,
@@ -54,23 +102,23 @@
       "constant_groups": 8,
       "groups": 8,
       "mean_group_reward": 0.0,
-      "prompt_tokens": 283030,
-      "sampled_tokens": 14996,
+      "prompt_tokens": 242791,
+      "sampled_tokens": 13958,
       "step": 0,
-      "wall_clock_seconds": 49.58957355599978
+      "wall_clock_seconds": 51.630421509998996
     },
     {
-      "constant_group_fraction": 0.875,
-      "constant_groups": 7,
+      "constant_group_fraction": 0.75,
+      "constant_groups": 6,
       "groups": 8,
-      "mean_group_reward": 0.0078125,
-      "prompt_tokens": 305127,
-      "sampled_tokens": 19344,
+      "mean_group_reward": 0.01171875,
+      "prompt_tokens": 295393,
+      "sampled_tokens": 18540,
       "step": 1,
-      "wall_clock_seconds": 63.73039356500021
+      "wall_clock_seconds": 52.7679624400007
     }
   ],
-  "total_constant_groups": 15,
+  "total_constant_groups": 14,
   "total_groups": 16,
-  "wall_clock_seconds": 165.58167270100012
+  "wall_clock_seconds": 176.83685675999914
 }

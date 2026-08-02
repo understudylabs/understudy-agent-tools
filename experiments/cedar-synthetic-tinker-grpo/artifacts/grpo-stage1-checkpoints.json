@@ -1,11 +1,11 @@
 {
-  "log_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/cedar-synthetic-tinker-grpo/artifacts/grpo-stage1-log",
+  "log_path": "artifacts/grpo-stage1-log-rerun",
   "records": [
     {
       "batch": 2,
       "name": "final",
-      "sampler_path": "tinker://ad079385-37d3-5fc3-b8a7-582817e4b826:train:0/sampler_weights/final",
-      "state_path": "tinker://ad079385-37d3-5fc3-b8a7-582817e4b826:train:0/weights/final"
+      "sampler_path": "tinker://cd4a0005-e7eb-5b38-9241-d9c7da3883f0:train:0/sampler_weights/final",
+      "state_path": "tinker://cd4a0005-e7eb-5b38-9241-d9c7da3883f0:train:0/weights/final"
     }
   ]
 }

@@ -20,7 +20,7 @@ transitions, terminal reward, split membership, and holdout authorization.
 The renderer and split provenance are:
 
 ```text
-fixture_sha256: c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
+fixture_sha256: eb1ba85916c7a026928399d448cd1d9f9db7d1f8043b4208690d61c7ced707a7
 train:         95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5
 dev:           e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3
 holdout:       6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144
@@ -34,30 +34,35 @@ token cost.
 
 ## Results
 
+The first Cedar run used the pre-calibration fixture and is superseded. Its
+artifacts remain as diagnostic evidence in `artifacts/`, but its scores must
+not be reported. The repaired run below uses the fixture hash above and
+selects checkpoints on dev only.
+
 All values below are means over the complete split. Strict pass means reward
 exactly `1.0`.
 
 | Arm | Train mean | Train strict | Dev mean | Dev strict | Holdout mean | Holdout strict |
 |---|---:|---:|---:|---:|---:|---:|
-| Base | 0.895833 | 0.875000 | 0.861111 | 0.833333 | 0.944444 | 0.916667 |
-| SFT epoch 4 | 0.975694 | 0.958333 | 0.944444 | 0.916667 | 0.944444 | 0.916667 |
-| SFT + GRPO step 20 | 0.979167 | 0.979167 | 1.000000 | 1.000000 | 1.000000 | 1.000000 |
+| Base | 0.052083 | 0.041667 | 0.083333 | 0.083333 | 0.000000 | 0.000000 |
+| SFT epoch 1 | 0.067708 | 0.062500 | 0.104167 | 0.083333 | 0.083333 | 0.083333 |
+| SFT + GRPO step 40 | 0.083333 | 0.062500 | 0.166667 | 0.166667 | 0.000000 | 0.000000 |
 
 The SFT lift over base and the GRPO marginal lift over SFT are separate:
 
 | Split | SFT lift over base | GRPO lift over SFT |
 |---|---:|---:|
-| Train | +0.079861 | +0.003472 |
-| Dev | +0.083333 | +0.055556 |
-| Holdout | +0.000000 | +0.055556 |
+| Train | +0.015625 | +0.015625 |
+| Dev | +0.020833 | +0.062500 |
+| Holdout | +0.083333 | -0.083333 |
 
 Holdout per-band means:
 
 | Band | Base | SFT epoch 4 | GRPO step 20 |
 |---|---:|---:|---:|
-| Discovery | 1.000000 | 1.000000 | 1.000000 |
-| Multi-write | 0.833333 | 0.833333 | 1.000000 |
-| Single-write | 1.000000 | 1.000000 | 1.000000 |
+| Discovery | 0.000000 | 0.200000 | 0.000000 |
+| Multi-write | 0.000000 | 0.000000 | 0.000000 |
+| Single-write | 0.000000 | 0.000000 | 0.000000 |
 
 The holdout has only 12 tasks: one task changes the mean by approximately
 `0.083333`. For strict-pass rates, a binomial-ish standard error is
@@ -67,6 +72,11 @@ same small-sample warning applies. Do not over-read one- or two-task
 differences.
 
 ### GRPO curve
+
+The curve below is retained as historical context from the superseded
+pre-calibration run and is not part of the repaired result. The repaired
+per-step records are in `artifacts/grpo-stage2-log.tail.txt` and the
+checkpoint/evaluation JSON artifacts.
 
 Training mean group reward and constant-reward drop fraction rose toward
 saturation:
@@ -83,11 +93,13 @@ The complete per-step curve is in `artifacts/grpo-stage2-telemetry.json` and
 rule was highest dev reward with earliest-step tie-break, so step 20 was
 selected.
 
-The cookbook's raw per-iteration rollout dumps (~108 MB) are deliberately not
-committed; `artifacts/grpo-stage*-log/` keeps their `config.json`,
-`metrics.jsonl`, and `checkpoints.jsonl`.
+The cookbook's raw per-iteration rollout dumps are deliberately not
+committed; only approximately 2,000-line tails are retained.
 
 ### Group-variance progression
+
+The following table is also from the superseded run and is retained only for
+diagnostic provenance.
 
 These are the same eight train tasks, temperature 1.0, eight samples per
 task:
