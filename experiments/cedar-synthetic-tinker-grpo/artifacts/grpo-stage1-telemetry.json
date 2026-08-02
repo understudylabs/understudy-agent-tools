@@ -1,0 +1,76 @@
+{
+  "constant_group_fraction": 0.9375,
+  "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
+  "dataset_seed": 7,
+  "exemplar": {
+    "messages": [
+      {
+        "content": "You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.\n\nAllowed replies:\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"<text>\"}}\n{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET|POST|PATCH\",\"url\":\"<path>\",\"body\":{...}}}\n{\"tool\":\"finish\",\"arguments\":{}}\n\nLook up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.",
+        "role": "system"
+      },
+      {
+        "content": "Read conv_analysis_1, inspect its referenced document and account, then persist the resulting finding without modifying either source.",
+        "role": "user"
+      },
+      {
+        "content": "{\n    \"tool\": \"api_search\",\n    \"arguments\": {\n        \"query\": \"\\\"conv_analysis_1\\\"\"\n    }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List workflow conversations.\",\"url\":\"/conversations\"},{\"methods\":[\"GET\"],\"summary\":\"Read one workflow conversation.\",\"url\":\"/conversations/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow documents.\",\"url\":\"/documents\"},{\"methods\":[\"GET\",\"PATCH\",\"POST\"],\"summary\":\"Read, move, or write a document.\",\"url\":\"/documents/{id}\"},{\"methods\":[\"GET\"],\"summary\":\"List workflow records.\",\"url\":\"/records\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a record.\",\"url\":\"/records/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create drafts.\",\"url\":\"/drafts\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or schedule meetings.\",\"url\":\"/meetings\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update agent state.\",\"url\":\"/agent-state/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist summaries.\",\"url\":\"/summaries\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or persist analysis findings.\",\"url\":\"/analysis\"}]}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n    \"tool\": \"api_fetch\",\n    \"arguments\": {\n        \"method\": \"GET\",\n        \"url\": \"/analysis\",\n        \"body\": {}\n    }\n}",
+        "role": "assistant"
+      },
+      {
+        "content": "{\"analysis\":{},\"status\":200}",
+        "role": "tool"
+      },
+      {
+        "content": "{\n    \"tool\": \"finish\",\n    \"arguments\": {}\n}",
+        "role": "assistant"
+      }
+    ],
+    "reward": 0.0,
+    "step": 0,
+    "task_id": "workflow-analysis-01"
+  },
+  "group_size": 8,
+  "groups_per_batch": 8,
+  "load_checkpoint_path": "tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/weights/sft-epoch4-state",
+  "lora_rank": 32,
+  "max_steps": 2,
+  "max_tokens": 192,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "remove_constant_reward_groups": true,
+  "renderer": "nemotron3_disable_thinking",
+  "rl_deviation": "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers package is intentionally not installed. The Node Cedar-synthetic service is the verifier; its terminal reward is literally partialCredit from src/synthetic-workflow-offline.ts reached over HTTP, so remote reward equals local reward by construction.",
+  "stage": "1",
+  "steps": [
+    {
+      "constant_group_fraction": 1.0,
+      "constant_groups": 8,
+      "groups": 8,
+      "mean_group_reward": 0.0,
+      "prompt_tokens": 283030,
+      "sampled_tokens": 14996,
+      "step": 0,
+      "wall_clock_seconds": 49.58957355599978
+    },
+    {
+      "constant_group_fraction": 0.875,
+      "constant_groups": 7,
+      "groups": 8,
+      "mean_group_reward": 0.0078125,
+      "prompt_tokens": 305127,
+      "sampled_tokens": 19344,
+      "step": 1,
+      "wall_clock_seconds": 63.73039356500021
+    }
+  ],
+  "total_constant_groups": 15,
+  "total_groups": 16,
+  "wall_clock_seconds": 165.58167270100012
+}

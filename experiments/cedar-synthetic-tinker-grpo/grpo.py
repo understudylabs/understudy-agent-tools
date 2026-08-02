@@ -421,7 +421,7 @@ class CedarSyntheticRLDataset(RLDataset):
             raise RuntimeError("train task batch was unexpectedly incomplete")
         RL_TELEMETRY.begin_step(index)
         return [
-            AutomationBenchGroupBuilder(
+            CedarSyntheticGroupBuilder(
                 task=task,
                 repo=self.repo,
                 renderer_name=self.renderer_name,
