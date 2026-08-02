@@ -2,57 +2,199 @@
   "schema_version": "understudy.ladder_evidence.v1",
   "experiment_id": "nemotron-incumbent-ladder",
   "workload": {
-    "id": "synthetic-event-routing",
+    "id": "uwl_cf209e8cd4cc4301b4d458fdb6e9df3b",
     "description": "A high-volume event-driven email orchestration workload",
-    "fixture_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "fixture_sha256": "e2cc35762ae7e2a8d6a63efa6123982885df00b217fd33df5791a8a00699b6cb",
+    "split_hashes": {
+      "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2",
+      "dev": "c2ffe33600065a20f869910d687e0f7f4725dccf400769ae58cf02d6d64386f1",
+      "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6"
+    }
   },
   "incumbent": {
     "provider": "openai",
     "model": "gpt-4o",
     "serving_contract": "native provider tool_calls",
-    "latency_ms": 2277,
-    "cost_usd": 14887.93
+    "production_baseline": {
+      "requests": 470404,
+      "customer_cost_usd": 14887.93,
+      "mean_latency_ms": 2277,
+      "input_tokens_per_request_est": 20200,
+      "output_tokens_per_request_est": 114
+    }
   },
   "candidates": [
     {
       "arm_id": "incumbent-dev",
+      "status": "measured",
       "base_model": "gpt-4o",
       "renderer": "native",
-      "rung": "incumbent",
+      "rung": "incumbent-calibration",
       "lora_rank": null,
       "steps": null,
       "seed": null,
-      "split_refs": { "train": "sealed-train", "dev": "sealed-dev", "holdout": "sealed-holdout" },
-      "split_hashes": { "train": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "dev": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "holdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-      "aggregate": { "mean_score": 0.75, "exact_match_rate": 0.75, "malformed_rate": 0, "calls_emitted": 0, "mean_latency_ms": 1161, "input_tokens": 0, "output_tokens": 0, "cost": { "status": "priced", "total_usd": 1.66 } },
-      "by_band": { "shortcut": { "mean_score": 1, "exact_match_rate": 1 }, "playbook": { "mean_score": 0.833, "exact_match_rate": 0.833 }, "judgment": { "mean_score": 0.476, "exact_match_rate": 0.476 } },
-      "budget_usd": 500,
-      "actual_usd": 1.66,
-      "artifact_refs": [ "artifact://incumbent-dev" ]
+      "split_refs": {
+        "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2",
+        "dev": "c2ffe33600065a20f869910d687e0f7f4725dccf400769ae58cf02d6d64386f1",
+        "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6"
+      },
+      "aggregate": {
+        "mean_score": 0.75,
+        "exact_match_rate": 0.75,
+        "malformed_rate": 0,
+        "calls_emitted": 145,
+        "calls_emitted_distribution": { "1": 95, "2": 25 },
+        "mean_latency_ms": 1161.34,
+        "input_tokens": 306412,
+        "output_tokens": 8614,
+        "cost": { "status": "priced", "total_usd": 1.66127 }
+      },
+      "by_band": {
+        "shortcut": { "mean_score": 1, "exact_match_rate": 1, "malformed_rate": 0, "calls_emitted": 30, "mean_latency_ms": 1298.78 },
+        "playbook": { "mean_score": 0.833, "exact_match_rate": 0.833, "malformed_rate": 0, "calls_emitted": 59, "mean_latency_ms": 1148.58 },
+        "judgment": { "mean_score": 0.476, "exact_match_rate": 0.476, "malformed_rate": 0, "calls_emitted": 56, "mean_latency_ms": 1077.77 }
+      },
+      "artifact_refs": ["artifact://incumbent-repaired-v3-dev-grade-v3.json"]
     },
     {
-      "arm_id": "sft-v3",
+      "arm_id": "nemotron-base-fixed",
+      "status": "measured",
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "renderer": "nemotron3",
+      "rung": "base",
+      "lora_rank": 0,
+      "steps": 0,
+      "seed": null,
+      "split_refs": { "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2", "dev": "c2ffe33600065a20f869910d687e0f7f4725dccf400769ae58cf02d6d64386f1", "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6" },
+      "aggregate": {
+        "mean_score": 0.157,
+        "exact_match_rate": 0.15,
+        "malformed_rate": 0.033,
+        "calls_emitted": 255,
+        "calls_emitted_distribution": { "0": 4, "1": 22, "2": 67, "3": 13, "4": 12, "6": 2 },
+        "mean_latency_ms": 23566.27,
+        "input_tokens": 362416,
+        "output_tokens": 119218,
+        "cost": { "status": "unpriced", "total_usd": null, "reason": "No Tinker price schedule was available." }
+      },
+      "by_band": {
+        "shortcut": { "mean_score": 0.2, "exact_match_rate": 0.2, "malformed_rate": 0.033, "calls_emitted": 53, "mean_latency_ms": 18048.86 },
+        "playbook": { "mean_score": 0.167, "exact_match_rate": 0.167, "malformed_rate": 0.021, "calls_emitted": 106, "mean_latency_ms": 25238.13 },
+        "judgment": { "mean_score": 0.114, "exact_match_rate": 0.095, "malformed_rate": 0.048, "calls_emitted": 96, "mean_latency_ms": 25596.58 }
+      },
+      "artifact_refs": ["artifact://base-fixed-dev-grade.json"]
+    },
+    {
+      "arm_id": "gepa-fixed-invalidated",
+      "status": "selection-invalidated",
+      "invalidated_reason": "GEPA selection occurred before the serving shim/parser defect was fixed; the fixed-path result is retained for audit but is not a valid selection claim.",
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "renderer": "nemotron3",
+      "rung": "gepa",
+      "lora_rank": 0,
+      "steps": null,
+      "seed": null,
+      "split_refs": { "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2", "dev": "c2ffe33600065a20f869910d687e0f7f4725dccf400769ae58cf02d6d64386f1", "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6" },
+      "aggregate": {
+        "mean_score": 0.057,
+        "exact_match_rate": 0.042,
+        "malformed_rate": 0.042,
+        "calls_emitted": 561,
+        "calls_emitted_distribution": { "0": 5, "1": 8, "2": 11, "3": 16, "4": 32, "5": 11, "6": 11, "7": 9, "8": 5, "9": 2, "10": 6, "11": 1, "12": 2, "18": 1 },
+        "mean_latency_ms": 38848.48,
+        "input_tokens": 376696,
+        "output_tokens": 219628,
+        "cost": { "status": "unpriced", "total_usd": null, "reason": "No Tinker price schedule was available." }
+      },
+      "by_band": {
+        "shortcut": { "mean_score": 0.067, "exact_match_rate": 0.067, "malformed_rate": 0.1, "calls_emitted": 159, "mean_latency_ms": 47231.18 },
+        "playbook": { "mean_score": 0.058, "exact_match_rate": 0.021, "malformed_rate": 0, "calls_emitted": 214, "mean_latency_ms": 41727.28 },
+        "judgment": { "mean_score": 0.048, "exact_match_rate": 0.048, "malformed_rate": 0.048, "calls_emitted": 188, "mean_latency_ms": 29570.79 }
+      },
+      "artifact_refs": ["artifact://gepa-fixed-dev-grade.json"]
+    },
+    {
+      "arm_id": "sft-v2-fixed",
+      "status": "measured",
       "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
       "renderer": "nemotron3",
       "rung": "sft",
       "lora_rank": 32,
+      "steps": 30,
+      "seed": null,
+      "split_refs": { "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2", "dev": "c2ffe33600065a20f869910d687e0f7f4725dccf400769ae58cf02d6d64386f1", "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6" },
+      "aggregate": {
+        "mean_score": 0.018,
+        "exact_match_rate": 0.008,
+        "malformed_rate": 0.008,
+        "calls_emitted": 621,
+        "calls_emitted_distribution": { "0": 1, "1": 4, "2": 11, "3": 18, "4": 27, "5": 14, "6": 10, "7": 14, "8": 8, "9": 3, "10": 2, "11": 6, "12": 1, "16": 1 },
+        "mean_latency_ms": 57719.19,
+        "input_tokens": 376696,
+        "output_tokens": 222465,
+        "cost": { "status": "unpriced", "total_usd": null, "reason": "No Tinker price schedule was available." }
+      },
+      "by_band": {
+        "shortcut": { "mean_score": 0, "exact_match_rate": 0, "malformed_rate": 0, "calls_emitted": 186, "mean_latency_ms": 63420.21 },
+        "playbook": { "mean_score": 0.012, "exact_match_rate": 0, "malformed_rate": 0.021, "calls_emitted": 224, "mean_latency_ms": 68185.48 },
+        "judgment": { "mean_score": 0.038, "exact_match_rate": 0.024, "malformed_rate": 0, "calls_emitted": 211, "mean_latency_ms": 41685.57 }
+      },
+      "failure_clusters": ["terminal-call repetition", "single-call collapse"],
+      "artifact_refs": ["artifact://sft-v2-fixed-dev-grade.json"]
+    },
+    {
+      "arm_id": "sft-v3-train-smoke",
+      "status": "train-smoke-only",
+      "evaluation_note": "No dev evaluation was run because train memorization remained at 0/5 after the single authorized retrain.",
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "renderer": "nemotron3",
+      "rung": "sft",
+      "learning_rate": 0.0001,
+      "epochs": 5,
+      "lora_rank": 32,
       "steps": 150,
-      "seed": 44,
-      "split_refs": { "train": "artifact://train", "dev": "artifact://dev", "holdout": "artifact://sealed" },
-      "split_hashes": { "train": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "dev": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "holdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-      "aggregate": { "mean_score": 0, "exact_match_rate": 0, "malformed_rate": 0, "calls_emitted": 0, "mean_latency_ms": 0, "input_tokens": 0, "output_tokens": 0, "cost": { "status": "unpriced", "total_usd": null } },
-      "by_band": {},
-      "budget_usd": 500,
-      "actual_usd": null,
-      "estimated_usd": null,
-      "unpriced": true,
-      "failure_clusters": [ "terminal-call repetition", "malformed protocol" ],
-      "artifact_refs": [ "artifact://sft-v3-receipt" ]
+      "seed": null,
+      "split_refs": { "train": "21ed482c37ce664c67e7f60b421e78d209d1f5e1531d1454c12f45cd56d5cde2", "dev": null, "holdout": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6" },
+      "aggregate": {
+        "rows": 5,
+        "mean_score": 0,
+        "exact_match_rate": 0,
+        "malformed_rate": 0,
+        "calls_emitted": 62,
+        "calls_emitted_distribution": { "3": 2, "4": 1, "6": 1, "46": 1 },
+        "mean_latency_ms": 22112.12,
+        "input_tokens": 13481,
+        "output_tokens": 3003,
+        "cost": { "status": "unpriced", "total_usd": null, "reason": "No Tinker price schedule was available." }
+      },
+      "failure_clusters": ["terminal-call repetition", "failed train memorization"],
+      "artifact_refs": ["artifact://sft-v3-receipt.json", "artifact://sft-v3-train-smoke-grade.json"]
     }
   ],
-  "holdout": { "status": "clean", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-  "saturation": { "schema_version": "understudy.ladder_saturation.v1", "fixture_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "threshold": 0.95, "saturated": false, "usable": true, "status": "pass" },
+  "holdout": {
+    "status": "clean",
+    "execution": "unexecuted",
+    "sha256": "34a8cd481fe693ca56b6420c05db61a1bee76e38b77afe669720e5feb0472ad6"
+  },
+  "saturation": {
+    "schema_version": "understudy.ladder_saturation.v1",
+    "fixture_sha256": "e2cc35762ae7e2a8d6a63efa6123982885df00b217fd33df5791a8a00699b6cb",
+    "threshold": 0.95,
+    "incumbent_mean_score": 0.75,
+    "incumbent_exact_match_rate": 0.75,
+    "saturated": false,
+    "usable": true,
+    "status": "pass"
+  },
   "evidence_scope": "dev-only",
-  "claim_boundary": "This is a dev-only optimization lead; holdout remains clean and unexecuted.",
-  "parser": { "revision": "ladder-local-parser-v2-reasoning-tolerant-raw-rendered-response", "sha256": "1100c3549286249832c916f711390b02bce1357b053e82028b19432637e31f0f" }
+  "claim_boundary": "This is a dev-only optimization record; holdout remains clean, hash-bound, and unexecuted. No candidate is promoted.",
+  "cumulative_spend": {
+    "synthetic_incumbent_usd": 1.66127,
+    "known_openai_total_usd": 36.831405,
+    "tinker": { "status": "unpriced", "total_usd": null, "reason": "No Tinker price schedule was available." }
+  },
+  "parser": {
+    "revision": "ladder-local-parser-v2-reasoning-tolerant-raw-rendered-response",
+    "sha256": "1100c3549286249832c916f711390b02bce1357b053e82028b19432637e31f0f"
+  }
 }

@@ -22,14 +22,26 @@ path. The fixed parser accepts native provider calls and rendered calls after a
 reasoning preamble. The parser revision and hash are carried by every evidence
 row.
 
-The ladder attempted a strict prompt/GEPA rung and an initial SFT rung. GEPA
-reduced malformed output under the broken path, but its selection is not
-interpretable after the shim correction. The first SFT run was under-trained
-(one epoch, 1e-5, 30 steps); its corrected-path behavior showed terminal-call
-repetition. A token-level round-trip check confirmed the renderer stop token
-was present, supervised, and preceded by masked prompt positions. One
-time-boxed higher-rate retrain was then run separately; its result belongs in
-the local receipt and is not used to justify a promotion here.
+The complete fixed-path dev record contains the incumbent, Nemotron base,
+GEPA, and the first serving-order-corrected SFT arm. The incumbent scored
+0.750 aggregate (1.000/0.833/0.476 by band), the base scored 0.157, GEPA
+scored 0.057, and SFT v2 scored 0.018. GEPA is explicitly marked
+selection-invalidated because its selection happened before the shim/parser
+correction; its fixed-path result is retained only for audit. SFT v2 showed
+terminal-call repetition and single-call collapse.
+
+The one authorized higher-rate SFT retrain used 1e-4, five epochs, rank 32,
+and 150 steps. It was evaluated on five train rows first and reproduced 0/5
+targets, so no dev evaluation was run for that arm. It is recorded as a
+train-smoke-only arm in the evidence row rather than being assigned a
+fabricated dev score.
+
+The fixed shim passes `renderer.get_stop_sequences()` to
+`SamplingParams(stop=...)`. Direct inspection of the higher-rate checkpoint
+terminated with `stop_sequence`; the raw completion contained one terminal
+`<|im_end|>` only at the end, not mid-stream. The repeated calls therefore
+were not caused by an omitted stop parameter or generation continuing past a
+mid-stream stop token.
 
 Tinker has no available price schedule. Its usage is therefore reported as
 unpriced with token counts and wall-clock measurements, never as zero cost.
