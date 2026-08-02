@@ -8,11 +8,12 @@ compare rows that disagree on any of them.
 | | |
 | --- | --- |
 | Fixture | `automationbench-simple-api-offline-v2`, 216 tasks (120 train / 36 dev / 60 sealed holdout), split seed 7 |
-| `fixture_sha256` | `918023a1c2f34233e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22` |
+| `fixture_sha256` | `918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22` |
 | `contract_sha256` | `721851ba0edfce0890e6d092eeac3c9693c1517fcf217cb045cd8f858bfe839b` |
 | Serving contract | `understudy.bakeoff.serving_contract.v1` — one JSON tool call per turn, temp 0, max 2000 tokens, 14 turns, 3 malformed strikes, 4000-char observations |
 | Verifier | `automationbench-offline` terminal `partialCredit`, identical for scoring, SFT export and RL reward |
 | Lane | Tinker LoRA for all three bases, served through the repo's OpenAI-compatible shim so the wire protocol is identical across bases |
+| Ladder coverage | base (both renderers) → SFT → GRPO complete on all three bases; GRPO-from-SFT probed on Qwen3.5-9B and receipted as a structural no-op |
 | Holdout | **clean — not executed.** Ranking basis is dev. |
 
 ## Ranked table (dev basis)
@@ -43,6 +44,7 @@ and the tie-break is serving cost. Per-band separation on this fixture would nee
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `nemotron3-nano-base-nothink` | dev | 36 | 0.3902 | 0.6528 | 0.2589 | 8 | 0.111 | 2.15 | 22.0 | 7820 |
 | `nemotron3-nano-base-think` | dev | 36 | 0.9031 | 0.9167 | 0.8963 | 0 | 0.083 | 12.27 | 129.4 | 10800 |
+| `nemotron3-nano/grpo-from-base` | dev | 36 | 0.8337 | 0.8750 | 0.8130 | 2 | 0.028 | 14.70 | 117.5 | 9046 |
 | `nemotron3-nano/sft` | dev | 36 | **0.9861** | 1.0000 | 0.9792 | 0 | 0.028 | 11.06 | 70.5 | 5730 |
 | `qwen3.5-9b-base-nothink` | dev | 36 | 0.6832 | 0.7778 | 0.6359 | 1 | 0.194 | 1.27 | 9.9 | 6755 |
 | `qwen3.5-9b-base-think` | dev | 36 | 0.3380 | 0.2500 | 0.3819 | 1 | 0.472 | 2.51 | 35.2 | 9791 |
@@ -72,9 +74,10 @@ entirely after SFT — the thing the 27B was buying you was recoverable by 120 t
   `outputs/bakeoff/grpo/qwen3.5-9b-from-sft-receipt.json` records `frac_all_good = 1.0` and
   `reward/total = 1.0` for every group — a structurally guaranteed no-op, not a tuning failure.
 - *From base:* 8 steps × 8 groups × 8 rollouts moved train reward around (0.43 → 0.73 within a
-  batch) but landed at 0.665 dev for Qwen3.5-9B and 0.894 for Qwen3.6-27B — at or below their own
-  base rungs. RL from base with a budget this small does not reach what SFT reaches in 10 minutes,
-  and RL on top of SFT has no gradient left to follow.
+  batch) but landed at 0.665 dev for Qwen3.5-9B, 0.894 for Qwen3.6-27B and 0.834 for Nemotron —
+  every one at or below its own best base rung. The result is consistent across all three bases,
+  so it is a property of the budget and the fixture, not of one model. RL from base at this budget
+  does not reach what SFT reaches in 10 minutes, and RL on top of SFT has no gradient left.
 
 The honest reading is that **this fixture is saturated by SFT**, so it cannot rank bases post-RL.
 Ranking post-RL, as originally scoped, needs a fixture where oracle imitation does not reach 1.000
@@ -86,8 +89,11 @@ Ranking post-RL, as originally scoped, needs a fixture where oracle imitation do
 | --- | --- |
 | Malformed output (prose instead of one JSON object) | Qwen3.5-9B base with thinking, 0.472 of episodes; the model narrates the observation instead of acting |
 | Over-action (writes outside `allowedWrites`) | Nemotron base without thinking, 8 of 36 episodes — it scores zero on the whole task, which is most of the 0.39 |
-| Long-chain truncation | Qwen3.6-27B base without thinking, band `long-chain` at 0.548 while every other band is 1.000 |
+| Long-chain truncation | Qwen3.6-27B base without thinking, band `long-chain` at 0.548 while every other band is 1.000. It survives RL: Nemotron GRPO-from-base is 1.000 on five bands and 0.440 on `long-chain` |
 | All three vanish after SFT | zero over-action, zero forbidden writes, zero malformed at the SFT rung on every base |
+
+Long-chain is the one band that separates candidates at every rung except SFT, which is where a
+harder fixture should concentrate: it is the only place the ladder still has signal left.
 
 ## Evidence semantics
 
