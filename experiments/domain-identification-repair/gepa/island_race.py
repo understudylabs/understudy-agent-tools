@@ -79,7 +79,7 @@ def classify_failure(rec):
 class LiveManifest:
     def __init__(self, *, path, ingest_url, experiment_id, dev_sha, examples,
                  baseline_nodes, rank_protocol, gepa_protocol, budget, started,
-                 expected_total, reference_lines=()):
+                 expected_total, reference_lines=(), mirror_path=None):
         self.path = Path(path)
         self.ingest_url = ingest_url
         self.experiment_id = experiment_id
@@ -92,6 +92,7 @@ class LiveManifest:
         self.started = started
         self.expected_total = expected_total
         self.reference_lines = list(reference_lines)
+        self.mirror_path = Path(mirror_path) if mirror_path else None
         self.records = {}
         self.states = {}
         self.confirmations = {}
@@ -195,6 +196,8 @@ class LiveManifest:
             holdout_untouched=True,
         )
         em.write_manifest(manifest, self.path)
+        if self.mirror_path:
+            em.write_manifest(manifest, self.mirror_path)
         status = em.publish_run_shaped(manifest, self.examples, self.ingest_url)
         return {"manifest": str(self.path), "ingest": status, "totals": totals}
 
@@ -255,6 +258,8 @@ def main():
     parser.add_argument("--spend-authorization-usd", type=float, default=1000.0)
     parser.add_argument("--allow-unmetered-cost", action="store_true")
     parser.add_argument("--ingest-url", default="http://127.0.0.1:5151/ingest")
+    parser.add_argument("--manifest-mirror", default="",
+                        help="optional dashboard manifest path, atomically refreshed on every heartbeat")
     parser.add_argument("--wave1-seed-canonical", required=True)
     parser.add_argument("--wave1-winner-canonical", required=True)
     args = parser.parse_args()
@@ -301,7 +306,8 @@ def main():
                         experiment_id=experiment_id, dev_sha=dev_sha, examples=dev,
                         baseline_nodes=baseline_nodes, rank_protocol=rank_protocol,
                         gepa_protocol=gepa_protocol, budget=budget, started=started,
-                        expected_total=stage1_total + stage2_total + confirm_total)
+                        expected_total=stage1_total + stage2_total + confirm_total,
+                        mirror_path=args.manifest_mirror or None)
     stage1_prompts = {bid: seed_prompt for bid, *_ in ISLAND_SPECS}
     stage1 = run_parallel(ISLAND_SPECS, seed_prompts=stage1_prompts, subsets=subsets,
                           train=train, sidecar=args.sidecar, budget=budget,
