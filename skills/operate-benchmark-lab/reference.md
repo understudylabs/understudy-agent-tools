@@ -6,6 +6,82 @@ Source of truth: `docs/agent-operator-surface.md`, `docs/app-harness.md`,
 `src/commands/benchmarks.ts`, `src/commands/daemon.ts`,
 `src/commands/desktop.ts`, `src/run-executor.ts`.
 
+## Training-arm evidence and entry gate
+
+Every training or evaluation arm must run the reusable TypeScript harness in
+`src/arm-evidence/index.ts` before provider work or spend. It performs three
+fail-closed checks:
+
+- every sanity-task oracle reward is exactly `1.0`;
+- every sanity-task sentinel reward is exactly `0.0`;
+- the sealed holdout refuses no-hash and wrong-hash opens, then accepts only
+  the exact frozen SHA-256.
+
+An empty sanity set, thrown oracle/sentinel call, opened holdout, or any
+non-exact reward makes the gate fail. Use `assertArmEntryGate` before creating
+the provider client. A failed gate cannot be passed to
+`buildArmEvidenceRow`.
+
+The harness is a contract, not a controller: both entry points are pure
+functions with no background state, so a durable workflow can call them inside
+an idempotent step: the row is a deterministic function of its inputs, keyed on
+`arm_id` and `run_id`, and `created_at` is supplied by the caller. The row carries
+only refs and hashes — never traces, prompts, labels, credentials, or weights.
+
+The run-level `understudy.arm_evidence.v1` row records:
+
+- arm/run identity, base model id, renderer, provider, route, and creation time;
+- nullable training metadata (`lora_rank`, `steps`) for eval-only arms;
+- dataset seed and SHA-256;
+- split and sealed-holdout SHA-256;
+- eval-compatible cost;
+- aggregate eval row count/mean and per-band `n`/`mean_score`;
+- gate outcome, exact sanity task ids, and check details;
+- harness, split, eval-row, and artifact provenance hashes.
+
+Copy-pasteable TypeScript usage:
+
+```ts
+import {
+  assertArmEntryGate,
+  buildArmEvidenceRow,
+} from "@understudylabs/understudy-agent-tools";
+
+const entryGate = await assertArmEntryGate({
+  sanityTaskIds: ["sanity-task-a", "sanity-task-b"],
+  oracle: (taskId) => runOfflineOracle(taskId),
+  sentinel: (taskId) => runOfflineSentinel(taskId),
+  holdout: {
+    expectedSha256: FROZEN_HOLDOUT_SHA256,
+    open: (hash) => taskPool({ split: "holdout", frozenHoldoutSha256: hash }),
+  },
+});
+
+const evidence = buildArmEvidenceRow({
+  arm_id: "training-arm-example",
+  run_id: runId,
+  created_at: new Date().toISOString(),
+  base_model_id: baseModelId,
+  renderer: "native",
+  provider: "provider-name",
+  training: { lora_rank: 16, steps: 200 },
+  dataset: { seed: 7, sha256: DATASET_SHA256 },
+  holdout: { split: "holdout", sealed_sha256: FROZEN_HOLDOUT_SHA256 },
+  entryGate,
+  evalRows,
+  bandOf: (row) => bandForTask(row.task_id),
+});
+```
+
+The worked retrofit is
+`experiments/automationbench-fireworks-lora-serving/run-eval.mjs`. It runs
+the offline gate before constructing the provider model client, writes the
+existing eval artifact unchanged, and writes a sibling
+`*.arm-evidence.json` row. Run `--gate-only` to verify the gate without
+network access. The offline fixture exposes family difficulty metadata, so
+the retrofit reports its existing bands; consumers should use `"all"` only
+for fixtures without band metadata.
+
 ## MCP tools (`understudy benchmarks mcp`)
 
 Ten tools, all backed by the same compiled modules as the hub API (no forked
