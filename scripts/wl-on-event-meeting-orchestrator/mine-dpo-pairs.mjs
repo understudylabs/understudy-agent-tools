@@ -172,7 +172,20 @@ for (const band of fallbackBands) {
     selectedWithTier.push(candidate);
   }
 }
-const lines = selectedWithTier.map(({ task, divergence, tier }) => JSON.stringify({
+const uniqueSelected = [];
+const seenPairs = new Set();
+for (const candidate of selectedWithTier) {
+  const key = canonical([
+    candidate.task.taskId,
+    candidate.divergence.prompt,
+    candidate.divergence.chosen.content,
+    candidate.divergence.rejected.content,
+  ]);
+  if (seenPairs.has(key)) continue;
+  seenPairs.add(key);
+  uniqueSelected.push(candidate);
+}
+const lines = uniqueSelected.map(({ task, divergence, tier }) => JSON.stringify({
   task_id: task.taskId,
   family: task.family,
   band: task.band,
@@ -191,10 +204,10 @@ const manifest = {
   fixture_id: run.fixture_id ?? "meeting-orchestrator-shapes-offline-v1",
   train_split_sha256: run.split_sha256,
   pairs_sha256: pairsSha256,
-  pair_count: selectedWithTier.length,
+  pair_count: uniqueSelected.length,
   dropped_cosmetic_only: droppedCosmetic,
-  band_counts: Object.fromEntries(selectedWithTier.reduce((counts, row) => counts.set(row.band, (counts.get(row.band) ?? 0) + 1), new Map())),
-  tier_counts: Object.fromEntries(selectedWithTier.reduce((counts, row) => counts.set(row.tier, (counts.get(row.tier) ?? 0) + 1), new Map())),
+  band_counts: Object.fromEntries(uniqueSelected.reduce((counts, row) => counts.set(row.band, (counts.get(row.band) ?? 0) + 1), new Map())),
+  tier_counts: Object.fromEntries(uniqueSelected.reduce((counts, row) => counts.set(row.tier, (counts.get(row.tier) ?? 0) + 1), new Map())),
 };
 
 mkdirSync(dirname(pairsPath), { recursive: true });
