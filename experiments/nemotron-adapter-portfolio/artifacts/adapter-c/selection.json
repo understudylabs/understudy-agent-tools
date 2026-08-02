@@ -5,6 +5,7 @@
     "train_discovery": 16
   },
   "adapter": "C",
+  "base_default_holdout_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/base-default-holdout.summary.json",
   "candidate_count": 4,
   "candidates": [
     {
@@ -49,11 +50,14 @@
     }
   ],
   "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
-  "holdout_accessed": false,
+  "holdout_access_policy": "discovery holdout evaluated exactly once for default and selected prompt after selection record",
+  "holdout_accessed": true,
+  "holdout_accessed_at_unix": 1785629965.9484746,
   "model": "nvidia/NVIDIA-Nemotron-3-Nano-A3B-BF16",
   "renderer": "nemotron3_disable_thinking",
   "requested_train_count_note": "User brief said 12 discovery train tasks; frozen fixture exposes 16 discovery train tasks, and all 16 were evaluated.",
   "selected_candidate": "search-first",
+  "selected_holdout_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/search-first-holdout.summary.json",
   "selected_prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/search-first.txt",
   "selected_prompt_sha256": "30fdc724b7e76b99bab57341c54a0fe37ad81582f929a74b454d758a887b0af4",
   "selection_recorded_at_unix": 1785629935.0971487,
