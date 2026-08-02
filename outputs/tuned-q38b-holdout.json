@@ -1,0 +1,431 @@
+{
+  "schema_version": "understudy.eval_result.v1",
+  "label": "tuned-q38b-holdout",
+  "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+  "split": "holdout",
+  "protocol": "native",
+  "mean_score": 0.5,
+  "rows": [
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-close-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-lost-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 6,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-owner-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-rename-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 6,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-mail-draft-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-mail-revise-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-mail-discard-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-mail-send-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-bulk-owner-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-disambiguate-06",
+      "split": "holdout",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-crm-mail-churn-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 0,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-q38b-holdout",
+      "task_id": "simple-api-mail-send-and-close-06",
+      "split": "holdout",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 0,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-06",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-lost-06",
+      "score": 1,
+      "steps": 6,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-owner-06",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-rename-06",
+      "score": 1,
+      "steps": 6,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-draft-06",
+      "score": 0,
+      "steps": 2,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-revise-06",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-discard-06",
+      "score": 0,
+      "steps": 1,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-06",
+      "score": 0,
+      "steps": 1,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-06",
+      "score": 0,
+      "steps": 1,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-06",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-06",
+      "score": 0,
+      "steps": 0,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-06",
+      "score": 0,
+      "steps": 0,
+      "malformed": 0,
+      "forbidden_effects": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 21751,
+    "completion_tokens": 32392,
+    "total_tokens": 54143,
+    "requests": 41
+  },
+  "elapsed_ms": 46534,
+  "provenance": {
+    "split_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f"
+  }
+}

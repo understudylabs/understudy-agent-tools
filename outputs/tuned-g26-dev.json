@@ -1,0 +1,431 @@
+{
+  "schema_version": "understudy.eval_result.v1",
+  "label": "tuned-g26-dev",
+  "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+  "split": "dev",
+  "protocol": "json-text",
+  "mean_score": 0.16666666666666666,
+  "rows": [
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-close-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-lost-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-owner-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-rename-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-mail-draft-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-mail-revise-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-mail-discard-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-mail-send-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 1,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-disambiguate-05",
+      "split": "dev",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 3,
+        "malformed": 0
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-crm-mail-churn-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    },
+    {
+      "schema_version": "understudy.eval_result.v1",
+      "run_id": "tuned-g26-dev",
+      "task_id": "simple-api-mail-send-and-close-05",
+      "split": "dev",
+      "score": 0,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
+      "route": "fireworks-openai-compatible",
+      "cost": {
+        "usd": null,
+        "basis": "provider-usage-receipt-required"
+      },
+      "benchmark_id": "automationbench-simple-api-offline",
+      "subscores": {
+        "forbidden_effects": 0,
+        "steps": 2,
+        "malformed": 1
+      },
+      "provenance": {
+        "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+        "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+        "artifact_refs": [
+          "fixture://automationbench-simple-api-offline-v1"
+        ]
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-lost-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-owner-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-rename-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-draft-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-revise-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-discard-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-05",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "score": 0,
+      "steps": 1,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-05",
+      "score": 1,
+      "steps": 3,
+      "malformed": 0,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-05",
+      "score": 0,
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20730,
+    "completion_tokens": 13947,
+    "total_tokens": 34677,
+    "requests": 37
+  },
+  "elapsed_ms": 35972,
+  "provenance": {
+    "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+    "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f"
+  }
+}

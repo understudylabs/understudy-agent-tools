@@ -18,6 +18,9 @@ executor process; the MCP server and hub never run models. Command matrix,
 artifact map, and daemon details in [`reference.md`](reference.md); the tool
 table and agent loop in `docs/agent-operator-surface.md`.
 
+Training-arm evidence and the pre-spend entry gate are standardized in the
+[`arm evidence reference`](reference.md#training-arm-evidence-and-entry-gate).
+
 ## Resolve CLI
 
 Prefer the installed `understudy` binary. If it is unavailable inside a repo
