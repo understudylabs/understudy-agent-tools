@@ -39,9 +39,11 @@ from tinker_cookbook.renderers import get_renderer
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--base-model", required=True)
+model_group = parser.add_mutually_exclusive_group(required=True)
+model_group.add_argument("--base-model")
+model_group.add_argument("--model-path", help="Tinker sampler-state/checkpoint path returned by save_weights_for_sampler().")
+parser.add_argument("--tokenizer-model", help="Base model used for tokenization/rendering when --model-path is selected.")
 parser.add_argument("--renderer", required=True)
-parser.add_argument("--model-path", default=None, help="tinker:// checkpoint to serve over the base weights")
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
 parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
@@ -60,13 +62,16 @@ def log_event(event, **fields):
             stream.write(json.dumps(record) + "\n")
 
 
-service = tinker.ServiceClient()
+service = tinker.ServiceClient(_client_config={"use_pyqwest_transport": False})
 sampler = (
-    service.create_sampling_client(model_path=args.model_path, base_model=args.base_model)
+    service.create_sampling_client(model_path=args.model_path)
     if args.model_path
     else service.create_sampling_client(base_model=args.base_model)
 )
-renderer = get_renderer(args.renderer, get_tokenizer(args.base_model))
+tokenizer_model = args.tokenizer_model or args.base_model
+if not tokenizer_model:
+    raise SystemExit("--tokenizer-model is required with --model-path")
+renderer = get_renderer(args.renderer, get_tokenizer(tokenizer_model))
 pool = ThreadPoolExecutor(max_workers=args.max_workers)
 
 
