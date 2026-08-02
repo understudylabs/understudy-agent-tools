@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
+import type { AuditReceipt } from "../verifier-audit.js";
+import type { TranscriptRow } from "../verifier-audit-envs.js";
 
 /**
  * `understudy benchmarks …` — the agent-operator surface over the file-based
@@ -657,6 +659,136 @@ export function registerBenchmarksCommand(program: Command): void {
       if (code !== 0) {
         console.error(`rigor --ci: FAIL${options.strict ? " (strict: UNKNOWN is fatal)" : ""}`);
         process.exitCode = code;
+      }
+    });
+
+  benchmarks
+    .command("verifier-audit")
+    .description("Run the deterministic offline verifier reliability audit over fixture states and optional recorded transcripts")
+    .option("--fixture <fixture>", "Fixture: automationbench-v2, synthetic-workflow, or all", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .option("--split <split>", "Split: train, dev, holdout, or all (repeatable)", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .option("--transcripts <path>", "Transcript JSONL file, directory, or simple glob for the natural-trajectory arm", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .option("--out <dir>", "Output directory", "experiments/verifier-reliability-audit")
+    .option("--frozen-holdout <fixture=sha256>", "Required frozen holdout hash; repeatable fixture=sha256, or bare sha256 for one fixture", (value: string, previous: string[]) => [...previous, value], [] as string[])
+    .option("--ci", "Exit non-zero when any audited band fails the dual-arm gate", false)
+    .action(async (options: {
+      fixture: string[];
+      split: string[];
+      transcripts: string[];
+      out: string;
+      frozenHoldout: string[];
+      ci: boolean;
+    }) => {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const { auditAdapter, attachNaturalAudit, renderAuditJson, renderNaturalJson, renderAuditMarkdown } = await import("../verifier-audit.js");
+      const {
+        AUDIT_ADAPTERS,
+        parseAutomationTranscripts,
+        parseSyntheticTranscripts,
+      } = await import("../verifier-audit-envs.js");
+      const fixtures = options.fixture.length === 0 || options.fixture.includes("all")
+        ? ["automationbench-v2", "synthetic-workflow"]
+        : options.fixture;
+      const splits = options.split.length === 0 || options.split.includes("all") ? ["train", "dev", "holdout"] : options.split;
+      const holdoutHashes = new Map<string, string>();
+      for (const value of options.frozenHoldout) {
+        const separator = value.indexOf("=");
+        if (separator < 0) {
+          if (options.frozenHoldout.length !== 1 || fixtures.length !== 1) {
+            throw new Error("--frozen-holdout bare form requires exactly one selected fixture; use <fixture>=<sha256> for multiple fixtures");
+          }
+          holdoutHashes.set(fixtures[0], value);
+        } else {
+          const fixture = value.slice(0, separator);
+          const hash = value.slice(separator + 1);
+          if (!["automationbench-v2", "synthetic-workflow"].includes(fixture)) {
+            throw new Error(`unknown --frozen-holdout fixture: ${fixture}`);
+          }
+          holdoutHashes.set(fixture, hash);
+        }
+      }
+      if (splits.includes("holdout")) {
+        for (const fixture of fixtures) {
+          if (!holdoutHashes.has(fixture)) {
+            throw new Error(`--frozen-holdout is required for holdout fixture: ${fixture}`);
+          }
+        }
+      }
+      const files: string[] = [];
+      const collect = (candidate: string): void => {
+        const stat = fs.statSync(candidate);
+        if (stat.isDirectory()) {
+          for (const entry of fs.readdirSync(candidate)) collect(path.join(candidate, entry));
+        } else if (candidate.endsWith(".jsonl")) files.push(candidate);
+      };
+      for (const transcriptPath of options.transcripts) {
+        const candidate = path.resolve(transcriptPath);
+        if (fs.existsSync(candidate)) collect(candidate);
+        else {
+          const base = path.dirname(candidate);
+          const pattern = new RegExp(`^${path.basename(candidate).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
+          if (fs.existsSync(base)) for (const entry of fs.readdirSync(base)) if (pattern.test(entry)) files.push(path.join(base, entry));
+        }
+      }
+      fs.mkdirSync(path.resolve(options.out), { recursive: true, mode: 0o700 });
+      const outputs: AuditReceipt[] = [];
+      const { createHash } = await import("node:crypto");
+      const transcriptRefs = files.map((file) => ({
+        path: path.relative(process.cwd(), file).split(path.sep).join("/"),
+        sha256: createHash("sha256").update(fs.readFileSync(file)).digest("hex"),
+      })).sort((a, b) => a.path.localeCompare(b.path));
+      for (const fixture of fixtures) {
+        const naturalRows: TranscriptRow[] = files.flatMap((file) => fs.readFileSync(file, "utf8").split(/\r?\n/).filter(Boolean).map((line) => {
+          const row: TranscriptRow = JSON.parse(line);
+          return row;
+        }));
+        let adversarialReceipt: AuditReceipt;
+        let finalReceipt: AuditReceipt;
+        if (fixture === "automationbench-v2") {
+          const adapter = AUDIT_ADAPTERS.automationBenchV2;
+          adversarialReceipt = auditAdapter(adapter, {
+            splits,
+            frozenHoldoutSha256: holdoutHashes.get(fixture),
+            transcriptRefs,
+          });
+          finalReceipt = attachNaturalAudit(adversarialReceipt, adapter, parseAutomationTranscripts(naturalRows), {
+            splits,
+            frozenHoldoutSha256: holdoutHashes.get(fixture),
+          });
+        } else if (fixture === "synthetic-workflow") {
+          const adapter = AUDIT_ADAPTERS.syntheticWorkflow;
+          adversarialReceipt = auditAdapter(adapter, {
+            splits,
+            frozenHoldoutSha256: holdoutHashes.get(fixture),
+            transcriptRefs,
+          });
+          finalReceipt = attachNaturalAudit(adversarialReceipt, adapter, parseSyntheticTranscripts(naturalRows), {
+            splits,
+            frozenHoldoutSha256: holdoutHashes.get(fixture),
+          });
+        } else {
+          throw new Error(`unknown verifier-audit fixture: ${fixture}`);
+        }
+        const prefix = path.join(path.resolve(options.out), fixture);
+        fs.writeFileSync(`${prefix}-adversarial.json`, `${renderAuditJson(adversarialReceipt)}\n`, { mode: 0o600 });
+        fs.writeFileSync(`${prefix}.md`, `${renderAuditMarkdown(finalReceipt)}\n`, { mode: 0o600 });
+        if (finalReceipt.natural) fs.writeFileSync(`${prefix}-natural.json`, `${renderNaturalJson(finalReceipt.natural, finalReceipt)}\n`, { mode: 0o600 });
+        outputs.push(finalReceipt);
+      }
+      for (const receipt of outputs) {
+        console.log(`fixture: ${receipt.adapter}`);
+        for (const [band, verdict] of Object.entries(receipt.verdicts).sort(([a], [b]) => a.localeCompare(b))) {
+          console.log(`  ${band}: ${verdict.verdict}${verdict.reasons.length > 0 ? ` (${verdict.reasons.join(", ")})` : ""}`);
+        }
+        const natural = receipt.natural;
+        console.log(`  natural: ${natural ? `probes=${natural.probes}, replay_fidelity_mismatches=${natural.replay_fidelity_mismatches}` : "no evidence"}`);
+        const artifactPrefix = receipt.adapter === "automationbench-v2" ? "automationbench-v2" : "synthetic-workflow";
+        console.log(`  artifacts: ${path.join(options.out, `${artifactPrefix}-adversarial.json`)}, ${path.join(options.out, `${artifactPrefix}-natural.json`)}, ${path.join(options.out, `${artifactPrefix}.md`)}`);
+        console.log(`  idempotency_key: ${receipt.idempotency_key}`);
+      }
+      if (options.ci && outputs.some((receipt) => Object.values(receipt.verdicts).some((verdict) => verdict.verdict !== "trusted"))) {
+        process.exitCode = 1;
       }
     });
 }

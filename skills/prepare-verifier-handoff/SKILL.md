@@ -66,6 +66,8 @@ Check these before doing anything else. Most agentic tool-use work stays local:
   first-class multi-turn GRPO **trainer and renderer** (e.g. NVIDIA Nemotron-3
   does; Google Gemma-4 does not yet — no merged trainer, no multi-turn renderer).
   If any gate fails, fix it (or pick a supported model) before any RL handoff.
+  Run [`../audit-verifier-reliability/SKILL.md`](../audit-verifier-reliability/SKILL.md)
+  first; an environment whose reward has not passed that audit is not RL-ready.
   For (b), implement the rewardability check per
   [`references/rewardability.md`](references/rewardability.md) against the real
   scored-rollout artifact; for (c), use the model matrix in

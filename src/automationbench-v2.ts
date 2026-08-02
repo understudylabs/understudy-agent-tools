@@ -674,7 +674,7 @@ const HARD_FAMILIES: HardFamily[] = [
 // Fixture assembly
 // ---------------------------------------------------------------------------
 
-/** The hard tasks only: 8 families x 12 instances = 96 tasks. */
+/** The hard tasks only: 12 families x 12 instances = 144 tasks. */
 export const HARD_TASKS: Task[] = buildHardTasks();
 
 function buildHardTasks(): Task[] {

@@ -77,6 +77,9 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
   must pass and one plausible-but-wrong result must fail. A verifier that has
   never rejected a wrong answer has not been tested; do not regrade or
   calibrate against it.
+- For reward trust and RL/DPO claims, route to
+  [`../audit-verifier-reliability/SKILL.md`](../audit-verifier-reliability/SKILL.md)
+  before interpreting benchmark lifts.
 
 ## The lifecycle
 

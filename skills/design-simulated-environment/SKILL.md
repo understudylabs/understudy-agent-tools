@@ -273,4 +273,5 @@ live-effect, reward, hash, and parser gates pass.
 - [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.
 - [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.
+- [`../audit-verifier-reliability/SKILL.md`](../audit-verifier-reliability/SKILL.md) — audit whether its reward is safe to optimize before claiming an RL lift.
 - [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) — runs this env as the offline ship/no-ship gate for a proposed model or prompt change.
