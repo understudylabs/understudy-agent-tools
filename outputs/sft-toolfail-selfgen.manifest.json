@@ -1,0 +1,54 @@
+{
+  "fixture": "automationbench-simple-api-offline-v2",
+  "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+  "corpus_sha256": "2fc6c8c5c82588550fc8a412ea7b4f29185ff27208a4eb8f242eeb442d5d9879",
+  "probe_report_sha256": "d10a7d239f3d7c06ce2b13cd1453fdd2145b8f4abaa2cb8846a159a32f3ea5a5",
+  "probe_report": "outputs/base-nemotron3-nano-train-probe-mt1024.json",
+  "supersedes": {
+    "invalid_probe": "outputs/base-nemotron3-nano-train-probe-invalid-mt512.json",
+    "reason": "The prior 512-token probe was truncated by the serving ceiling and is not evidence for this arm."
+  },
+  "rows": 65,
+  "examples": 337,
+  "selection_rule": "score < 1 OR malformed > 0 OR forbidden_effects > 0 OR ended != \"finish\"",
+  "selected_failure_counts_by_band": {
+    "aggregation": 4,
+    "cascade": 6,
+    "conditional": 4,
+    "cross-record": 10,
+    "discovery": 6,
+    "long-chain": 12,
+    "multi-hop": 12,
+    "multi-write": 9,
+    "single-write": 2
+  },
+  "selected_failure_counts_by_family": {
+    "churn-cascade": 4,
+    "conditional-route": 4,
+    "crm-bulk-owner": 1,
+    "crm-disambiguate": 3,
+    "crm-lost": 2,
+    "crm-mail-churn": 3,
+    "derived-subject-close": 6,
+    "dual-close-cleanup": 6,
+    "duplicate-merge": 6,
+    "load-balance-assign": 4,
+    "mail-discard": 3,
+    "mail-draft": 1,
+    "mail-revise": 1,
+    "mail-send": 1,
+    "mail-send-and-close": 2,
+    "priority-escalation-filter": 1,
+    "rep-departure-cascade": 2,
+    "reply-thread-close": 6,
+    "ticket-owner-route": 3,
+    "ticket-resolve-notify": 6
+  },
+  "think_block_policy": "empty",
+  "split_hashes": {
+    "v2_train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+    "v2_dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "v2_holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+    "v1_holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701"
+  }
+}
