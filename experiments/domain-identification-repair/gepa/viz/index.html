@@ -135,12 +135,24 @@
       const runIsActive = liveNodes.some(node => ACTIVE.has(String(node.stage).toLowerCase()));
       const manifestIsActive = (manifest.nodes || []).some(node => ACTIVE.has(String(node.stage).toLowerCase()));
       if (!runIsActive || manifestIsActive) return manifest;
+      const liveEpisodes = liveNodes.reduce((sum, node) => sum + Number(node.episode_progress?.completed || 0), 0);
       return {
         ...manifest,
         experiment: "eight-island GEPA · live",
         nodes: liveNodes,
-        totals: { ...(manifest.totals || {}), state: "running", islands_total: 8,
-          islands_active: liveNodes.filter(node => ACTIVE.has(String(node.stage).toLowerCase())).length },
+        totals: { state: "running", wall_clock_s: 0, islands_total: 8,
+          islands_active: liveNodes.filter(node => ACTIVE.has(String(node.stage).toLowerCase())).length,
+          islands_succeeded: liveNodes.filter(node => ["completed", "promoted"].includes(node.stage) && node.wave === "wave2").length,
+          islands_failed: liveNodes.filter(node => node.stage === "failed").length,
+          failure_events: liveNodes.filter(node => node.provenance?.failure_reason).map(node => ({
+            node_id: node.node_id,
+            category: node.provenance.failure_category,
+            reason: node.provenance.failure_reason,
+          })),
+          budget: { stage_a_completed: liveEpisodes, max_total_episodes: 192,
+            total_reflections: 0, max_total_reflections: 32 },
+          cost_usd: null, cost_coverage: "out_of_band_clickhouse",
+        },
       };
     }
 
