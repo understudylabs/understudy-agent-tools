@@ -1,0 +1,45 @@
+{
+  "schema_version": "understudy.fixture_gate_validation.v1",
+  "workload_code": "WL-AU",
+  "validated_at": "2026-08-02T01:32:00Z",
+  "fixture_id": "automationbench-simple-api-offline-v2",
+  "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+  "tasks": 216,
+  "splits": { "train": 120, "dev": 36, "holdout": 60 },
+  "split_sha256": {
+    "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+    "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9"
+  },
+  "splits_sha256": "fa96e1215fc70dddae11d33069dc708c773c26fb1b93f5a72b9c96b04b5e86e0",
+  "gates": {
+    "oracle_mean_reward": 1.0,
+    "sentinel_max_reward": 0.0,
+    "free_credit": "none",
+    "label_leakage": "clean",
+    "observation_leakage": "clean",
+    "unreachable_literals": "none",
+    "duplicate_task_ids": 0,
+    "deterministic_reset": true,
+    "frozen_holdout_refusal": {
+      "no_hash": "refused",
+      "wrong_hash": "refused",
+      "correct_hash": "60 tasks"
+    }
+  },
+  "bands": {
+    "single-write": 24,
+    "discovery": 30,
+    "multi-write": 18,
+    "cross-record": 36,
+    "multi-hop": 24,
+    "cascade": 24,
+    "long-chain": 24,
+    "conditional": 24,
+    "aggregation": 12
+  },
+  "verdict": "pass",
+  "how": "node scripts/automationbench-v2-freeze.mjs && node --test tests/automationbench-v2.test.mjs",
+  "workload_fit": "The fixture's task shape — bounded, one structured tool call per turn, graded on terminal state — matches WL-AU's repairable slice (72.7% of its requests emit <=512 output tokens). No new fixture was built; this arm validated and reused the frozen one.",
+  "privacy": "All 216 tasks are index-generated synthetic records. No customer trace, prompt, completion, or identifier is present in the fixture, the mined pairs, or any artifact of this arm."
+}

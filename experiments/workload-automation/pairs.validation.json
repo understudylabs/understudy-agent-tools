@@ -1,0 +1,29 @@
+{
+  "schema_version": "understudy.dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T02:55:16.287Z",
+  "pairs_path": "outputs/workload-automation/pairs/dpo_pairs.jsonl",
+  "manifest_path": "outputs/workload-automation/pairs/dpo_pairs.manifest.json",
+  "pairs_sha256": "d38e46efd9ccdac7bcf7b4ee8071e97e44896538e1445863af1d52a8281dd58d",
+  "manifest_declared_sha256": "d38e46efd9ccdac7bcf7b4ee8071e97e44896538e1445863af1d52a8281dd58d",
+  "lines": 126,
+  "accepted": 126,
+  "rejected": 0,
+  "split_counts": {
+    "train": 126
+  },
+  "band_counts": {
+    "single-write": 11,
+    "discovery": 9,
+    "multi-write": 20,
+    "cross-record": 22,
+    "multi-hop": 18,
+    "cascade": 18,
+    "long-chain": 16,
+    "conditional": 9,
+    "aggregation": 3
+  },
+  "holdout_split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "train_split_sha256": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+  "failures": [],
+  "verdict": "pass"
+}
