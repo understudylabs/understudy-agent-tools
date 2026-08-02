@@ -174,6 +174,32 @@ Rules every stage here obeys:
   not decide promotion. The promotion bar and the stop rules live in the
   artifacts described here.
 
+### Evidence semantics that must survive the handoff
+
+Whatever runtime executes the loop, these distinctions are load-bearing and must
+be carried explicitly rather than flattened into a single number:
+
+- **Budget vs actual vs estimated vs upper-bound spend** — never report an
+  estimate where an actual is expected, and label upper bounds as such.
+- **Evidence scope and request isolation** — which rows, which window, and
+  whether the runs were isolated from each other.
+- **Hash-bound splits** — the split contract travels as a hash, and a
+  regenerated split is a new contract, not the same one.
+- **Holdout clean vs executed** — a holdout that has been run against is no
+  longer sealed; it is structurally absent from anything a training or rollout
+  step can read.
+- **Quality and calibration status** — a score without its calibration state is
+  not comparable across cycles.
+- **Failure clusters** — the failure taxonomy, not just the aggregate score, is
+  what selects the next rung.
+- **Artifact refs and the claim boundary** — what may be claimed publicly is a
+  property of the evidence, and it travels with it.
+
+The selector consumes the summary form of exactly these fields (`verifier`,
+`sealed_holdout_rows`, `metric_name`, scores, `failure_mode`, cost per month,
+attempts) and emits a hashed decision artifact. It never sees holdout rows,
+because it never sees rows at all.
+
 The selector at step 4 is the reference shape for a pure step:
 
 ```ts
