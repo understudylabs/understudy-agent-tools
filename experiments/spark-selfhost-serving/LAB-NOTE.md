@@ -118,12 +118,16 @@ LORA_MODULES='adapter-a=/approved/adapters/adapter-a,adapter-b=/approved/adapter
 
 - No runbook document named `DEVIN_SPARK_ACCESS.md` exists in the Spark Lab
   repository on any branch inspected.
-- No prior Spark bootstrap, recipe, or router scripts were found on this
-  branch.
-- No unified router or endpoint registry exists in either repository. The
-  closest artifacts are `buzz-experiments/contracts/registry.v1.json`, which
-  contains experiment contract schemas, and
-  `src/local-classifier/registry.ts` plus `src/local-serving.ts`, which handle
-  per-run local artifacts and serving. Neither registers Spark or Modal
-  endpoints.
-- Endpoint registration could not be performed.
+- At the time of the original reconnaissance, no prior Spark bootstrap,
+  recipe, or router scripts were present in the checked-out branch. A serving
+  lane contract was integrated concurrently afterward; the current branch
+  now contains `src/serving-registry.ts`,
+  `docs/unified-serving-router.md`, and
+  `scripts/spark-lane-bootstrap.sh`. That registry explicitly models both
+  `spark` and `modal` lanes and is the concrete unified endpoint mechanism.
+- Endpoint registration was not performed because the runtime remained paused.
+  The earlier closest artifacts, before that concurrent integration, were
+  `buzz-experiments/contracts/registry.v1.json` (experiment contract schemas)
+  and `src/local-classifier/registry.ts` plus `src/local-serving.ts` (per-run
+  local artifacts and serving).
+- No endpoint registration was performed.
