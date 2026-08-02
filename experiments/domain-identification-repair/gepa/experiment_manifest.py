@@ -272,6 +272,37 @@ def run_shaped_from_manifest(manifest, examples):
     }
 
 
+def predictions_from_canonical(canonical, examples):
+    """Build gepa-viz `predictions` for a finalized canonical node from its
+    authoritative per-task receipt rows, so the viewer draws the real red/green
+    ring instead of an unscored gray node.
+
+    Rows are the per-episode canonical results (k samples per dev task). We
+    aggregate to ONE cell per dev task, ALIGNED to `examples` order, using the
+    real mean of that task's sample scores (no fabricated scores). The result
+    has length len(examples) and its mean equals the receipt mean_score.
+
+    Returns None if the receipt carries no rows (caller leaves predictions null).
+    """
+    rows = (canonical or {}).get("rows") or []
+    if not rows:
+        return None
+    by_task = {}
+    for r in rows:
+        by_task.setdefault(str(r.get("task_id")), []).append(float(r.get("score", 0.0)))
+    predictions = []
+    for ex in examples:
+        tid = str(ex.get("task_id"))
+        scores = by_task.get(tid)
+        if not scores:  # task absent from receipt: cannot assert an outcome
+            return None
+        predictions.append({
+            "prediction": {},
+            "score": sum(scores) / len(scores),
+        })
+    return predictions
+
+
 def publish_run_shaped(manifest, examples, ingest_url, timeout=10):
     """Project the manifest into the gepa-viz run.json shape and POST it to the
     viewer ingest endpoint so PLAIN gepa-viz renders baseline/wave1/wave2. The

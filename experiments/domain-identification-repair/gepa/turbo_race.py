@@ -509,7 +509,9 @@ def main():
     winner_canonical = _load_json(args.wave1_winner_canonical) if args.wave1_winner_canonical else None
 
     def _predictions_extra(cached):
-        preds = cached.get("predictions") if cached else None
+        # Finalized canonical nodes carry real per-task predictions (from the
+        # receipt rows) so the viewer draws the red/green ring, not gray.
+        preds = em.predictions_from_canonical(cached, examples) if cached else None
         return {"predictions": preds} if preds else None
 
     def _baseline_wave1_nodes():
@@ -633,6 +635,7 @@ def main():
                 "branch_id": bid, "confirmed": True, "deduped": True,
                 "mean_score": cached["mean_score"], "malformed_rate": cached.get("malformed_rate"),
                 "wall_clock_s": cached.get("wall_clock_s"), "winner_prompt_sha256": prompt_sha,
+                "predictions": em.predictions_from_canonical(cached, examples),
             })
             continue
         # Consume this branch's up-front reservation; release is now illegal.
@@ -647,6 +650,7 @@ def main():
             "mean_score": res["mean_score"], "malformed_rate": res.get("malformed_rate"),
             "wall_clock_s": res.get("wall_clock_s"), "winner_prompt_sha256": prompt_sha,
             "out_path": str(out_path),
+            "predictions": em.predictions_from_canonical(res, examples),
         })
 
     winner = select_winner(confirmations)

@@ -504,6 +504,28 @@ def test_run_shaped_bridge_active_and_terminal_transition():
           set(run_active["candidates"]) == set(run_done["candidates"]))
 
 
+def test_predictions_from_canonical_real_and_aligned():
+    # 2 dev tasks, k=3 -> 6 rows with REAL 0/1 scores. The helper aggregates to
+    # one cell per example, aligned to examples order, using real per-task means
+    # (no fabricated scores); its mean equals the receipt mean_score.
+    examples = [{"task_id": "fam-alpha-01"}, {"task_id": "fam-beta-02"}]
+    rows = (
+        [{"task_id": "fam-alpha-01", "score": s} for s in (1, 1, 1)]      # mean 1.0
+        + [{"task_id": "fam-beta-02", "score": s} for s in (1, 0, 0)]     # mean 1/3
+    )
+    canonical = {"mean_score": (1.0 + 1.0 / 3) / 2, "rows": rows}
+    preds = em.predictions_from_canonical(canonical, examples)
+    check("one prediction cell per example (aligned to examples)", len(preds) == 2)
+    check("cell 0 is the real mean of task fam-alpha-01", preds[0]["score"] == 1.0)
+    check("cell 1 is the real mean of task fam-beta-02", abs(preds[1]["score"] - 1.0 / 3) < 1e-9)
+    mean = sum(p["score"] for p in preds) / len(preds)
+    check("aggregated mean equals receipt mean_score", abs(mean - canonical["mean_score"]) < 1e-9)
+    check("no rows -> None (caller leaves predictions null / gray)",
+          em.predictions_from_canonical({"rows": []}, examples) is None)
+    check("missing task in receipt -> None (never asserts a fake outcome)",
+          em.predictions_from_canonical({"rows": rows[:3]}, examples) is None)
+
+
 def main():
     tests = [
         test_global_cap_failure_leaves_branch_unchanged,
@@ -528,6 +550,7 @@ def main():
         test_canonical_k1_cannot_rank_against_k3,
         test_manifest_requires_provenance_and_holdout_untouched,
         test_run_shaped_bridge_active_and_terminal_transition,
+        test_predictions_from_canonical_real_and_aligned,
         test_no_holdout_identifiers_in_fixtures,
     ]
     for t in tests:
