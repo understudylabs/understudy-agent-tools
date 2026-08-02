@@ -1,0 +1,54 @@
+{
+  "benchmark_id": "synthetic-workflow-shapes-offline",
+  "fixture_sha256": "c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412",
+  "holdout_sha256": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+  "holdout_sealed": true,
+  "holdout_runs": 3,
+  "arms": {
+    "base": {
+      "train_mean": 0.0,
+      "train_strict": 0.0,
+      "dev_mean": 0.08333333333333333,
+      "dev_strict": 0.08333333333333333,
+      "holdout_mean": 0.0,
+      "holdout_strict": 0.0,
+      "holdout_per_band": {
+        "discovery": 0.0,
+        "multi-write": 0.0,
+        "single-write": 0.0
+      }
+    },
+    "sft_epoch2": {
+      "train_mean": 0.041666666666666664,
+      "train_strict": 0.041666666666666664,
+      "dev_mean": 0.125,
+      "dev_strict": 0.08333333333333333,
+      "holdout_mean": 0.0,
+      "holdout_strict": 0.0,
+      "holdout_per_band": {
+        "discovery": 0.0,
+        "multi-write": 0.0,
+        "single-write": 0.0
+      }
+    },
+    "grpo_step10": {
+      "train_mean": 0.0625,
+      "train_strict": 0.0625,
+      "dev_mean": 0.08333333333333333,
+      "dev_strict": 0.08333333333333333,
+      "holdout_mean": 0.08333333333333333,
+      "holdout_strict": 0.08333333333333333,
+      "holdout_per_band": {
+        "discovery": 0.2,
+        "multi-write": 0.0,
+        "single-write": 0.0
+      }
+    }
+  },
+  "selection": {
+    "sft_epoch": 2,
+    "grpo_step": 10,
+    "grpo_tie_break": "earliest step",
+    "grpo_state_deviation": "GRPO initialized from epoch-4 SFT state because only epoch 4 had a saved resumable state."
+  }
+}
