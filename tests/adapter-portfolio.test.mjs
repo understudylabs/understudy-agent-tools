@@ -98,6 +98,50 @@ describe("adapter portfolio", () => {
     assert.equal(JSON.parse(listed.stdout)[0].name, "adapter-cli");
   });
 
+  it("runs the documented dev-to-holdout-to-gate CLI sequence", () => {
+    const data = fixture();
+    const cli = resolve("dist/bin.js");
+    const run = (...args) => spawnSync(
+      process.execPath,
+      [cli, "adapter-portfolio", ...args, "--registry-path", data.registryPath, "--json"],
+      { encoding: "utf8" },
+    );
+    const init = run("init", "--min-dev-score", "0.8", "--min-holdout-score", "0.78");
+    assert.equal(init.status, 0, init.stderr);
+    const register = run(
+      "register", "--name", "adapter-docs", "--path", "./adapter-docs",
+      "--base", "base-model", "--suite", "workload-band-docs", "--method", "sft-lora",
+      "--holdout-path", "./holdout.jsonl", "--holdout-sha256", holdoutSha, "--holdout-rows", "2",
+    );
+    assert.equal(register.status, 0, register.stderr);
+    assert.equal(run("candidate", "adapter-docs").status, 0);
+    const dev = run(
+      "evidence", "add", "--adapter", "adapter-docs", "--suite", "workload-band-docs",
+      "--split", "dev", "--score", "0.84", "--metric", "score",
+      "--dataset-sha256", sha("dev-docs"), "--rows", "2", "--seed", "7",
+    );
+    assert.equal(dev.status, 0, dev.stderr);
+    const holdout = run(
+      "evidence", "add", "--adapter", "adapter-docs", "--suite", "workload-band-docs",
+      "--split", "holdout", "--score", "0.81", "--metric", "score",
+      "--dataset-sha256", holdoutSha, "--rows", "2", "--seed", "7",
+    );
+    assert.equal(holdout.status, 0, holdout.stderr);
+    const missingBaseOwner = run(
+      "evidence", "add", "--base", "--suite", "workload-band-docs",
+      "--split", "holdout", "--score", "0.8", "--metric", "score",
+      "--dataset-sha256", holdoutSha, "--rows", "2",
+    );
+    assert.equal(missingBaseOwner.status, 1);
+    assert.match(JSON.parse(missingBaseOwner.stdout).error, /requires --for <adapter>/);
+    const gate = run("gate", "adapter-docs");
+    assert.equal(gate.status, 1);
+    assert.equal(JSON.parse(gate.stdout).decision, "blocked");
+    const promote = run("promote", "adapter-docs", "--dry-run");
+    assert.equal(promote.status, 1);
+    assert.equal(JSON.parse(promote.stdout).decision.decision, "blocked");
+  });
+
   it("scores the worst holdout rerun instead of rescuing a failing candidate", () => {
     const data = candidateFixture();
     add(data.registryPath, "adapter-a", {

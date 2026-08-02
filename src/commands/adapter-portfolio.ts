@@ -107,7 +107,7 @@ export function registerAdapterPortfolioCommand(program: Command): void {
     .requiredOption("--rows <n>", "Dataset row count.")
     .option("--adapter <name>", "Adapter subject; omit for base evidence.")
     .option("--base", "Record base-model evidence.")
-    .requiredOption("--for <name>", "Registry adapter that owns this evidence row.")
+    .option("--for <name>", "Registry adapter that owns base evidence.")
     .option("--seed <n>", "Evaluation seed.")
     .option("--run-id <id>", "Evaluation run id.")
     .option("--fixture-sha256 <sha256>", "Fixture SHA-256.")
@@ -115,13 +115,15 @@ export function registerAdapterPortfolioCommand(program: Command): void {
     .option("--notes <text>", "Evidence notes.")
     .option("--registry-path <path>", "Registry JSON path.")
     .action(function (this: Command, options: {
-      adapter?: string; base?: boolean; for: string; suite: string; split: "dev" | "holdout"; score: string;
+      adapter?: string; base?: boolean; for?: string; suite: string; split: "dev" | "holdout"; score: string;
       metric: string; datasetSha256: string; rows: string; seed?: string; runId?: string;
       fixtureSha256?: string; loadedAdapters?: string; notes?: string; registryPath?: string;
     }) {
       run(this, () => {
         if ((options.adapter ? 1 : 0) + (options.base ? 1 : 0) !== 1) throw new Error("Choose exactly one subject with --adapter or --base.");
-        return addEvidence(options.for, {
+        const owner = options.for ?? options.adapter;
+        if (!owner) throw new Error("--base evidence requires --for <adapter>.");
+        return addEvidence(owner, {
           subject: options.adapter ? "adapter" : "base",
           ...(options.adapter ? { adapter_name: options.adapter } : {}),
           suite: options.suite,
