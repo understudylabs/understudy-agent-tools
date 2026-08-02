@@ -1,0 +1,4950 @@
+{
+  "fixture": "automationbench-simple-api-offline-v2",
+  "split": "holdout",
+  "bands": [
+    "aggregation",
+    "cascade",
+    "conditional",
+    "cross-record",
+    "discovery",
+    "long-chain",
+    "multi-hop",
+    "multi-write",
+    "single-write"
+  ],
+  "arms": [
+    {
+      "label": "base",
+      "source_path": "outputs/gepa-run/base-holdout.json",
+      "metrics": {
+        "mean_score": 0.6698412698412698,
+        "mean_by_band": {
+          "aggregation": 0.75,
+          "cascade": 0.5625,
+          "conditional": 0.8125,
+          "cross-record": 0.7916666666666666,
+          "discovery": 0.75,
+          "long-chain": 0.44047619047619047,
+          "multi-hop": 0.625,
+          "multi-write": 0.5416666666666666,
+          "single-write": 0.75
+        },
+        "exact_1_rate": 0.55,
+        "zero_rate": 0.2,
+        "forbidden_effect_rate": 0,
+        "malformed_rate": 0.8833333333333333,
+        "mean_steps_per_rollout": 4.95,
+        "mean_tool_calls_per_rollout": 4.95,
+        "tokens_per_rollout": {
+          "prompt": 14597.083333333334,
+          "completion": 2891.0333333333333
+        },
+        "wall_clock_per_rollout_s": 13.216666666666667,
+        "scored": 60,
+        "total": 60,
+        "ci95": {
+          "low": 0.5666666666666667,
+          "high": 0.7716269841269842,
+          "n": 60,
+          "resamples": 10000
+        },
+        "split": "holdout"
+      },
+      "rows": [
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-churn-cascade-09",
+          "split": "holdout",
+          "score": 0.25,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14452,
+            "completion": 2769
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.25 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-churn-cascade-10",
+          "split": "holdout",
+          "score": 0.75,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 37949,
+            "completion": 4390
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 0.75 — episode ended by finish — malformed/rejection count 5 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-churn-cascade-11",
+          "split": "holdout",
+          "score": 0.25,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 24542,
+            "completion": 3093
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 0.25 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-churn-cascade-12",
+          "split": "holdout",
+          "score": 0.25,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14165,
+            "completion": 3194
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.25 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-conditional-route-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6694,
+            "completion": 1673
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-conditional-route-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9883,
+            "completion": 2664
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-conditional-route-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10461,
+            "completion": 1942
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (no JSON object in reply) — forbidden-effect count 0 — 1 api_fetch writes vs 3 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-conditional-route-12",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 13753,
+            "completion": 2794
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-derived-subject-close-09",
+          "split": "holdout",
+          "score": 0.6666666666666666,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 32309,
+            "completion": 4844
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 0.6666666666666666 — episode ended by finish — malformed/rejection count 5 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-derived-subject-close-10",
+          "split": "holdout",
+          "score": 0.3333333333333333,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 44578,
+            "completion": 6462
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 8,
+          "forbidden_effects": 0,
+          "feedback": "score 0.3333333333333333 — episode ended by budget — malformed/rejection count 8 (no JSON object in reply; reply is not valid JSON; reply has no tool name) — forbidden-effect count 0 — 3 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-derived-subject-close-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 16249,
+            "completion": 3149
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-derived-subject-close-12",
+          "split": "holdout",
+          "score": 0.6666666666666666,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 40229,
+            "completion": 5219
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 6,
+          "forbidden_effects": 0,
+          "feedback": "score 0.6666666666666666 — episode ended by budget — malformed/rejection count 6 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 5 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-dual-close-cleanup-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 24832,
+            "completion": 4482
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 7,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 7 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-dual-close-cleanup-10",
+          "split": "holdout",
+          "score": 0.14285714285714285,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 35341,
+            "completion": 5522
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 7,
+          "forbidden_effects": 0,
+          "feedback": "score 0.14285714285714285 — episode ended by budget — malformed/rejection count 7 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 3 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-dual-close-cleanup-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6494,
+            "completion": 2566
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 2 api_search reads — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-dual-close-cleanup-12",
+          "split": "holdout",
+          "score": 0.7142857142857143,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 37534,
+            "completion": 5354
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 8,
+          "forbidden_effects": 0,
+          "feedback": "score 0.7142857142857143 — episode ended by budget — malformed/rejection count 8 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-duplicate-merge-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 20876,
+            "completion": 4478
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 5 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 1 api_fetch writes vs 4 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-duplicate-merge-10",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 11837,
+            "completion": 2752
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-duplicate-merge-11",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12543,
+            "completion": 2762
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 3 (no JSON object in reply) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-duplicate-merge-12",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10633,
+            "completion": 2499
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-load-balance-assign-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 20094,
+            "completion": 3655
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-load-balance-assign-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 11464,
+            "completion": 2885
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-load-balance-assign-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10307,
+            "completion": 2518
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-load-balance-assign-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 8241,
+            "completion": 2866
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-priority-escalation-filter-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12230,
+            "completion": 2396
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-priority-escalation-filter-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 19895,
+            "completion": 3372
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-priority-escalation-filter-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 37306,
+            "completion": 4418
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 9,
+          "tool_calls": 9,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by budget — malformed/rejection count 5 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 3 api_search reads — 9 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-priority-escalation-filter-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12200,
+            "completion": 2282
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-rep-departure-cascade-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5487,
+            "completion": 2530
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 1,
+          "tool_calls": 1,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 1 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-rep-departure-cascade-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 34026,
+            "completion": 5117
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 9,
+          "tool_calls": 9,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 5 api_fetch writes vs 1 api_search reads — 9 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-rep-departure-cascade-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 18269,
+            "completion": 2724
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-rep-departure-cascade-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 13704,
+            "completion": 3030
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 9,
+          "tool_calls": 9,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 4 api_fetch writes vs 2 api_search reads — 9 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-reply-thread-close-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 8601,
+            "completion": 2911
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 1,
+          "tool_calls": 1,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 5 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 1 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-reply-thread-close-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 33966,
+            "completion": 4895
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 9,
+          "tool_calls": 9,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by budget — malformed/rejection count 5 (reply is not valid JSON; reply has no tool name; no JSON object in reply) — forbidden-effect count 0 — 5 api_fetch writes vs 1 api_search reads — 9 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-reply-thread-close-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5294,
+            "completion": 2360
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 1,
+          "tool_calls": 1,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON; reply has no tool name) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 1 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-reply-thread-close-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 18457,
+            "completion": 4236
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 6,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 6 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 3 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-same-title-trap-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4016,
+            "completion": 1440
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-same-title-trap-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4047,
+            "completion": 1399
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-same-title-trap-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1984,
+            "completion": 1177
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-same-title-trap-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12662,
+            "completion": 2932
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 6 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-owner-route-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6623,
+            "completion": 1708
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-owner-route-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10013,
+            "completion": 2048
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-owner-route-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 8564,
+            "completion": 2221
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-owner-route-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6570,
+            "completion": 1699
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10836,
+            "completion": 2501
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply has no tool name) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10809,
+            "completion": 2415
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 19968,
+            "completion": 3681
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14545,
+            "completion": 3438
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-bulk-owner-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 7986,
+            "completion": 1829
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — a write happened before the first read — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-close-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 2268,
+            "completion": 1536
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 0 api_search reads — 0 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-disambiguate-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4420,
+            "completion": 1843
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-lost-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1910,
+            "completion": 1295
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-mail-churn-06",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 8105,
+            "completion": 2392
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-owner-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1920,
+            "completion": 713
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-crm-rename-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1951,
+            "completion": 754
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-mail-discard-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1744,
+            "completion": 1282
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-mail-draft-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12237,
+            "completion": 3002
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-mail-revise-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 1485,
+            "completion": 1290
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-mail-send-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 3721,
+            "completion": 1903
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "base-holdout",
+          "task_id": "simple-api-mail-send-and-close-06",
+          "split": "holdout",
+          "score": 0.6666666666666666,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 22546,
+            "completion": 4161
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/base-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 0.6666666666666666 — episode ended by finish — malformed/rejection count 5 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        }
+      ]
+    },
+    {
+      "label": "gepa",
+      "source_path": "outputs/gepa-run/gepa-holdout.json",
+      "metrics": {
+        "mean_score": 0.9083333333333333,
+        "mean_by_band": {
+          "aggregation": 0.75,
+          "cascade": 0.9375,
+          "conditional": 0.875,
+          "cross-record": 0.8333333333333334,
+          "discovery": 1,
+          "long-chain": 0.875,
+          "multi-hop": 1,
+          "multi-write": 1,
+          "single-write": 1
+        },
+        "exact_1_rate": 0.85,
+        "zero_rate": 0.05,
+        "forbidden_effect_rate": 0.016666666666666666,
+        "malformed_rate": 0.9,
+        "mean_steps_per_rollout": 4.966666666666667,
+        "mean_tool_calls_per_rollout": 4.966666666666667,
+        "tokens_per_rollout": {
+          "prompt": 16220.683333333332,
+          "completion": 2341.133333333333
+        },
+        "wall_clock_per_rollout_s": 11.15,
+        "scored": 60,
+        "total": 60,
+        "ci95": {
+          "low": 0.8375,
+          "high": 0.9625,
+          "n": 60,
+          "resamples": 10000
+        },
+        "split": "holdout"
+      },
+      "rows": [
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-churn-cascade-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 31779,
+            "completion": 3632
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-churn-cascade-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 37860,
+            "completion": 3698
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-churn-cascade-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 31849,
+            "completion": 2965
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-churn-cascade-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 24874,
+            "completion": 3402
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 9,
+          "tool_calls": 9,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 2 api_search reads — 9 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-conditional-route-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10259,
+            "completion": 1609
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (no JSON object in reply) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-conditional-route-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 19310,
+            "completion": 3385
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-conditional-route-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14141,
+            "completion": 1875
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-conditional-route-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14017,
+            "completion": 2727
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (reply is not valid JSON; reply has no tool name) — forbidden-effect count 0 — 0 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-derived-subject-close-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 25723,
+            "completion": 3197
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-derived-subject-close-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 34019,
+            "completion": 3997
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-derived-subject-close-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 26999,
+            "completion": 3299
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-derived-subject-close-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 28252,
+            "completion": 3764
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 1 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-dual-close-cleanup-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 29430,
+            "completion": 3369
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 5 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-dual-close-cleanup-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 35404,
+            "completion": 3937
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 4,
+          "forbidden_effects": 1,
+          "feedback": "score 0 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON) — forbidden-effect count 1; any out-of-scope write zeroes the episode — 5 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-dual-close-cleanup-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 25707,
+            "completion": 3378
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 5 api_fetch writes vs 0 api_search reads — a write happened before the first read — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-dual-close-cleanup-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 23109,
+            "completion": 3712
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 5 api_fetch writes vs 1 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-duplicate-merge-09",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 7571,
+            "completion": 1449
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 0 api_search reads — a write happened before the first read — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-duplicate-merge-10",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 13244,
+            "completion": 1731
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-duplicate-merge-11",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6102,
+            "completion": 1441
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-duplicate-merge-12",
+          "split": "holdout",
+          "score": 0.5,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9223,
+            "completion": 1589
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.5 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-load-balance-assign-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12140,
+            "completion": 3031
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 0 — episode ended by malformed — episode ended after malformed/rejected model output — malformed/rejection count 4 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 0 api_fetch writes vs 2 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-load-balance-assign-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 18750,
+            "completion": 2867
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-load-balance-assign-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 31732,
+            "completion": 4315
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 5,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 5 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 3 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-load-balance-assign-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14236,
+            "completion": 2228
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-priority-escalation-filter-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 15908,
+            "completion": 2509
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-priority-escalation-filter-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 17955,
+            "completion": 1888
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-priority-escalation-filter-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 17927,
+            "completion": 2060
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-priority-escalation-filter-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12925,
+            "completion": 2427
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 2 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-rep-departure-cascade-09",
+          "split": "holdout",
+          "score": 0.75,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 13825,
+            "completion": 2064
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.75 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-rep-departure-cascade-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 24183,
+            "completion": 3065
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 2 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-rep-departure-cascade-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 18684,
+            "completion": 2442
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 8,
+          "tool_calls": 8,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 4 api_fetch writes vs 2 api_search reads — 8 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-rep-departure-cascade-12",
+          "split": "holdout",
+          "score": 0.75,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14917,
+            "completion": 2030
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cascade",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 0.75 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 2 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-reply-thread-close-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 20131,
+            "completion": 3101
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 0 api_search reads — a write happened before the first read — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-reply-thread-close-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 28096,
+            "completion": 3440
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 6,
+          "tool_calls": 6,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 0 api_search reads — a write happened before the first read — 6 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-reply-thread-close-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 16359,
+            "completion": 2087
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 7,
+          "tool_calls": 7,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 2 api_search reads — 7 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-reply-thread-close-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 24984,
+            "completion": 3611
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 0 api_search reads — a write happened before the first read — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-same-title-trap-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5209,
+            "completion": 1115
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-same-title-trap-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 8611,
+            "completion": 1600
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-same-title-trap-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 2806,
+            "completion": 926
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-same-title-trap-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14871,
+            "completion": 2332
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "conditional",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 2 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-owner-route-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9580,
+            "completion": 2031
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-owner-route-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9564,
+            "completion": 1638
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-owner-route-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9880,
+            "completion": 1873
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-owner-route-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 9864,
+            "completion": 1804
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-09",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 19722,
+            "completion": 2957
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-10",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 20604,
+            "completion": 2820
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 3,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 3 (reply is not valid JSON) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-11",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 10022,
+            "completion": 1608
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-12",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 25801,
+            "completion": 3207
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 4,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 4 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 3 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-bulk-owner-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 6554,
+            "completion": 1466
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 0 api_search reads — a write happened before the first read — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-close-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5007,
+            "completion": 1481
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-disambiguate-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5208,
+            "completion": 1009
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-lost-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5143,
+            "completion": 1220
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-mail-churn-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 12622,
+            "completion": 2184
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 4,
+          "tool_calls": 4,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (no JSON object in reply; reply is not valid JSON) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 4 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-owner-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4086,
+            "completion": 1134
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-crm-rename-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 5227,
+            "completion": 839
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "single-write",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (no JSON object in reply) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-mail-discard-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4971,
+            "completion": 1001
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-mail-draft-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 3851,
+            "completion": 1054
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 3,
+          "tool_calls": 3,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 1 api_search reads — 3 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-mail-revise-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 2586,
+            "completion": 759
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 0,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 0 — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-mail-send-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 4978,
+            "completion": 1020
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "discovery",
+          "steps": 2,
+          "tool_calls": 2,
+          "malformed": 1,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 1 (reply is not valid JSON) — forbidden-effect count 0 — 1 api_fetch writes vs 0 api_search reads — a write happened before the first read — 2 steps used of 14"
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "gepa-holdout",
+          "task_id": "simple-api-mail-send-and-close-06",
+          "split": "holdout",
+          "score": 1,
+          "status": "ok",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+          "route": "tinker-shim",
+          "tokens": {
+            "prompt": 14850,
+            "completion": 2069
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "outputs/gepa-run/gepa-holdout.json"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 5,
+          "tool_calls": 5,
+          "malformed": 2,
+          "forbidden_effects": 0,
+          "feedback": "score 1 — episode ended by finish — malformed/rejection count 2 (reply is not valid JSON; no JSON object in reply) — forbidden-effect count 0 — 2 api_fetch writes vs 1 api_search reads — 5 steps used of 14"
+        }
+      ]
+    },
+    {
+      "label": "null-floor",
+      "source_path": null,
+      "metrics": {
+        "mean_score": 0,
+        "mean_by_band": {
+          "aggregation": 0,
+          "cascade": 0,
+          "conditional": 0,
+          "cross-record": 0,
+          "discovery": 0,
+          "long-chain": 0,
+          "multi-hop": 0,
+          "multi-write": 0,
+          "single-write": 0
+        },
+        "exact_1_rate": 0,
+        "zero_rate": 1,
+        "forbidden_effect_rate": 0,
+        "malformed_rate": 0,
+        "mean_steps_per_rollout": 0,
+        "mean_tool_calls_per_rollout": 0,
+        "tokens_per_rollout": {
+          "prompt": 0,
+          "completion": 0
+        },
+        "wall_clock_per_rollout_s": 0,
+        "scored": 60,
+        "total": 60,
+        "ci95": {
+          "low": 0,
+          "high": 0,
+          "n": 60,
+          "resamples": 10000
+        },
+        "split": "holdout"
+      },
+      "rows": [
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-close-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "single-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-lost-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "single-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-owner-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "single-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-rename-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "single-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-mail-draft-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "discovery",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-mail-revise-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "discovery",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-mail-discard-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "discovery",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-mail-send-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "discovery",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-bulk-owner-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-disambiguate-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-crm-mail-churn-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "simple-api-mail-send-and-close-06",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-write",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-owner-route-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-owner-route-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-owner-route-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-owner-route-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-ticket-resolve-notify-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-churn-cascade-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-churn-cascade-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-churn-cascade-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-churn-cascade-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-rep-departure-cascade-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-rep-departure-cascade-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-rep-departure-cascade-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-rep-departure-cascade-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cascade",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-duplicate-merge-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-duplicate-merge-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-duplicate-merge-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-duplicate-merge-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-reply-thread-close-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-reply-thread-close-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-reply-thread-close-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-reply-thread-close-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "multi-hop",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-priority-escalation-filter-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-priority-escalation-filter-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-priority-escalation-filter-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-priority-escalation-filter-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "cross-record",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-dual-close-cleanup-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-dual-close-cleanup-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-dual-close-cleanup-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-dual-close-cleanup-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-conditional-route-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-conditional-route-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-conditional-route-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-conditional-route-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-load-balance-assign-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-load-balance-assign-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-load-balance-assign-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-load-balance-assign-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "aggregation",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-same-title-trap-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-same-title-trap-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-same-title-trap-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-same-title-trap-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "conditional",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-derived-subject-close-09",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-derived-subject-close-10",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-derived-subject-close-11",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        },
+        {
+          "schema_version": "understudy.eval_result.v1",
+          "run_id": "null-floor-holdout",
+          "task_id": "hard-api-derived-subject-close-12",
+          "split": "holdout",
+          "score": 0,
+          "status": "ok",
+          "model": null,
+          "route": "in-process-null-floor",
+          "tokens": {
+            "prompt": 0,
+            "completion": 0
+          },
+          "provenance": {
+            "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+            "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+            "artifact_refs": [
+              "in-process-immediate-finish"
+            ]
+          },
+          "band": "long-chain",
+          "steps": 0,
+          "tool_calls": 0,
+          "malformed": 0,
+          "forbidden_effects": 0
+        }
+      ]
+    }
+  ],
+  "paired_deltas": [
+    {
+      "label": "gepa - base",
+      "ci95": {
+        "low": 0.12817460317460314,
+        "high": 0.3484126984126984,
+        "n": 60,
+        "resamples": 10000
+      },
+      "mean_delta": 0.23849206349206348
+    }
+  ],
+  "optimization_lead_not_win": false
+}

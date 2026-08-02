@@ -1,0 +1,146 @@
+{
+  "schema_version": "understudy.experiment-result.v1",
+  "experiment_id": "automationbench-v2-gepa",
+  "state": "succeeded",
+  "verifier_environment": "automationbench-simple-api-offline-v2",
+  "verifier_revision": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+  "split_manifest_refs": {
+    "train": "fixture://automationbench-simple-api-offline-v2/split/train/71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+    "dev": "fixture://automationbench-simple-api-offline-v2/split/dev/f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "holdout": "fixture://automationbench-simple-api-offline-v2/split/holdout/2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9"
+  },
+  "split_manifest_sha256": {
+    "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+    "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9"
+  },
+  "baseline_metrics": {
+    "dev_mean": 0.5929232804232805,
+    "dev_band_aggregation": 1,
+    "dev_band_cascade": 0.4375,
+    "dev_band_conditional": 0.5,
+    "dev_band_cross_record": 0.5833333333333334,
+    "dev_band_discovery": 1,
+    "dev_band_long_chain": 0.10714285714285714,
+    "dev_band_multi_hop": 0.25,
+    "dev_band_multi_write": 0.9166666666666666,
+    "dev_band_single_write": 0.75,
+    "dev_exact_1_rate": 0.5277777777777778,
+    "dev_zero_rate": 0.3333333333333333,
+    "dev_forbidden_effect_rate": 0.027777777777777776,
+    "dev_malformed_rate": 0.9166666666666666,
+    "holdout_mean": 0.6698412698412698,
+    "holdout_band_aggregation": 0.75,
+    "holdout_band_cascade": 0.5625,
+    "holdout_band_conditional": 0.8125,
+    "holdout_band_cross_record": 0.7916666666666666,
+    "holdout_band_discovery": 0.75,
+    "holdout_band_long_chain": 0.44047619047619047,
+    "holdout_band_multi_hop": 0.625,
+    "holdout_band_multi_write": 0.5416666666666666,
+    "holdout_band_single_write": 0.75,
+    "holdout_exact_1_rate": 0.55,
+    "holdout_zero_rate": 0.2,
+    "holdout_forbidden_effect_rate": 0,
+    "holdout_malformed_rate": 0.8833333333333333
+  },
+  "optimized_metrics": {
+    "dev_mean": 0.875,
+    "dev_band_aggregation": 0.75,
+    "dev_band_cascade": 0.75,
+    "dev_band_conditional": 0.75,
+    "dev_band_cross_record": 0.8333333333333334,
+    "dev_band_discovery": 1,
+    "dev_band_long_chain": 0.75,
+    "dev_band_multi_hop": 1,
+    "dev_band_multi_write": 1,
+    "dev_band_single_write": 1,
+    "dev_exact_1_rate": 0.8333333333333334,
+    "dev_zero_rate": 0.08333333333333333,
+    "dev_forbidden_effect_rate": 0,
+    "dev_malformed_rate": 0.75,
+    "holdout_mean": 0.9083333333333333,
+    "holdout_band_aggregation": 0.75,
+    "holdout_band_cascade": 0.9375,
+    "holdout_band_conditional": 0.875,
+    "holdout_band_cross_record": 0.8333333333333334,
+    "holdout_band_discovery": 1,
+    "holdout_band_long_chain": 0.875,
+    "holdout_band_multi_hop": 1,
+    "holdout_band_multi_write": 1,
+    "holdout_band_single_write": 1,
+    "holdout_exact_1_rate": 0.85,
+    "holdout_zero_rate": 0.05,
+    "holdout_forbidden_effect_rate": 0.016666666666666666,
+    "holdout_malformed_rate": 0.9
+  },
+  "holdout_executed": true,
+  "holdout_clean": true,
+  "budget_usd": 0,
+  "usage": {
+    "evidence_scope": "unknown",
+    "requests": 1771,
+    "input_tokens": 2750687,
+    "output_tokens": 487546,
+    "actual_usd": null,
+    "estimated_usd": null,
+    "upper_bound_usd": null,
+    "observed_at": "2026-08-02T03:00:36.205Z"
+  },
+  "request_isolation_proven": false,
+  "quality_evidence": {
+    "status": "measured",
+    "reason": "Synthetic-fixture evidence with a sealed holdout read exactly once per arm after candidate freeze; results do not establish performance on private workloads.",
+    "required_calibration": null,
+    "calibration_artifact_refs": []
+  },
+  "failure_clusters": [
+    {
+      "cluster": "malformed-emission-episodes",
+      "count": 294,
+      "artifact_refs": [
+        "outputs/gepa-run/report-dev/eval-results.jsonl",
+        "outputs/gepa-run/report-holdout/eval-results.jsonl",
+        "outputs/gepa-run/optimize/episodes.jsonl"
+      ]
+    },
+    {
+      "cluster": "forbidden-write-zeroed-episodes",
+      "count": 3,
+      "artifact_refs": [
+        "outputs/gepa-run/report-dev/eval-results.jsonl",
+        "outputs/gepa-run/report-holdout/eval-results.jsonl",
+        "outputs/gepa-run/optimize/episodes.jsonl"
+      ]
+    },
+    {
+      "cluster": "budget-exhausted-episodes",
+      "count": 18,
+      "artifact_refs": [
+        "outputs/gepa-run/optimize/episodes.jsonl"
+      ]
+    },
+    {
+      "cluster": "long-chain-partial-completions",
+      "count": 17,
+      "artifact_refs": [
+        "outputs/gepa-run/report-dev/eval-results.jsonl",
+        "outputs/gepa-run/report-holdout/eval-results.jsonl",
+        "outputs/gepa-run/optimize/episodes.jsonl"
+      ]
+    }
+  ],
+  "cancellation_receipts": [],
+  "artifact_refs": [
+    "outputs/gepa-run/candidate.json",
+    "outputs/gepa-run/candidate-submit.json",
+    "outputs/gepa-run/optimize/best-prompt.txt",
+    "outputs/gepa-run/report-dev/eval-results.jsonl",
+    "outputs/gepa-run/report-dev/comparison.json",
+    "outputs/gepa-run/report-dev/comparison.md",
+    "outputs/gepa-run/report-holdout/eval-results.jsonl",
+    "outputs/gepa-run/report-holdout/comparison.json",
+    "outputs/gepa-run/report-holdout/comparison.md"
+  ],
+  "claim_boundary": "Synthetic-fixture evidence on a sealed holdout, read exactly once per arm after freezing candidate c4 and never used for training. This is a prompt-optimization result with no weights changed. The bootstrap intervals and paired holdout delta support a win (holdout paired 95% CI [0.1282, 0.3484]); this claim is limited to the synthetic fixture."
+}
