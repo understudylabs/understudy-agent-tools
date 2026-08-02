@@ -273,8 +273,9 @@ def rollout(
     tokenizer: Any | None = None,
     action_transform: Any | None = None,
     prompt_override: str | None = None,
+    frozen_holdout_sha256: str | None = None,
 ) -> Rollout:
-    reset = env.reset(task["task_id"])
+    reset = env.reset(task["task_id"], frozen_holdout_sha256=frozen_holdout_sha256)
     episode_id = reset["episode_id"]
     if prompt_override is not None:
         reset["prompt"] = prompt_override

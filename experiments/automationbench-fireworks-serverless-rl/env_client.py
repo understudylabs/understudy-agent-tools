@@ -97,11 +97,19 @@ class EnvService:
     def hashes(self) -> dict[str, Any]:
         return self._json("/hashes")
 
-    def tasks(self, split: str) -> list[dict[str, Any]]:
-        return self._json(f"/tasks?split={split}")
+    def tasks(self, split: str, frozen_holdout_sha256: str | None = None) -> list[dict[str, Any]]:
+        suffix = (
+            f"&frozen_holdout_sha256={frozen_holdout_sha256}"
+            if frozen_holdout_sha256
+            else ""
+        )
+        return self._json(f"/tasks?split={split}{suffix}")
 
-    def reset(self, task_id: str) -> dict[str, Any]:
-        return self._json("/reset", "POST", {"task_id": task_id})
+    def reset(self, task_id: str, frozen_holdout_sha256: str | None = None) -> dict[str, Any]:
+        body: dict[str, Any] = {"task_id": task_id}
+        if frozen_holdout_sha256:
+            body["frozen_holdout_sha256"] = frozen_holdout_sha256
+        return self._json("/reset", "POST", body)
 
     def step(self, episode_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         return self._json(
