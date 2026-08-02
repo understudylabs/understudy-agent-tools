@@ -46,9 +46,20 @@ The vendored canonical schemas live in [`../schemas`](../schemas):
 | `understudy.executor-cancellation-receipt.v1.schema.json` | cancel receipt |
 | `understudy.executor-usage-receipt.v1.schema.json` | usage reconciliation |
 
-The zod schemas in `src/spark-experiment-executor.ts` mirror them field for
-field, and the test suite validates every emitted object against the vendored
-JSON Schema, so a divergence fails in CI rather than at submit time.
+The submit payload is not re-declared here: `src/spark-experiment-executor.ts`
+imports `ExperimentSubmitRequestSchema` from `src/experiment-executor.ts` so
+there is exactly one zod copy of the contract in this repository. The receipt
+schemas mirror the vendored JSON Schema field for field, and the test suite
+validates every emitted object against those files, so a divergence fails in CI
+rather than at submit time.
+
+One divergence is open and deliberate. `src/experiment-executor.ts` types usage
+evidence as `"run-exclusive" | "estimated"`; the canonical receipt allows
+`run_exclusive | account_window | unknown`. The Spark lane follows the canonical
+union, because a shared Spark node genuinely cannot claim run-exclusive
+attribution and needs `account_window` to say so honestly. The Modal transport
+should converge on the canonical union rather than the Spark lane narrowing to
+match it.
 
 How the Spark lane fills the payload:
 
@@ -60,7 +71,7 @@ How the Spark lane fills the payload:
 | `candidate.policy_ref` / `policy_sha256` | adapter artifact reference and hash — never the weights themselves |
 | `workload.verifier_environment` / `verifier_revision` | the offline environment identity that scores the rollouts |
 | `workload.dataset_manifest_ref` / `_sha256` | hash-bound fixture manifest |
-| `splits.train_manifest_ref` / `dev_manifest_ref` | the only two splits an executor may see |
+| `splits.*_manifest_ref` + `*_manifest_sha256` | the only two splits an executor may see, each hash-bound |
 | `limits` | budget, concurrency and rollout ceilings the lane must respect |
 
 **Holdout is structurally absent.** The contract has no field for it, the zod
