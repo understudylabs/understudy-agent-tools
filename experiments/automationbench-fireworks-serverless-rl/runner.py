@@ -241,7 +241,7 @@ class TinkerBackend:
         return str(path)
 
     def create_sampling_client(self, model_path: str, tokenizer: Any) -> Any:
-        return self.service.create_sampling_client(model_path=model_path, tokenizer=tokenizer)
+        return self.service.create_sampling_client(model_path=model_path)
 
     def close(self) -> None:
         close = getattr(self.service, "close", None)
