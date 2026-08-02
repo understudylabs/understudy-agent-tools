@@ -1,0 +1,81 @@
+{
+  "schema_version": "understudy.slice_lift.v1",
+  "fixture": "domain-identification-offline-v1",
+  "split": "dev",
+  "split_sha256": "3934011a2182ac6d4b32e7016b705cb908e21c2c1ae469f3b0e116ed7bc345a2",
+  "base_model": "nemotron-3-nano-base",
+  "candidate_model": "nemotron-3-nano-dpo",
+  "base_samples": 1,
+  "candidate_samples": 1,
+  "overall": {
+    "tasks": 8,
+    "base": 0.625,
+    "candidate": 0.75,
+    "delta": 0.125
+  },
+  "by_band": [
+    {
+      "band": "abstain",
+      "tasks": 2,
+      "base": 0,
+      "candidate": 0.5,
+      "delta": 0.5,
+      "improved": 1,
+      "regressed": 0
+    },
+    {
+      "band": "direct-match",
+      "tasks": 2,
+      "base": 1,
+      "candidate": 0.5,
+      "delta": -0.5,
+      "improved": 0,
+      "regressed": 1
+    },
+    {
+      "band": "near-match",
+      "tasks": 2,
+      "base": 1,
+      "candidate": 1,
+      "delta": 0,
+      "improved": 0,
+      "regressed": 0
+    },
+    {
+      "band": "parent-join",
+      "tasks": 2,
+      "base": 0.5,
+      "candidate": 1,
+      "delta": 0.5,
+      "improved": 1,
+      "regressed": 0
+    }
+  ],
+  "exact_1_rate": {
+    "base": 0.625,
+    "candidate": 0.75
+  },
+  "guards": {
+    "over_acting_episodes": {
+      "base": 0,
+      "candidate": 0
+    },
+    "forbidden_writes": {
+      "base": 0,
+      "candidate": 0
+    },
+    "malformed_rate": {
+      "base": 1,
+      "candidate": 1
+    },
+    "mean_completion_tokens": {
+      "base": 2211.5,
+      "candidate": 2147.125
+    },
+    "errors": {
+      "base": 0,
+      "candidate": 0
+    },
+    "verdict": "no over-acting regression"
+  }
+}

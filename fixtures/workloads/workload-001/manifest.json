@@ -1,0 +1,23 @@
+{
+  "schema": "understudy.synthetic_workflow.fixture_manifest.v1",
+  "workload": "workload-001",
+  "counts": {
+    "train": 8,
+    "dev": 2,
+    "holdout": 2
+  },
+  "file_sha256": {
+    "train.jsonl": "3470dfcb17fa2b3b0b01e8d0833703dc406c7a27e51fcdb138f723c393b00727",
+    "dev.jsonl": "1e3975bb3129775724a3299bec4e98a4728ecebb51522ae9e4157a60fbcca699",
+    "holdout.jsonl": "82464f02cd846e49526b4316deefd4af6d58ca08ff85f3e3f50fe0e536d65aee"
+  },
+  "sealed_holdout_sha256": "82464f02cd846e49526b4316deefd4af6d58ca08ff85f3e3f50fe0e536d65aee",
+  "run_params": {
+    "source_sample_objects": 4000,
+    "synthetic_rows_per_split": {
+      "train": 8,
+      "dev": 2,
+      "holdout": 2
+    }
+  }
+}
