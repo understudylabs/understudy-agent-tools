@@ -24,12 +24,12 @@ import {
 import { v2FixtureSha256, v2SplitSha256 } from "../dist/automationbench-v2.js";
 
 const FROZEN_HOLDOUT_SHA256 = "ff1438e7c257bb39a8880220b8d2c1787f360d01010f7b1d39f960fa58aed868";
-const FIXTURE_SHA256 = "8cfffb5500f40c03a8394d3f244b3277a20a4815faead4def326236a7e511190";
+const FIXTURE_SHA256 = "5cb54e3e377f42453aa49ac8a7f9b88aada7e7491d81c6e0cba47d6d785ea798";
 const TRAIN_SHA256 = "9f14b02edf307ca215ecbc70d716786d55794bc2332727abe71d142ec5e764c7";
 const DEV_SHA256 = "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5";
 
-const V2_FIXTURE_SHA256 = "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22";
-const V2_HOLDOUT_SHA256 = "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9";
+const V2_FIXTURE_SHA256 = "46174f9ffa9287e9a65762f1e3485ca1aee26e4c84769bb4cdb6fe9d485be475";
+const V2_HOLDOUT_SHA256 = "fd8583b875a4b7438a8f01d39845d5e323926938af82a32a5b3795a836228710";
 
 const READS = [
   { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } },
