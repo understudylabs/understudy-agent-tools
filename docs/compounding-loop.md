@@ -148,3 +148,42 @@ by object-store paths and versioned JSON documents rather than by a framework.
 Each job is restartable, append-only, and inspectable with the CLI. The only
 component this repo ships for the loop is the selector at step 4; the rest is
 specified here so each arm implements the same contracts.
+
+## Running under a durable run controller
+
+This design deliberately ships **no controller**: no poller, no queue, no second
+state database. Each stage is either an idempotent step or an immutable artifact
+contract, so a single durable run controller can own orchestration while this
+repo owns the spec and the policy.
+
+Rules every stage here obeys:
+
+- **Refs, not payloads.** Controller state carries artifact refs plus their
+  `sha256` — dataset manifests, capture partitions, holdout hashes, adapter
+  locations. Raw traces, prompts, labels, credentials, and weights never enter
+  run state or an event.
+- **Deterministic idempotency.** Any step that submits long or paid provider
+  work (training, batch scoring, rollouts) returns a job reference immediately
+  and keys on `(experimentId, candidateId, attempt)`. A retry returns the
+  existing job; it never buys a second one. Submit / inspect / cancel /
+  reconcile-usage are separate calls against that reference.
+- **Redacted events.** Progress is emitted as small run / candidate / rollout /
+  score / usage / error events. Liveness of an executor is not evidence of
+  progress and is never used as one.
+- **Executors stay executors.** Training and rollout backends run work; they do
+  not decide promotion. The promotion bar and the stop rules live in the
+  artifacts described here.
+
+The selector at step 4 is the reference shape for a pure step:
+
+```ts
+methodLadderStep(input, { experiment_id, candidate_id, attempt })
+// -> { schema_version: "understudy.method_ladder.step.v1",
+//      idempotency_key, input_sha256, ref, recommendation }
+```
+
+It is a total function of an evidence summary — counts, scores, costs, booleans;
+no rows — so the same input always yields the same decision artifact, the hash
+is canonical (keys sorted) and stable across retries, and replaying the step
+costs nothing. Persist the returned document as the decision artifact for that
+attempt and reference it by hash from run state.

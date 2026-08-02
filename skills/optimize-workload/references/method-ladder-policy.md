@@ -115,6 +115,33 @@ model fails the same rows, or when nothing left can pay back. Record the
 returned document alongside the run so the decision, not just the result, is
 auditable.
 
+## Use it as a step inside a run controller
+
+The selector is a **candidate-method decision step**, not a controller: a pure
+function with no state, no spend, and no background work. For a durable
+orchestrator, use the step form, which adds a canonical input hash and a
+deterministic idempotency key on `(experiment_id, candidate_id, attempt)`:
+
+```sh
+understudy method-ladder step --input ladder-input.json \
+  --experiment-id exp-1 --candidate-id cand-1 --attempt 1 --out decision.json
+```
+
+```json
+{
+  "schema_version": "understudy.method_ladder.step.v1",
+  "idempotency_key": "<sha256>",
+  "input_sha256": "<sha256>",
+  "ref": { "experiment_id": "exp-1", "candidate_id": "cand-1", "attempt": 1 },
+  "recommendation": { "...": "understudy.method_ladder.recommendation.v1" }
+}
+```
+
+A retry reproduces the same key and the same decision. The input is an evidence
+*summary* — counts, scores, costs, booleans — so no traces, prompts, labels, or
+credentials pass through run state; store the returned document as an immutable
+artifact and reference it by hash.
+
 ## Where this fits
 
 The ladder decides the intervention. The compounding loop decides *when to run

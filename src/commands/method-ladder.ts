@@ -3,6 +3,7 @@ import { Command } from "commander";
 
 import {
   METHOD_LADDER_INPUT_SCHEMA,
+  methodLadderStep,
   recommendNextRung,
   type MethodLadderInput,
 } from "../method-ladder/index.js";
@@ -43,6 +44,16 @@ function printJson(payload: unknown): void {
   console.log(JSON.stringify(payload, null, 2));
 }
 
+function readInput(path: string): unknown | undefined {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    console.error(`Could not read selector input: ${(error as Error).message}`);
+    process.exitCode = 1;
+    return undefined;
+  }
+}
+
 export function registerMethodLadderCommand(program: Command): void {
   const ladder = program
     .command("method-ladder")
@@ -62,12 +73,8 @@ export function registerMethodLadderCommand(program: Command): void {
     .requiredOption("--input <path>", "Selector input JSON document")
     .option("--out <path>", "Also write the recommendation to this path")
     .action((options: { input: string; out?: string }) => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(readFileSync(options.input, "utf8"));
-      } catch (error) {
-        console.error(`Could not read selector input: ${(error as Error).message}`);
-        process.exitCode = 1;
+      const parsed = readInput(options.input);
+      if (parsed === undefined) {
         return;
       }
       let recommendation;
@@ -83,4 +90,54 @@ export function registerMethodLadderCommand(program: Command): void {
       }
       printJson(recommendation);
     });
+  ladder
+    .command("step")
+    .description("Idempotent-step form: the same decision plus its input hash and idempotency key")
+    .requiredOption("--input <path>", "Selector input JSON document")
+    .option("--experiment-id <id>", "Experiment id for the idempotency key")
+    .option("--candidate-id <id>", "Candidate id for the idempotency key")
+    .option("--attempt <n>", "Attempt number for the idempotency key", "1")
+    .option("--out <path>", "Also write the step artifact to this path")
+    .action(
+      (options: {
+        input: string;
+        experimentId?: string;
+        candidateId?: string;
+        attempt: string;
+        out?: string;
+      }) => {
+        const parsed = readInput(options.input);
+        if (parsed === undefined) {
+          return;
+        }
+        if ((options.experimentId === undefined) !== (options.candidateId === undefined)) {
+          console.error("--experiment-id and --candidate-id must be provided together.");
+          process.exitCode = 1;
+          return;
+        }
+        const attempt = Number(options.attempt);
+        if (!Number.isInteger(attempt) || attempt < 1) {
+          console.error("--attempt must be a positive integer.");
+          process.exitCode = 1;
+          return;
+        }
+        let step;
+        try {
+          step = methodLadderStep(
+            parsed,
+            options.experimentId && options.candidateId
+              ? { experiment_id: options.experimentId, candidate_id: options.candidateId, attempt }
+              : undefined,
+          );
+        } catch (error) {
+          console.error(`Invalid selector input: ${(error as Error).message}`);
+          process.exitCode = 1;
+          return;
+        }
+        if (options.out) {
+          writeFileSync(options.out, `${JSON.stringify(step, null, 2)}\n`);
+        }
+        printJson(step);
+      },
+    );
 }

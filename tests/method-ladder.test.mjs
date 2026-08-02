@@ -8,6 +8,8 @@ import { describe, it } from "node:test";
 import {
   METHOD_LADDER_INPUT_SCHEMA,
   METHOD_LADDER_RECOMMENDATION_SCHEMA,
+  METHOD_LADDER_STEP_SCHEMA,
+  methodLadderStep,
   recommendNextRung,
 } from "../dist/method-ladder/index.js";
 
@@ -147,6 +149,40 @@ describe("method ladder selector", () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.schema_version, METHOD_LADDER_RECOMMENDATION_SCHEMA);
     assert.equal(parsed.recommended_rung, "gepa");
+  });
+
+  it("is a deterministic idempotent step: a retry reproduces the same key and decision", () => {
+    const ref = { experiment_id: "exp-1", candidate_id: "cand-1", attempt: 1 };
+    const first = methodLadderStep(input(), ref);
+    const retry = methodLadderStep(input(), ref);
+    assert.equal(first.schema_version, METHOD_LADDER_STEP_SCHEMA);
+    assert.equal(first.idempotency_key, retry.idempotency_key);
+    assert.deepEqual(first.recommendation, retry.recommendation);
+
+    // Key order must not change the hash; a new attempt or new evidence must.
+    const reordered = methodLadderStep({ ...input(), schema_version: METHOD_LADDER_INPUT_SCHEMA }, ref);
+    assert.equal(reordered.input_sha256, first.input_sha256);
+    assert.notEqual(methodLadderStep(input(), { ...ref, attempt: 2 }).idempotency_key, first.idempotency_key);
+    assert.notEqual(
+      methodLadderStep(input({ evidence: { candidate_score: 0.85 } }), ref).input_sha256,
+      first.input_sha256,
+    );
+  });
+
+  it("exposes the step form through the CLI", () => {
+    const dir = mkdtempSync(join(tmpdir(), "method-ladder-step-"));
+    const inputPath = join(dir, "input.json");
+    writeFileSync(inputPath, JSON.stringify(input()));
+    const result = spawnSync(
+      process.execPath,
+      [CLI, "method-ladder", "step", "--input", inputPath, "--experiment-id", "exp-1", "--candidate-id", "cand-1"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.schema_version, METHOD_LADDER_STEP_SCHEMA);
+    assert.match(parsed.idempotency_key, /^[0-9a-f]{64}$/);
+    assert.equal(parsed.recommendation.recommended_rung, "gepa");
   });
 
   it("fails loudly on an invalid selector input", () => {

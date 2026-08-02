@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 export const METHOD_LADDER_INPUT_SCHEMA = "understudy.method_ladder.input.v1";
 export const METHOD_LADDER_RECOMMENDATION_SCHEMA = "understudy.method_ladder.recommendation.v1";
+export const METHOD_LADDER_STEP_SCHEMA = "understudy.method_ladder.step.v1";
 
 export const METHOD_LADDER_RUNGS = ["gepa", "sft", "dpo", "grpo"] as const;
 export type MethodLadderRung = (typeof METHOD_LADDER_RUNGS)[number];
@@ -397,5 +400,63 @@ export function recommendNextRung(rawInput: unknown): MethodLadderRecommendation
       "Keep the incumbent route, bank the evidence, and revisit when volume, data, or model options change.",
     ],
     skipped,
+  };
+}
+
+/** Canonical JSON: object keys sorted recursively so the hash is stable. */
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
+export function methodLadderInputSha256(input: MethodLadderInput): string {
+  return createHash("sha256").update(JSON.stringify(canonicalize(input))).digest("hex");
+}
+
+export type MethodLadderStepRef = {
+  experiment_id: string;
+  candidate_id: string;
+  attempt: number;
+};
+
+export type MethodLadderStepResult = {
+  schema_version: typeof METHOD_LADDER_STEP_SCHEMA;
+  idempotency_key: string;
+  input_sha256: string;
+  ref: MethodLadderStepRef | null;
+  recommendation: MethodLadderRecommendation;
+};
+
+/**
+ * Idempotent-step form of the selector for a durable run controller: a pure
+ * function of its input, carrying the input hash and a deterministic
+ * idempotency key so a retry reproduces the same decision artifact rather than
+ * starting a second one. It holds no state, spends nothing, and never receives
+ * raw traces, prompts, labels, or credentials — only the evidence summary.
+ */
+export function methodLadderStep(rawInput: unknown, ref?: MethodLadderStepRef): MethodLadderStepResult {
+  const input = MethodLadderInputSchema.parse(rawInput);
+  const inputSha256 = methodLadderInputSha256(input);
+  const key = ref
+    ? createHash("sha256")
+        .update(`${ref.experiment_id}\u0000${ref.candidate_id}\u0000${ref.attempt}\u0000${inputSha256}`)
+        .digest("hex")
+    : inputSha256;
+  return {
+    schema_version: METHOD_LADDER_STEP_SCHEMA,
+    idempotency_key: key,
+    input_sha256: inputSha256,
+    ref: ref ?? null,
+    recommendation: recommendNextRung(input),
   };
 }
