@@ -1,0 +1,135 @@
+{
+  "run_id": "variance-train-8x8",
+  "groups": [
+    {
+      "task_id": "simple-api-crm-close-01",
+      "rewards": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "mean": 1,
+      "variance": 0,
+      "nonzero_variance": false
+    },
+    {
+      "task_id": "simple-api-crm-close-02",
+      "rewards": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        0,
+        1,
+        1
+      ],
+      "mean": 0.875,
+      "variance": 0.109375,
+      "nonzero_variance": true
+    },
+    {
+      "task_id": "simple-api-crm-close-03",
+      "rewards": [
+        1,
+        0,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "mean": 0.875,
+      "variance": 0.109375,
+      "nonzero_variance": true
+    },
+    {
+      "task_id": "simple-api-crm-close-04",
+      "rewards": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "mean": 0,
+      "variance": 0,
+      "nonzero_variance": false
+    },
+    {
+      "task_id": "simple-api-crm-lost-01",
+      "rewards": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "mean": 1,
+      "variance": 0,
+      "nonzero_variance": false
+    },
+    {
+      "task_id": "simple-api-crm-lost-02",
+      "rewards": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "mean": 0.25,
+      "variance": 0.1875,
+      "nonzero_variance": true
+    },
+    {
+      "task_id": "simple-api-crm-lost-03",
+      "rewards": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "mean": 1,
+      "variance": 0,
+      "nonzero_variance": false
+    },
+    {
+      "task_id": "simple-api-crm-lost-04",
+      "rewards": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        0
+      ],
+      "mean": 0.875,
+      "variance": 0.109375,
+      "nonzero_variance": true
+    }
+  ],
+  "nonzero_variance_groups": 4,
+  "total_groups": 8
+}

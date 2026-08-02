@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+artifacts/grpo-stage*-log/*
+!artifacts/grpo-stage*-log/config.json
+!artifacts/grpo-stage*-log/metrics.jsonl
+!artifacts/grpo-stage*-log/checkpoints.jsonl

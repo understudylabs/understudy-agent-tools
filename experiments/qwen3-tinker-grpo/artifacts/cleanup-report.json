@@ -1,0 +1,612 @@
+{
+  "schema_version": "understudy.qwen3_grpo_cleanup_report.v1",
+  "arm": "qwen3-tinker-grpo",
+  "queried_runs": [
+    {
+      "purpose": "SFT epochs 1-4",
+      "training_run_id": "9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0",
+      "base_model": "Qwen/Qwen3-8B",
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch1",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:36:19.302497Z",
+          "tinker_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch1",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch2",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:36:27.678187Z",
+          "tinker_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch2",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch3",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:36:35.973695Z",
+          "tinker_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch3",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch4",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:36:44.542565Z",
+          "tinker_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch4",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch4-state",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:36:47.346751Z",
+          "tinker_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/weights/sft-epoch4-state",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": null
+        }
+      ],
+      "checkpoint_count": 5,
+      "deleted": false
+    },
+    {
+      "purpose": "GRPO Stage 1, 2-step smoke",
+      "training_run_id": "a426cb26-af74-52ea-be1a-87041b6f350b:train:0",
+      "base_model": "Qwen/Qwen3-8B",
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:42:19.933437Z",
+          "tinker_path": "tinker://a426cb26-af74-52ea-be1a-87041b6f350b:train:0/weights/final",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:42:20.617518Z",
+          "tinker_path": "tinker://a426cb26-af74-52ea-be1a-87041b6f350b:train:0/sampler_weights/final",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        }
+      ],
+      "checkpoint_count": 2,
+      "deleted": false
+    },
+    {
+      "purpose": "GRPO Stage 2, 40 steps",
+      "training_run_id": "d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0",
+      "base_model": "Qwen/Qwen3-8B",
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/000005",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:44:11.173814Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000005",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:44:11.173759Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000005",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:44:11.831633Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000005",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:44:11.831586Z"
+        },
+        {
+          "checkpoint_id": "weights/000010",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:45:20.139017Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000010",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:45:20.138967Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000010",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:45:20.841355Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000010",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:45:20.841306Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000015",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:46:35.362843Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000015",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:46:35.362777Z"
+        },
+        {
+          "checkpoint_id": "weights/000015",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:46:35.895484Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000015",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:46:35.895442Z"
+        },
+        {
+          "checkpoint_id": "weights/000020",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:47:44.435388Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000020",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:47:44.435334Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000020",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:47:45.163581Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000020",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:47:45.163528Z"
+        },
+        {
+          "checkpoint_id": "weights/000025",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:49:00.562856Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000025",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:49:00.562805Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000025",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:49:01.203221Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000025",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:49:01.203172Z"
+        },
+        {
+          "checkpoint_id": "weights/000030",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:50:27.788539Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000030",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:50:27.788487Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000030",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:50:28.517409Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000030",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:50:28.517355Z"
+        },
+        {
+          "checkpoint_id": "weights/000035",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:51:37.602018Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000035",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:51:37.601972Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000035",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:51:38.309466Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000035",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:51:38.309418Z"
+        },
+        {
+          "checkpoint_id": "weights/000040",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:52:47.265333Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000040",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": "2026-08-08T23:52:47.265282Z"
+        },
+        {
+          "checkpoint_id": "sampler_weights/000040",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:52:47.982752Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000040",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": "2026-08-08T23:52:47.982702Z"
+        },
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "time": "2026-08-01T23:52:50.686297Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/final",
+          "size_bytes": 1107598577,
+          "public": false,
+          "expires_at": null
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "time": "2026-08-01T23:52:51.411788Z",
+          "tinker_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/final",
+          "size_bytes": 369364358,
+          "public": false,
+          "expires_at": null
+        }
+      ],
+      "checkpoint_count": 18,
+      "deleted": false
+    }
+  ],
+  "always_on_serving_resource": false,
+  "sampling_clients_ephemeral": true,
+  "deployment_evidence": {
+    "rest_client_exposes_training_runs_checkpoints_and_sampling_sessions_only": "No deployment/serving resource exists for this arm. Sampling clients are ephemeral.",
+    "sessions_query": {
+      "limit": 100,
+      "returned": 100,
+      "note": "Sampling clients are ephemeral; no always-on deployment resource is exposed by the REST client.",
+      "ids_redacted_count": 100
+    },
+    "deletion_required": false,
+    "deletion_confirmed": "No deployment existed, so there was nothing to delete."
+  },
+  "local_service": {
+    "stopped": true,
+    "processes_remaining": 0,
+    "listening_ports_remaining": 0,
+    "evidence": "node scripts/automationbench-rl-service.mjs process was stopped; ss showed no remaining matching listener."
+  },
+  "checkpoints_deleted": [],
+  "retention_decision": "Retain all training checkpoints as evidence, matching the Nemotron arm decision.",
+  "would_delete_if_requested": [
+    "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch1",
+    "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch2",
+    "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch3",
+    "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch4",
+    "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/weights/sft-epoch4-state",
+    "tinker://a426cb26-af74-52ea-be1a-87041b6f350b:train:0/weights/final",
+    "tinker://a426cb26-af74-52ea-be1a-87041b6f350b:train:0/sampler_weights/final",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000005",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000005",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000010",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000010",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000015",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000015",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000020",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000020",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000025",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000025",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000030",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000030",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000035",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000035",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/000040",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000040",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/weights/final",
+    "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/final"
+  ],
+  "billing": {
+    "query": {
+      "starting_on": "2026-08-01T00:00:00Z",
+      "ending_before": "2026-08-03T00:00:00Z"
+    },
+    "event_count": 28,
+    "events": [
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "3df17c84-f5fa-5575-89fc-2b021a0ed89a",
+        "event_info": {
+          "type": "training",
+          "token_count": 15128
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "3df17c84-f5fa-5575-89fc-2b021a0ed89a",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 2816
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "3df17c84-f5fa-5575-89fc-2b021a0ed89a",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 1679
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "3df17c84-f5fa-5575-89fc-2b021a0ed89a",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 467
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "2fd30359-73cc-57c3-9b77-0a4e97987ffc",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 128
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "2fd30359-73cc-57c3-9b77-0a4e97987ffc",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 21
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T19:00:00+00:00",
+        "bucket_end": "2026-08-01T20:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": null,
+        "event_info": {
+          "type": "checkpoint",
+          "count": 1
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T20:00:00+00:00",
+        "bucket_end": "2026-08-01T21:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "fd1f7c44-f210-517f-ab69-cccb4532a5c0",
+        "event_info": {
+          "type": "training",
+          "token_count": 15432
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T20:00:00+00:00",
+        "bucket_end": "2026-08-01T21:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "fd1f7c44-f210-517f-ab69-cccb4532a5c0",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 3328
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T20:00:00+00:00",
+        "bucket_end": "2026-08-01T21:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "fd1f7c44-f210-517f-ab69-cccb4532a5c0",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 2122
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T20:00:00+00:00",
+        "bucket_end": "2026-08-01T21:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": "fd1f7c44-f210-517f-ab69-cccb4532a5c0",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 459
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T20:00:00+00:00",
+        "bucket_end": "2026-08-01T21:00:00+00:00",
+        "base_model": "Qwen/Qwen3-8B",
+        "session_id": null,
+        "event_info": {
+          "type": "checkpoint",
+          "count": 1
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "a994fc1e-0c4c-5b3e-97df-6c0b9dffa620",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 133504
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "7216c4d5-043e-5d68-96db-0c8946c1b505",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 125568
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "51afe1e2-0028-5ebd-88d6-d2ae6297d893",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 62592
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "a994fc1e-0c4c-5b3e-97df-6c0b9dffa620",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 49868
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "7216c4d5-043e-5d68-96db-0c8946c1b505",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 45447
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "a994fc1e-0c4c-5b3e-97df-6c0b9dffa620",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 40676
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "7216c4d5-043e-5d68-96db-0c8946c1b505",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 38982
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "51afe1e2-0028-5ebd-88d6-d2ae6297d893",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 18128
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "51afe1e2-0028-5ebd-88d6-d2ae6297d893",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 14581
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "4f50f50f-8361-54ec-8e6d-f423b5682817",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 2100
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "4f50f50f-8361-54ec-8e6d-f423b5682817",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": true,
+          "token_count": 768
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "4f50f50f-8361-54ec-8e6d-f423b5682817",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 600
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "9f6e188a-a4c3-5914-81bd-3b2d754f6686",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 420
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "9f6e188a-a4c3-5914-81bd-3b2d754f6686",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 322
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "8a08c69e-19a5-5ad0-8e66-d5073c78cc2d",
+        "event_info": {
+          "type": "sampling_prefill",
+          "cached": false,
+          "token_count": 23
+        }
+      },
+      {
+        "bucket_start": "2026-08-01T21:00:00+00:00",
+        "bucket_end": "2026-08-01T22:00:00+00:00",
+        "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+        "session_id": "8a08c69e-19a5-5ad0-8e66-d5073c78cc2d",
+        "event_info": {
+          "type": "sampling_sample",
+          "token_count": 19
+        }
+      }
+    ],
+    "dollar_amount_available": false,
+    "note": "Tinker billing usage returned usage events but no dollar amounts."
+  }
+}

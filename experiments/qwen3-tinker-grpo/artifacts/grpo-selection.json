@@ -1,0 +1,37 @@
+{
+  "selection_rule": "Select the step with the highest DEV mean reward; break ties by selecting the EARLIEST tied step. This rule was fixed before selecting the checkpoint.",
+  "candidates": [
+    {
+      "step": 10,
+      "mean_reward": 0.9722222222222222,
+      "strict_pass_rate": 0.9166666666666666,
+      "sampler_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000010",
+      "summary_path": "experiments/qwen3-tinker-grpo/artifacts/grpo-step10-dev.summary.json"
+    },
+    {
+      "step": 20,
+      "mean_reward": 1,
+      "strict_pass_rate": 1,
+      "sampler_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000020",
+      "summary_path": "experiments/qwen3-tinker-grpo/artifacts/grpo-step20-dev.summary.json"
+    },
+    {
+      "step": 30,
+      "mean_reward": 1,
+      "strict_pass_rate": 1,
+      "sampler_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000030",
+      "summary_path": "experiments/qwen3-tinker-grpo/artifacts/grpo-step30-dev.summary.json"
+    },
+    {
+      "step": 40,
+      "mean_reward": 1,
+      "strict_pass_rate": 1,
+      "sampler_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000040",
+      "summary_path": "experiments/qwen3-tinker-grpo/artifacts/grpo-step40-dev.summary.json"
+    }
+  ],
+  "selected_step": 20,
+  "selected_sampler_path": "tinker://d92128ce-3c0b-5473-b5ab-689dcad33c52:train:0/sampler_weights/000020",
+  "selected_dev_mean_reward": 1,
+  "selected_dev_strict_pass_rate": 1
+}

@@ -1,0 +1,56 @@
+{
+  "source": "experiments/qwen3-tinker-grpo/artifacts/grpo-stage2-telemetry.json",
+  "buckets": [
+    {
+      "bucket": "1-10",
+      "steps": 10,
+      "mean_group_reward": 0.94140625,
+      "constant_group_fraction": 0.8,
+      "constant_groups": 64,
+      "groups": 80,
+      "sampled_tokens": 50624,
+      "prompt_tokens": 908606,
+      "wall_clock_seconds": 121.07270499799995
+    },
+    {
+      "bucket": "11-20",
+      "steps": 10,
+      "mean_group_reward": 0.99140625,
+      "constant_group_fraction": 0.9125,
+      "constant_groups": 73,
+      "groups": 80,
+      "sampled_tokens": 46572,
+      "prompt_tokens": 855981,
+      "wall_clock_seconds": 107.3363313269997
+    },
+    {
+      "bucket": "21-30",
+      "steps": 10,
+      "mean_group_reward": 0.996875,
+      "constant_group_fraction": 0.975,
+      "constant_groups": 78,
+      "groups": 80,
+      "sampled_tokens": 46440,
+      "prompt_tokens": 866548,
+      "wall_clock_seconds": 125.9307145320006
+    },
+    {
+      "bucket": "31-40",
+      "steps": 10,
+      "mean_group_reward": 0.9973958333333333,
+      "constant_group_fraction": 0.975,
+      "constant_groups": 78,
+      "groups": 80,
+      "sampled_tokens": 45340,
+      "prompt_tokens": 827595,
+      "wall_clock_seconds": 106.54759446399999
+    }
+  ],
+  "overall": {
+    "mean_group_reward": 0.9817708333333334,
+    "constant_group_fraction": 0.915625,
+    "total_groups": 320,
+    "total_constant_groups": 293,
+    "wall_clock_seconds": 618.641930363
+  }
+}

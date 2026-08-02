@@ -1,0 +1,11 @@
+{
+  "baseline_train_mean_reward": 0.7673611111111112,
+  "baseline_dev_mean_reward": 0.75,
+  "prior_zero_shot_expected": {
+    "train": 0.24,
+    "dev": 0.083
+  },
+  "nemotron_train_mean_reward": 0.896,
+  "interpretation": "Difference is attributed to this arm harness: JSON-action protocol, qwen3_disable_thinking renderer, and tool-observation recovery loop versus plain zero-shot evaluation. Do not chase this discrepancy; base-model headroom remains real.",
+  "holdout_touched": false
+}

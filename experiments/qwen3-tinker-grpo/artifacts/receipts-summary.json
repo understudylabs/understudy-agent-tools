@@ -1,0 +1,211 @@
+{
+  "schema_version": "understudy.qwen3_grpo_receipts_summary.v1",
+  "note": "Artifact-derived receipts. Evaluation wall clocks were not persisted by evaluate.py; null means unavailable, not zero. Sealed holdout rows are user-provided completed runs and must not be rerun.",
+  "rows": [
+    {
+      "phase": "smoke-dev-3",
+      "prompt_tokens": 7694,
+      "sampled_tokens": 317,
+      "wall_clock_seconds": null,
+      "source": "smoke-dev-3.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "baseline-train",
+      "prompt_tokens": 180035,
+      "sampled_tokens": 7667,
+      "wall_clock_seconds": null,
+      "source": "baseline-train.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "baseline-dev",
+      "prompt_tokens": 39572,
+      "sampled_tokens": 1635,
+      "wall_clock_seconds": null,
+      "source": "baseline-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "variance-train-8x8",
+      "prompt_tokens": 223990,
+      "sampled_tokens": 8541,
+      "wall_clock_seconds": null,
+      "source": "variance-train-8x8.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "sft-data",
+      "prompt_tokens": 0,
+      "sampled_tokens": 0,
+      "wall_clock_seconds": 2.356720559999985,
+      "source": "sft-phase-metrics.json",
+      "split": null,
+      "note": "local data preparation; local_tokens=24824"
+    },
+    {
+      "phase": "sft-training",
+      "prompt_tokens": 99296,
+      "sampled_tokens": 0,
+      "wall_clock_seconds": 52.9252263730001,
+      "source": "sft-phase-metrics.json",
+      "split": null,
+      "note": "model_input_tokens counted as prompt-side training tokens"
+    },
+    {
+      "phase": "sft-epoch1-dev",
+      "prompt_tokens": 34435,
+      "sampled_tokens": 1581,
+      "wall_clock_seconds": 25.046967488000064,
+      "source": "sft-epoch1-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "sft-epoch2-dev",
+      "prompt_tokens": 18101,
+      "sampled_tokens": 1011,
+      "wall_clock_seconds": 19.044459208000035,
+      "source": "sft-epoch2-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "sft-epoch3-dev",
+      "prompt_tokens": 18093,
+      "sampled_tokens": 1007,
+      "wall_clock_seconds": 20.844402706999972,
+      "source": "sft-epoch3-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "sft-epoch4-dev",
+      "prompt_tokens": 17153,
+      "sampled_tokens": 944,
+      "wall_clock_seconds": 18.74987471299994,
+      "source": "sft-epoch4-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "sft-selected-train",
+      "prompt_tokens": 67342,
+      "sampled_tokens": 3649,
+      "wall_clock_seconds": 34.360037516000034,
+      "source": "sft-selected-train.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "sft-selected-dev",
+      "prompt_tokens": 17153,
+      "sampled_tokens": 944,
+      "wall_clock_seconds": 16.36058901900003,
+      "source": "sft-selected-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "sft-selected-variance-train-8x8",
+      "prompt_tokens": 76154,
+      "sampled_tokens": 3911,
+      "wall_clock_seconds": 44.104843371000015,
+      "source": "sft-selected-variance-train-8x8.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "grpo-stage1",
+      "prompt_tokens": 203184,
+      "sampled_tokens": 11138,
+      "wall_clock_seconds": 62.16563243600001,
+      "source": "grpo-stage1-telemetry.json",
+      "split": null
+    },
+    {
+      "phase": "grpo-stage2",
+      "prompt_tokens": 3458730,
+      "sampled_tokens": 188976,
+      "wall_clock_seconds": 618.641930363,
+      "source": "grpo-stage2-telemetry.json",
+      "split": null
+    },
+    {
+      "phase": "grpo-step10-dev",
+      "prompt_tokens": 16694,
+      "sampled_tokens": 904,
+      "wall_clock_seconds": null,
+      "source": "grpo-step10-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "grpo-step20-dev",
+      "prompt_tokens": 16102,
+      "sampled_tokens": 869,
+      "wall_clock_seconds": null,
+      "source": "grpo-step20-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "grpo-step30-dev",
+      "prompt_tokens": 16102,
+      "sampled_tokens": 869,
+      "wall_clock_seconds": null,
+      "source": "grpo-step30-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "grpo-step40-dev",
+      "prompt_tokens": 16102,
+      "sampled_tokens": 869,
+      "wall_clock_seconds": null,
+      "source": "grpo-step40-dev.summary.json",
+      "split": "dev"
+    },
+    {
+      "phase": "grpo-selected-step20-train",
+      "prompt_tokens": 63050,
+      "sampled_tokens": 3396,
+      "wall_clock_seconds": null,
+      "source": "grpo-selected-step20-train.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "grpo-selected-step20-variance-train-8x8",
+      "prompt_tokens": 75259,
+      "sampled_tokens": 3778,
+      "wall_clock_seconds": null,
+      "source": "grpo-selected-step20-variance-train-8x8.summary.json",
+      "split": "train"
+    },
+    {
+      "phase": "holdout-base",
+      "prompt_tokens": 43345,
+      "sampled_tokens": 1771,
+      "wall_clock_seconds": null,
+      "source": "holdout-base.summary.json",
+      "split": "holdout"
+    },
+    {
+      "phase": "holdout-sft-epoch4",
+      "prompt_tokens": 22469,
+      "sampled_tokens": 1156,
+      "wall_clock_seconds": null,
+      "source": "holdout-sft-epoch4.summary.json",
+      "split": "holdout"
+    },
+    {
+      "phase": "holdout-grpo-step20",
+      "prompt_tokens": 16079,
+      "sampled_tokens": 875,
+      "wall_clock_seconds": null,
+      "source": "holdout-grpo-step20.summary.json",
+      "split": "holdout"
+    }
+  ],
+  "grand_total": {
+    "prompt_tokens": 4746134,
+    "sampled_tokens": 245808,
+    "wall_clock_seconds": 914.6006837540002,
+    "all_tokens": 4991942
+  },
+  "billing": {
+    "artifact_usage_receipts_all_reported_empty_delta": true,
+    "dollar_amount_available": false,
+    "fallback": "artifact-derived token totals; one Tinker billing query returned 28 usage events / 575178 tokens but no dollar amounts"
+  }
+}

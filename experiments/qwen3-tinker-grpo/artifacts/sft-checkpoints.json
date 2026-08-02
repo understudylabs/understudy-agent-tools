@@ -1,0 +1,22 @@
+{
+  "checkpoints": [
+    {
+      "epoch": 1,
+      "sampler_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch1"
+    },
+    {
+      "epoch": 2,
+      "sampler_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch2"
+    },
+    {
+      "epoch": 3,
+      "sampler_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch3"
+    },
+    {
+      "epoch": 4,
+      "sampler_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/sampler_weights/sft-epoch4",
+      "state_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/weights/sft-epoch4-state"
+    }
+  ],
+  "last_state_path": "tinker://9d8f6a98-d663-5627-8dd7-96571e243b4c:train:0/weights/sft-epoch4-state"
+}
