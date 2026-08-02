@@ -1,0 +1,15 @@
+{
+  "selected_step": 10,
+  "selected_sampler_path": "tinker://58055612-dcc4-5fae-a14b-f1f8156ca380:train:0/sampler_weights/000010",
+  "selected_state_path": "tinker://58055612-dcc4-5fae-a14b-f1f8156ca380:train:0/weights/000010",
+  "selection_rule": "highest dev mean reward, earliest-step tie-break",
+  "sft_selected_epoch": 2,
+  "sft_selected_dev_mean_reward": 0.125,
+  "per_step_dev": [
+    {"step": 10, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
+    {"step": 20, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
+    {"step": 30, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333},
+    {"step": 40, "mean_reward": 0.08333333333333333, "strict_pass_rate": 0.08333333333333333}
+  ],
+  "state_deviation": "GRPO initialized from the epoch-4 resumable SFT state because only epoch 4 had a saved training state; the SFT evaluation winner remains epoch 2."
+}
