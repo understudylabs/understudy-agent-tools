@@ -177,8 +177,15 @@ describe("spark experiment executor", () => {
         }),
       ),
     );
-    // Raw prompts/traces cannot ride along either.
-    assert.throws(() => ExperimentSubmitRequestSchema.parse(submitRequest({ prompts: ["hello"] })));
+    // Raw prompts/traces/labels/weights/secrets cannot ride along either.
+    for (const key of ["raw_trace", "prompt", "labels", "weights", "secret"]) {
+      assert.throws(() => ExperimentSubmitRequestSchema.parse(submitRequest({ [key]: "must-not-cross-the-boundary" })));
+    }
+    assert.throws(() =>
+      ExperimentSubmitRequestSchema.parse(
+        submitRequest({ candidate: { ...submitRequest().candidate, prompt: "raw" } }),
+      ),
+    );
     assert.throws(() => ExperimentSubmitRequestSchema.parse(submitRequest({ schema_version: "understudy.executor-submit.v2" })));
     assert.throws(() =>
       ExperimentSubmitRequestSchema.parse(
@@ -260,31 +267,76 @@ describe("spark experiment executor", () => {
     assert.equal((await executor.cancel(ref)).disposition, "already_terminal");
   });
 
-  it("reconciles usage with the scope the adapter can actually evidence", async () => {
-    const executor = executorAt(recordingBackend());
-    const ref = await executor.submit(submitRequest());
-    const usage = await executor.reconcileUsage(ref);
-    assertValid("usage-receipt", usage);
-    // A shared self-hosted node cannot claim run-exclusive evidence.
-    assert.equal(usage.evidence_scope, "account_window");
-    assert.equal(usage.actual_usd, null);
+  it("records a not_found cancellation receipt for an unknown job", async () => {
+    let cancelledJobId;
+    const executor = executorAt(
+      recordingBackend({
+        async cancel(job_id) {
+          cancelledJobId = job_id;
+          return "not_found";
+        },
+      }),
+    );
+    const unknown = {
+      executor: "spark",
+      job_id: "spark-missing",
+      idempotency_key: "missing-key",
+      submitted_at: "2026-08-02T01:00:00Z",
+    };
+    const receipt = await executor.cancel(unknown);
+    assert.equal(cancelledJobId, "spark-missing");
+    assert.equal(receipt.disposition, "not_found");
+    assert.deepEqual(receipt.job, unknown);
+    assertValid("cancellation-receipt", receipt);
+  });
 
-    const unknown = await executorAt(
+  it("reconciles every adapter evidence scope and preserves nullable usage", async () => {
+    for (const evidence_scope of ["run_exclusive", "account_window", "unknown"]) {
+      const executor = executorAt(
+        recordingBackend({
+          async usage() {
+            return {
+              evidence_scope,
+              requests: null,
+              input_tokens: null,
+              output_tokens: null,
+              actual_usd: null,
+              estimated_usd: null,
+              upper_bound_usd: null,
+            };
+          },
+        }),
+      );
+      const ref = await executor.submit(submitRequest());
+      const usage = await executor.reconcileUsage(ref);
+      assertValid("usage-receipt", usage);
+      assert.equal(usage.evidence_scope, evidence_scope);
+      assert.equal(usage.actual_usd, null);
+      assert.equal(usage.estimated_usd, null);
+      assert.equal(usage.upper_bound_usd, null);
+    }
+  });
+
+  it("preserves actual, estimated, and upper-bound usage values", async () => {
+    const executor = executorAt(
       recordingBackend({
         async usage() {
           return {
-            evidence_scope: "unknown",
-            requests: null,
-            input_tokens: null,
-            output_tokens: null,
-            actual_usd: null,
-            estimated_usd: null,
-            upper_bound_usd: null,
+            evidence_scope: "run_exclusive",
+            requests: 3,
+            input_tokens: 100,
+            output_tokens: 40,
+            actual_usd: 0.12,
+            estimated_usd: 0.1,
+            upper_bound_usd: 0.2,
           };
         },
       }),
     );
-    const unknownRef = await unknown.submit(submitRequest());
-    assertValid("usage-receipt", await unknown.reconcileUsage(unknownRef));
+    const usage = await executor.reconcileUsage(await executor.submit(submitRequest()));
+    assertValid("usage-receipt", usage);
+    assert.equal(usage.actual_usd, 0.12);
+    assert.equal(usage.estimated_usd, 0.1);
+    assert.equal(usage.upper_bound_usd, 0.2);
   });
 });
