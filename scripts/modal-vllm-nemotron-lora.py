@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import hashlib
-import re
 import subprocess
 import time
 from typing import Any
@@ -128,64 +127,13 @@ def _artifact_request(body: dict[str, Any]) -> dict[str, Any]:
         schema = json.load(schema_file)
     errors = sorted(Draft202012Validator(schema).iter_errors(body), key=str)
     if errors:
-        raise HTTPException(status_code=400, detail="submit request does not match understudy.executor-submit.v1")
-    required = ("experimentId", "candidate", "attempt", "workload", "splits", "limits")
-    if any(field not in body for field in required):
-        raise HTTPException(status_code=400, detail="missing experiment request field")
-    candidate = body["candidate"]
-    workload = body["workload"]
-    splits = body["splits"]
-    limits = body["limits"]
-    if (
-        not isinstance(candidate, dict)
-        or not isinstance(candidate.get("candidateId"), str)
-        or not isinstance(candidate.get("model"), str)
-        or not isinstance(candidate.get("policyRef"), str)
-        or not isinstance(candidate.get("policySha256"), str)
-    ):
-        raise HTTPException(status_code=400, detail="invalid candidate context")
-    if not re.fullmatch(r"[a-fA-F0-9]{64}", candidate["policySha256"]):
-        raise HTTPException(status_code=400, detail="invalid policySha256")
-    if (
-        not isinstance(workload, dict)
-        or not isinstance(workload.get("id"), str)
-        or not isinstance(workload.get("datasetManifestRef"), str)
-        or not isinstance(workload.get("datasetManifestSha256"), str)
-        or not isinstance(workload.get("verifierEnvironment"), str)
-        or not isinstance(workload.get("verifierRevision"), str)
-    ):
-        raise HTTPException(status_code=400, detail="invalid workload context")
-    if not re.fullmatch(r"[a-fA-F0-9]{64}", workload["datasetManifestSha256"]):
-        raise HTTPException(status_code=400, detail="invalid datasetManifestSha256")
-    if (
-        not isinstance(splits, dict)
-        or not isinstance(splits.get("trainManifestRef"), str)
-        or not isinstance(splits.get("devManifestRef"), str)
-        or "holdoutManifestRef" in splits
-        or "holdout" in body
-    ):
-        raise HTTPException(status_code=400, detail="holdout context is not accepted")
-    if not isinstance(limits, dict) or any(
-        not isinstance(limits.get(field), (int, float))
-        for field in (
-            "budgetUsd",
-            "maxConcurrentCandidates",
-            "maxConcurrentRequestsPerCandidate",
-            "maxRollouts",
-            "maxRuntimeSeconds",
+        raise HTTPException(
+            status_code=400,
+            detail="submit request does not match understudy.executor-submit.v1",
         )
-    ):
-        raise HTTPException(status_code=400, detail="invalid execution limits")
-    if not isinstance(body["attempt"], int) or body["attempt"] < 0:
-        raise HTTPException(status_code=400, detail="attempt must be a non-negative integer")
-    return {
-        "experimentId": body["experimentId"],
-        "candidate": candidate,
-        "attempt": body["attempt"],
-        "workload": workload,
-        "splits": splits,
-        "limits": limits,
-    }
+    if "holdout" in body:
+        raise HTTPException(status_code=400, detail="holdout context is not accepted")
+    return body
 
 
 @app.function(image=image, gpu="H200", timeout=60 * 60)
@@ -223,11 +171,11 @@ def executor_api() -> Any:
             raise HTTPException(status_code=400, detail="Idempotency-Key is required")
         request = _artifact_request(body)
         expected_key = executor_idempotency_key(
-            request["experimentId"],
-            request["candidate"]["candidateId"],
+            request["experiment_id"],
+            request["candidate"]["candidate_id"],
             request["attempt"],
         )
-        if body.get("idempotencyKey") != idempotency_key or expected_key != idempotency_key:
+        if expected_key != idempotency_key:
             raise HTTPException(status_code=409, detail="idempotency key mismatch")
         job_id = deterministic_job_id(idempotency_key)
         claimed = await idempotency_store.put.aio(

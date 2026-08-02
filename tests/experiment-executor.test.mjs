@@ -6,31 +6,34 @@ import {
 } from "../dist/experiment-executor.js";
 
 const request = {
-  experimentId: "exp-1",
+  experiment_id: "exp-1",
   candidate: {
-    candidateId: "candidate-a",
+    candidate_id: "candidate-a",
+    executor: "modal",
     model: "nemotron",
-    policyRef: "r2://policies/policy.json",
-    policySha256: "b".repeat(64),
+    policy_ref: "r2://policies/policy.json",
+    policy_sha256: "b".repeat(64),
   },
   attempt: 2,
   workload: {
     id: "automationbench",
-    datasetManifestRef: "r2://datasets/manifest.json",
-    datasetManifestSha256: "a".repeat(64),
-    verifierEnvironment: "offline-v1",
-    verifierRevision: "rev-1",
+    dataset_manifest_ref: "r2://datasets/manifest.json",
+    dataset_manifest_sha256: "a".repeat(64),
+    verifier_environment: "offline-v1",
+    verifier_revision: "rev-1",
   },
   splits: {
-    trainManifestRef: "r2://datasets/train.json",
-    devManifestRef: "r2://datasets/dev.json",
+    train_manifest_ref: "r2://datasets/train.json",
+    train_manifest_sha256: "c".repeat(64),
+    dev_manifest_ref: "r2://datasets/dev.json",
+    dev_manifest_sha256: "d".repeat(64),
   },
   limits: {
-    budgetUsd: 10,
-    maxConcurrentCandidates: 1,
-    maxConcurrentRequestsPerCandidate: 2,
-    maxRollouts: 4,
-    maxRuntimeSeconds: 120,
+    budget_usd: 10,
+    max_concurrent_candidates: 1,
+    max_concurrent_requests_per_candidate: 2,
+    max_rollouts: 4,
+    max_runtime_seconds: 120,
   },
 };
 
@@ -45,7 +48,7 @@ function withFetch(handler) {
 test("submit sends matching idempotency header and body with bearer auth", async () => {
   assert.doesNotThrow(() => ExperimentSubmitRequestSchema.parse({
     ...request,
-    idempotencyKey: "exp-1:candidate-a:2",
+    schema_version: "understudy.executor-submit.v1",
   }));
   let captured;
   const restore = withFetch(async (url, init) => {
@@ -63,7 +66,9 @@ test("submit sends matching idempotency header and body with bearer auth", async
     assert.equal(captured.url, "https://executor.example/experiments");
     assert.equal(captured.init.headers.get("authorization"), "Bearer secret");
     assert.equal(captured.init.headers.get("idempotency-key"), "exp-1:candidate-a:2");
-    assert.equal(captured.body.idempotencyKey, "exp-1:candidate-a:2");
+    assert.equal(captured.body.schema_version, "understudy.executor-submit.v1");
+    assert.equal(captured.body.candidate.executor, "modal");
+    assert.equal(captured.body.idempotencyKey, undefined);
   } finally {
     restore();
   }
