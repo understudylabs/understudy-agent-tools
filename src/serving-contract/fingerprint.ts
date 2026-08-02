@@ -11,8 +11,12 @@ export function canonicalJson(value: unknown): string {
     .join(",")}}`;
 }
 
-function sha256(value: string): string {
+export function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function contractSha256(contract: ServingContract): string {
+  return sha256(canonicalJson(contract));
 }
 
 export function contractFingerprint(contract: ServingContract): string {

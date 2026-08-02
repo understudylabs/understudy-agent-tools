@@ -5,6 +5,10 @@ export const SERVING_PARITY_SCHEMA = "understudy.serving_parity.v1" as const;
 export const EVAL_RESULT_SCHEMA = "understudy.eval_result.v1" as const;
 
 export const ServingLaneSchema = z.enum(["tinker", "vllm", "fireworks"]);
+export const ArtifactRefSchema = z.object({
+  ref: z.string().min(1),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+});
 export const SamplingSchema = z.object({
   temperature: z.number().min(0),
   top_p: z.number().gt(0).lte(1).nullable(),
@@ -45,6 +49,7 @@ export const ServingContractSchema = z.object({
 
 export type ServingContract = z.infer<typeof ServingContractSchema>;
 export type ServingLane = z.infer<typeof ServingLaneSchema>;
+export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
 export type Sampling = z.infer<typeof SamplingSchema>;
 export type ChatMessage = {
   role: string;

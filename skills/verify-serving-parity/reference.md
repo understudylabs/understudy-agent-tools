@@ -69,6 +69,18 @@ diagnostic, not a quality comparison.
 
 ## Score parity
 
+## Workflow step interface
+
+This module is a pure verifier step, not a controller, poller, queue, or state
+store. Inputs are lane artifact paths or URIs plus their observed evidence;
+outputs are the immutable `understudy.serving_contract.v1` preflight result and
+`understudy.serving_parity.v1` artifact. Each lane carries an artifact ref and
+SHA-256, and the pinned contract carries `contract_sha256`. Outputs contain
+fingerprints, ids, scores, counts, diagnostics, and hashes—not prompts,
+responses, traces, labels, credentials, or weights. A retry with the same
+inputs and seed recomputes byte-identical JSON. The core path makes no provider
+calls.
+
 After preflight passes, `parity` requires at least two lanes, checks exact task
 set equality, and compares every non-reference lane independently against the
 reference. Each pair has its own task-attributed deltas, deterministic seeded

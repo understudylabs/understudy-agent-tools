@@ -9,6 +9,7 @@ import {
   SERVING_CONTRACT_SCHEMA,
   ServingContractSchema,
   contractFingerprint,
+  contractSha256,
   getServingContract,
   parseNemotronTextMessage,
   parseOpenAiNativeMessage,
@@ -45,6 +46,7 @@ describe("serving contract", () => {
     assert.equal(ServingContractSchema.parse(contract).schema_version, SERVING_CONTRACT_SCHEMA);
     assert.equal(ServingContractSchema.parse({ ...contract, base_id: "future-base" }).base_id, "future-base");
     assert.equal(getServingContract("unknown-base"), null);
+    assert.match(contractSha256(contract), /^[a-f0-9]{64}$/);
     assert.throws(() => {
       const unknown = getServingContract("unknown-base");
       if (!unknown) throw new Error("no serving contract for base 'unknown-base'");
@@ -181,6 +183,32 @@ describe("serving contract", () => {
     assert.equal(result.lane_pairs.vllm.verdict, "PASS");
     assert.equal(result.lane_pairs.fireworks.verdict, "FAIL");
     assert.equal(result.verdict, "FAIL");
+  });
+
+  it("emits immutable, deterministic summaries without raw prompt or probe content", () => {
+    const inputs = passingInputs().map((input) => ({
+      ...input,
+      probes: [{ raw_response: "synthetic model output that must not be emitted" }],
+    }));
+    const preflightA = preflightServingContract("nemotron3", inputs);
+    const preflightB = preflightServingContract("nemotron3", inputs);
+    assert.equal(JSON.stringify(preflightA), JSON.stringify(preflightB));
+    assert.equal(preflightA.contract_sha256, contractSha256(contract));
+    assert.match(preflightA.lanes.tinker.artifact_ref.sha256, /^[a-f0-9]{64}$/);
+    const parityA = scoreServingParity("nemotron3", preflightA, {
+      tinker: [{ schema_version: "understudy.eval_result.v1", run_id: "r", task_id: "a", status: "ok", score: 1 }],
+      fireworks: [{ schema_version: "understudy.eval_result.v1", run_id: "r", task_id: "a", status: "ok", score: 1 }],
+    }, { seed: "retry-seed" });
+    const parityB = scoreServingParity("nemotron3", preflightB, {
+      tinker: [{ schema_version: "understudy.eval_result.v1", run_id: "r", task_id: "a", status: "ok", score: 1 }],
+      fireworks: [{ schema_version: "understudy.eval_result.v1", run_id: "r", task_id: "a", status: "ok", score: 1 }],
+    }, { seed: "retry-seed" });
+    assert.equal(JSON.stringify(parityA), JSON.stringify(parityB));
+    const emitted = JSON.stringify(parityA);
+    assert.equal(emitted.includes(prompt), false);
+    assert.equal(emitted.includes("synthetic model output"), false);
+    assert.match(emitted, /"contract_sha256"/);
+    assert.match(emitted, /"artifact_ref"/);
   });
 
   it("validates JSON row input instead of casting arbitrary JSON", () => {

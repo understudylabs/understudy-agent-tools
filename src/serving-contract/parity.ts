@@ -5,6 +5,7 @@ import { z } from "zod";
 import { bootstrapCI } from "../bootstrap-ci.js";
 import type { EvalRow } from "../benchmark-hub-types.js";
 import {
+  ArtifactRefSchema,
   EVAL_RESULT_SCHEMA,
   SamplingSchema,
   SERVING_CONTRACT_SCHEMA,
@@ -12,11 +13,12 @@ import {
   ServingLaneSchema,
   ToolProtocolSchema,
   requireServingContract,
+  type ArtifactRef,
   type Sampling,
   type ServingContract,
   type ServingLane,
 } from "./contract.js";
-import { canonicalJson, contractFingerprint, renderedPromptFingerprint } from "./fingerprint.js";
+import { canonicalJson, contractFingerprint, contractSha256, renderedPromptFingerprint, sha256 } from "./fingerprint.js";
 import { parseAssistantMessage } from "./parse.js";
 
 const EvalRowInputSchema = z.object({
@@ -36,6 +38,7 @@ export type PreflightLaneInput = {
   rows?: Array<Record<string, unknown> | EvalRow>;
   probes?: unknown[];
   acknowledged_deviations?: string[];
+  artifact_ref?: ArtifactRef;
 };
 
 export type ServingLaneArtifact = Omit<PreflightLaneInput, "lane"> & { lane?: ServingLane; rows: EvalRow[] };
@@ -52,7 +55,9 @@ export type PreflightResult = {
   base_id: string;
   passed: boolean;
   contract_fingerprint: string;
+  contract_sha256: string;
   lanes: Record<string, {
+    artifact_ref: ArtifactRef;
     contract_fingerprint?: string;
     rendered_prompt_fingerprint?: string;
     sampling?: Sampling;
@@ -89,6 +94,14 @@ function parseFailureRate(input: PreflightLaneInput, protocol: ServingContract["
 
 function acknowledged(input: PreflightLaneInput, field: string): boolean {
   return input.acknowledged_deviations?.includes(field) ?? false;
+}
+
+function inputArtifactRef(input: PreflightLaneInput): ArtifactRef {
+  if (input.artifact_ref) return ArtifactRefSchema.parse(input.artifact_ref);
+  return {
+    ref: `memory://${input.lane}`,
+    sha256: sha256(canonicalJson(input)),
+  };
 }
 
 export function preflightServingContract(
@@ -194,6 +207,7 @@ export function preflightServingContract(
       });
     }
     lanes[input.lane] = {
+      artifact_ref: inputArtifactRef(input),
       contract_fingerprint: input.contract_fingerprint,
       rendered_prompt_fingerprint: renderedFingerprint,
       sampling: input.sampling,
@@ -206,6 +220,7 @@ export function preflightServingContract(
   return {
     schema_version: SERVING_CONTRACT_SCHEMA,
     base_id: baseId,
+    contract_sha256: contractSha256(contract),
     passed: inputs.length >= 2 && diagnostics.length === 0,
     contract_fingerprint: expectedContractFingerprint,
     lanes,
@@ -224,8 +239,9 @@ export type LanePairResult = {
 export type ServingParityArtifact = {
   schema_version: typeof SERVING_PARITY_SCHEMA;
   base_id: string;
+  contract_sha256: string;
   preflight: PreflightResult;
-  lanes: Record<string, { task_count: number; macro_average: number }>;
+  lanes: Record<string, { artifact_ref: ArtifactRef; task_count: number; macro_average: number }>;
   lane_pairs: Record<string, LanePairResult>;
   verdict: "PASS" | "FAIL";
   equivalence_band: { lo: number; hi: number };
@@ -269,6 +285,10 @@ export function scoreServingParity(
     const scores = scoreMap(laneRows[lane]);
     const values = [...scores.values()];
     lanes[lane] = {
+      artifact_ref: preflight.lanes[lane]?.artifact_ref ?? {
+        ref: `memory://${lane}`,
+        sha256: sha256(canonicalJson(laneRows[lane])),
+      },
       task_count: values.length,
       macro_average: values.length === 0 ? 0 : values.reduce((sum, score) => sum + score, 0) / values.length,
     };
@@ -294,6 +314,7 @@ export function scoreServingParity(
   return {
     schema_version: SERVING_PARITY_SCHEMA,
     base_id: baseId,
+    contract_sha256: contractSha256(requireServingContract(baseId)),
     preflight,
     lanes,
     lane_pairs: lanePairs,
@@ -330,9 +351,11 @@ export function readJsonRows(path: string): EvalRow[] {
 }
 
 export function readServingLaneArtifact(path: string): ServingLaneArtifact {
-  const text = readFileSync(path, "utf8").trim();
-  if (!text) return { rows: [] };
-  if (path.endsWith(".jsonl")) return { rows: readJsonRows(path) };
+  const bytes = readFileSync(path);
+  const artifact_ref: ArtifactRef = { ref: path, sha256: sha256(bytes) };
+  const text = bytes.toString("utf8").trim();
+  if (!text) return { rows: [], artifact_ref };
+  if (path.endsWith(".jsonl")) return { rows: readJsonRows(path), artifact_ref };
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -340,7 +363,7 @@ export function readServingLaneArtifact(path: string): ServingLaneArtifact {
     throw new Error(`invalid serving lane artifact in ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { rows: readJsonRows(path) };
+    return { rows: readJsonRows(path), artifact_ref };
   }
   const object = parsed as Record<string, unknown>;
   if (object.lane !== undefined && !ServingLaneSchema.safeParse(object.lane).success) {
@@ -379,5 +402,6 @@ export function readServingLaneArtifact(path: string): ServingLaneArtifact {
     stop_sequences: Array.isArray(object.stop_sequences) ? object.stop_sequences as string[] : undefined,
     acknowledged_deviations: Array.isArray(object.acknowledged_deviations)
       ? object.acknowledged_deviations as string[] : undefined,
+    artifact_ref,
   };
 }
