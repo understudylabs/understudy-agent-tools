@@ -1,0 +1,23 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "source": "synthetic offline fixture rollouts (domain-identification-offline-v1); no customer data",
+  "fixture_id": "domain-identification-offline-v1",
+  "split": "train",
+  "train_split_sha256": "b358c36f429303d64bb9309a685f78ddfd03bd1602cbf415e8dd1e977ac93017",
+  "holdout_split_sha256": "ec9154535b1105f696b6ff9efd72d8457c14e1ed4ff65be043f68188bc9fac2b",
+  "pairs": 22,
+  "tasks_covered": 6,
+  "band_counts": {
+    "near-match": 4,
+    "parent-join": 4,
+    "abstain": 14
+  },
+  "skipped": {
+    "no_winner": 2,
+    "no_candidate_decision": 16,
+    "replay_unusable": 0,
+    "not_outcome_changing": 0,
+    "duplicate": 10
+  },
+  "pairs_sha256": "0babec62da22760a0ca409f32a11df4f2e5a91b906e93dcd2796c1250a36a744"
+}

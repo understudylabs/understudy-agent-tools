@@ -1,0 +1,125 @@
+{
+  "schema_version": "understudy.automationbench_band_report.v1",
+  "generated_at": "2026-08-02T04:03:38.535Z",
+  "split": "dev",
+  "fixture_id": "on-event-execution-offline-v1",
+  "split_sha256": "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5",
+  "base": {
+    "model": "nemotron-3-nano-base",
+    "split": "dev",
+    "fixture_id": "on-event-execution-offline-v1",
+    "split_sha256": "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5",
+    "tasks": 16,
+    "mean_score": 0.425,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 16,
+    "bands": {
+      "bounded": {
+        "tasks": 10,
+        "scored": 10,
+        "mean_score": 0.39999999999999997,
+        "exact_1": 2,
+        "zero": 5,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 10
+      },
+      "extended": {
+        "tasks": 4,
+        "scored": 4,
+        "mean_score": 0.5,
+        "exact_1": 1,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 4
+      },
+      "variable": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.4,
+        "exact_1": 0,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 2
+      }
+    }
+  },
+  "candidate": {
+    "model": "nemotron-3-nano-base-dpo",
+    "split": "dev",
+    "fixture_id": "on-event-execution-offline-v1",
+    "split_sha256": "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5",
+    "tasks": 16,
+    "mean_score": 0.6541666666666668,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 15,
+    "bands": {
+      "bounded": {
+        "tasks": 10,
+        "scored": 10,
+        "mean_score": 0.6666666666666667,
+        "exact_1": 4,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 9
+      },
+      "extended": {
+        "tasks": 4,
+        "scored": 4,
+        "mean_score": 0.75,
+        "exact_1": 2,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 4
+      },
+      "variable": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.4,
+        "exact_1": 0,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 2
+      }
+    }
+  },
+  "per_band_delta": {
+    "bounded": {
+      "tasks": 10,
+      "base_mean": 0.39999999999999997,
+      "candidate_mean": 0.6666666666666667,
+      "delta_mean": 0.2666666666666668,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0,
+      "base_forbidden_writes": 0,
+      "candidate_forbidden_writes": 0
+    },
+    "extended": {
+      "tasks": 4,
+      "base_mean": 0.5,
+      "candidate_mean": 0.75,
+      "delta_mean": 0.25,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0,
+      "base_forbidden_writes": 0,
+      "candidate_forbidden_writes": 0
+    },
+    "variable": {
+      "tasks": 2,
+      "base_mean": 0.4,
+      "candidate_mean": 0.4,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0,
+      "base_forbidden_writes": 0,
+      "candidate_forbidden_writes": 0
+    }
+  }
+}

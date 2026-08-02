@@ -2,8 +2,55 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { replayOracleTrajectory } from "../dist/automationbench-rl-service.js";
-import { taskPool } from "../dist/automationbench-offline.js";
+import {
+  finish,
+  getTask,
+  oraclePolicy,
+  partialCredit,
+  reset,
+  step,
+  taskBandForId,
+  taskPool,
+} from "../dist/automationbench-offline.js";
+
+const SYSTEM_PROMPT = `You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+
+Allowed replies:
+{"tool":"api_search","arguments":{"query":"<text>"}}
+{"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"<path>","body":{...}}}
+{"tool":"finish","arguments":{}}
+
+api_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {"draft_id":"..."}).
+
+Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
+
+function replayOracleTrajectory(taskId) {
+  const task = getTask(taskId);
+  const { handle } = reset(taskId);
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: task.prompt },
+  ];
+  const policy = oraclePolicy(taskId);
+  while (true) {
+    const action = policy({ step: handle.step });
+    if (!action) break;
+    messages.push({ role: "assistant", content: JSON.stringify({ tool: action.name, arguments: action.arguments }) });
+    const result = step(handle, action);
+    messages.push({ role: "tool", content: JSON.stringify(result.obs.messages.at(-1)) });
+    if (result.done) break;
+  }
+  const terminal = handle.done ? { reward: partialCredit(handle) } : finish(handle);
+  messages.push({ role: "assistant", content: JSON.stringify({ tool: "finish", arguments: {} }) });
+  return {
+    task_id: task.taskId,
+    split: task.split,
+    family: task.taskId.split("-").slice(2, -1).join("-"),
+    band: taskBandForId(task.taskId),
+    reward: terminal.reward,
+    messages,
+  };
+}
 
 function argValue(args, name) {
   const index = args.indexOf(name);

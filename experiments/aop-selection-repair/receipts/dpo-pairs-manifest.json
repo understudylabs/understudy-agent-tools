@@ -1,0 +1,36 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "source": "synthetic fixture aop-selection-offline-v1 (authored; no captured traffic)",
+  "fixture_id": "aop-selection-offline-v1",
+  "split": "train",
+  "train_split_sha256": "f8e8dde2cbab6db7a7f1f6b400d954467a6743b15f41a93d81b372361835c6d1",
+  "episodes_paths": [
+    "outputs/aop/base-train-episodes.jsonl",
+    "outputs/aop/base-train-episodes-b.jsonl"
+  ],
+  "episodes": 288,
+  "pairs": 184,
+  "pairs_sha256": "ef9147c7d9742c950a30b0283407ce78e68d0ff748afee8e14b9ead23fac5b8c",
+  "mining": {
+    "rule": "longest-common-prefix divergence; chosen reached the required final state, rejected did not",
+    "cosmetic_filter": "pairs whose two emissions parse to the same tool call are dropped",
+    "max_pairs_per_task": 6
+  },
+  "stats": {
+    "tasks_seen": 36,
+    "tasks_with_pass": 36,
+    "tasks_with_near_miss": 31,
+    "tasks_yielding_pairs": 31,
+    "dropped_no_divergence": 0,
+    "dropped_cosmetic": 7,
+    "diff_kinds": {
+      "different-action": 58,
+      "malformed-emission": 126
+    },
+    "by_band": {
+      "direct": 65,
+      "restraint": 60,
+      "disambiguation": 59
+    }
+  }
+}

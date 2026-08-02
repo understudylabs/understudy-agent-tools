@@ -40,6 +40,17 @@ EXPECTED_SPLITS = {
     "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
     "holdout": HOLDOUT_SHA256,
 }
+# Pinned for reproducibility because the shared service prompt is benchmark-generic.
+AUTOMATIONBENCH_SYSTEM_PROMPT = """You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+
+Allowed replies:
+{"tool":"api_search","arguments":{"query":"<text>"}}
+{"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"<path>","body":{...}}}
+{"tool":"finish","arguments":{}}
+
+api_search is read-only endpoint discovery. api_fetch applies one API call and is the only way to change state. Endpoints: /crm/contacts (GET), /crm/contacts/{id} (GET, PATCH), /mail/drafts (GET, POST), /mail/drafts/{id} (GET, PATCH), /mail/messages (GET, POST with {"draft_id":"..."}).
+
+Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action."""
 MAX_MODEL_TURNS = 12
 DEFAULT_MAX_TOKENS = 192
 RENDERERS = {
@@ -280,7 +291,7 @@ def rollout(
     if prompt_override is not None:
         reset["prompt"] = prompt_override
     messages: list[Message] = [
-        {"role": "system", "content": reset["system_prompt"]},
+        {"role": "system", "content": AUTOMATIONBENCH_SYSTEM_PROMPT},
         {"role": "user", "content": reset["prompt"]},
     ]
     turns: list[dict[str, Any]] = []

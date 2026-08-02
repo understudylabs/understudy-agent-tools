@@ -1,0 +1,8 @@
+{
+  "schema_version": "understudy.executor-submit.idempotency.v1",
+  "experiment_id": "on-event-execution-repair",
+  "candidate_id": "oee-dpo-nemotron3-nano-b010-e3-r32",
+  "attempt": 0,
+  "idempotency_key": "3e7714bd58182ae5cdf72afc9f5e18e58377e58e1d49358a5d1450ba5ff96acd",
+  "payload_ref": "experiments/on-event-execution/contracts/candidate-submit.json"
+}

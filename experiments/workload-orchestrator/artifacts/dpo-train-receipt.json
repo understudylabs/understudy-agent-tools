@@ -1,0 +1,29 @@
+{
+  "schema_version": "understudy.tinker_dpo.receipt.v1",
+  "generated_at": "2026-08-02T02:19:20Z",
+  "backend": "tinker",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3",
+  "pairs_path": "experiments/workload-orchestrator/artifacts/dpo-pairs.jsonl (normalized)",
+  "pairs_sha256": "9217a5457407c02cbedab2c71f9aac9dc1c4fdcfd1c8afbfdb864a9d83d178cb",
+  "pairs": 160,
+  "pairs_by_band": {
+    "single-write": 32,
+    "multi-write": 128
+  },
+  "hyperparameters": {
+    "lora_rank": 32,
+    "dpo_beta": 0.1,
+    "learning_rate": 1e-05,
+    "epochs": 3,
+    "batch_size": 8,
+    "max_length": 8192,
+    "max_steps": null
+  },
+  "log_path": "(local, not committed)",
+  "checkpoint": "tinker://8c091497-04fe-50a6-8764-5ca152d63dcd:train:0/sampler_weights/final",
+  "wall_clock_s": 746.2,
+  "slice_id": "wl-or-orchestrator-v1",
+  "workload_code": "WL-OR",
+  "source_pairs_sha256": "61f5e9d7c49a1b09fd9183167a388e1f22c1ed6d8b7c66f4fb8921bc6e5d55ec"
+}

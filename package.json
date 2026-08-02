@@ -48,6 +48,8 @@
     "runtime:compaction-soak": "npm run build && node scripts/runtime-compaction-soak.mjs",
     "runtime:desktop-readiness": "npm run build && node scripts/desktop-runtime-readiness.mjs",
     "skills:validate": "node scripts/validate-public-skills.mjs --repo",
+    "synthetic:fixture-report": "npm run build && node scripts/synthetic-workflow-fixture-report.mjs",
+    "synthetic:oee-freeze": "npm run build && node scripts/on-event-execution-freeze.mjs",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run package:smoke"

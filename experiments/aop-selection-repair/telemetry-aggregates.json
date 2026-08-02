@@ -1,0 +1,63 @@
+{
+  "schema_version": "understudy.workload_aggregates.v1",
+  "workload_code": "WL-aop",
+  "workload_shape": "action-option selection: read one event, resolve which action option it selects, apply it to one account",
+  "source": "gateway outer spans joined to per-event cost rows; AGGREGATES ONLY - no prompts, completions, payloads, or identifiers were read or stored",
+  "window": {
+    "first_seen": "2026-06-26",
+    "last_seen": "2026-08-02",
+    "steady_state_from": "2026-07-05"
+  },
+  "volume_and_cost": {
+    "requests_lifetime": 14069,
+    "requests_30d": 14027,
+    "customer_cost_usd_lifetime": 193.95,
+    "customer_cost_usd_30d": 193.29,
+    "usd_per_1k_requests": 13.78,
+    "share_of_project_cost_pct": 0.618,
+    "share_of_project_requests_pct": 1.537,
+    "weekly_steady_state": {
+      "requests": 3300,
+      "customer_cost_usd": 45
+    }
+  },
+  "tokens": {
+    "uncached_input_tokens": 59458599,
+    "cache_read_input_tokens": 12952832,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 2914279,
+    "cache_read_share_pct": 17.9,
+    "input_tokens_avg": 5145,
+    "input_tokens_p50": 3694,
+    "input_tokens_p95": 11397
+  },
+  "output_length": {
+    "bounded": true,
+    "avg": 207,
+    "p50": 217,
+    "p95": 253,
+    "p99": 265,
+    "max": 346,
+    "ratio_p95_to_p50": 1.17,
+    "histogram": [
+      { "band": "<128", "requests": 1577, "pct": 11.2 },
+      { "band": "128-191", "requests": 1136, "pct": 8.1 },
+      { "band": "192-223", "requests": 5861, "pct": 41.7 },
+      { "band": "224-255", "requests": 4971, "pct": 35.3 },
+      { "band": "256-511", "requests": 523, "pct": 3.7 },
+      { "band": ">=512", "requests": 1, "pct": 0.0 }
+    ]
+  },
+  "serving": {
+    "primary_share_pct": 99.96,
+    "requests_on_primary": 14064,
+    "requests_on_alternate_open_weight_probe": 5,
+    "streaming_requests": 0
+  },
+  "reliability_and_latency": {
+    "success_rate_pct": 100.0,
+    "non_200_requests": 0,
+    "total_ms_avg": 3400,
+    "total_ms_p95": 6900
+  }
+}
