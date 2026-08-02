@@ -22,6 +22,7 @@ from runner import (
     ARTIFACT_DIR,
     DEFAULT_MAX_TOKENS,
     ServerlessBackend,
+    TinkerBackend,
     TokenMeter,
     _build_datums,
     _oracle_rows,
@@ -112,14 +113,19 @@ def _eval_checkpoint(
     }
 
 
-def run_model(model: str) -> dict:
+def run_model(
+    model: str,
+    backend_name: str = "serverless",
+    output_path: Path | None = None,
+) -> dict:
     started = time.monotonic()
     env = EnvService(str(REPO)).start()
     backend = None
     try:
         run_gate(env)
         tokenizer, renderer, tokenizer_name, renderer_name = _renderer_for(model)
-        backend = ServerlessBackend(model=model, rank=32)
+        backend_cls = ServerlessBackend if backend_name == "serverless" else TinkerBackend
+        backend = backend_cls(model=model, rank=32)
         client_constructed = time.monotonic()
         oracle_rows = _oracle_rows()
         sft_datums = _sft_datums(oracle_rows, renderer, tokenizer)
@@ -231,6 +237,7 @@ def run_model(model: str) -> dict:
                 raise RuntimeError(f"wave cap exceeded: {grpo_meter.usd:.4f} > {TOTAL_CAP_USD}")
         result = {
             "model": model,
+            "backend": backend_name,
             "tokenizer": tokenizer_name,
             "renderer": renderer_name,
             "first_gradient_seconds": first_gradient_seconds,
@@ -252,7 +259,10 @@ def run_model(model: str) -> dict:
             "total_wall_seconds": time.monotonic() - started,
         }
         ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-        (ARTIFACT_DIR / f"wave-{model.rsplit('/', 1)[-1]}.json").write_text(
+        output = output_path or (
+            ARTIFACT_DIR / f"wave-{model.rsplit('/', 1)[-1]}.json"
+        )
+        output.write_text(
             json.dumps(result, indent=2, default=str) + "\n"
         )
         print(json.dumps(result, indent=2, default=str), flush=True)
@@ -264,4 +274,8 @@ def run_model(model: str) -> dict:
 
 
 if __name__ == "__main__":
-    run_model(sys.argv[1])
+    run_model(
+        sys.argv[1],
+        sys.argv[2] if len(sys.argv) > 2 else "serverless",
+        Path(sys.argv[3]) if len(sys.argv) > 3 else None,
+    )
