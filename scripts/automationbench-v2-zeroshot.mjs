@@ -20,7 +20,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../dist/automationbench-offline.js";
-import { V2_TASKS, v2SplitSha256, v2TaskPool } from "../dist/automationbench-v2.js";
+import { V2_TASKS, v2SplitSha256, v2TaskBands, v2TaskPool } from "../dist/automationbench-v2.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -45,10 +45,15 @@ const maxTokens = Number(argValue("--max-tokens", "512"));
 const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
-const apiKey = process.env.FIREWORKS_API_KEY;
+// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
+// which authenticates to Tinker itself and ignores the bearer token.
+const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
+const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
 if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
 
 const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
+// Reporting-only difficulty band per family; scoring never reads it.
+const BANDS = v2TaskBands();
 const strided = pool.filter((_task, index) => index % stride === 0);
 const tasks = limit > 0 ? strided.slice(0, limit) : strided;
 
@@ -166,9 +171,11 @@ async function runTask(task) {
   }
 
   const score = handle.done ? partialCredit(handle) : finish(handle).reward;
+  const family = task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   return {
     task_id: task.taskId,
-    family: task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, ""),
+    family,
+    band: BANDS[family] ?? "unknown",
     tier: task.taskId.startsWith("hard-") ? "hard" : "v1",
     split: task.split,
     score: error ? null : score,
@@ -200,9 +207,11 @@ async function main() {
   const mean = (values) => (values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length);
   const byTier = {};
   const byFamily = {};
+  const byBand = {};
   for (const row of scored) {
     (byTier[row.tier] ??= []).push(row.score);
     (byFamily[row.family] ??= []).push(row.score);
+    (byBand[row.band] ??= []).push(row.score);
   }
   const report = {
     model,
@@ -218,6 +227,11 @@ async function main() {
     zero_rate: scored.length === 0 ? null : scored.filter((row) => row.score === 0).length / scored.length,
     mean_by_tier: Object.fromEntries(Object.entries(byTier).map(([key, values]) => [key, mean(values)])),
     mean_by_family: Object.fromEntries(Object.entries(byFamily).map(([key, values]) => [key, mean(values)])),
+    mean_by_band: Object.fromEntries(Object.entries(byBand).map(([key, values]) => [key, mean(values)])),
+    // Over-action guard: a policy that writes outside `allowedWrites` scores 0 for
+    // that episode, so the raw counts matter even when the rate rounds to zero.
+    over_acting_episodes: rows.filter((row) => (row.forbidden_effects ?? 0) > 0).length,
+    forbidden_writes: rows.reduce((sum, row) => sum + (row.forbidden_effects ?? 0), 0),
     forbidden_effect_rate: scored.length === 0 ? null : scored.filter((row) => row.forbidden_effects > 0).length / scored.length,
     malformed_rate: rows.length === 0 ? null : rows.filter((row) => row.malformed > 0).length / rows.length,
     prompt_tokens: rows.reduce((sum, row) => sum + row.prompt_tokens, 0),
