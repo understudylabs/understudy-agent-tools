@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
+import {
+  contractBundleSha256,
+  eventSchemaSha256,
+  validateCanonicalEvent,
+} from "./orchard-contract.mjs";
 
 const required = (name) => {
   const value = process.env[name]?.trim();
@@ -20,24 +25,11 @@ const safeEventKeys = new Set([
   "state", "metrics", "frontier", "usage", "failure_class", "code",
   "retry_scheduled",
 ]);
-const eventTypes = new Set([
-  "experiment.accepted",
-  "experiment.phase_changed",
-  "candidate.state_changed",
-  "rollout.state_changed",
-  "score.snapshot",
-  "usage.snapshot",
-  "experiment.error",
-]);
-
 const isCanonicalEvent = (event) => event !== null
   && typeof event === "object"
-  && event.schema_version === "understudy.experiment-event.v1"
+  && validateCanonicalEvent(event)
   && event.experiment_id === experimentId
-  && Number.isInteger(event.sequence)
-  && event.sequence >= 0
-  && typeof event.occurred_at === "string"
-  && eventTypes.has(event.type);
+  && Object.keys(event).every((key) => safeEventKeys.has(key) || key === "job");
 
 const redact = (event) => Object.fromEntries(
   Object.entries(event).filter(([key]) => safeEventKeys.has(key)),
@@ -60,7 +52,12 @@ createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   if (url.pathname === "/healthz") {
     response.writeHead(200, headers(origin));
-    response.end(JSON.stringify({ ok: true, experiment_id: experimentId }));
+    response.end(JSON.stringify({
+      ok: true,
+      experiment_id: experimentId,
+      contract_bundle_sha256: contractBundleSha256,
+      event_schema_sha256: eventSchemaSha256,
+    }));
     return;
   }
   if (url.pathname !== "/events") {

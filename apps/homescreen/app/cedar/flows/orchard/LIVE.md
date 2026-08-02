@@ -4,6 +4,12 @@ Orchard remains a static Tauri/Next export. A read-only sidecar keeps the Train
 API key and run capability out of the browser and forwards only the canonical,
 redacted `understudy.experiment-event.v1` stream.
 
+The sidecar validates every upstream event against the vendored canonical JSON
+Schema and verifies its SHA-256 against
+`schemas/understudy-train/manifest.json` before listening. Its `/healthz`
+response exposes the contract bundle and event-schema hashes so a cutover
+receipt can bind Orchard to the same platform contract consumed by executors.
+
 Run the sidecar on the same monitored host as Orchard:
 
 ```bash

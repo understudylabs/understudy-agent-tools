@@ -139,6 +139,7 @@ jobs:
         working-directory: apps/homescreen
         run: |
           bun install --frozen-lockfile
+          bun run orchard:contract-check
           bun run build
 
   rigor:
