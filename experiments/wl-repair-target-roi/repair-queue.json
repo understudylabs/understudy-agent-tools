@@ -1,9 +1,9 @@
 {
   "schema_version": "understudy.repair_queue.v1",
-  "generated_at": "2026-08-02T02:42:04.246Z",
+  "generated_at": "2026-08-02T02:52:21.192Z",
   "window": {
-    "from": "2026-07-03T02:42:04.246Z",
-    "to": "2026-08-02T02:42:04.246Z",
+    "from": "2026-07-03T02:52:21.192Z",
+    "to": "2026-08-02T02:52:21.192Z",
     "days": 30
   },
   "candidate_model": "accounts/fireworks/models/glm-5p2",

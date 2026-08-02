@@ -1,6 +1,6 @@
 # Repair target queue
 
-Generated 2026-08-02T02:42:04.246Z; 30-day requested window; candidate model `accounts/fireworks/models/glm-5p2`.
+Generated 2026-08-02T02:52:21.192Z; 30-day requested window; candidate model `accounts/fireworks/models/glm-5p2`.
 Population quantities are projected from a 0.679% uniform sample (population scale 147.351); share-based factors remain sample statistics.
 Sampling method: uniform random sample stratified by day; fixed seed; 6,000 sampled captures, implied population 884,108 captures.
 Effective observed window: 2026-07-04T03:30:23.028Z to 2026-08-02T01:55:39.151Z (28.934 days).
@@ -12,45 +12,45 @@ Headroom is a heuristic prior, not measured quality. Savings are projections fro
 
 ## Ranked by ROI score
 
-| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | workload-j ⚠ | 0.2947 | $138.77 | $138.77 | 48,921 | 0.836 | 0.822 | 0.592 | 1.000 | mixed (77.1% observed) | — |
-| 2 | workload-h ⚠ | 0.0932 | $221.31 | $504.09 | 12,083 | 0.266 | 0.835 | 0.762 | 1.000 | mixed (97.6% observed) | — |
-| 3 | workload-o ⚠ | 0.0739 | $1053.21 | $1053.21 | 36,396 | 0.194 | 0.734 | 0.754 | 1.000 | mixed (96.0% observed) | — |
-| 4 | workload-g ⚠ | 0.0613 | $1777.90 | $1865.78 | 40,669 | 0.145 | 0.722 | 0.836 | 1.000 | mixed (98.9% observed) | — |
-| 5 | workload-a ⚠ | 0.0546 | $4520.91 | $5238.21 | 81,780 | 0.138 | 0.825 | 0.608 | 1.000 | mixed (99.5% observed) | — |
-| 6 | workload-c ⚠ | 0.0546 | $125.23 | $328.74 | 9,283 | 0.208 | 0.805 | 0.630 | 1.000 | mixed (98.4% observed) | — |
-| 7 | workload-k | 0.0356 | $0.00 | $266.87 | 3,242 | 0.558 | 0.375 | 0.436 | 1.000 | observed (100.0% observed) | — |
-| 8 | workload-i ⚠ | 0.0273 | $0.00 | $9.27 | 295 | 1.000 | 0.451 | 0.442 | 0.316 | observed (100.0% observed) | — |
-| 9 | workload-l ⚠ | 0.0244 | $0.00 | $112.14 | 2,210 | 0.333 | 0.490 | 0.433 | 0.866 | observed (100.0% observed) | — |
-| 10 | workload-d ⚠ | 0.0093 | $0.00 | $2.32 | 295 | 0.500 | 0.581 | 0.232 | 0.316 | mixed (50.0% observed) | — |
-| 11 | workload-f ⚠ | 0.0000 | $0.00 | $0.00 | 449,422 | 0.411 | 0.740 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 12 | workload-b ⚠ | 0.0000 | $0.00 | $0.00 | 149,562 | 0.305 | 0.917 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 13 | workload-p ⚠ | 0.0000 | $0.00 | $0.00 | 14,735 | 1.000 | 0.879 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 14 | workload-m ⚠ | 0.0000 | $0.00 | $0.00 | 12,672 | 1.000 | 0.939 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 15 | workload-n ⚠ | 0.0000 | $0.00 | $0.00 | 6,189 | 1.000 | 0.483 | 0.000 | 1.000 | mixed (81.0% observed) | candidate_not_cheaper |
-| 16 | workload-e ⚠ | 0.0000 | $0.00 | $0.00 | 16,356 | 1.000 | 0.876 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
+| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity | Fallback rates |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| 1 | workload-j ⚠ | 0.2947 | $138.77 | $138.77 | 48,921 | 0.836 | 0.822 | 0.592 | 1.000 | mixed (77.1% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 2 | workload-h ⚠ | 0.0932 | $221.31 | $504.09 | 12,083 | 0.266 | 0.835 | 0.762 | 1.000 | mixed (97.6% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 3 | workload-o ⚠ | 0.0739 | $1053.21 | $1053.21 | 36,396 | 0.194 | 0.734 | 0.754 | 1.000 | mixed (96.0% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 4 | workload-g ⚠ | 0.0613 | $1777.90 | $1865.78 | 40,669 | 0.145 | 0.722 | 0.836 | 1.000 | mixed (98.9% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 5 | workload-a ⚠ | 0.0546 | $4520.91 | $5238.21 | 81,780 | 0.138 | 0.825 | 0.608 | 1.000 | mixed (99.5% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 6 | workload-c ⚠ | 0.0546 | $125.23 | $328.74 | 9,283 | 0.208 | 0.805 | 0.630 | 1.000 | mixed (98.4% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 7 | workload-k | 0.0356 | $0.00 | $266.87 | 3,242 | 0.558 | 0.375 | 0.436 | 1.000 | observed (100.0% observed) | — | — |
+| 8 | workload-i ⚠ | 0.0273 | $0.00 | $9.27 | 295 | 1.000 | 0.451 | 0.442 | 0.316 | observed (100.0% observed) | — | — |
+| 9 | workload-l ⚠ | 0.0244 | $0.00 | $112.14 | 2,210 | 0.333 | 0.490 | 0.433 | 0.866 | observed (100.0% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 10 | workload-d ⚠ | 0.0093 | $0.00 | $2.32 | 295 | 0.500 | 0.581 | 0.232 | 0.316 | mixed (50.0% observed) | — | — |
+| 11 | workload-f ⚠ | 0.0000 | $0.00 | $0.00 | 449,422 | 0.411 | 0.740 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 12 | workload-b ⚠ | 0.0000 | $0.00 | $0.00 | 149,562 | 0.305 | 0.917 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 13 | workload-p ⚠ | 0.0000 | $0.00 | $0.00 | 14,735 | 1.000 | 0.879 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 14 | workload-m ⚠ | 0.0000 | $0.00 | $0.00 | 12,672 | 1.000 | 0.939 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
+| 15 | workload-n ⚠ | 0.0000 | $0.00 | $0.00 | 6,189 | 1.000 | 0.483 | 0.000 | 1.000 | mixed (81.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
+| 16 | workload-e ⚠ | 0.0000 | $0.00 | $0.00 | 16,356 | 1.000 | 0.876 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
 
 ## Ranked by projected optimistic savings
 
-| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity |
-| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
-| 1 | workload-a ⚠ | 0.0546 | $4520.91 | $5238.21 | 81,780 | 0.138 | 0.825 | 0.608 | 1.000 | mixed (99.5% observed) | — |
-| 2 | workload-g ⚠ | 0.0613 | $1777.90 | $1865.78 | 40,669 | 0.145 | 0.722 | 0.836 | 1.000 | mixed (98.9% observed) | — |
-| 3 | workload-o ⚠ | 0.0739 | $1053.21 | $1053.21 | 36,396 | 0.194 | 0.734 | 0.754 | 1.000 | mixed (96.0% observed) | — |
-| 4 | workload-h ⚠ | 0.0932 | $221.31 | $504.09 | 12,083 | 0.266 | 0.835 | 0.762 | 1.000 | mixed (97.6% observed) | — |
-| 5 | workload-c ⚠ | 0.0546 | $125.23 | $328.74 | 9,283 | 0.208 | 0.805 | 0.630 | 1.000 | mixed (98.4% observed) | — |
-| 6 | workload-k | 0.0356 | $0.00 | $266.87 | 3,242 | 0.558 | 0.375 | 0.436 | 1.000 | observed (100.0% observed) | — |
-| 7 | workload-j ⚠ | 0.2947 | $138.77 | $138.77 | 48,921 | 0.836 | 0.822 | 0.592 | 1.000 | mixed (77.1% observed) | — |
-| 8 | workload-l ⚠ | 0.0244 | $0.00 | $112.14 | 2,210 | 0.333 | 0.490 | 0.433 | 0.866 | observed (100.0% observed) | — |
-| 9 | workload-i ⚠ | 0.0273 | $0.00 | $9.27 | 295 | 1.000 | 0.451 | 0.442 | 0.316 | observed (100.0% observed) | — |
-| 10 | workload-d ⚠ | 0.0093 | $0.00 | $2.32 | 295 | 0.500 | 0.581 | 0.232 | 0.316 | mixed (50.0% observed) | — |
-| 11 | workload-f ⚠ | 0.0000 | $0.00 | $0.00 | 449,422 | 0.411 | 0.740 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 12 | workload-b ⚠ | 0.0000 | $0.00 | $0.00 | 149,562 | 0.305 | 0.917 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 13 | workload-p ⚠ | 0.0000 | $0.00 | $0.00 | 14,735 | 1.000 | 0.879 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 14 | workload-m ⚠ | 0.0000 | $0.00 | $0.00 | 12,672 | 1.000 | 0.939 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
-| 15 | workload-n ⚠ | 0.0000 | $0.00 | $0.00 | 6,189 | 1.000 | 0.483 | 0.000 | 1.000 | mixed (81.0% observed) | candidate_not_cheaper |
-| 16 | workload-e ⚠ | 0.0000 | $0.00 | $0.00 | 16,356 | 1.000 | 0.876 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper |
+| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity | Fallback rates |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |
+| 1 | workload-a ⚠ | 0.0546 | $4520.91 | $5238.21 | 81,780 | 0.138 | 0.825 | 0.608 | 1.000 | mixed (99.5% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 2 | workload-g ⚠ | 0.0613 | $1777.90 | $1865.78 | 40,669 | 0.145 | 0.722 | 0.836 | 1.000 | mixed (98.9% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 3 | workload-o ⚠ | 0.0739 | $1053.21 | $1053.21 | 36,396 | 0.194 | 0.734 | 0.754 | 1.000 | mixed (96.0% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 4 | workload-h ⚠ | 0.0932 | $221.31 | $504.09 | 12,083 | 0.266 | 0.835 | 0.762 | 1.000 | mixed (97.6% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 5 | workload-c ⚠ | 0.0546 | $125.23 | $328.74 | 9,283 | 0.208 | 0.805 | 0.630 | 1.000 | mixed (98.4% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 6 | workload-k | 0.0356 | $0.00 | $266.87 | 3,242 | 0.558 | 0.375 | 0.436 | 1.000 | observed (100.0% observed) | — | — |
+| 7 | workload-j ⚠ | 0.2947 | $138.77 | $138.77 | 48,921 | 0.836 | 0.822 | 0.592 | 1.000 | mixed (77.1% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 8 | workload-l ⚠ | 0.0244 | $0.00 | $112.14 | 2,210 | 0.333 | 0.490 | 0.433 | 0.866 | observed (100.0% observed) | — | claude-sonnet-5 R²=0.368062 |
+| 9 | workload-i ⚠ | 0.0273 | $0.00 | $9.27 | 295 | 1.000 | 0.451 | 0.442 | 0.316 | observed (100.0% observed) | — | — |
+| 10 | workload-d ⚠ | 0.0093 | $0.00 | $2.32 | 295 | 0.500 | 0.581 | 0.232 | 0.316 | mixed (50.0% observed) | — | — |
+| 11 | workload-f ⚠ | 0.0000 | $0.00 | $0.00 | 449,422 | 0.411 | 0.740 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 12 | workload-b ⚠ | 0.0000 | $0.00 | $0.00 | 149,562 | 0.305 | 0.917 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 13 | workload-p ⚠ | 0.0000 | $0.00 | $0.00 | 14,735 | 1.000 | 0.879 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | gpt-4o R²=-0.015066 |
+| 14 | workload-m ⚠ | 0.0000 | $0.00 | $0.00 | 12,672 | 1.000 | 0.939 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
+| 15 | workload-n ⚠ | 0.0000 | $0.00 | $0.00 | 6,189 | 1.000 | 0.483 | 0.000 | 1.000 | mixed (81.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
+| 16 | workload-e ⚠ | 0.0000 | $0.00 | $0.00 | 16,356 | 1.000 | 0.876 | 0.000 | 1.000 | observed (100.0% observed) | candidate_not_cheaper | claude-sonnet-5 R²=0.368062 |
 
 ⚠ Some rows depend on blended-fallback rate-card entries. Their incumbent dollars are less reliable than rows using clean NNLS rates.
 
