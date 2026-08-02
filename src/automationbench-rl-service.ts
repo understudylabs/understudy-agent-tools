@@ -51,6 +51,63 @@ type Adapter = {
   partialCredit: (handle: any) => number;
 };
 
+export function parseAgentAction(message: unknown): Record<string, unknown> {
+  const source = String(message ?? "").trim();
+  if (!source) return { error: "empty assistant message" };
+  const start = source.indexOf("{");
+  if (start < 0) return { error: "assistant message does not contain a balanced JSON object" };
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let end = -1;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === "\"") inString = false;
+      continue;
+    }
+    if (char === "\"") inString = true;
+    else if (char === "{") depth += 1;
+    else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        end = index + 1;
+        break;
+      }
+    }
+  }
+  if (end < 0) return { error: "assistant message does not contain a balanced JSON object" };
+  let parsed: any;
+  try {
+    parsed = JSON.parse(source.slice(start, end));
+  } catch (error) {
+    const detail = error instanceof SyntaxError ? error.message : String(error);
+    return { error: `invalid JSON action: ${detail}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { error: "assistant action must be a JSON object" };
+  }
+  if (parsed.finish === true || parsed.tool === "finish" || parsed.name === "finish") {
+    return { finish: true };
+  }
+  const name = typeof parsed.tool === "string" ? parsed.tool : parsed.name;
+  if (!name) return { error: "assistant action missing tool/name" };
+  let args = parsed.arguments ?? {};
+  if (typeof args === "string") {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      return { error: "assistant action arguments are not valid JSON" };
+    }
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return { error: "assistant action arguments must be a JSON object" };
+  }
+  return { name, arguments: args };
+}
+
 function adapter(benchmark: BenchmarkName): Adapter {
   return benchmark === "synthetic-workflow"
     ? {
