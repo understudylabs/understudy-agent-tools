@@ -1,3 +1,7 @@
+// This GEPA runner intentionally coexists with scripts/automationbench-v2-episode.mjs:
+// GEPA needs per-episode feedback, transcripts, and token accounting, while the
+// zeroshot probe follows the upstream runner's fixture/report contract. Their v2
+// scoring paths remain equivalent; only reporting and observability differ.
 import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
 
 export const DEFAULT_SYSTEM = [
