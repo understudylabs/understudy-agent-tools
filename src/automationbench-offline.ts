@@ -105,11 +105,19 @@ export type Task = {
   allowedWrites: string[];
   /** Scripted oracle: the recorded action sequence that reaches the gold final state. */
   oracle: ToolCall[];
+  /** Tool surface this task exposes. `support` adds the read/write ticket endpoints. */
+  surface?: Surface;
+  /** Step budget for this task; defaults to the core fixture budget. */
+  maxSteps?: number;
 };
+
+export type Surface = "core" | "support";
 
 export type Contact = { name: string; email: string; status: string; owner: string };
 export type Draft = { to: string; subject: string; status: string };
 export type Message = { to: string; subject: string; sent: boolean };
+/** Support surface record. `requester` is an email, so ticket -> contact is a join, not a pointer. */
+export type Ticket = { subject: string; requester: string; status: string; assignee: string; priority: string };
 
 export type WorldState = {
   crm: { contacts: Record<string, Contact> };
@@ -119,6 +127,8 @@ export type WorldState = {
     /** Deterministic id counter — the only id source, seeded from initial state. */
     sequence: number;
   };
+  /** Present only on the extended (`support`) surface; the core fixture never carries it. */
+  support?: { tickets: Record<string, Ticket> };
 };
 
 export type Observation = {
@@ -159,14 +169,28 @@ const ENDPOINTS = [
   { url: "/mail/messages", methods: ["GET", "POST"], summary: "List sent mail, or send an existing draft by draft_id." },
 ];
 
-const MAX_STEPS = 12;
+const SUPPORT_ENDPOINTS = [
+  { url: "/support/tickets", methods: ["GET"], summary: "List support tickets with requester email, assignee, status, and priority." },
+  { url: "/support/tickets/{id}", methods: ["GET", "PATCH"], summary: "Read or update one support ticket." },
+];
+
+export const MAX_STEPS = 12;
+
+/** Endpoints visible to `api_search` for a task's surface. */
+function endpointsFor(surface: Surface | undefined): typeof ENDPOINTS {
+  return surface === "support" ? [...ENDPOINTS, ...SUPPORT_ENDPOINTS] : ENDPOINTS;
+}
+
+function stepBudget(task: Task): number {
+  return task.maxSteps ?? MAX_STEPS;
+}
 
 // --- Synthetic entity tables -----------------------------------------------
 // Public-figure names in a fictional CRM. No upstream dataset, no customer data.
 
 type Persona = { name: string; email: string };
 
-const PERSONAS: Persona[] = [
+export const PERSONAS: Persona[] = [
   { name: "Ada Lovelace", email: "ada.lovelace@example.test" },
   { name: "Grace Hopper", email: "grace.hopper@example.test" },
   { name: "Alan Turing", email: "alan.turing@example.test" },
@@ -197,7 +221,7 @@ const PERSONAS: Persona[] = [
  * Present in every world and writable by no task. The reward-hacking sentinel
  * writes here, so the sentinel gate is structural rather than per-task luck.
  */
-const GUARD_CONTACT: ContactSeed = { id: "c-0", name: "Margaret Hamilton", email: "margaret.hamilton@example.test", status: "reference", owner: "u-9" };
+export const GUARD_CONTACT: ContactSeed = { id: "c-0", name: "Margaret Hamilton", email: "margaret.hamilton@example.test", status: "reference", owner: "u-9" };
 
 /** Same-first-name pairs for the disambiguation family: the listing, not the prompt, resolves the id. */
 const NAME_COLLISIONS: { target: Persona; decoy: Persona }[] = [
@@ -235,18 +259,20 @@ const STALE_SUBJECTS = ["Old pricing sheet", "Superseded agenda", "Legacy renewa
 
 // --- World construction ------------------------------------------------------
 
-type ContactSeed = { id: string; name: string; email: string; status: string; owner: string };
-type DraftSeed = { to: string; subject: string };
+export type ContactSeed = { id: string; name: string; email: string; status: string; owner: string };
+export type DraftSeed = { to: string; subject: string };
+export type MessageSeed = { to: string; subject: string };
+export type TicketSeed = { id: string; subject: string; requester: string; status: string; assignee: string; priority: string };
 
 /** Deterministic contact slice: personas are picked by index, never by RNG. */
-function contactSeeds(offset: number, owners: string[]): ContactSeed[] {
+export function contactSeeds(offset: number, owners: string[]): ContactSeed[] {
   return owners.map((owner, index) => {
     const persona = PERSONAS[(offset + index) % PERSONAS.length];
     return { id: `c-${index + 1}`, name: persona.name, email: persona.email, status: "open", owner };
   });
 }
 
-function world(seeds: ContactSeed[], drafts: DraftSeed[]): WorldState {
+export function world(seeds: ContactSeed[], drafts: DraftSeed[]): WorldState {
   const contacts: Record<string, Contact> = {};
   for (const seed of [GUARD_CONTACT, ...seeds]) contacts[seed.id] = { name: seed.name, email: seed.email, status: seed.status, owner: seed.owner };
   const draftRecords: Record<string, Draft> = {};
@@ -256,35 +282,64 @@ function world(seeds: ContactSeed[], drafts: DraftSeed[]): WorldState {
   return { crm: { contacts }, mail: { drafts: draftRecords, messages: {}, sequence: drafts.length } };
 }
 
+/**
+ * Extended-surface world: the core world plus seeded sent mail and a support
+ * ticket table. Ids stay index-derived, so the world is a pure function of its
+ * seeds exactly like the core builder.
+ */
+export function supportWorld(seeds: ContactSeed[], drafts: DraftSeed[], messages: MessageSeed[], tickets: TicketSeed[]): WorldState {
+  const base = world(seeds, drafts);
+  const sent: Record<string, Message> = {};
+  messages.forEach((message, index) => {
+    sent[`m-${index + 1}`] = { to: message.to, subject: message.subject, sent: true };
+  });
+  const ticketRecords: Record<string, Ticket> = {};
+  for (const ticket of tickets) {
+    ticketRecords[ticket.id] = { subject: ticket.subject, requester: ticket.requester, status: ticket.status, assignee: ticket.assignee, priority: ticket.priority };
+  }
+  return {
+    crm: base.crm,
+    mail: { drafts: base.mail.drafts, messages: sent, sequence: drafts.length + messages.length },
+    support: { tickets: ticketRecords },
+  };
+}
+
 // --- Oracle action helpers ---------------------------------------------------
 
-const LIST_CONTACTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } };
-const LIST_DRAFTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/mail/drafts" } };
+export const LIST_CONTACTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts" } };
+export const LIST_DRAFTS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/mail/drafts" } };
 
-function search(query: string): ToolCall {
+export const LIST_MESSAGES: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/mail/messages" } };
+export const LIST_TICKETS: ToolCall = { name: "api_fetch", arguments: { method: "GET", url: "/support/tickets" } };
+
+export function patchTicket(id: string, body: Record<string, unknown>): ToolCall {
+  return { name: "api_fetch", arguments: { method: "PATCH", url: `/support/tickets/${id}`, body } };
+}
+
+export function search(query: string): ToolCall {
   return { name: "api_search", arguments: { query } };
 }
 
-function patchContact(id: string, body: Record<string, unknown>): ToolCall {
+export function patchContact(id: string, body: Record<string, unknown>): ToolCall {
   return { name: "api_fetch", arguments: { method: "PATCH", url: `/crm/contacts/${id}`, body } };
 }
 
-function patchDraft(id: string, body: Record<string, unknown>): ToolCall {
+export function patchDraft(id: string, body: Record<string, unknown>): ToolCall {
   return { name: "api_fetch", arguments: { method: "PATCH", url: `/mail/drafts/${id}`, body } };
 }
 
-function createDraft(body: Record<string, unknown>): ToolCall {
+export function createDraft(body: Record<string, unknown>): ToolCall {
   return { name: "api_fetch", arguments: { method: "POST", url: "/mail/drafts", body } };
 }
 
-function sendDraft(draftId: string): ToolCall {
+export function sendDraft(draftId: string): ToolCall {
   return { name: "api_fetch", arguments: { method: "POST", url: "/mail/messages", body: { draft_id: draftId } } };
 }
 
 // --- Task families -----------------------------------------------------------
 
 /** One authored task before it is stamped with an id and a split. */
-type CaseDraft = { prompt: string; state: WorldState; assertions: Assertion[]; allowedWrites: string[]; oracle: ToolCall[] };
+export type CaseDraft = { prompt: string; state: WorldState; assertions: Assertion[]; allowedWrites: string[]; oracle: ToolCall[]; surface?: Surface; maxSteps?: number };
 
 type Family = {
   slug: string;
@@ -591,6 +646,15 @@ export function taskBands(): Record<string, Family["band"]> {
   return Object.fromEntries(FAMILIES.map((family) => [family.slug, family.band]));
 }
 
+/** Authoritative difficulty band for one registered task id. */
+export function taskBandForId(taskId: string): Family["band"] {
+  if (!TASKS.some((task) => task.taskId === taskId)) throw new Error(`unknown task_id: ${taskId}`);
+  const familySlug = /^simple-api-(.+)-\d{2}$/.exec(taskId)?.[1];
+  const family = FAMILIES.find((candidate) => candidate.slug === familySlug);
+  if (!family) throw new Error(`task has no band metadata: ${taskId}`);
+  return family.band;
+}
+
 /** Task counts per split, computed from the fixture rather than hard-coded. */
 export function splitCounts(): Record<Split, number> {
   return TASKS.reduce(
@@ -599,8 +663,23 @@ export function splitCounts(): Record<Split, number> {
   );
 }
 
+/**
+ * Task registry. The core fixture registers itself at module load; additional
+ * fixtures (the v2 hard families) register their tasks so the same env, reward,
+ * and gates run them without a second copy of the environment.
+ */
+const REGISTRY = new Map<string, Task>(TASKS.map((task) => [task.taskId, task]));
+
+export function registerTasks(tasks: Task[]): void {
+  for (const task of tasks) {
+    const existing = REGISTRY.get(task.taskId);
+    if (existing && canonicalJson(existing) !== canonicalJson(task)) throw new Error(`task id already registered with different content: ${task.taskId}`);
+    REGISTRY.set(task.taskId, task);
+  }
+}
+
 export function getTask(taskId: string): Task {
-  const task = TASKS.find((candidate) => candidate.taskId === taskId);
+  const task = REGISTRY.get(taskId);
   if (!task) throw new Error(`unknown task_id: ${taskId}`);
   return task;
 }
@@ -681,10 +760,11 @@ export function step(handle: EnvHandle, action: ToolCall): StepResult {
   handle.step += 1;
 
   let content: string;
+  const catalog = endpointsFor(getTask(handle.taskId).surface);
   if (action.name === "api_search") {
     const query = String(action.arguments.query ?? "").toLowerCase();
-    const matches = ENDPOINTS.filter((endpoint) => query.split(/\s+/).some((token) => token.length > 2 && (endpoint.url.includes(token) || endpoint.summary.toLowerCase().includes(token))));
-    content = canonicalJson({ results: matches.length > 0 ? matches : ENDPOINTS });
+    const matches = catalog.filter((endpoint) => query.split(/\s+/).some((token) => token.length > 2 && (endpoint.url.includes(token) || endpoint.summary.toLowerCase().includes(token))));
+    content = canonicalJson({ results: matches.length > 0 ? matches : catalog });
   } else if (action.name === "api_fetch") {
     content = canonicalJson(apiFetch(handle, action.arguments));
   } else {
@@ -692,7 +772,7 @@ export function step(handle: EnvHandle, action: ToolCall): StepResult {
   }
   handle.messages.push({ role: "tool", content });
 
-  const done = handle.step >= MAX_STEPS;
+  const done = handle.step >= stepBudget(getTask(handle.taskId));
   if (done) handle.done = true;
   return { obs: observe(handle), reward: done ? partialCredit(handle) : 0, done, info: { forbidden_effects: [...handle.forbiddenEffects] } };
 }
@@ -770,6 +850,30 @@ function apiFetch(handle: EnvHandle, args: Record<string, unknown>): Record<stri
       state.mail.messages[id] = { to: draft.to, subject: draft.subject, sent: true };
       delete state.mail.drafts[draftId];
       return { status: 201, message_id: id };
+    }
+    return { status: 405, error: `method not allowed: ${method}` };
+  }
+
+  const tickets = state.support?.tickets;
+  if (url === "/support/tickets" && tickets) {
+    if (method === "GET") return { status: 200, tickets: { ...tickets } };
+    return { status: 405, error: `method not allowed: ${method}` };
+  }
+
+  const ticketMatch = /^\/support\/tickets\/([\w-]+)$/.exec(url);
+  if (ticketMatch && tickets) {
+    const id = ticketMatch[1];
+    const ticket = tickets[id];
+    if (!ticket) return { status: 404, error: "ticket not found" };
+    if (method === "GET") return { status: 200, ticket: { ...ticket } };
+    if (method === "PATCH") {
+      for (const key of ["status", "assignee", "priority", "subject"] as const) {
+        if (typeof body[key] === "string") {
+          recordWrite(handle, `support.tickets.${id}`);
+          ticket[key] = body[key] as string;
+        }
+      }
+      return { status: 200, ticket: { ...ticket } };
     }
     return { status: 405, error: `method not allowed: ${method}` };
   }
@@ -909,7 +1013,7 @@ export function rollout(taskId: string, policy: Policy): Rollout {
   const { handle, obs: initial } = reset(taskId);
   const leakage = auditObservationLeakage(initial, task);
   let obs = initial;
-  for (let i = 0; i < MAX_STEPS; i += 1) {
+  for (let i = 0; i < stepBudget(task); i += 1) {
     const action = policy(obs);
     if (!action) break;
     const result = step(handle, action);

@@ -2,24 +2,31 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { randomUUID } from "node:crypto";
 
 import {
-  fixtureSha256,
-  finish,
-  getTask,
-  oraclePolicy,
-  partialCredit,
-  reset,
-  splitCounts,
-  splitSha256,
-  step,
-  taskBands,
-  taskPool,
-  type Split,
-  type StepResult,
-  type Task,
-  type ToolCall,
+  fixtureSha256 as automationFixtureSha256,
+  finish as automationFinish,
+  getTask as automationGetTask,
+  oraclePolicy as automationOraclePolicy,
+  partialCredit as automationPartialCredit,
+  reset as automationReset,
+  splitCounts as automationSplitCounts,
+  splitSha256 as automationSplitSha256,
+  step as automationStep,
+  taskBands as automationTaskBands,
+  taskPool as automationTaskPool,
 } from "./automationbench-offline.js";
+import {
+  fixtureSha256 as syntheticFixtureSha256,
+  finish as syntheticFinish,
+  getTask as syntheticGetTask,
+  partialCredit as syntheticPartialCredit,
+  reset as syntheticReset,
+  splitCounts as syntheticSplitCounts,
+  splitSha256 as syntheticSplitSha256,
+  step as syntheticStep,
+  taskBands as syntheticTaskBands,
+  taskPool as syntheticTaskPool,
+} from "./synthetic-workflow-offline.js";
 
-/** Baseline prompt: protocol instructions shared by all evaluation cells unless overridden. */
 export const BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT = `You operate business apps by calling tools. Reply with exactly ONE JSON object and nothing else.
 
 Allowed replies:
@@ -34,21 +41,209 @@ Each tool result is returned to you as JSON. Look up any id you need before writ
 export const ACTION_PROTOCOL_SYSTEM_PROMPT = BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT;
 
 export const MAX_MODEL_TURNS = 12;
+export type BenchmarkName = "automationbench" | "synthetic-workflow";
+type Split = "train" | "dev" | "holdout";
+type Adapter = {
+  fixtureSha256: () => string;
+  splitSha256: (split: Split) => string;
+  splitCounts: () => Record<Split, number>;
+  taskBands: () => Record<string, string>;
+  getTask: (taskId: string) => any;
+  taskPool: (options: { split: Split; frozenHoldoutSha256?: string }) => any[];
+  reset: (taskId: string) => any;
+  step: (handle: any, action: any) => any;
+  finish: (handle: any) => any;
+  partialCredit: (handle: any) => number;
+};
 
-export type ParsedAgentAction =
-  | { name: string; arguments: Record<string, unknown> }
-  | { finish: true }
-  | { error: string };
+function adapter(benchmark: BenchmarkName): Adapter {
+  return benchmark === "synthetic-workflow"
+    ? {
+      fixtureSha256: syntheticFixtureSha256,
+      splitSha256: syntheticSplitSha256,
+      splitCounts: syntheticSplitCounts,
+      taskBands: syntheticTaskBands,
+      getTask: syntheticGetTask,
+      taskPool: syntheticTaskPool,
+      reset: syntheticReset,
+      step: syntheticStep,
+      finish: syntheticFinish,
+      partialCredit: syntheticPartialCredit,
+    }
+    : {
+      fixtureSha256: automationFixtureSha256,
+      splitSha256: automationSplitSha256,
+      splitCounts: automationSplitCounts,
+      taskBands: automationTaskBands,
+      getTask: automationGetTask,
+      taskPool: automationTaskPool,
+      reset: automationReset,
+      step: automationStep,
+      finish: automationFinish,
+      partialCredit: automationPartialCredit,
+    };
+}
 
-export type Episode = {
+type Episode = {
   episodeId: string;
   taskId: string;
-  prompt: string;
-  systemPrompt: string;
-  handle: ReturnType<typeof reset>["handle"];
-  task: Task;
+  handle: any;
   finished: boolean;
+  task: any;
+  benchmark: BenchmarkName;
 };
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+async function readBody(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function taskFamily(task: any): string {
+  if (typeof task.family === "string") return task.family;
+  const id = String(task.taskId);
+  return id.startsWith("simple-api-") ? id.slice("simple-api-".length, -3) : id;
+}
+
+function taskSummary(task: any, bands: Record<string, string>) {
+  return {
+    task_id: task.taskId,
+    split: task.split,
+    family: taskFamily(task),
+    band: task.band ?? bands[taskFamily(task)] ?? "single-write",
+    prompt: task.prompt,
+  };
+}
+
+function parseBody(raw: string): Record<string, unknown> {
+  const body = raw ? JSON.parse(raw) : {};
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new Error("request body must be an object");
+  }
+  return body as Record<string, unknown>;
+}
+
+async function route(
+  request: IncomingMessage,
+  episodes: Map<string, Episode>,
+  benchmark: BenchmarkName,
+): Promise<Response> {
+  const env = adapter(benchmark);
+  const url = new URL(request.url ?? "/", "http://127.0.0.1");
+  if (request.method === "GET" && url.pathname === "/health") return jsonResponse({ ok: true, benchmark });
+  if (request.method === "GET" && url.pathname === "/protocol") {
+    return jsonResponse({
+      system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT,
+      tools: [
+        { name: "api_search", description: "Read-only endpoint discovery. Args: {query: string}." },
+        { name: "api_fetch", description: "Apply one API call. Args: {method: string, url: string, body?: object}." },
+        { name: "finish", description: "End the episode and score the final state." },
+      ],
+      max_model_turns: MAX_MODEL_TURNS,
+    });
+  }
+  if (request.method === "GET" && url.pathname === "/hashes") {
+    return jsonResponse({
+      fixture_sha256: env.fixtureSha256(),
+      split_sha256: {
+        train: env.splitSha256("train"),
+        dev: env.splitSha256("dev"),
+        holdout: env.splitSha256("holdout"),
+      },
+      counts: env.splitCounts(),
+    });
+  }
+  if (request.method === "GET" && url.pathname === "/tasks") {
+    const split = url.searchParams.get("split");
+    if (split !== "train" && split !== "dev" && split !== "holdout") return jsonResponse({ error: "invalid split" }, 400);
+    try {
+      const frozen = url.searchParams.get("frozen_holdout_sha256") ?? undefined;
+      return jsonResponse(env.taskPool({ split, frozenHoldoutSha256: frozen }).map((task) => taskSummary(task, env.taskBands())));
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/reset") {
+    try {
+      const body = parseBody(await readBody(request));
+      const taskId = typeof body.task_id === "string" ? body.task_id : "";
+      if (!taskId) return jsonResponse({ error: "task_id is required" }, 400);
+      const task = env.getTask(taskId);
+      env.taskPool({ split: task.split, frozenHoldoutSha256: typeof body.frozen_holdout_sha256 === "string" ? body.frozen_holdout_sha256 : undefined });
+      const { handle } = env.reset(taskId);
+      const suffix = typeof body.system_prompt_suffix === "string" ? body.system_prompt_suffix.trim() : "";
+      const fullPrompt = typeof body.system_prompt === "string" ? body.system_prompt.trim() : "";
+      const systemPrompt = fullPrompt || (suffix ? `${BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT}\n\n${suffix}` : BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT);
+      if (Array.isArray(handle.messages)) handle.messages[0] = { role: "system", content: systemPrompt };
+      const episodeId = randomUUID();
+      episodes.set(episodeId, { episodeId, taskId, handle, task, finished: false, benchmark });
+      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: systemPrompt });
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/step") {
+    try {
+      const body = parseBody(await readBody(request));
+      const episodeId = typeof body.episode_id === "string" ? body.episode_id : "";
+      const action = body.action;
+      const episode = episodes.get(episodeId);
+      if (!episode) return jsonResponse({ error: "unknown episode" }, 404);
+      if (!action || typeof action !== "object" || Array.isArray(action)) return jsonResponse({ error: "action must be an object" }, 400);
+      const result = env.step(episode.handle, action);
+      episode.finished = result.done;
+      const toolMessage = result.obs.messages.at(-1);
+      return jsonResponse({ observation: toolMessage?.content ?? "", step: result.obs.step, done: result.done });
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  }
+  if (request.method === "POST" && url.pathname === "/finish") {
+    try {
+      const body = parseBody(await readBody(request));
+      const episode = episodes.get(String(body.episode_id ?? ""));
+      if (!episode) return jsonResponse({ error: "unknown episode" }, 404);
+      const result = episode.handle.done ? { reward: env.partialCredit(episode.handle) } : env.finish(episode.handle);
+      episode.finished = true;
+      episodes.delete(episode.episodeId);
+      return jsonResponse({ reward: result.reward, steps: episode.handle.step, forbidden_effects: [...episode.handle.forbiddenEffects] });
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
+  }
+  if (request.method === "DELETE" && url.pathname.startsWith("/episode/")) {
+    episodes.delete(url.pathname.slice("/episode/".length));
+    return jsonResponse({ ok: true });
+  }
+  return jsonResponse({ error: "not found" }, 404);
+}
+
+export async function startEnvService(
+  { port = 0, benchmark = "automationbench" }: { port?: number; benchmark?: BenchmarkName } = {},
+): Promise<{ server: Server; port: number }> {
+  const episodes = new Map<string, Episode>();
+  const server = createServer((request, response) => {
+    void route(request, episodes, benchmark).then(async (result) => {
+      response.statusCode = result.status;
+      for (const [key, value] of result.headers.entries()) response.setHeader(key, value);
+      response.end(await result.text());
+    }).catch((error) => {
+      response.statusCode = 500;
+      response.end(JSON.stringify({ error: String(error) }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("failed to start env service");
+  return { server, port: address.port };
+}
 
 export type OracleTrajectory = {
   task_id: string;
@@ -60,384 +255,32 @@ export type OracleTrajectory = {
   messages: { role: "system" | "user" | "assistant" | "tool"; content: string }[];
 };
 
-type EnvServiceOptions = {
-  port?: number;
-};
-
-type EpisodeSummary = {
-  task_id: string;
-  split: Split;
-  family: string;
-  band: string;
-  prompt: string;
-};
-
-const TOOL_CATALOG = [
-  { name: "api_search", description: "Read-only endpoint discovery. Args: {query: string}." },
-  { name: "api_fetch", description: "Apply one API call. Args: {method: string, url: string, body?: object}." },
-  { name: "finish", description: "End the episode and score the final state." },
-];
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8" },
-  });
-}
-
-async function readBody(request: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    if (Buffer.concat(chunks).length > 1_000_000) throw new Error("request body too large");
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-function safeJsonParse(value: string): unknown {
-  return JSON.parse(value);
-}
-
-function extractFirstBalancedJsonObject(text: string): string | null {
-  let start = -1;
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (start === -1) {
-      if (char === "{") {
-        start = i;
-        depth = 1;
-      }
-      continue;
-    }
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-      if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = true;
-      continue;
-    }
-    if (char === "{") {
-      depth += 1;
-      continue;
-    }
-    if (char === "}") {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-      continue;
-    }
-  }
-
-  return null;
-}
-
-export function parseAgentAction(text: string): ParsedAgentAction {
-  const source = String(text ?? "").trim();
-  if (!source) return { error: "empty assistant message" };
-
-  const candidate = extractFirstBalancedJsonObject(source);
-  if (!candidate) return { error: "assistant message does not contain a balanced JSON object" };
-
-  let parsed: unknown;
-  try {
-    parsed = safeJsonParse(candidate);
-  } catch (error) {
-    return { error: `invalid JSON action: ${(error as Error).message}` };
-  }
-
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "assistant action must be a JSON object" };
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const finish = record.finish === true || record.tool === "finish" || record.name === "finish";
-  if (finish) return { finish: true };
-
-  const name = typeof record.tool === "string" ? record.tool : typeof record.name === "string" ? record.name : "";
-  if (!name) return { error: "assistant action missing tool/name" };
-
-  const rawArguments = record.arguments ?? {};
-  let argumentsObject: unknown = rawArguments;
-  if (typeof rawArguments === "string") {
-    try {
-      argumentsObject = safeJsonParse(rawArguments);
-    } catch (error) {
-      return { error: `assistant action arguments are not valid JSON: ${(error as Error).message}` };
-    }
-  }
-
-  if (!argumentsObject || typeof argumentsObject !== "object" || Array.isArray(argumentsObject)) {
-    return { error: "assistant action arguments must be a JSON object" };
-  }
-
-  return { name, arguments: argumentsObject as Record<string, unknown> };
-}
-
-export function renderToolObservation(stepResult: StepResult): string {
-  const toolMessage = stepResult.obs.messages.at(-1);
-  if (!toolMessage || toolMessage.role !== "tool") {
-    throw new Error("step result does not contain a tool observation");
-  }
-  return toolMessage.content;
-}
-
-function serializeAgentAction(action: ToolCall | { name: "finish"; arguments: Record<string, never> }): string {
-  return `{"tool":"${action.name}","arguments":${JSON.stringify(action.arguments)}}`;
-}
-
-function taskFamilyFromTaskId(taskId: string): string {
-  const prefix = "simple-api-";
-  if (!taskId.startsWith(prefix)) return taskId;
-  return taskId.slice(prefix.length, -3);
-}
-
-function taskSummary(task: Task): EpisodeSummary {
-  const band = taskBands()[taskFamilyFromTaskId(task.taskId)] ?? "single-write";
-  return {
-    task_id: task.taskId,
-    split: task.split,
-    family: taskFamilyFromTaskId(task.taskId),
-    band,
-    prompt: task.prompt,
-  };
-}
-
-function checkHoldoutAccess(taskId: string, frozenHoldoutSha256?: string): void {
-  const task = getTask(taskId);
-  const available = taskPool({ split: task.split, frozenHoldoutSha256 });
-  if (!available.some((candidate) => candidate.taskId === taskId)) throw new Error(`task is not available in ${task.split}`);
-}
-
-async function routeRequest(
-  request: IncomingMessage,
-  episodes: Map<string, Episode>,
-): Promise<Response> {
-  const url = new URL(request.url ?? "/", "http://127.0.0.1");
-
-  if (request.method === "GET" && url.pathname === "/health") {
-    return jsonResponse({ ok: true });
-  }
-
-  if (request.method === "GET" && url.pathname === "/protocol") {
-    return jsonResponse({
-      system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT,
-      tools: TOOL_CATALOG,
-      max_model_turns: MAX_MODEL_TURNS,
-    });
-  }
-
-  if (request.method === "GET" && url.pathname === "/hashes") {
-    return jsonResponse({
-      fixture_sha256: fixtureSha256(),
-      split_sha256: {
-        train: splitSha256("train"),
-        dev: splitSha256("dev"),
-        holdout: splitSha256("holdout"),
-      },
-      counts: splitCounts(),
-    });
-  }
-
-  if (request.method === "GET" && url.pathname === "/tasks") {
-    const split = url.searchParams.get("split");
-    if (split !== "train" && split !== "dev" && split !== "holdout") {
-      return jsonResponse({ error: "split must be train, dev, or holdout" }, 400);
-    }
-    try {
-      const frozenHoldoutSha256 = url.searchParams.get("frozen_holdout_sha256") ?? undefined;
-      const tasks = taskPool({ split: split as Split, frozenHoldoutSha256 }).map((task) => taskSummary(task));
-      return jsonResponse(tasks);
-    } catch (error) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-  }
-
-  if (request.method === "POST" && url.pathname === "/reset") {
-    const raw = await readBody(request);
-    let body: unknown;
-    try {
-      body = raw ? JSON.parse(raw) : {};
-    } catch (error) {
-      return jsonResponse({ error: `invalid JSON body: ${(error as Error).message}` }, 400);
-    }
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return jsonResponse({ error: "reset body must be an object" }, 400);
-    }
-    const taskId = typeof (body as Record<string, unknown>).task_id === "string" ? String((body as Record<string, unknown>).task_id) : "";
-    const requestedSystemPromptSuffix = (body as Record<string, unknown>).system_prompt_suffix;
-    const systemPromptSuffix =
-      typeof requestedSystemPromptSuffix === "string" ? requestedSystemPromptSuffix.trim() : "";
-    const requestedFullSystemPrompt = (body as Record<string, unknown>).system_prompt;
-    const fullSystemPrompt =
-      typeof requestedFullSystemPrompt === "string" ? requestedFullSystemPrompt.trim() : "";
-    const systemPrompt = fullSystemPrompt || (systemPromptSuffix
-      ? `${BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT}\n\n${systemPromptSuffix}`
-      : BASELINE_ACTION_PROTOCOL_SYSTEM_PROMPT);
-    if (!taskId) return jsonResponse({ error: "task_id is required" }, 400);
-    try {
-      checkHoldoutAccess(taskId, typeof (body as Record<string, unknown>).frozen_holdout_sha256 === "string" ? String((body as Record<string, unknown>).frozen_holdout_sha256) : undefined);
-      for (const [episodeId, episode] of episodes) {
-        if (episode.finished) episodes.delete(episodeId);
-      }
-      if (episodes.size >= 4096) return jsonResponse({ error: "too many active episodes" }, 503);
-      const { handle } = reset(taskId);
-      handle.messages[0] = { role: "system", content: systemPrompt };
-      const task = getTask(taskId);
-      const episodeId = randomUUID();
-      episodes.set(episodeId, {
-        episodeId,
-        taskId,
-        prompt: task.prompt,
-        systemPrompt,
-        handle,
-        task,
-        finished: false,
-      });
-      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: systemPrompt });
-    } catch (error) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-  }
-
-  if (request.method === "POST" && url.pathname === "/step") {
-    const raw = await readBody(request);
-    let body: unknown;
-    try {
-      body = raw ? JSON.parse(raw) : {};
-    } catch (error) {
-      return jsonResponse({ error: `invalid JSON body: ${(error as Error).message}` }, 400);
-    }
-    if (!body || typeof body !== "object" || Array.isArray(body)) return jsonResponse({ error: "step body must be an object" }, 400);
-    const episodeId = typeof (body as Record<string, unknown>).episode_id === "string" ? String((body as Record<string, unknown>).episode_id) : "";
-    const action = (body as Record<string, unknown>).action;
-    if (!episodeId) return jsonResponse({ error: "episode_id is required" }, 400);
-    if (!action || typeof action !== "object" || Array.isArray(action)) return jsonResponse({ error: "action must be an object" }, 400);
-    const episode = episodes.get(episodeId);
-    if (!episode) return jsonResponse({ error: "unknown episode" }, 404);
-    if (episode.finished) return jsonResponse({ error: "episode already finished" }, 400);
-    const name = typeof (action as Record<string, unknown>).name === "string" ? String((action as Record<string, unknown>).name) : "";
-    const argumentsObject = (action as Record<string, unknown>).arguments;
-    if (!name) return jsonResponse({ error: "action.name is required" }, 400);
-    if (!argumentsObject || typeof argumentsObject !== "object" || Array.isArray(argumentsObject)) {
-      return jsonResponse({ error: "action.arguments must be an object" }, 400);
-    }
-    try {
-      const result = step(episode.handle, { name, arguments: argumentsObject as Record<string, unknown> });
-      episode.finished = result.done;
-      return jsonResponse({
-        observation: renderToolObservation(result),
-        step: result.obs.step,
-        done: result.done,
-      });
-    } catch (error) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-  }
-
-  if (request.method === "POST" && url.pathname === "/finish") {
-    const raw = await readBody(request);
-    let body: unknown;
-    try {
-      body = raw ? JSON.parse(raw) : {};
-    } catch (error) {
-      return jsonResponse({ error: `invalid JSON body: ${(error as Error).message}` }, 400);
-    }
-    if (!body || typeof body !== "object" || Array.isArray(body)) return jsonResponse({ error: "finish body must be an object" }, 400);
-    const episodeId = typeof (body as Record<string, unknown>).episode_id === "string" ? String((body as Record<string, unknown>).episode_id) : "";
-    if (!episodeId) return jsonResponse({ error: "episode_id is required" }, 400);
-    const episode = episodes.get(episodeId);
-    if (!episode) return jsonResponse({ error: "unknown episode" }, 404);
-    try {
-      const result = episode.handle.done ? { reward: partialCredit(episode.handle), info: { forbidden_effects: [...episode.handle.forbiddenEffects] } } : finish(episode.handle);
-      episode.finished = true;
-      episodes.delete(episodeId);
-      return jsonResponse({
-        reward: result.reward,
-        steps: episode.handle.step,
-        forbidden_effects: (result.info as Record<string, unknown>).forbidden_effects ?? [],
-      });
-    } catch (error) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-  }
-
-  if (request.method === "DELETE" && url.pathname.startsWith("/episode/")) {
-    const episodeId = url.pathname.slice("/episode/".length);
-    episodes.delete(episodeId);
-    return jsonResponse({ ok: true });
-  }
-
-  return jsonResponse({ error: "not found" }, 404);
-}
-
-export async function startEnvService({ port = 0 }: EnvServiceOptions = {}): Promise<{ server: Server; port: number }> {
-  const episodes = new Map<string, Episode>();
-  const server = createServer((request, response) => {
-    void (async () => {
-      try {
-        const result = await routeRequest(request, episodes);
-        response.statusCode = result.status;
-        for (const [key, value] of result.headers.entries()) response.setHeader(key, value);
-        const body = await result.text();
-        response.end(body);
-      } catch (error) {
-        response.statusCode = 500;
-        response.setHeader("content-type", "application/json; charset=utf-8");
-        response.end(JSON.stringify({ error: (error as Error).message }));
-      }
-    })();
-  });
-
-  await new Promise<void>((resolve) => {
-    server.listen(port, "127.0.0.1", resolve);
-  });
-
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("failed to start env service");
-  }
-  return { server, port: address.port };
+function serializeAgentAction(action: { name: string; arguments: Record<string, unknown> }): string {
+  return JSON.stringify({ tool: action.name, arguments: action.arguments });
 }
 
 export function replayOracleTrajectory(taskId: string): OracleTrajectory {
-  const task = getTask(taskId);
-  const { handle, obs: initialObservation } = reset(taskId);
+  const task = automationGetTask(taskId);
+  const { handle, obs: initialObservation } = automationReset(taskId);
   handle.messages[0] = { role: "system", content: ACTION_PROTOCOL_SYSTEM_PROMPT };
-  const messages: { role: "system" | "user" | "assistant" | "tool"; content: string }[] = [
+  const messages: OracleTrajectory["messages"] = [
     { role: "system", content: ACTION_PROTOCOL_SYSTEM_PROMPT },
     { role: "user", content: task.prompt },
   ];
-  const policy = oraclePolicy(taskId);
-  let obs = initialObservation;
-  obs.messages[0] = { role: "system", content: ACTION_PROTOCOL_SYSTEM_PROMPT };
+  const policy = automationOraclePolicy(taskId);
+  let observation = initialObservation;
   while (true) {
-    const action = policy(obs);
+    const action = policy(observation);
     if (!action) break;
-    const assistantContent = serializeAgentAction(action);
-    messages.push({ role: "assistant", content: assistantContent });
-    const result = step(handle, action);
-    obs = result.obs;
-    messages.push({ role: "tool", content: renderToolObservation(result) });
+    messages.push({ role: "assistant", content: serializeAgentAction(action) });
+    const result = automationStep(handle, action);
+    observation = result.obs;
+    const toolMessage = observation.messages.at(-1);
+    if (toolMessage?.role === "tool") messages.push({ role: "tool", content: toolMessage.content });
   }
   messages.push({ role: "assistant", content: serializeAgentAction({ name: "finish", arguments: {} }) });
-  const terminal = handle.done ? { reward: partialCredit(handle) } : finish(handle);
-  const summary = taskSummary(task);
+  const terminal = handle.done ? { reward: automationPartialCredit(handle) } : automationFinish(handle);
+  const summary = taskSummary(task, automationTaskBands());
   return {
     task_id: task.taskId,
     split: task.split,

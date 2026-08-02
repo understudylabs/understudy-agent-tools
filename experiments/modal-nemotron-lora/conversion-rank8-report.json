@@ -1,0 +1,37 @@
+{
+  "schema": "understudy.nemotron_lora_conversion.v1",
+  "source": "/home/ubuntu/adapters/nemotron-rank8-adapter-b",
+  "destinationVolumePath": "/adapters/nemotron-rank8-converted",
+  "vllmVersion": "0.26.0",
+  "mapping": {
+    "mixer.q_proj": "mixer.q_proj (vLLM packs into qkv_proj)",
+    "mixer.k_proj": "mixer.k_proj (vLLM packs into qkv_proj)",
+    "mixer.v_proj": "mixer.v_proj (vLLM packs into qkv_proj)",
+    "mixer.o_proj": "mixer.o_proj",
+    "mixer.shared_experts.up_proj": "mixer.shared_experts.up_proj",
+    "mixer.shared_experts.down_proj": "mixer.shared_experts.down_proj",
+    "mixer.experts.w1": "mixer.experts.<expert>.up_proj",
+    "mixer.experts.w2": "mixer.experts.<expert>.down_proj",
+    "lm_head": "lm_head"
+  },
+  "dropped": {
+    "mixer.gate_proj": {
+      "reason": "Tinker projection layout has no lossless match to vLLM packed in_proj",
+      "tensorElements": 1248256
+    },
+    "mixer.x_proj": {
+      "reason": "Tinker projection layout has no lossless match to vLLM packed in_proj",
+      "tensorElements": 1248256
+    },
+    "mixer.experts.w3": {
+      "reason": "Nemotron-H is non-gated; vLLM omits the third fused expert slice",
+      "tensorElements": 0
+    }
+  },
+  "sourceTensorElements": 96518144,
+  "mappedSourceTensorElements": 94021632,
+  "droppedSourceTensorElements": 2496512,
+  "mappedFraction": 0.9741342726,
+  "droppedFraction": 0.0258657274,
+  "caveat": "Coverage is raw LoRA A/B tensor elements, not deduplicated low-rank degrees of freedom. Expanded expert output repeats shared factors as required by PEFT per-expert names."
+}

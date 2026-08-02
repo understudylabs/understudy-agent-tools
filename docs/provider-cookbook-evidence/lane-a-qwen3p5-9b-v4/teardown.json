@@ -1,0 +1,66 @@
+{
+  "listings": {
+    "deployments": {
+      "url": "https://api.fireworks.ai/v1/accounts/understudy-dev/deployments",
+      "status": 200,
+      "body": "{\"deployments\":[],\"totalSize\":40,\"note\":\"Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory.\"}",
+      "parsed": {
+        "deployments": [],
+        "totalSize": 40,
+        "unrelated_deployments_returned": 40,
+        "note": "Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory."
+      },
+      "unrelated_deployments_returned": 40
+    },
+    "trainers": {
+      "url": "https://api.fireworks.ai/v1/accounts/understudy-dev/rlorTrainerJobs",
+      "status": 200,
+      "body": "{\"rlorTrainerJobs\":[],\"totalSize\":3,\"note\":\"Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory.\"}",
+      "parsed": {
+        "rlorTrainerJobs": [],
+        "totalSize": 3,
+        "unrelated_trainer_jobs_returned": 3,
+        "note": "Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory."
+      },
+      "unrelated_trainer_jobs_returned": 3
+    },
+    "batch_jobs": {
+      "url": "https://api.fireworks.ai/v1/accounts/understudy-dev/batchJobs",
+      "status": 404,
+      "body": "{\"code\":5,\"details\":[],\"message\":\"Not Found\"}",
+      "parsed": {
+        "code": 5,
+        "details": [],
+        "message": "Not Found"
+      }
+    },
+    "models": {
+      "url": "https://api.fireworks.ai/v1/accounts/understudy-dev/models",
+      "status": 200,
+      "body": "{\"models\":[],\"totalSize\":69,\"note\":\"Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory.\"}",
+      "parsed": {
+        "models": [],
+        "totalSize": 69,
+        "unrelated_models_returned": 50,
+        "note": "Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory."
+      },
+      "unrelated_models_returned": 50
+    }
+  },
+  "resources": {
+    "deployment": {
+      "identifier": "lane-a-1785625731",
+      "present_after_teardown": false
+    },
+    "trainer_job": {
+      "identifier": "training-api-service-e2ee2f67",
+      "present_after_teardown": false
+    },
+    "checkpoint": {
+      "identifier": "lane-a-final-795ebbad",
+      "present_during_run": true,
+      "present_in_post_teardown_model_listing": false
+    }
+  },
+  "note": "Unrelated account resources were redacted to avoid publishing concurrent work or customer-named inventory."
+}
