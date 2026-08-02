@@ -1,0 +1,92 @@
+{
+  "schema_version": "understudy.automationbench_band_report.v1",
+  "generated_at": "2026-08-02T02:31:03.300Z",
+  "split": "holdout",
+  "split_sha256": "a5337d711cf29117c2b7b5d3075f823e17f214102825dfc874d26066808f760d",
+  "base": {
+    "model": "nemotron-3-nano-base",
+    "split": "holdout",
+    "split_sha256": "a5337d711cf29117c2b7b5d3075f823e17f214102825dfc874d26066808f760d",
+    "tasks": 5,
+    "mean_score": 0.15,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 5,
+    "bands": {
+      "multi-write": {
+        "tasks": 4,
+        "scored": 4,
+        "mean_score": 0.1875,
+        "exact_1": 0,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 4
+      },
+      "single-write": {
+        "tasks": 1,
+        "scored": 1,
+        "mean_score": 0,
+        "exact_1": 0,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 1
+      }
+    }
+  },
+  "candidate": {
+    "model": "nemotron-3-nano-dpo",
+    "split": "holdout",
+    "split_sha256": "a5337d711cf29117c2b7b5d3075f823e17f214102825dfc874d26066808f760d",
+    "tasks": 5,
+    "mean_score": 0.15,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 5,
+    "bands": {
+      "multi-write": {
+        "tasks": 4,
+        "scored": 4,
+        "mean_score": 0.1875,
+        "exact_1": 0,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 4
+      },
+      "single-write": {
+        "tasks": 1,
+        "scored": 1,
+        "mean_score": 0,
+        "exact_1": 0,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 1
+      }
+    }
+  },
+  "per_band_delta": {
+    "multi-write": {
+      "tasks": 4,
+      "base_mean": 0.1875,
+      "candidate_mean": 0.1875,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0,
+      "base_forbidden_writes": 0,
+      "candidate_forbidden_writes": 0
+    },
+    "single-write": {
+      "tasks": 1,
+      "base_mean": 0,
+      "candidate_mean": 0,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0,
+      "base_forbidden_writes": 0,
+      "candidate_forbidden_writes": 0
+    }
+  }
+}
