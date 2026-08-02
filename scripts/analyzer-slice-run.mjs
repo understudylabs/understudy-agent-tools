@@ -66,6 +66,8 @@ async function runOne(task, sampleIndex) {
         return {
           task_id: task.taskId, family: task.family, band: task.band, split, sample_index: sampleIndex,
           score: scored.score, forbidden: scored.forbidden, flags: scored.flags, raw_output: rawOutput,
+          preamble_stripped: Boolean(scored.flags.preamble_stripped),
+          strict_format: Boolean(scored.flags.strict_format),
           prompt_tokens: Number(body.usage?.prompt_tokens ?? 0), completion_tokens: Number(body.usage?.completion_tokens ?? 0),
           prompt_conversation: messages, error: null, attempts: attempt, elapsed_ms: Date.now() - started,
         };
@@ -79,6 +81,7 @@ async function runOne(task, sampleIndex) {
   return {
     task_id: task.taskId, family: task.family, band: task.band, split, sample_index: sampleIndex,
     score: 0, forbidden: ["request_error"], flags: { request_error: true }, raw_output: "",
+    preamble_stripped: false, strict_format: false,
     prompt_tokens: 0, completion_tokens: 0, prompt_conversation: messages,
     error: lastError instanceof Error ? lastError.message : String(lastError), attempts: RETRY_ATTEMPTS,
     elapsed_ms: Date.now() - started,
@@ -113,6 +116,7 @@ const report = {
   fixture_id: "analyzer-verdict-offline-v1", model, split, split_sha256: analyzerSplitSha256(split),
   rows, summary: {
     scored_row_count: scoredRows(rows).length, request_error_episodes: countReason("request_error"),
+    strict_format_rate: scoredRows(rows).length ? scoredRows(rows).filter((row) => row.strict_format).length / scoredRows(rows).length : 0,
     mean_score: mean(scoredRows(rows)), exact_1_rate: scoredRows(rows).length ? scoredRows(rows).filter((row) => row.score === 1).length / scoredRows(rows).length : 0,
     zero_rate: scoredRows(rows).length ? scoredRows(rows).filter((row) => row.score === 0).length / scoredRows(rows).length : 0,
     per_band: grouped("band"), per_family: grouped("family"),

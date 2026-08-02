@@ -1,0 +1,26 @@
+{
+  "schema_version": "understudy.analyzer_dpo_manifest.v1",
+  "source": "synthetic analyzer offline fixture",
+  "split": "train",
+  "fixture_id": "analyzer-verdict-offline-v1",
+  "train_split_sha256": "6a07ce41907d85457a697eab6eb79b7802a4caf8d0e759508e7bb861acd6e4db",
+  "pairs_sha256": "213f3b6f56985cd18a7cf8da241de392f87e925c74e399d4bc108cc27ef39af9",
+  "pair_count": 63,
+  "band_counts": {
+    "insufficient-evidence": 32,
+    "single-signal": 27,
+    "conflicting-signals": 18
+  },
+  "rejection_reason_counts": {
+    "near_hit_0.75": 18,
+    "over_claim": 43,
+    "near_hit_0.5": 2,
+    "invalid_output": 4,
+    "hallucinated_citation": 3,
+    "near_hit_0.25": 7
+  },
+  "selection_mode": "exact_or_relative_gap",
+  "relative_gap_fallback_used": true,
+  "relative_gap_minimum": 0.5,
+  "relative_gap_pair_count": 30
+}

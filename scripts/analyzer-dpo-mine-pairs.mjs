@@ -17,6 +17,7 @@ const outPath = arg("--out");
 const manifestPath = arg("--manifest");
 const maxPerTask = Number(arg("--max-per-task", "3"));
 const seed = Number(arg("--seed", "7"));
+const allowRelativeGap = process.argv.includes("--allow-relative-gap");
 if (!runPath || !outPath || !manifestPath) throw new Error("--run, --out, and --manifest are required");
 if (!Number.isInteger(maxPerTask) || maxPerTask < 1) throw new Error("--max-per-task must be a positive integer");
 
@@ -44,10 +45,18 @@ const rank = (row) => row.score > 0 && row.score < 1 ? 0 : reasonOf(row) === "ov
 const pairs = [];
 const rejectionCounts = {};
 const bandCounts = {};
+const exactTaskCount = [...groups.values()].filter((rows) => rows.some((row) => row.score === 1 && typeof row.raw_output === "string" && row.raw_output.length > 0)).length;
+const relativeGapFallbackUsed = allowRelativeGap && exactTaskCount < Math.ceil(groups.size / 2);
+if (exactTaskCount < Math.ceil(groups.size / 2) && !allowRelativeGap) {
+  throw new Error(`only ${exactTaskCount}/${groups.size} train tasks have an exact-1 rollout; rerun with --allow-relative-gap to permit a minimum 0.5 relative preference gap`);
+}
 for (const [taskId, rows] of groups) {
-  const chosen = rows.find((row) => row.score === 1 && typeof row.raw_output === "string" && row.raw_output.length > 0);
+  const validRows = rows.filter((row) => typeof row.raw_output === "string" && row.raw_output.length > 0 && !row.forbidden?.includes("request_error"));
+  const exactChosen = validRows.find((row) => row.score === 1);
+  const chosen = exactChosen ?? (relativeGapFallbackUsed ? [...validRows].sort((a, b) => b.score - a.score || hashRandom(`${taskId}:${a.sample_index}`) - hashRandom(`${taskId}:${b.sample_index}`))[0] : null);
   if (!chosen) continue;
-  const rejected = rows.filter((row) => row !== chosen && (rank(row) < 3 || row.score === 0))
+  const rejected = validRows.filter((row) => row !== chosen && (rank(row) < 3 || row.score === 0))
+    .filter((row) => !relativeGapFallbackUsed || exactChosen || chosen.score - row.score >= 0.5)
     .sort((a, b) => rank(a) - rank(b) || hashRandom(`${taskId}:${a.sample_index}`) - hashRandom(`${taskId}:${b.sample_index}`));
   const selected = [];
   const overClaim = rejected.find((row) => reasonOf(row) === "over_claim");
@@ -70,6 +79,7 @@ for (const [taskId, rows] of groups) {
       rejected: [{ role: "assistant", content: row.raw_output }],
       rejection_reason: reason,
       band: taskMap.get(taskId).band,
+      selection_mode: exactChosen ? "exact_1_chosen" : "relative_gap",
     });
   }
 }
@@ -92,6 +102,10 @@ const manifest = {
   pair_count: deduped.length,
   band_counts: bandCounts,
   rejection_reason_counts: rejectionCounts,
+  selection_mode: relativeGapFallbackUsed ? "exact_or_relative_gap" : "exact_1_chosen",
+  relative_gap_fallback_used: relativeGapFallbackUsed,
+  relative_gap_minimum: relativeGapFallbackUsed ? 0.5 : null,
+  relative_gap_pair_count: relativeGapFallbackUsed ? deduped.filter((pair) => pair.selection_mode === "relative_gap").length : 0,
 };
 mkdirSync(dirname(manifestPath), { recursive: true });
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

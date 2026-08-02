@@ -158,6 +158,20 @@ describe("analyzer slice", () => {
     assert.equal(scoreVerdict(task, JSON.stringify({ ...task.gold, citations: ["ev-01", 3] })).score, 0);
   });
 
+  it("extracts the last balanced JSON object while preserving format diagnostics", () => {
+    const task = ANALYZER_TASKS[0];
+    const wrapped = `The answer is:\n${JSON.stringify(task.gold)}\nEnd of answer.`;
+    const extracted = scoreVerdict(task, wrapped);
+    assert.equal(extracted.score, 1);
+    assert.equal(extracted.flags.preamble_stripped, true);
+    assert.equal(extracted.flags.strict_format, false);
+    const invalidVocabulary = scoreVerdict(task, `The answer is ${JSON.stringify({ ...task.gold, status: "completed" })}`);
+    assert.equal(invalidVocabulary.score, 0);
+    assert.deepEqual(invalidVocabulary.forbidden, ["invalid_output"]);
+    assert.equal(invalidVocabulary.flags.preamble_stripped, true);
+    assert.equal(scoreVerdict(task, "No JSON answer was returned.").score, 0);
+  });
+
   it("exposes the closed vocabularies", () => {
     assert.deepEqual(ANALYZER_STATUSES, ["on_track", "at_risk", "blocked", "insufficient_evidence"]);
     assert.deepEqual(ANALYZER_SEVERITIES, ["none", "low", "medium", "high"]);

@@ -26,9 +26,10 @@ const metrics = (items) => {
   const scored = scoredRows(items);
   return {
   scored_row_count: scored.length,
-  request_error_episodes: items.length - scored.length,
-  task_count: new Set(scored.map((row) => row.task_id)).size,
-  mean_score: mean(scored),
+      request_error_episodes: items.length - scored.length,
+      task_count: new Set(scored.map((row) => row.task_id)).size,
+      strict_format_rate: scored.length ? scored.filter((row) => row.strict_format).length / scored.length : 0,
+      mean_score: mean(scored),
   exact_1_count: scored.filter((row) => row.score === 1).length,
   zero_count: scored.filter((row) => row.score === 0).length,
   over_claim_episodes: scored.filter((row) => row.forbidden?.includes("over_claim")).length,

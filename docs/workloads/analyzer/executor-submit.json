@@ -1,0 +1,32 @@
+{
+  "schema_version": "understudy.executor-submit.v1",
+  "experiment_id": "analyzer-bounded-verdict-dpo",
+  "candidate": {
+    "candidate_id": "analyzer-dpo-beta0.1-epochs3-lora32",
+    "executor": "fixture",
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "policy_ref": "analyzer/policy/analyzer-dpo-beta0.1-epochs3-lora32.json",
+    "policy_sha256": "a67cde74a030f847fd1dcf314cd0f66661fc9029086e988e6136aa54131254da"
+  },
+  "attempt": 0,
+  "workload": {
+    "id": "analyzer",
+    "dataset_manifest_ref": "analyzer/fixture/analyzer-verdict-offline-v1.json",
+    "dataset_manifest_sha256": "866dc4256dd13441a5c6cf723ed59ee7a9afa4e3fb916cf08d560fb0d584597f",
+    "verifier_environment": "analyzer-verdict-offline-v1",
+    "verifier_revision": "c299ca4"
+  },
+  "splits": {
+    "train_manifest_ref": "analyzer/splits/analyzer-verdict-offline-v1.train.json",
+    "train_manifest_sha256": "6a07ce41907d85457a697eab6eb79b7802a4caf8d0e759508e7bb861acd6e4db",
+    "dev_manifest_ref": "analyzer/splits/analyzer-verdict-offline-v1.dev.json",
+    "dev_manifest_sha256": "24f35c42ef96cb05d19e43cae5da0d701aa8c3d129c3334f6f6ff441a7b1992a"
+  },
+  "limits": {
+    "budget_usd": 25,
+    "max_concurrent_candidates": 1,
+    "max_concurrent_requests_per_candidate": 4,
+    "max_rollouts": 1000,
+    "max_runtime_seconds": 7200
+  }
+}

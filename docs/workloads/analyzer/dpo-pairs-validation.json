@@ -1,0 +1,19 @@
+{
+  "schema_version": "understudy.analyzer_dpo_validation.v1",
+  "pairs_sha256": "213f3b6f56985cd18a7cf8da241de392f87e925c74e399d4bc108cc27ef39af9",
+  "manifest_declared_sha256": "213f3b6f56985cd18a7cf8da241de392f87e925c74e399d4bc108cc27ef39af9",
+  "accepted": 63,
+  "rejected": 0,
+  "split_counts": {
+    "train": 63
+  },
+  "band_counts": {
+    "insufficient-evidence": 25,
+    "single-signal": 23,
+    "conflicting-signals": 15
+  },
+  "train_split_sha256": "6a07ce41907d85457a697eab6eb79b7802a4caf8d0e759508e7bb861acd6e4db",
+  "holdout_split_sha256": "ee29b364f28f35a1f74f8b0f3e162360a07d9e250723f7b0ed76e288b87077c2",
+  "failures": [],
+  "verdict": "pass"
+}

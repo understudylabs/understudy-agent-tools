@@ -33,6 +33,16 @@ The freeze gate checks all 108 tasks and reports no failures.
 | Prompt identity after workstream normalization | one instruction |
 | Bounded gold verdicts | all under 400 characters |
 
+The grader accepts a response containing one balanced top-level JSON object
+wrapped in prose or a code fence. It grades that extracted object with the
+same exact key, vocabulary, citation-reachability, and over-claim rules as a
+direct response. Rows expose `preamble_stripped` and `strict_format`; the run
+summary reports `strict_format_rate` separately from outcome score. Network,
+HTTP 429, and HTTP 5xx failures are retried up to three times and recorded as
+`request_error` episodes. Those episodes remain visible but are excluded from
+score aggregates, so infrastructure instability cannot masquerade as model
+quality.
+
 Holdout access is fail-closed: omitting the frozen hash throws, supplying a
 wrong hash throws, and supplying the pinned holdout hash returns exactly 36
 tasks. Rebuilding the deterministic pool reproduces the pinned split hashes.

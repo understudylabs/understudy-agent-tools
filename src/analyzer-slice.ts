@@ -245,17 +245,49 @@ export function analyzerTaskPool(options: AnalyzerPoolOptions): AnalyzerTask[] {
   return ANALYZER_TASKS.filter((task) => task.split === options.split);
 }
 
-function parseVerdict(rawModelText: string): AnalyzerVerdict | null {
+function extractJsonObject(rawModelText: string): { payload: string; parsed: unknown; preambleStripped: boolean } | null {
   const raw = String(rawModelText ?? "").trim();
-  const fenced = /^```json\s*([\s\S]*?)\s*```$/.exec(raw);
-  const payload = fenced ? fenced[1].trim() : raw;
-  if (!payload.startsWith("{") || !payload.endsWith("}")) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(payload);
-  } catch {
-    return null;
+  let last: { payload: string; parsed: unknown } | null = null;
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === "\"") inString = false;
+      continue;
+    }
+    if (character === "\"") {
+      inString = true;
+    } else if (character === "{" && depth === 0) {
+      start = index;
+      depth = 1;
+    } else if (character === "{" && depth > 0) {
+      depth += 1;
+    } else if (character === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        const payload = raw.slice(start, index + 1);
+        try {
+          last = { payload, parsed: JSON.parse(payload) };
+        } catch {
+          // Continue scanning in case a later balanced object is valid.
+        }
+        start = -1;
+      }
+    }
   }
+  if (!last) return null;
+  return { ...last, preambleStripped: last.payload !== raw };
+}
+
+function parseVerdict(rawModelText: string): { verdict: AnalyzerVerdict; preambleStripped: boolean; strictFormat: boolean } | null {
+  const extracted = extractJsonObject(rawModelText);
+  if (!extracted) return null;
+  const { parsed, preambleStripped } = extracted;
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const record = parsed as Record<string, unknown>;
   if (Object.keys(record).sort().join("|") !== [...ANALYZER_VERDICT_KEYS].sort().join("|")) return null;
@@ -263,7 +295,7 @@ function parseVerdict(rawModelText: string): AnalyzerVerdict | null {
   if (!ANALYZER_SEVERITIES.includes(record.severity as AnalyzerSeverity)) return null;
   if (!ANALYZER_SIGNALS.includes(record.primary_signal as AnalyzerSignal)) return null;
   if (!Array.isArray(record.citations) || !record.citations.every((citation) => typeof citation === "string")) return null;
-  return record as AnalyzerVerdict;
+  return { verdict: record as AnalyzerVerdict, preambleStripped, strictFormat: !preambleStripped };
 }
 
 export type AnalyzerScoreFlags = {
@@ -273,29 +305,44 @@ export type AnalyzerScoreFlags = {
   hallucinated_citation?: boolean;
   over_claim?: boolean;
   matched_fields?: string[];
+  preamble_stripped?: boolean;
+  strict_format?: boolean;
 };
 
 export type AnalyzerScore = { score: number; forbidden: string[]; flags: AnalyzerScoreFlags };
 
 export function scoreVerdict(task: AnalyzerTask, rawModelText: string): AnalyzerScore {
-  const parsed = parseVerdict(rawModelText);
-  if (!parsed) {
-    return { score: 0, forbidden: ["invalid_output"], flags: { parse_error: "expected exactly one JSON object with the four verdict keys" } };
+  const extracted = extractJsonObject(rawModelText);
+  const formatFlags = extracted
+    ? { ...(extracted.preambleStripped ? { preamble_stripped: true } : {}), strict_format: !extracted.preambleStripped }
+    : {};
+  const parsedResult = parseVerdict(rawModelText);
+  if (!parsedResult) {
+    return { score: 0, forbidden: ["invalid_output"], flags: { parse_error: "expected exactly one JSON object with the four verdict keys", ...formatFlags } };
   }
+  const parsed = parsedResult.verdict;
   const evidenceIds = new Set(task.evidence.map((item) => item.id));
   const goldCitations = new Set(task.gold.citations);
   if (parsed.citations.some((citation) => !evidenceIds.has(citation))) {
-    return { score: 0, forbidden: ["hallucinated_citation"], flags: { hallucinated_citation: true } };
+    return { score: 0, forbidden: ["hallucinated_citation"], flags: { hallucinated_citation: true, ...formatFlags } };
   }
   if (parsed.citations.some((citation) => !goldCitations.has(citation))) {
-    return { score: 0, forbidden: ["over_claim"], flags: { over_claim: true } };
+    return { score: 0, forbidden: ["over_claim"], flags: { over_claim: true, ...formatFlags } };
   }
   const matched: string[] = [];
   if (parsed.status === task.gold.status) matched.push("status");
   if (parsed.severity === task.gold.severity) matched.push("severity");
   if (parsed.primary_signal === task.gold.primary_signal) matched.push("primary_signal");
   if (new Set(parsed.citations).size === goldCitations.size && parsed.citations.every((citation) => goldCitations.has(citation))) matched.push("citations");
-  return { score: matched.length / 4, forbidden: [], flags: { matched_fields: matched } };
+  return {
+    score: matched.length / 4,
+    forbidden: [],
+    flags: {
+      matched_fields: matched,
+      ...(parsedResult.preambleStripped ? { preamble_stripped: true } : {}),
+      strict_format: parsedResult.strictFormat,
+    },
+  };
 }
 
 export type AnalyzerPolicy = (task: AnalyzerTask) => string;
