@@ -21,7 +21,7 @@ is **$62,683.08822989**.
 | 2 | WL-02 | — | 83145 | 7638158651 | 61868504 | 0.793950 | 13877.288403 | 0.237531 | 0.010355 | pending — awaiting per-workload repair memo |
 | 3 | WL-03 | — | 38048 | 1543989018 | 21036102 | 0.696463 | 4263.356460 | 0.072974 | 0.021552 | pending — awaiting per-workload repair memo |
 | 4 | WL-04 | — | 39296 | 1412872736 | 18400589 | 0.793038 | 3011.857223 | 0.051552 | 0.027687 | pending — awaiting per-workload repair memo |
-| 5 | WL-05 | WL-DI → [memo](../domain-identification-repair/REPAIR-MEMO.md) | 148936 | 675239846 | 9617187 | 0.664327 | 2447.093050 | 0.041886 | 0.000047 | memo landed — repair target; slice gates pass |
+| 5 | WL-05 | WL-DI → [memo](../domain-identification-repair/REPAIR-MEMO.md) | 148936 | 675239846 | 9617187 | 0.664327 | 2447.093050 | 0.041886 | 0.000047 | DPO landed — dev +0.125, holdout +0.000; not promotable |
 | 6 | WL-06 | — | 13545 | 773815738 | 4882849 | 0.827637 | 1337.175123 | 0.022888 | 0.018900 | pending — awaiting per-workload repair memo |
 | 7 | WL-07 | — | 47872 | 158077276 | 8325019 | 0.007060 | 1002.539531 | 0.017160 | 0.234272 | pending — awaiting per-workload repair memo |
 | 8 | WL-08 | WL-OR → [memo](../workload-orchestrator/repair-memo.md) | 2474 | 141267215 | 689926 | 0.079853 | 810.364917 | 0.013871 | 0.000808 | DPO landed — dev +0.100, holdout +0.000; not promotable |
@@ -50,8 +50,10 @@ reachability, frozen-holdout refusal, and deterministic reset); it is
 repairable but second-wave because the case is behavioural, not economic.
 WL-DI has a landed memo and a passing gate-validation artifact: oracle 1.0 on
 all 48 tasks with zero forbidden writes, sentinel maximum 0, zero leakage
-findings, and frozen-holdout refusal/opening checks passing. Its DPO result
-remains pending. WL-OR's DPO result is now landed: dev improves from 0.050 to
+findings, and frozen-holdout refusal/opening checks passing. Its DPO result is
+now landed: dev improves from 0.625 to 0.750 (+0.125), while sealed holdout
+remains 0.438 to 0.438 (+0.000); the result is not promotable. WL-OR's DPO result
+is now landed: dev improves from 0.050 to
 0.150 (+0.100), while sealed holdout remains 0.150 to 0.150 (+0.000). The
 memo's verdict is **not promotable**: the gain does not survive the seal, while
 over-acting and forbidden writes fall to zero and malformed-emission rate stays
@@ -82,7 +84,8 @@ at 1.00.
 - **Verdict:** repair; high-volume, repeatable, bounded output, and cost-effective in aggregate.
 - **Candidate gap:** open-model arm averaged 341 output tokens; only 20.2% stayed within ≤150.
 - **Failing bands:** short terse decisions and 80–119-token justifications both need preservation; ≥160 is the tail.
-- **Gate:** oracle/sentinel/leakage/frozen-holdout gates pass; DPO lift remains pending.
+- **Gate:** oracle/sentinel/leakage/frozen-holdout gates pass; DPO is not promotable.
+- **DPO:** dev +0.125 overall; sealed holdout +0.000; over-acting and forbidden writes remain zero.
 
 ### WL-OR — repairable, second-wave
 
@@ -99,9 +102,9 @@ at 1.00.
 
 ## DPO lift (base → DPO, dev/holdout per band)
 
-WL-OR is the first arm with a complete base-to-DPO comparison. Values below
-come from the dev and sealed-holdout band reports; `n` is the task count per
-band. WL-chat and WL-DI DPO results remain pending.
+WL-OR and WL-DI now have complete base-to-DPO comparisons. Values below come
+from the dev and sealed-holdout band reports; `n` is the task count per band.
+WL-chat DPO results remain pending.
 
 | WL-OR band | n | Dev base | Dev DPO | Dev Δ | Holdout base | Holdout DPO | Holdout Δ |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -115,12 +118,29 @@ emissions remain 5/5 in both arms and both splits. The generic
 `outputs/dpo/base-dev.json` receipt remains a separate offline fixture and is
 not substituted for these WL-OR measurements.
 
+### WL-DI DPO result
+
+| WL-DI band | Dev n | Dev base | Dev DPO | Dev Δ | Holdout n | Holdout base | Holdout DPO | Holdout Δ |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| abstain | 2 | 0.000 | 0.500 | **+0.500** | 4 | 0.250 | 0.000 | -0.250 |
+| direct-match | 2 | 1.000 | 0.500 | **-0.500** | 4 | 0.750 | 0.500 | -0.250 |
+| near-match | 2 | 1.000 | 1.000 | 0.000 | 4 | 0.500 | 0.750 | **+0.250** |
+| parent-join | 2 | 0.500 | 1.000 | **+0.500** | 4 | 0.250 | 0.500 | **+0.250** |
+| **all** | **8** | **0.625** | **0.750** | **+0.125** | **16** | **0.438** | **0.438** | **+0.000** |
+
+The dev movement is a redistribution across bands, and the 22 accepted pairs
+cover only 6 of 24 train tasks; 14/22 pairs come from `abstain` (64%). Both
+arms retain zero over-acting and forbidden writes on dev and holdout. The run
+is **not promotable**.
+
 ## Does DPO lift correlate with volume/cost ranking?
 
-**Partial — one complete DPO arm is available.** WL-OR is rank 8 by spend
-($810.36 in the 30-day scorecard) and its memo classifies the repair case as
-behavioural rather than economic. Its +0.100 dev lift does not survive the
-sealed holdout (+0.000), so this single arm provides no evidence that spend,
-volume, cache share, or error rate predicts DPO lift. A correlation analysis
-needs at least 2–3 comparable arms with both dev and holdout results; until
-then, report WL-OR as a measured case study, not a trend.
+**Partial — two complete DPO arms are available.** WL-OR (rank 8 by spend)
+shows +0.100 dev lift and +0.000 sealed-holdout lift; WL-DI (rank 5) shows
++0.125 dev lift and +0.000 sealed-holdout lift. Both are behavioural cases and
+both are **not promotable**. So far, DPO lift does **not** track volume or cost
+rank: the two arms have different spend ranks but the same dev-only pattern.
+The binding constraint currently looks more like pair coverage/data volume per
+failing band than workload spend. This is still n=2, not a correlation result;
+a high-spend arm with genuine sealed-holdout lift would falsify this emerging
+pattern.
