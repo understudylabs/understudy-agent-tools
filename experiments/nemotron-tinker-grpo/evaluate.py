@@ -15,6 +15,7 @@ from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 from env_client import close_service, get_service
 from receipts import snapshot_usage_async, write_receipt
+from tinker_client import create_service_client
 from rollout import (
     LORA_RANK,
     MODEL_NAME,
@@ -85,7 +86,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     tokenizer = get_tokenizer(MODEL_NAME)
     renderer = renderers.get_renderer(RENDERER_NAME, tokenizer, model_name=MODEL_NAME)
-    service_client = tinker.ServiceClient()
+    service_client = create_service_client()
     rest_client = service_client.create_rest_client()
     receipt_path = Path(args.out).with_suffix(".usage.json")
     usage_before = await snapshot_usage_async(rest_client)

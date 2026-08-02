@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+artifacts/*.jsonl
+artifacts/*-log/
+!artifacts/dpo-rollouts-sft.jsonl
+!artifacts/smoke-dev-3.jsonl

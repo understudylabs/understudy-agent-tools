@@ -1,0 +1,92 @@
+{
+  "candidates": [
+    {
+      "epoch": 1,
+      "label": "dpo-epoch1",
+      "mean_reward": 0.9444444444444445,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch1",
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.8333333333333334
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-dpo/artifacts/dev-dpo-epoch1.summary.json"
+    },
+    {
+      "epoch": 2,
+      "label": "dpo-epoch2",
+      "mean_reward": 1.0,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-dpo/artifacts/dev-dpo-epoch2.summary.json"
+    },
+    {
+      "epoch": 3,
+      "label": "dpo-epoch3",
+      "mean_reward": 0.9166666666666666,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch3",
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.75
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-dpo/artifacts/dev-dpo-epoch3.summary.json"
+    }
+  ],
+  "rationale": "Preserves the #402 GRPO selection convention and minimizes unnecessary policy drift.",
+  "selected": {
+    "epoch": 2,
+    "label": "dpo-epoch2",
+    "mean_reward": 1.0,
+    "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+    "per_band": {
+      "discovery": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "multi-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "single-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      }
+    },
+    "summary_path": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-tinker-dpo/artifacts/dev-dpo-epoch2.summary.json"
+  },
+  "selection_recorded_before_holdout": true,
+  "selection_rule": "maximize dev mean reward; tie-break toward earliest checkpoint",
+  "split": "dev"
+}

@@ -38,6 +38,13 @@ def _snapshot_response(response: Any, starting_on: str, ending_before: str) -> d
 def snapshot_usage(rest_client: Any, starting_on: str | None = None, ending_before: str | None = None) -> dict[str, Any]:
     if starting_on is None or ending_before is None:
         starting_on, ending_before = _window()
+    if not hasattr(rest_client, "get_billing_usage"):
+        return {
+            "starting_on": starting_on,
+            "ending_before": ending_before,
+            "response": {"data": []},
+            "unavailable_reason": "installed Tinker SDK has no billing-usage endpoint",
+        }
     response = rest_client.get_billing_usage(starting_on, ending_before).result()
     return _snapshot_response(response, starting_on, ending_before)
 
@@ -49,6 +56,13 @@ async def snapshot_usage_async(
 ) -> dict[str, Any]:
     if starting_on is None or ending_before is None:
         starting_on, ending_before = _window()
+    if not hasattr(rest_client, "get_billing_usage_async"):
+        return {
+            "starting_on": starting_on,
+            "ending_before": ending_before,
+            "response": {"data": []},
+            "unavailable_reason": "installed Tinker SDK has no billing-usage endpoint",
+        }
     response = await rest_client.get_billing_usage_async(starting_on, ending_before)
     return _snapshot_response(response, starting_on, ending_before)
 

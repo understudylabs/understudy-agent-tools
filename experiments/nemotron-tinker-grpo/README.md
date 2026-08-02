@@ -137,6 +137,11 @@ this run (`/home/ubuntu/tinker-venv/bin/python`), so substitute your own
 interpreter. Provide `TINKER_API_KEY` only through the process environment.
 Never write the key to an artifact.
 
+This box uses a TLS-inspecting proxy that breaks Tinker's default pyqwest
+transport. Set `TINKER_DISABLE_PYQWEST=1` explicitly when running the
+experiment glue; the shared `tinker_client.py` helper then selects the HTTP
+transport. It is intentionally not enabled automatically.
+
 Start the evaluator service:
 
 ```bash

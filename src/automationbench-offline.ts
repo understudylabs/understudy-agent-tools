@@ -591,6 +591,14 @@ export function taskBands(): Record<string, Family["band"]> {
   return Object.fromEntries(FAMILIES.map((family) => [family.slug, family.band]));
 }
 
+/** Return the difficulty band for one task from the fixture's family metadata. */
+export function taskBand(taskId: string): Family["band"] {
+  const slug = taskId.replace(/^simple-api-/, "").replace(/-\d{2}$/, "");
+  const band = taskBands()[slug];
+  if (!band) throw new Error(`unknown task family for ${taskId}`);
+  return band;
+}
+
 /** Task counts per split, computed from the fixture rather than hard-coded. */
 export function splitCounts(): Record<Split, number> {
   return TASKS.reduce(
