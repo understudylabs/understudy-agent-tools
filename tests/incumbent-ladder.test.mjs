@@ -8,6 +8,7 @@ import {
   buildSaturationCertificate,
   buildSubmitPayload,
   idempotencyKey,
+  aggregateScores,
   scoreTask,
 } from "../dist/incumbent-ladder/index.js";
 
@@ -23,6 +24,40 @@ test("verifier handles native calls, rendered preambles, missing and extra calls
   assert.equal(scoreTask(expected, { response: "<tool_call>{\"tool\":\"run-subagent\",\"arguments\":{}}</tool_call><tool_call>{\"tool\":\"run-subagent\",\"arguments\":{}}</tool_call>" }).calls_emitted, 2);
   assert.equal(scoreTask(task([call("a"), call("b")]), { response: "<tool_call>{\"tool\":\"b\"}</tool_call><tool_call>{\"tool\":\"a\"}</tool_call>" }).tool_set, 1);
   assert.equal(scoreTask(expected, { response: "<tool_call>{\"tool\":\"run-subagent\",\"arguments\":{\"subagentPath\":\"wrong\",\"documentId\":\"d1\"}}</tool_call>" }).arg_score, 0.5);
+});
+
+test("scores no-action agreement only for applicable summary labels", () => {
+  const noActionTask = {
+    ...task([call("save-execution-summary")]),
+    label: { calls: [call("save-execution-summary")], rationale: "Routine event; no action needed." },
+  };
+  assert.equal(
+    scoreTask(noActionTask, {
+      response: '<tool_call>{"tool":"save-execution-summary","arguments":{"summary":"No further action required."}}</tool_call>',
+    }).no_action_agreement,
+    1,
+  );
+  assert.equal(
+    scoreTask(noActionTask, {
+      response: '<tool_call>{"tool":"save-execution-summary","arguments":{"summary":"Escalate this event."}}</tool_call>',
+    }).no_action_agreement,
+    0,
+  );
+  assert.equal(scoreTask(task([call("save-execution-summary")]), {}).no_action_agreement, null);
+  assert.equal(
+    scoreTask(noActionTask, { response: '<tool_call>{"tool":"save-execution-summary"}</tool_call>' }).no_action_agreement,
+    0,
+  );
+  assert.equal(
+    aggregateScores([
+      scoreTask(noActionTask, {
+        response: '<tool_call>{"tool":"save-execution-summary","arguments":{"summary":"No action needed."}}</tool_call>',
+      }),
+      scoreTask(task([call("run-subagent")]), {}),
+    ]).no_action_agreement,
+    1,
+  );
+  assert.equal(aggregateScores([scoreTask(task([call("run-subagent")]), {})]).no_action_agreement, null);
 });
 
 test("saturation gate distinguishes usable and saturated incumbents", () => {
@@ -61,7 +96,7 @@ test("submit payload is schema-compatible, hash-only, and idempotent", () => {
 
 test("evidence and promotion decision preserve dev-only boundary", () => {
   const saturation = buildSaturationCertificate({ fixture_sha256: HASH, incumbent: { mean_score: 0.75, exact_match_rate: 0.75, by_band: {} } });
-  const aggregate = { count: 1, mean_score: 0.5, exact_match_rate: 0, tool_set_f1: 0.5, ordered_tool_set_agreement: 1, arg_score: 0.5, no_action_agreement: 0, malformed_rate: 0, calls_emitted: 1, calls_emitted_distribution: { "1": 1 }, mean_latency_ms: 10, input_tokens: 5, output_tokens: 2, cost: { status: "unpriced", total_usd: null, per_1k_calls_usd: null } };
+  const aggregate = { count: 1, mean_score: 0.5, exact_match_rate: 0, tool_set_f1: 0.5, ordered_tool_set_agreement: 1, arg_score: 0.5, no_action_agreement: null, malformed_rate: 0, calls_emitted: 1, calls_emitted_distribution: { "1": 1 }, mean_latency_ms: 10, input_tokens: 5, output_tokens: 2, cost: { status: "unpriced", total_usd: null, per_1k_calls_usd: null } };
   const evidence = buildEvidenceRow({
     experiment_id: "exp-1",
     workload: { id: "workload-1", description: "synthetic event routing", fixture_sha256: HASH },

@@ -38,7 +38,7 @@ export type ScoreRow = {
   ordered_tool_set_agreement: number;
   tool_set_f1: number;
   arg_score: number;
-  no_action_agreement: number;
+  no_action_agreement: number | null;
   malformed: number;
   calls_emitted: number;
   latency_ms: number;
@@ -54,7 +54,7 @@ export type Aggregate = {
   tool_set_f1: number;
   ordered_tool_set_agreement: number;
   arg_score: number;
-  no_action_agreement: number;
+  no_action_agreement: number | null;
   malformed_rate: number;
   calls_emitted: number;
   calls_emitted_distribution: Record<string, number>;
@@ -200,6 +200,25 @@ function numberOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+const NO_ACTION_PATTERN =
+  /\bno[\s-]?action\b|\bno(?:\s+\w+){1,2}\s+action\b|\bno-op\b|\bnothing to do\b|\bnot significant\b/i;
+
+function declaresNoAction(value: unknown): boolean {
+  return NO_ACTION_PATTERN.test(typeof value === "string" ? value : JSON.stringify(value ?? ""));
+}
+
+function noActionAgreement(task: VerifierTask, actual: ToolCall[], prediction: Prediction): number | null {
+  const rationale = task.label?.rationale;
+  const expectedSummary = (task.label?.calls ?? []).find((call) => call.tool === "save-execution-summary");
+  if (!expectedSummary || !declaresNoAction(rationale)) return null;
+
+  const emittedSummary =
+    prediction.summary ??
+    actual.find((call) => call.tool === "save-execution-summary")?.arguments.summary ??
+    prediction.response;
+  return Number(declaresNoAction(emittedSummary));
+}
+
 export function scoreTask(task: VerifierTask, prediction: Prediction = {}): ScoreRow {
   const expected = task.label?.calls ?? [];
   const actual = normalizePrediction(prediction);
@@ -244,7 +263,7 @@ export function scoreTask(task: VerifierTask, prediction: Prediction = {}): Scor
     ordered_tool_set_agreement: Number(ordered),
     tool_set_f1: toolSetF1,
     arg_score: args,
-    no_action_agreement: 0,
+    no_action_agreement: noActionAgreement(task, actual, prediction),
     malformed: Number(actual.length === 0),
     calls_emitted: actual.length,
     latency_ms: numberOr(prediction.latency_ms, 0),
@@ -257,6 +276,7 @@ export function scoreTask(task: VerifierTask, prediction: Prediction = {}): Scor
 function aggregateRows(rows: ScoreRow[]): Aggregate {
   const mean = (key: keyof ScoreRow): number =>
     rows.length ? rows.reduce((sum, row) => sum + Number(row[key] ?? 0), 0) / rows.length : 0;
+  const noActionRows = rows.filter((row) => row.no_action_agreement !== null);
   const priced = rows.filter((row) => row.cost_usd !== null);
   const total = priced.reduce((sum, row) => sum + (row.cost_usd ?? 0), 0);
   const distribution: Record<string, number> = {};
@@ -270,7 +290,9 @@ function aggregateRows(rows: ScoreRow[]): Aggregate {
     tool_set_f1: mean("tool_set_f1"),
     ordered_tool_set_agreement: mean("ordered_tool_set_agreement"),
     arg_score: mean("arg_score"),
-    no_action_agreement: mean("no_action_agreement"),
+    no_action_agreement: noActionRows.length
+      ? noActionRows.reduce((sum, row) => sum + (row.no_action_agreement ?? 0), 0) / noActionRows.length
+      : null,
     malformed_rate: mean("malformed"),
     calls_emitted: rows.reduce((sum, row) => sum + row.calls_emitted, 0),
     calls_emitted_distribution: distribution,
