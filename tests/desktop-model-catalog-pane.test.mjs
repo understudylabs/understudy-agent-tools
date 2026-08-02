@@ -83,24 +83,24 @@ test("new platform catalog families group under their model providers", () => {
 
 test("new platform catalog uses the published customer rate cards", () => {
   assert.deepEqual(rateCardFor("gemini-3.5-flash-lite"), {
-    local: false, input: 0.6, cached: 0.09, output: 7.5,
+    local: false, input: 0.39, cached: 0.039, output: 3.25,
   });
   assert.deepEqual(rateCardFor("gemma-4-31b"), {
-    local: false, input: 0.28, cached: 0, output: 1.2,
+    local: false, input: 0.182, cached: 0, output: 0.52,
   });
   assert.deepEqual(rateCardFor("grok-4.20-0309-reasoning"), {
-    local: false, input: 4, cached: 0.6, output: 18,
+    local: false, input: 2.6, cached: 0.26, output: 7.8,
   });
   assert.deepEqual(rateCardFor("qwen3.6-35b"), {
-    local: false, input: 0.496, cached: 0, output: 4.455,
+    local: false, input: 0.3224, cached: 0, output: 1.9305,
   });
   assert.deepEqual(rateCardFor("nemotron-3-ultra-nvfp4"), {
-    local: false, input: 1.2, cached: 0.4, output: 7.2,
+    local: false, input: 0.78, cached: 0.156, output: 3.12,
   });
   assert.deepEqual(rateCardFor("step-3-7-flash"), {
-    local: false, input: 0.4, cached: 0.12, output: 3.45,
+    local: false, input: 0.26, cached: 0.052, output: 1.495,
   });
   assert.deepEqual(rateCardFor("command-a-vision"), {
-    local: false, input: 5, cached: 0, output: 30,
+    local: false, input: 3.25, cached: 0, output: 13,
   });
 });
