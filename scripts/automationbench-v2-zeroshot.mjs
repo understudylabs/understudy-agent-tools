@@ -8,6 +8,24 @@ import { dirname } from "node:path";
 import { V2_TASKS, v2SplitSha256, v2TaskPool } from "../dist/automationbench-v2.js";
 import { createEpisodeRunner, summarizeRows } from "./automationbench-v2-episode.mjs";
 
+// Kept as a source-level contract for rollout-mining consumers; the executable
+// runner imports and uses the same prompt from automationbench-v2-episode.mjs.
+const SYSTEM = [
+  "You operate business apps through two tools.",
+  'api_search — read-only endpoint discovery. arguments: {"query": string}',
+  'api_fetch  — apply ONE API call. arguments: {"method": string, "url": string, "body": object}',
+  "",
+  "Reply with EXACTLY ONE JSON object and nothing else — no prose, no code fences, no second object:",
+  '  {"tool": "api_search", "arguments": {"query": "..."}}',
+  '  {"tool": "api_fetch", "arguments": {"method": "GET", "url": "/crm/contacts"}}',
+  '  {"tool": "finish", "arguments": {}}   <- when the requested change is complete',
+  "",
+  "Read before you write: list the relevant collections first, then make the smallest set of writes that satisfies the request.",
+  "Writing to a record the request did not ask you to change scores zero for the whole task.",
+].join("\n");
+
+void SYSTEM;
+
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
   if (index === -1) return fallback;

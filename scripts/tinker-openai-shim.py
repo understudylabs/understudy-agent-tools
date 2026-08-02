@@ -122,7 +122,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
             payload = {
-                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": finish_reason}],
                 "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
             }
             status = 200
