@@ -109,7 +109,11 @@ validator kinds in [`reference.md`](reference.md):
    [`references/prompt-cache-optimization.md`](references/prompt-cache-optimization.md).
    Prefer the lowest-cost *target* only among options expected to resolve the
    failure; do not spend several weak iterations avoiding a stronger model or
-   broader experiment. See [`reference.md`](reference.md) → Optimization-Target
+   broader experiment. When the choice is between prompt work and training
+   (GEPA → SFT → DPO → GRPO), follow the ladder policy in
+   [`references/method-ladder-policy.md`](references/method-ladder-policy.md)
+   and run `understudy method-ladder recommend` for the rung, the promotion
+   bar, and the stop rules. See [`reference.md`](reference.md) → Optimization-Target
    Menu for the full list. For an agentic workload, treat latency
    and cost per rollout as first-class objectives alongside the rubric score —
    tool-call count, redundant calls, and wasted context are common, optimizable
