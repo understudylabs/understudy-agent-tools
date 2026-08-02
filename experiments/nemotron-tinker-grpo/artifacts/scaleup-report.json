@@ -2727,6 +2727,117 @@
   },
   "selection_artifact": "artifacts/selection-1785634167.json",
   "synthetic_transfer": {
+    "benchmark_id": "synthetic-workflow-shapes-offline",
+    "counts": {
+      "dev": 12,
+      "holdout": 12,
+      "train": 48
+    },
+    "discoverability_gate": {
+      "queries": [
+        "conversation",
+        "documents",
+        "records",
+        "meetings",
+        "agent state",
+        "summaries analysis"
+      ],
+      "status": "passed"
+    },
+    "fixture": "synthetic-workflow",
+    "fixture_sha256": "c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412",
+    "holdout_accessed": false,
+    "models": {
+      "base": {
+        "dev_artifact": "artifacts/synthetic-v3-base-dev.summary.json",
+        "dev_forbidden_effect_rate": 0.08333333333333333,
+        "dev_mean": 0.0,
+        "dev_mean_model_turns": 10.333333333333334,
+        "dev_parse_error_rate": 0.0,
+        "dev_strict_pass_rate": 0.0,
+        "dev_task_count": 12,
+        "train_artifact": "artifacts/synthetic-v3-base-train.summary.json",
+        "train_forbidden_effect_rate": 0.041666666666666664,
+        "train_mean": 0.03125,
+        "train_mean_model_turns": 10.083333333333334,
+        "train_parse_error_rate": 0.0,
+        "train_strict_pass_rate": 0.0,
+        "train_task_count": 48
+      },
+      "r16-shaped": {
+        "dev_artifact": "artifacts/synthetic-v3-r16-shaped-dev.summary.json",
+        "dev_forbidden_effect_rate": 0.0,
+        "dev_mean": 0.0,
+        "dev_mean_model_turns": 7.583333333333333,
+        "dev_parse_error_rate": 0.0,
+        "dev_strict_pass_rate": 0.0,
+        "dev_task_count": 12,
+        "train_artifact": "artifacts/synthetic-v3-r16-shaped-train.summary.json",
+        "train_forbidden_effect_rate": 0.0,
+        "train_mean": 0.0,
+        "train_mean_model_turns": 7.145833333333333,
+        "train_parse_error_rate": 0.0,
+        "train_strict_pass_rate": 0.0,
+        "train_task_count": 48
+      },
+      "r32-none": {
+        "dev_artifact": "artifacts/synthetic-v3-r32-none-dev.summary.json",
+        "dev_forbidden_effect_rate": 0.0,
+        "dev_mean": 0.0,
+        "dev_mean_model_turns": 6.333333333333333,
+        "dev_parse_error_rate": 0.0,
+        "dev_strict_pass_rate": 0.0,
+        "dev_task_count": 12,
+        "train_artifact": "artifacts/synthetic-v3-r32-none-train.summary.json",
+        "train_forbidden_effect_rate": 0.0,
+        "train_mean": 0.0,
+        "train_mean_model_turns": 7.479166666666667,
+        "train_parse_error_rate": 0.0,
+        "train_strict_pass_rate": 0.0,
+        "train_task_count": 48
+      },
+      "r32-shaped": {
+        "dev_artifact": "artifacts/synthetic-v3-r32-shaped-dev.summary.json",
+        "dev_forbidden_effect_rate": 0.0,
+        "dev_mean": 0.0,
+        "dev_mean_model_turns": 7.916666666666667,
+        "dev_parse_error_rate": 0.0,
+        "dev_strict_pass_rate": 0.0,
+        "dev_task_count": 12,
+        "train_artifact": "artifacts/synthetic-v3-r32-shaped-train.summary.json",
+        "train_forbidden_effect_rate": 0.0,
+        "train_mean": 0.0,
+        "train_mean_model_turns": 7.1875,
+        "train_parse_error_rate": 0.0,
+        "train_strict_pass_rate": 0.0,
+        "train_task_count": 48
+      },
+      "sft32": {
+        "dev_artifact": "artifacts/synthetic-v3-sft32-dev.summary.json",
+        "dev_forbidden_effect_rate": 0.0,
+        "dev_mean": 0.0,
+        "dev_mean_model_turns": 6.75,
+        "dev_parse_error_rate": 0.0,
+        "dev_strict_pass_rate": 0.0,
+        "dev_task_count": 12,
+        "train_artifact": "artifacts/synthetic-v3-sft32-train.summary.json",
+        "train_forbidden_effect_rate": 0.0,
+        "train_mean": 0.0,
+        "train_mean_model_turns": 6.979166666666667,
+        "train_parse_error_rate": 0.0,
+        "train_strict_pass_rate": 0.0,
+        "train_task_count": 48
+      }
+    },
+    "note": "Descriptive greedy transfer on base branch synthetic fixture; no synthetic holdout access.",
+    "selection_input": false,
+    "split_sha256": {
+      "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+      "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+      "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+    }
+  },
+  "synthetic_transfer_superseded_9_task": {
     "base-dev": {
       "benchmark_id": "synthetic-workflow-shapes-offline",
       "fixture": "synthetic-workflow",

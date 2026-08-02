@@ -4,6 +4,9 @@ This directory contains a reproducible, train-only-warm-started SFT → GRPO
 research arm for the synthetic offline AutomationBench fixture. The Node
 evaluator in `src/automationbench-offline.ts` is the sole authority for state
 transitions, terminal reward, split membership, and holdout authorization.
+The HTTP service is shared with the `synthetic-workflow` benchmark through a
+generalized benchmark adapter; selecting `--benchmark automationbench` keeps
+this arm on the AutomationBench evaluator.
 
 ## Arm and provenance
 
@@ -16,6 +19,16 @@ transitions, terminal reward, split membership, and holdout authorization.
   `importance_sampling`, learning rate `1e-5`, constant-reward filtering
   enabled
 - Evaluation: greedy temperature 0.0, one sample per task
+- AutomationBench prompt variant: `nemotron-v1`
+
+Every AutomationBench Nemotron SFT, GRPO, and holdout result used the
+explicitly selected `AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1`
+prompt. The generalized service's `ACTION_PROTOCOL_SYSTEM_PROMPT` remains the
+default for the synthetic-workflow benchmark so its endpoints are discovered
+through `api_search`. Select the AutomationBench reproducibility variant with
+`--prompt-variant nemotron-v1` on the service CLI, or pass
+`prompt_variant="nemotron-v1"` to `/reset` and
+`?prompt_variant=nemotron-v1` to `/protocol`.
 
 The renderer and split provenance are:
 
@@ -140,7 +153,9 @@ Never write the key to an artifact.
 Start the evaluator service:
 
 ```bash
-node scripts/automationbench-rl-service.mjs
+node scripts/automationbench-rl-service.mjs \
+  --benchmark automationbench \
+  --prompt-variant nemotron-v1
 ```
 
 Regenerate oracle data:
@@ -321,64 +336,72 @@ metrics are descriptive only and must not enter this selection.
 
 ### Synthetic workflow transfer probe
 
-The separate `synthetic-workflow` backend is an offline sibling fixture with
-9 tasks (5 train, 2 DEV, 2 holdout), six families, seed 7, and a wider
-endpoint/state surface. Its benchmark and hashes are distinct:
+The separate `synthetic-workflow` backend is the generalized offline sibling
+fixture from the base arm: 72 tasks (48 train, 12 DEV, 12 holdout), twelve
+families, seed 7, and a wider endpoint/state surface. Its benchmark and hashes
+are distinct:
 
 ```text
 benchmark: synthetic-workflow-shapes-offline
-fixture:   5f8d2aa038fa06afe579595aec82ca4c08c17c01c912ebdca4cd0cb9cc94ca9b
-train:     4ad271dc23278f696dcea670bf5ebb6fdd35fb8cd4fe76c38a07ace17ca4bf9b
-dev:       8b7dec5f251c8b43b8e3540fd3ef26adc367494be3b13bebf6e65dc930fd3b0e
-holdout:   01cec7ca0034b6a803070e9fc83e62be1ccac6da77df5bb6d29e4ec25d711326
+fixture:   c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
+train:     95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5
+dev:       e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3
+holdout:   6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144
 ```
 
-Transfer evaluations use train+DEV only, greedy decoding, and are reported
-separately from AutomationBench. The
-selected checkpoint evaluations are:
+Before interpreting scores, the base adapter's discoverability gate queried
+`conversation`, `documents`, `records`, `meetings`, `agent state`, and
+`summaries analysis`. `api_search` returned the real synthetic endpoints
+(`/conversations`, `/documents`, `/records`, `/meetings`, `/agent-state`,
+`/summaries`, and `/analysis`), so the generic action prompt is learnable at
+runtime rather than silently hiding an unreachable surface.
+
+Transfer evaluations use all 48 train and 12 DEV tasks, greedy decoding, and
+are reported separately from AutomationBench. They are descriptive only and
+never enter model selection:
 
 ```text
-base train / DEV:           0.200 / 0.000
-#402 rank-32 SFT train/DEV: 0.333 / 0.000
-selected r32-none:          0.333 / 0.000
-selected r32-shaped:        0.333 / 0.000
-selected r16-shaped:        0.333 / 0.000
+base train / DEV:           0.0313 / 0.0000
+#402 rank-32 SFT train/DEV: 0.0000 / 0.0000
+selected r32-none:          0.0000 / 0.0000
+selected r32-shaped:        0.0000 / 0.0000
+selected r16-shaped:        0.0000 / 0.0000
 ```
 
-The three selected GRPO checkpoints are all their respective step-15
-samplers. On the corrected synthetic DEV probe, each had zero reward, mean
-model turns `8.0`, `100%` explicit finish, `50%` parse-error rate, and
-`100%` forbidden-effect rate. These are descriptive transfer results only;
-they did not affect the AutomationBench selection.
+The new results are measured on 48 train and 12 DEV tasks. Base averaged
+`10.08`/`10.33` model turns on train/DEV; SFT averaged `6.98`/`6.75`;
+`r32-none` averaged `7.48`/`6.33`; `r32-shaped` averaged `7.19`/`7.92`;
+and `r16-shaped` averaged `7.15`/`7.58`. Parse-error rates were zero for
+all five models. Base's forbidden-effect rates were `3.1%` train and
+`6.7%` DEV; all four trained policies were `0%` on both splits.
 
-An adapter gate was added before interpreting transfer results. Oracle replay
-through the HTTP adapter scores 1.0 with zero forbidden effects on all 5
-synthetic train and 2 synthetic DEV tasks. A do-nothing policy scores 0.0,
-and an out-of-scope write scores 0.0 while recording its forbidden effect.
+The base adapter gate scores `1.0` with zero forbidden effects on all 48
+synthetic train and 12 synthetic DEV oracle tasks. Do-nothing and out-of-scope
+sentinels both score `0.0`; the out-of-scope sentinel records forbidden
+effects. The new fixture's holdout was not accessed.
 
-The first transfer run was invalid: the adapter's synthetic `/reset` response
-accidentally returned the AutomationBench system prompt. Those artifacts must
-not be used as results. The adapter was corrected to return the synthetic
-protocol, endpoint catalog, and tool schemas, and the transfer runs were
-repeated. Corrected base results were `0.200` train / `0.000` DEV; corrected
-#402 rank-32 SFT results were `0.333` train / `0.000` DEV. The corrected
-failure-mode artifact is:
+Historical note: before the base arm landed its generalized adapter, the old
+9-task probe (5 train, 2 DEV, 2 holdout) was measured through our superseded
+adapter. Its corrected, non-comparable results were base `0.200` / `0.000`,
+#402 SFT `0.333` / `0.000`, and each selected GRPO arm `0.333` / `0.000`.
+The first run on that fixture was invalid because `/reset` returned the
+AutomationBench prompt; the corrected historical failure-mode artifact is:
 
 ```text
 artifacts/synthetic-transfer-v2-failure-modes.json
 ```
 
-These corrected results show genuine remaining transfer difficulty, including
-incorrect endpoint/method behavior and forbidden effects on DEV. The transfer
-probe is the surface with meaningful headroom; it is a generalization probe,
-not an upstream AutomationBench result or a model-selection input.
+The already-spent historical synthetic holdout on that superseded fixture was
+`0.2500` (`0/2` strict passes) and remains explicitly non-comparable. It was
+not rerun. The base-fixture transfer probe is the current generalization
+measurement, not an upstream AutomationBench result or a model-selection
+input.
 
-After approval, each sealed holdout was evaluated exactly once on the selected
-`r32-none` step-15 checkpoint. AutomationBench holdout scored `1.0000`
-(`12/12` strict passes); the synthetic transfer holdout scored `0.2500`
-(`0/2` strict passes). The AutomationBench result is recorded in
+The AutomationBench holdout was evaluated exactly once on the selected
+`r32-none` step-15 checkpoint and scored `1.0000` (`12/12` strict passes). It
+is recorded in
 `artifacts/automationbench-r32-none-selected-holdout.summary.json`; the
-synthetic transfer result is recorded separately in
+historical superseded-fixture synthetic transfer result is recorded separately in
 `artifacts/synthetic-transfer-r32-none-selected-holdout.summary.json`.
 
 ### Scale-up results
@@ -420,10 +443,11 @@ get_billing_usage:           artifacts/billing-usage-final.json
 
 The 12-task AutomationBench DEV and holdout splits are coarse (one task is
 about `0.0833` of a mean), so a saturated DEV score is weak evidence by itself.
-The synthetic fixture is an offline public test fixture with its own verifier
-and hashes; it is not an upstream AutomationBench result. Both holdouts were
-accessed exactly once, after the DEV selection artifact and every descriptive
-transfer evaluation were already written; neither may be rerun.
+The generalized synthetic fixture is an offline public test fixture with its
+own verifier and hashes; it is not an upstream AutomationBench result. The
+historical 9-task synthetic holdout and the AutomationBench holdout were each
+accessed exactly once. The generalized synthetic holdout was deliberately not
+accessed.
 
 ## Cost, receipts, and cleanup
 
@@ -438,9 +462,10 @@ The three GRPO training runs used:
 
 The three in-process DEV curves contain `417,551` evaluation tokens in their
 records; those evaluators did not emit per-evaluation wall-clock fields. The
-post-selection non-holdout evaluations contain `369,116` tokens. The approved
-AutomationBench holdout contains `17,162` tokens and the synthetic holdout
-contains `6,153` tokens; each was run exactly once.
+post-selection non-holdout evaluations contain `369,116` tokens. The
+approved AutomationBench holdout contains `17,162` tokens and the historical
+superseded-fixture synthetic holdout contains `6,153` tokens; each was run
+exactly once. The generalized base-fixture synthetic holdout was not accessed.
 
 The final Tinker billing query returned `5,237,642` provider-billed tokens:
 `811,444` training, `4,070,930` sampling prefill, and `355,268` sampling
@@ -448,5 +473,7 @@ output, with no dollar amount. This provider billing view is not substituted
 for the artifact-derived phase receipts above because the per-phase usage
 snapshots were empty and the accounting boundaries differ.
 
-Both holdouts were accessed exactly once, after DEV selection and descriptive
-transfer evaluations; neither may be rerun.
+The AutomationBench holdout and historical superseded-fixture synthetic
+holdout were accessed exactly once, after DEV selection and descriptive
+transfer evaluations; neither may be rerun. The generalized synthetic
+holdout remains sealed and was not accessed.

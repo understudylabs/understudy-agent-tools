@@ -1,6 +1,6 @@
 /**
  * synthetic-workflow-offline — a local, synthetic, offline evaluator for
- * nine workflow-shaped tasks. It mirrors the reachable AutomationBench
+ * 72 workflow-shaped tasks. It mirrors the reachable AutomationBench
  * simple/api contract without changing the pinned 72-task fixture.
  *
  * Safety gates:
@@ -48,12 +48,14 @@ export const SYNTHETIC_WORKFLOW_SUBSET = {
   benchmark_id: "synthetic-workflow-shapes-offline",
   subset: "workflow-shapes/api",
   source_ref: "synthetic-workflow-shapes",
-  fixture_id: "synthetic-workflow-shapes-offline-v1",
+  fixture_id: "synthetic-workflow-shapes-offline-v2",
   verifiers_version_pin: "ab65b6e8d34b03d162408d4bcb854430a86809e6",
   split_seed: 7,
 } as const;
 
 export const RESET_SEED = SYNTHETIC_WORKFLOW_SUBSET.split_seed;
+export const FROZEN_HOLDOUT_SHA256 =
+  "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,35 +210,20 @@ const ENDPOINTS = [
   { url: "/analysis", methods: ["GET", "POST"], summary: "List or persist analysis findings." },
 ];
 
-export type EndpointCatalogEntry = {
-  url: string;
-  methods: string[];
-  summary: string;
-};
-
-export function toolCatalog(): Observation["tools"] {
-  return TOOL_CATALOG.map((tool) => ({ ...tool }));
-}
-
-export function endpointCatalog(): EndpointCatalogEntry[] {
-  return ENDPOINTS.map((endpoint) => ({
-    url: endpoint.url,
-    methods: [...endpoint.methods],
-    summary: endpoint.summary,
-  }));
-}
-
 const MAX_STEPS = 12;
 const SPLIT_BY_TASK: Split[] = [
-  "train",
-  "train",
-  "train",
-  "train",
-  "train",
-  "dev",
-  "holdout",
-  "dev",
-  "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
+  "train", "train", "train", "train", "dev", "holdout",
 ];
 
 export const TASKS: SyntheticTask[] = buildTasks();
@@ -695,7 +682,7 @@ export function oraclePolicy(taskId: string): Policy {
 export function sentinelPolicy(): Policy {
   return (obs) => {
     if (obs.step < 2) {
-      return { name: "api_search", arguments: { query: "workflow records documents" } };
+      return { name: "api_search", arguments: { query: "workflow records documents events" } };
     }
     return {
       name: "api_fetch",
@@ -740,12 +727,17 @@ export function rollout(taskId: string, policy: Policy): Rollout {
 export function taskPool(options: PoolOptions): SyntheticTask[] {
   if (options.split === "holdout") {
     const expected = splitSha256("holdout");
+    if (expected !== FROZEN_HOLDOUT_SHA256) {
+      throw new Error(
+        `frozen-holdout refusal: fixture hash drift (expected ${FROZEN_HOLDOUT_SHA256}, got ${expected})`,
+      );
+    }
     if (!options.frozenHoldoutSha256) {
       throw new Error(
         "frozen-holdout refusal: reading the holdout requires frozenHoldoutSha256",
       );
     }
-    if (options.frozenHoldoutSha256 !== expected) {
+    if (options.frozenHoldoutSha256 !== FROZEN_HOLDOUT_SHA256) {
       throw new Error(
         `frozen-holdout refusal: holdout hash mismatch (expected ${expected})`,
       );
@@ -781,6 +773,10 @@ export function evaluateSplit(options: EvaluateOptions): EvalRow[] {
         artifact_refs: [
           `fixture://${SYNTHETIC_WORKFLOW_SUBSET.fixture_id}`,
         ],
+        task_content_hashes: {
+          env_sha256: sha256({ initial_state: task.initialState, prompt: task.prompt, tools: TOOL_CATALOG }),
+          verifier_sha256: sha256({ assertions: task.assertions, allowed_writes: task.allowedWrites }),
+        },
       },
     };
   });

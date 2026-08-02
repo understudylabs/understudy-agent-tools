@@ -23,6 +23,7 @@ RENDERER_DEVIATION = (
     "action protocol requires one canonical JSON object per turn; reasoning "
     "traces would make SFT targets non-canonical and increase token cost."
 )
+PROMPT_VARIANT = "nemotron-v1"
 
 
 def _extract_balanced_json_object(text: str) -> str | None:
@@ -121,7 +122,7 @@ async def rollout_task(
     task: dict[str, Any],
     config: RolloutConfig,
 ) -> dict[str, Any]:
-    reset = service.reset(task["task_id"], config.frozen_holdout_sha256)
+    reset = service.reset(task["task_id"], config.frozen_holdout_sha256, PROMPT_VARIANT)
     episode_id = reset["episode_id"]
     messages: list[Message] = [
         {"role": "system", "content": reset["system_prompt"]},

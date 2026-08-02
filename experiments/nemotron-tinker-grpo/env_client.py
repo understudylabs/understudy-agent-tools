@@ -35,14 +35,25 @@ class EnvService:
 
     repo: str
     fixture: str = "automationbench"
+    prompt_variant: str | None = None
     process: subprocess.Popen[str] | None = None
     port: int | None = None
 
     def start(self) -> "EnvService":
         if self.process is not None:
             return self
+        prompt_variant = self.prompt_variant or (
+            "default" if self.fixture == "synthetic-workflow" else "nemotron-v1"
+        )
         self.process = subprocess.Popen(
-            ["node", "scripts/automationbench-rl-service.mjs", "--fixture", self.fixture],
+            [
+                "node",
+                "scripts/automationbench-rl-service.mjs",
+                "--benchmark",
+                self.fixture,
+                "--prompt-variant",
+                prompt_variant,
+            ],
             cwd=self.repo,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -95,7 +106,10 @@ class EnvService:
         return self._json("/health")
 
     def protocol(self) -> dict[str, Any]:
-        return self._json("/protocol")
+        prompt_variant = self.prompt_variant or (
+            "default" if self.fixture == "synthetic-workflow" else "nemotron-v1"
+        )
+        return self._json(f"/protocol?prompt_variant={prompt_variant}")
 
     def hashes(self) -> dict[str, Any]:
         return self._json("/hashes")
@@ -106,10 +120,18 @@ class EnvService:
             query += f"&frozen_holdout_sha256={frozen_holdout_sha256}"
         return self._json(f"/tasks{query}")
 
-    def reset(self, task_id: str, frozen_holdout_sha256: str | None = None) -> dict[str, Any]:
+    def reset(
+        self,
+        task_id: str,
+        frozen_holdout_sha256: str | None = None,
+        prompt_variant: str | None = None,
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {"task_id": task_id}
         if frozen_holdout_sha256:
             body["frozen_holdout_sha256"] = frozen_holdout_sha256
+        body["prompt_variant"] = prompt_variant or self.prompt_variant or (
+            "default" if self.fixture == "synthetic-workflow" else "nemotron-v1"
+        )
         return self._json("/reset", "POST", body)
 
     def step(self, episode_id: str, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

@@ -44,12 +44,12 @@ describe("subset pin", () => {
     assert.equal(SYNTHETIC_WORKFLOW_SUBSET.subset, "workflow-shapes/api");
     assert.equal(RESET_SEED, 7);
     assert.match(fixtureSha256(), /^[0-9a-f]{64}$/);
-    assert.deepEqual(splitCounts(), { train: 5, dev: 2, holdout: 2 });
-    assert.equal(TASKS.length, 9);
+    assert.deepEqual(splitCounts(), { train: 48, dev: 12, holdout: 12 });
+    assert.equal(TASKS.length, 72);
   });
 
-  it("registers six families and preserves the requested task bands", () => {
-    assert.equal(Object.keys(taskBands()).length, 6);
+  it("registers twelve families and preserves the requested task bands", () => {
+    assert.equal(Object.keys(taskBands()).length, 12);
     assert.deepEqual(
       new Set(Object.values(taskBands())),
       new Set(["single-write", "discovery", "multi-write"]),
@@ -69,32 +69,64 @@ describe("subset pin", () => {
 });
 
 describe("reachability", () => {
-  it("makes oracle literals available in prompts or read-only endpoint responses", () => {
-      for (const task of TASKS) {
-      const readable = `${task.prompt} ${JSON.stringify(task.initialState)}`;
+  it("makes oracle write literals available through candidate-visible reads", () => {
+    const collectStrings = (value, output = []) => {
+      if (typeof value === "string" && value.length > 2) output.push(value);
+      else if (Array.isArray(value)) {
+        for (const item of value) collectStrings(item, output);
+      } else if (value && typeof value === "object") {
+        for (const item of Object.values(value)) collectStrings(item, output);
+      }
+      return output;
+    };
+
+    for (const task of TASKS) {
+      const { handle, obs } = reset(task.taskId);
+      const visible = [obs.messages.map((message) => message.content).join("\n")];
       for (const action of task.oracle) {
-        const args = action.arguments;
-        for (const [key, value] of Object.entries(args)) {
-          if (key === "body") continue;
-          if (typeof value === "string" && value.length > 2) {
-            assert.ok(
-              readable.includes(value) ||
-                ["api_search", "api_fetch"].includes(action.name),
-              `${task.taskId} cannot reach ${value}`,
-            );
-          }
-          if (value && typeof value === "object") {
-            for (const nested of Object.values(value)) {
-              if (typeof nested === "string" && nested.length > 2) {
-                assert.ok(
-                  readable.includes(nested),
-                  `${task.taskId} cannot reach ${nested}`,
-                );
-              }
-            }
-          }
+        const method = String(action.arguments.method ?? "").toUpperCase();
+        if (action.name === "api_search" || (action.name === "api_fetch" && method === "GET")) {
+          const result = step(handle, action);
+          visible.push(result.obs.messages.at(-1)?.content ?? "");
+          continue;
+        }
+        break;
+      }
+      const readable = visible.join("\n");
+      const isVisible = (literal) =>
+        readable.includes(literal) ||
+        readable.includes(JSON.stringify(literal).slice(1, -1));
+      for (const action of task.oracle) {
+        const method = String(action.arguments.method ?? "").toUpperCase();
+        if (action.name !== "api_fetch" || method === "GET") continue;
+        const bodyLiterals = collectStrings(action.arguments.body);
+        for (const literal of bodyLiterals) {
+          assert.ok(isVisible(literal), `${task.taskId} cannot reach write literal ${literal}`);
+        }
+        const urlParts = String(action.arguments.url ?? "").split("/").filter((part) => part.length > 2);
+        const resourceId = urlParts.length > 1 ? urlParts.at(-1) : undefined;
+        if (resourceId) {
+          assert.ok(isVisible(resourceId), `${task.taskId} cannot reach write target ${resourceId}`);
         }
       }
+    }
+  });
+});
+
+describe("band consistency", () => {
+  it("matches family labels to write cardinality and read-before-write behavior", () => {
+    for (const task of TASKS) {
+      const writes = task.oracle.filter((action) =>
+        action.name === "api_fetch" &&
+        String(action.arguments.method ?? "").toUpperCase() !== "GET");
+      const firstWrite = task.oracle.indexOf(writes[0]);
+      const firstRead = task.oracle.findIndex((action) =>
+        action.name === "api_search" ||
+        (action.name === "api_fetch" &&
+          String(action.arguments.method ?? "").toUpperCase() === "GET"));
+      if (task.band === "multi-write") assert.ok(writes.length >= 2, task.taskId);
+      if (task.band === "single-write") assert.equal(writes.length, 1, task.taskId);
+      if (task.band === "discovery") assert.ok(firstRead >= 0 && firstRead < firstWrite, task.taskId);
     }
   });
 });
@@ -110,18 +142,18 @@ describe("deterministic reset", () => {
   });
 
   it("keeps handles independent and never mutates the frozen fixture", () => {
-    const first = reset("saw-record-001");
-    const second = reset("saw-record-001");
+    const first = reset("workflow-entity-01");
+    const second = reset("workflow-entity-01");
     step(first.handle, {
       name: "api_fetch",
       arguments: {
         method: "PATCH",
-        url: "/records/rec_save_1",
+        url: "/records/rec_entity_1",
         body: { stage: "changed" },
       },
     });
-    assert.equal(second.handle.state.records.rec_save_1.stage, "open");
-    assert.equal(getTask("saw-record-001").initialState.records.rec_save_1.stage, "open");
+    assert.equal(second.handle.state.records.rec_entity_1.stage, "open");
+    assert.equal(getTask("workflow-entity-01").initialState.records.rec_entity_1.stage, "open");
   });
 
   it("refuses non-default seeds", () => {
@@ -131,10 +163,10 @@ describe("deterministic reset", () => {
 
 describe("terminal partial-credit reward", () => {
   it("pays nothing before finish and full reward after the oracle", () => {
-    const { handle } = reset("saw-record-001");
-    const first = step(handle, getTask("saw-record-001").oracle[0]);
+    const { handle } = reset("workflow-entity-01");
+    const first = step(handle, getTask("workflow-entity-01").oracle[0]);
     assert.equal(first.reward, 0);
-    for (const action of getTask("saw-record-001").oracle.slice(1)) step(handle, action);
+    for (const action of getTask("workflow-entity-01").oracle.slice(1)) step(handle, action);
     assert.equal(finish(handle).reward, 1);
   });
 
@@ -156,7 +188,7 @@ describe("scripted oracle", () => {
   });
 
   it("scores holdout only when the matching hash is supplied", () => {
-    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: holdoutHash }).length, 2);
+    assert.equal(taskPool({ split: "holdout", frozenHoldoutSha256: holdoutHash }).length, 12);
     for (const task of taskPool({ split: "holdout", frozenHoldoutSha256: holdoutHash })) {
       assert.equal(rollout(task.taskId, oraclePolicy(task.taskId)).reward, 1);
     }
@@ -173,13 +205,13 @@ describe("reward-hacking sentinels", () => {
   });
 
   it("scores a wrong-value write at zero", () => {
-    const result = rollout("saw-record-001", (obs) => {
-      if (obs.step === 0) return getTask("saw-record-001").oracle[0];
+    const result = rollout("workflow-entity-01", (obs) => {
+      if (obs.step === 0) return getTask("workflow-entity-01").oracle[0];
       return {
         name: "api_fetch",
         arguments: {
           method: "PATCH",
-          url: "/records/rec_save_1",
+          url: "/records/rec_entity_1",
           body: { stage: "wrong-value", observations: ["wrong"] },
         },
       };
@@ -258,11 +290,11 @@ describe("frozen-holdout refusal", () => {
   it("refuses holdout imports without the matching hash", () => {
     assert.throws(() => importSubset({
       runId: "holdout-run",
-      nativeExport: { tasks: [{ name: "saw-doc-002", score: 1 }] },
+      nativeExport: { tasks: [{ name: TASKS.find((task) => task.split === "holdout").taskId, score: 1 }] },
     }), /frozen-holdout refusal/);
     assert.equal(importSubset({
       runId: "holdout-run",
-      nativeExport: { tasks: [{ name: "saw-doc-002", score: 1 }] },
+      nativeExport: { tasks: [{ name: TASKS.find((task) => task.split === "holdout").taskId, score: 1 }] },
       frozenHoldoutSha256: holdoutHash,
     }).rows.length, 1);
   });
@@ -275,7 +307,7 @@ describe("evaluator and importer", () => {
       runId: "train-run",
       policy: oraclePolicy,
     });
-    assert.equal(rows.length, 5);
+    assert.equal(rows.length, 48);
     assert.deepEqual(validateEvalRows(rows), []);
     for (const row of rows) {
       assert.equal(row.score, 1);
@@ -288,7 +320,7 @@ describe("evaluator and importer", () => {
     const result = importSubset({ runId: "manifest-run" });
     assert.deepEqual(validateBenchmarkManifest(result.manifest), []);
     assert.deepEqual(result.manifestErrors, []);
-    assert.equal(result.manifest.tasks.length, 9);
+    assert.equal(result.manifest.tasks.length, 72);
     assert.equal(result.manifest.environment.package_sha256, fixtureSha256());
   });
 
@@ -296,8 +328,9 @@ describe("evaluator and importer", () => {
     const descriptor = verifiersPackageDescriptor();
     assert.equal(descriptor.format, "verifiers.v1");
     assert.equal(descriptor.executable, false);
-    assert.equal(descriptor.taskset.task_ids.length, 7);
-    assert.ok(!descriptor.taskset.task_ids.includes("saw-doc-002"));
+    assert.equal(descriptor.taskset.task_ids.length, 60);
+    assert.equal(descriptor.taskset.task_ids.filter((taskId) =>
+      TASKS.find((task) => task.taskId === taskId)?.split === "holdout").length, 0);
   });
 });
 
@@ -319,7 +352,25 @@ describe("identity and domain denylist", () => {
     for (const token of blocked) assert.doesNotMatch(allSource, new RegExp(token, "i"));
     const literals = allSource.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
     for (const literal of literals) {
-      assert.ok(/\.(invalid|test)$/i.test(literal), literal);
+      assert.ok(/(?:example\.com|example\.org|invalid|test)$/i.test(literal), literal);
+    }
+  });
+});
+
+describe("sanitized fixture", () => {
+  it("contains only generic synthetic identifiers and safe domains", () => {
+    const fixtureText = [
+      readFileSync("src/fixtures/synthetic-workflow-shapes.ts", "utf8"),
+      JSON.stringify(TASKS),
+    ].join("\n");
+    const text = fixtureText;
+    assert.doesNotMatch(text, /\b(?:org_|proj_|prj_)[A-Za-z0-9_-]+/i);
+    assert.doesNotMatch(text, /\b[0-9a-f]{32,}\b/i);
+    assert.doesNotMatch(text, /\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i);
+    assert.doesNotMatch(text, /\bcedar\b/i);
+    const literals = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [];
+    for (const literal of literals) {
+      assert.match(literal, /(?:example\.com|example\.org|invalid|test)$/i);
     }
   });
 });

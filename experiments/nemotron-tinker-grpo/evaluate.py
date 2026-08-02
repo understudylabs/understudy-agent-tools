@@ -143,7 +143,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         else "automationbench-simple-api-offline"
     )
     fixture_ref = (
-        "fixture://synthetic-workflow-shapes-offline-v1"
+        "fixture://synthetic-workflow-shapes-offline-v2"
         if args.fixture == "synthetic-workflow"
         else "fixture://automationbench-simple-api-offline-v1"
     )

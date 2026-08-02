@@ -1,0 +1,353 @@
+{
+  "benchmark_id": "synthetic-workflow-shapes-offline",
+  "fixture": "synthetic-workflow",
+  "groups": [
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-action-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-action-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-action-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-action-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-agent-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-agent-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-agent-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-agent-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-analysis-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-analysis-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-analysis-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-analysis-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-chain-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-chain-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-chain-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-chain-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-document-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-document-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-document-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-document-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-entity-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-entity-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-entity-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-entity-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-mail-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-mail-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-mail-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-mail-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-meeting-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-meeting-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-meeting-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-meeting-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-observation-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-observation-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-observation-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-observation-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-partial-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-partial-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-partial-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-partial-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-route-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-route-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-route-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-route-04"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-summary-01"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-summary-02"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-summary-03"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "workflow-summary-04"
+    }
+  ],
+  "hashes": {
+    "counts": {
+      "dev": 12,
+      "holdout": 12,
+      "train": 48
+    },
+    "fixture_sha256": "c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412",
+    "split_sha256": {
+      "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3",
+      "holdout": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+      "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+    }
+  },
+  "label": "synthetic-v3-r32-shaped-train",
+  "lora_rank": 32,
+  "mean_model_turns": 7.1875,
+  "mean_reward": 0.0,
+  "model": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000015",
+  "model_path": "tinker://e1618f44-94b2-5beb-8251-8147511cc6c5:train:0/sampler_weights/000015",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "discovery": {
+      "count": 20,
+      "explicit_finish_rate": 0.85,
+      "forbidden_effect_rate": 0.0,
+      "mean_env_steps": 5.6,
+      "mean_model_turns": 6.45,
+      "mean_reward": 0.0,
+      "parse_error_rate": 0.0
+    },
+    "multi-write": {
+      "count": 16,
+      "explicit_finish_rate": 0.8125,
+      "forbidden_effect_rate": 0.0,
+      "mean_env_steps": 4.9375,
+      "mean_model_turns": 5.75,
+      "mean_reward": 0.0,
+      "parse_error_rate": 0.0
+    },
+    "single-write": {
+      "count": 12,
+      "explicit_finish_rate": 0.25,
+      "forbidden_effect_rate": 0.0,
+      "mean_env_steps": 10.083333333333334,
+      "mean_model_turns": 10.333333333333334,
+      "mean_reward": 0.0,
+      "parse_error_rate": 0.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 48,
+  "samples_per_task": 1,
+  "split": "train",
+  "strict_pass_rate": 0.0,
+  "task_count": 48,
+  "temperature": 0.0,
+  "total_prompt_tokens": 158838,
+  "total_sampled_tokens": 7038
+}

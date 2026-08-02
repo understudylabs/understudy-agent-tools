@@ -12,13 +12,12 @@ function argValue(args, name) {
 async function main() {
   const args = process.argv.slice(2);
   const port = Number(argValue(args, "--port") ?? "0");
-  const fixture = argValue(args, "--fixture") ?? "automationbench";
-  if (fixture !== "automationbench" && fixture !== "synthetic-workflow") {
-    throw new Error("--fixture must be automationbench or synthetic-workflow");
-  }
+  const benchmark = argValue(args, "--benchmark") ?? "automationbench";
+  const promptVariant = argValue(args, "--prompt-variant") ?? "default";
   const { server, port: actualPort } = await startEnvService({
     port: Number.isFinite(port) ? port : 0,
-    fixture,
+    benchmark,
+    promptVariant,
   });
   console.log(actualPort);
   const shutdown = () => server.close(() => process.exit(0));

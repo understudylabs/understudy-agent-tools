@@ -1,233 +1,81 @@
-# Synthetic workflow fixtures
+# Synthetic workflow shapes fixture
 
-Status: synthetic, offline, public-safe fixture set.
+This is a publishable, sanitized synthetic benchmark. It contains no raw
+customer data, private identifiers, or non-test domains.
 
-This document describes the sibling module
-`src/synthetic-workflow-offline.ts` and its nine invented workflow tasks. It
-contains no customer data, private traces, provider credentials, or live
-service references.
+## Pin
 
-## 1. Purpose and publication boundary
+- Benchmark: `synthetic-workflow-shapes-offline`
+- Subset: `workflow-shapes/api`
+- Fixture: `synthetic-workflow-shapes-offline-v2`
+- Verifiers pin: `ab65b6e8d34b03d162408d4bcb854430a86809e6`
+- Split/reset seed: `7`
+- Holdout access requires the exact frozen holdout hash below.
 
-The fixtures preserve generic workflow shape: read-only discovery, stateful
-API calls, partial failures, final-state assertions, and preservation through
-allowed-write enforcement. They do not reproduce raw prompts, raw request or
-response bodies, identities, or private URLs.
+## Frozen hashes
 
-All records, addresses, paths, summaries, and timestamps are invented. Email
-addresses use `.invalid`; no network or provider is contacted.
+Generated with:
 
-## 2. Contract
-
-### 2.1 Sibling architecture
-
-`src/automationbench-offline.ts` already exists on this branch and is pinned by
-its 32-test suite to 72 tasks, 12 families, 48/12/12 splits, and 60 packaged
-non-holdout tasks. This fixture set is therefore a sibling rather than an edit.
-
-The sibling reuses that module's contract verbatim:
-
-- `api_search` and `api_fetch` tool-call shapes;
-- `equals`, `exists`, and `absent` assertions;
-- dotted `allowedWrites` prefixes and `forbiddenEffects`;
-- terminal `partialCredit`;
-- deterministic pinned-seed reset;
-- frozen-holdout refusal;
-- `understudy.eval_result.v1` rows;
-- `understudy.benchmark.v1` manifests.
-
-Only the closed business state and endpoint surface are wider.
-
-### 2.2 State and tools
-
-The state contains:
-
-```ts
-{
-  conversations,
-  documents,
-  records,
-  drafts,
-  meetings,
-  agentState,
-  summaries,
-  analysis,
-  sequence,
-}
+```bash
+npm run synthetic:fixture-report
 ```
 
-The endpoint surface uses `GET` for reads and `POST`/`PATCH` for mutations:
+The report uses `fixtureSha256()` and `splitSha256()` from
+`src/synthetic-workflow-offline.ts`.
+
+| split | tasks | SHA-256 |
+|---|---:|---|
+| train | 48 | `95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5` |
+| dev | 12 | `e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3` |
+| holdout | 12 | `6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144` |
+
+Fixture SHA-256:
 
 ```text
-/conversations
-/documents
-/records
-/drafts
-/meetings
-/agent-state/{id}
-/summaries
-/analysis
+c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
 ```
 
-`/agent-state/{id}` returns status `409` with
-`agent state overview not configured` for the deliberately unconfigured
-document task and performs no write.
-
-The environment has no model, provider, network, filesystem, clock, or random
-number generator. IDs are derived only from the reset-local `sequence`
-counter. The only accepted seed is `7`.
-
-### 2.3 Assertions and scoring
-
-Only three assertion kinds are used:
-
-```ts
-{ kind: "equals", path: string, equals: unknown }
-{ kind: "exists", collection: string, match: Record<string, unknown> }
-{ kind: "absent", collection: string, match: Record<string, unknown> }
-```
-
-- `equals` compares a dotted state path using canonical JSON.
-- `exists` matches all fields against one collection entry.
-- `absent` passes when no collection entry matches.
-
-`partialCredit` is terminal-only:
-
-1. Any `forbiddenEffects` makes the score `0`.
-2. Assertions already true in the initial state are removed from the
-   denominator.
-3. The score is the fraction of remaining assertions true in the final state.
-4. A zero denominator scores `0`.
-
-Intermediate rewards are always `0`. A write outside the task's dotted
-`allowedWrites` prefixes still mutates state, but its exact path is appended to
-`forbiddenEffects` and therefore zeroes terminal reward.
-
-There is no answer channel and no bare-JSON-vs-markdown contract axis. Correctness
-is entirely final-state based.
-
-### 2.4 Observation and leakage
-
-Observations contain only task ID, seed, step, messages, and the two global tool
-schemas. They never contain assertions, gold state, allowed writes, or oracle
-actions.
-
-`auditObservationLeakage()` checks candidate-readable messages for grader
-metadata and assertion/write paths. Prompt overlap is benign because the
-prompt is the candidate's input.
-
-### 2.5 Test gates
-
-`tests/synthetic-workflow-offline.test.mjs` covers:
-
-- subset pin and 9-task / 6-family / 5-2-2 split counts;
-- unique IDs and no all-pre-satisfied task;
-- oracle reachability for IDs, paths, recipients, subjects, attendees, and slots;
-- byte-identical reset, no ISO timestamps, state isolation, and frozen-fixture
-  immutability;
-- refusal of non-default seeds;
-- zero intermediate reward and terminal partial credit;
-- zero score for do-nothing, wrong-value, and out-of-scope-write policies;
-- expected `forbiddenEffects`;
-- oracle score `1.0` with no forbidden effects, including holdout with its hash;
-- observation leakage and no-live-effect static scans;
-- double-decoded and nested tool-call parser compatibility;
-- frozen-holdout refusal and split disjointness;
-- eval-row validation and fixture/split hash provenance;
-- benchmark manifest validation;
-- identity, credential-prefix, and domain denylist checks.
-
-## 3. Generic tool shape
-
-The runtime exposes only:
-
-| Tool | Purpose |
-| --- | --- |
-| `api_search` | Read-only endpoint discovery |
-| `api_fetch` | One routed API call with `{ method, url, body? }` |
-
-Unknown tools return an error object. Unknown URLs return status `404`;
-unsupported methods return status `405`. Errors are observations, not throws.
-
-## 4. Synthetic tasks and family mapping
-
-Nine tasks are built by six family-style builders. The task data is invented;
-the table describes only generic workflow shapes.
-
-| Task | Shape | Generic source family | Basis |
-| --- | --- | --- | --- |
-| `saw-email-001` | Read context, create one draft | event-driven email orchestration | inferred |
-| `saw-email-002` | Read context, create one allowed draft, avoid a forbidden recipient | event-driven email orchestration | inferred |
-| `saw-meeting-001` | Read context, schedule attendee/slot/duration | event-driven meeting orchestration | inferred |
-| `saw-record-001` | Update stage and observations | single-record update | inferred |
-| `saw-orch-001` | Update record, read overview, persist summary | multi-tool orchestration | inferred |
-| `saw-doc-001` | Read, move, preserve/update document, synchronize state, summarize | document-context automation | observed shape |
-| `saw-doc-002` | Same chain with unavailable agent-state configuration | document-context partial failure | observed shape |
-| `saw-analysis-001` | Read systems and persist one analysis finding | read-only analysis | inferred |
-| `saw-analysis-002` | Read systems with a distractor write target | read-only analysis adversarial variant | authored |
-
-Several additional route labels in the source corpus have no call ordering or
-terminal-state contract behind them and are deliberately not modelled.
-
-The two `saw-doc-*` tasks model a verified subset of the observed shape: the
-source run exercised only a fraction of the tools its environment advertised,
-so these tasks are not coverage of that workflow in full.
-
-### 4.1 Family builders
-
-Each family supplies:
-
-```ts
-{
-  slug,
-  band: "single-write" | "discovery" | "multi-write",
-  label,
-  instances,
-  build(instance),
-}
-```
-
-`buildTasks()` assigns each generated task a split, family, band, prompt,
-initial state, assertions, allowed writes, and oracle. The resulting split is:
+The split is family-stratified: each family contributes four train, one dev,
+and one holdout task. The band histogram is:
 
 ```text
-train: 5
-dev: 2
-holdout: 2
+discovery:   30
+multi-write: 24
+single-write:18
 ```
 
-## 5. Hashes and holdout boundary
+## Families
 
-`fixtureSha256()` hashes the generated tasks, global tool catalog, endpoint
-catalog, and subset pin. `splitSha256(split)` hashes task IDs and assertions
-for that split.
+Each family has six meaningfully varied instances and includes a `rec_guard`
+record that is never an allowed write target.
 
-The expected holdout hash is computed from the current fixture. `taskPool`,
-`evaluateSplit`, and holdout imports refuse access unless the caller supplies
-the exact current `frozenHoldoutSha256`.
+| family | band | shape |
+|---|---|---|
+| `event-routing` | discovery | Route an inbound event to the handler and queue named by a read event payload. |
+| `meeting-event-orchestration` | discovery | Read a meeting event and current calendar before scheduling the correct attendee. |
+| `entity-identification` | discovery | Identify the target account among near-match records before updating it. |
+| `action-option-selection` | single-write | Resolve an action option from an event and apply it to the matching account. |
+| `analysis-then-persist` | discovery | Inspect a conversation, document, and account before persisting one analysis finding. |
+| `document-preservation` | multi-write | Move and append to the referenced document while preserving its original content. |
+| `agent-state-synchronization` | single-write | Read a conversation and synchronize its agent state. |
+| `agent-state-partial-failure` | multi-write | Continue an orchestration after a deliberate unavailable-state response. |
+| `summary-orchestration` | multi-write | Update an entity, reread it, and persist a completion summary. |
+| `routed-mail-followup` | discovery | Discover the routed recipient and create only the requested follow-up draft. |
+| `multi-step-orchestrator-chain` | multi-write | Chain conversation, entity, document, and summary operations. |
+| `record-observation` | single-write | Read an entity and append one event-selected observation. |
 
-Changing a task changes the fixture hash and the affected split hash. Callers
-and any external artifact carrying the old hash must be updated deliberately.
+## Grading and safety gates
 
-## 6. Exported artifacts
+The evaluator mirrors AutomationBench's `reset`, `step`, `finish`,
+`partialCredit`, `rollout`, `taskPool`, and `evaluateSplit` contract. Rewards
+are terminal final-state partial credit. Any forbidden write forces score zero.
 
-The sibling emits:
+Tests require:
 
-- `understudy.eval_result.v1` rows with score, route, cost, split, fixture hash,
-  and provenance;
-- an `understudy.benchmark.v1` manifest with task metadata, environment
-  descriptor, verifier contract, split counts/hashes, and contamination status;
-- a non-executable `verifiers.v1` descriptor pointing to the local terminal
-  scorer.
-
-The descriptor excludes holdout tasks. It is documentation for compatibility,
-not a hosted trainer package.
-
-## 7. Files
-
-```text
-src/synthetic-workflow-offline.ts
-src/fixtures/synthetic-workflow-shapes.ts
-tests/synthetic-workflow-offline.test.mjs
-docs/synthetic-workflow-fixtures.md
-```
+- every oracle scores `1.0` with no forbidden effects;
+- the activity sentinel scores `0.0` on all 72 tasks;
+- every oracle literal is present in the prompt or a read-only result;
+- observations contain no grader labels or assertion metadata;
+- reset is deterministic and fixture state is immutable;
+- no task is pre-satisfied at reset;
+- IDs and domains pass the sanitization denylist.
