@@ -29,6 +29,7 @@ import { dirname } from "node:path";
 
 import { V2_TASKS, v2SplitSha256, v2TaskBands } from "../dist/automationbench-v2.js";
 import { TASKS as CHAT_TASKS, splitSha256 as chatSplitSha256 } from "../dist/grounded-chat-offline.js";
+import { AOP_TASKS, aopSplitSha256 } from "../dist/aop-selection-offline.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -47,13 +48,24 @@ const reportPath = argValue("--report");
 const fixture = argValue("--fixture", "automationbench-v2");
 
 const isGroundedChat = fixture === "grounded-chat-offline-v1" || fixture === "grounded-chat";
-if (!isGroundedChat && fixture !== "automationbench-v2") {
-  throw new Error(`unknown --fixture ${fixture}; expected automationbench-v2 or grounded-chat-offline-v1`);
+const isAopSelection = fixture === "aop-selection-offline-v1" || fixture === "aop-selection";
+if (!isGroundedChat && !isAopSelection && fixture !== "automationbench-v2") {
+  throw new Error(
+    `unknown --fixture ${fixture}; expected automationbench-v2, grounded-chat-offline-v1, or aop-selection-offline-v1`,
+  );
 }
-const BANDS = isGroundedChat ? new Map(CHAT_TASKS.map((task) => [task.taskId, task.band])) : v2TaskBands();
-const SPLIT_BY_TASK = new Map((isGroundedChat ? CHAT_TASKS : V2_TASKS).map((task) => [task.taskId, task.split]));
-const TRAIN_SPLIT_SHA256 = isGroundedChat ? chatSplitSha256("train") : v2SplitSha256("train");
-const FIXTURE_ID = isGroundedChat ? "grounded-chat-offline-v1" : "automationbench-simple-api-offline-v2";
+const TASKS = isGroundedChat ? CHAT_TASKS : isAopSelection ? AOP_TASKS : V2_TASKS;
+const splitSha256 = isGroundedChat ? chatSplitSha256 : isAopSelection ? aopSplitSha256 : v2SplitSha256;
+const BANDS =
+  isGroundedChat || isAopSelection ? new Map(TASKS.map((task) => [task.taskId, task.band])) : v2TaskBands();
+const SPLIT_BY_TASK = new Map(TASKS.map((task) => [task.taskId, task.split]));
+const TRAIN_SPLIT_SHA256 = splitSha256("train");
+const FIXTURE_ID = isGroundedChat
+  ? "grounded-chat-offline-v1"
+  : isAopSelection
+    ? "aop-selection-offline-v1"
+    : "automationbench-simple-api-offline-v2";
+const FAMILY_BY_TASK = new Map(TASKS.map((task) => [task.taskId, task.family]));
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -153,8 +165,10 @@ lines.forEach((line, index) => {
 
   const family = isGroundedChat
     ? taskId.replace(/^chat-/, "").replace(/-\d{3}$/, "")
-    : taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
-  const band = isGroundedChat ? BANDS.get(taskId) ?? "unknown" : BANDS[family] ?? "unknown";
+    : isAopSelection
+      ? FAMILY_BY_TASK.get(taskId) ?? "unknown"
+      : taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
+  const band = isGroundedChat || isAopSelection ? BANDS.get(taskId) ?? "unknown" : BANDS[family] ?? "unknown";
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
   normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
 });
@@ -175,7 +189,7 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
-  holdout_split_sha256: isGroundedChat ? chatSplitSha256("holdout") : v2SplitSha256("holdout"),
+  holdout_split_sha256: splitSha256("holdout"),
   train_split_sha256: TRAIN_SPLIT_SHA256,
   failures: failures.slice(0, 50),
   verdict: failures.length === 0 ? "pass" : "fail",
