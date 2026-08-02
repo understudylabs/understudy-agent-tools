@@ -438,6 +438,72 @@ def test_no_holdout_identifiers_in_fixtures():
           all(t["task_id"].split("-")[0] == "fam" for t in synthetic_dev()))
 
 
+def test_run_shaped_bridge_active_and_terminal_transition():
+    # The run-shaped bridge (combined manifest -> gepa-viz run.json) must:
+    #  * key candidates by STABLE node id with parents referencing those ids;
+    #  * carry status for every node (active subset drives the deployed white
+    #    pulse) and expose NO score/predictions while in progress;
+    #  * expose score (and forward predictions) ONLY once finalized;
+    #  * preserve the examples list and dev provenance.
+    rankp = proto("canonical_rollout", 3)
+    gepap = proto("gepa_observed", 1)
+    examples = [{"task_id": "fam-alpha-01", "prompt": "p", "band": "b"}]
+
+    def manifest_with(branchA_stage, branchA_score, branchA_extra=None):
+        nodes = [
+            em.make_node(node_id="baseline-seed", label="seed", wave="baseline",
+                         stage="completed", protocol=rankp, score=0.5,
+                         extra={"predictions": [{"prediction": {}, "score": 1.0}]}),
+            em.make_node(node_id="baseline-seed-gepa", label="seed-gepa",
+                         wave="baseline", stage="completed", protocol=gepap,
+                         score=None, rank_eligible=False,
+                         extra={"gepa_observed_score": 0.5625}),
+            em.make_node(node_id="wave1-winner", label="w1", wave="wave1",
+                         stage="completed", protocol=rankp, score=0.729,
+                         parent="baseline-seed"),
+            em.make_node(node_id="wave2-A", label="A", wave="wave2",
+                         stage=branchA_stage, protocol=rankp, score=branchA_score,
+                         branch_id="A", parent="wave1-winner",
+                         episodes_completed=12, episodes_expected=36,
+                         extra=branchA_extra),
+        ]
+        return em.build_manifest(experiment="t", dev_split_sha256=DEV_SHA,
+                                 rank_protocol=rankp, nodes=nodes)
+
+    # ---- while branch A is ACTIVE (screening): no score / no predictions ----
+    run_active = em.run_shaped_from_manifest(manifest_with("screening", None), examples)
+    check("bridge preserves examples", run_active["examples"] == examples)
+    check("bridge is hash-bound to dev provenance",
+          run_active["split_provenance"]["dev"] == DEV_SHA)
+    cA = run_active["candidates"]["wave2-A"]
+    check("active branch status is in the deployed active set",
+          cA["status"] in em.BRIDGE_ACTIVE_STATUSES)
+    check("active branch carries NO score", cA["score"] is None)
+    check("active branch carries NO fabricated predictions", cA["predictions"] is None)
+    check("stable ids: parent references an existing candidate key",
+          cA["parent"] == "wave1-winner" and "wave1-winner" in run_active["candidates"])
+    check("baseline/wave1/wave2 all present as stable-id candidates",
+          {"baseline-seed", "wave1-winner", "wave2-A"} <= set(run_active["candidates"]))
+    check("finalized baseline is scored and green-eligible via predictions",
+          run_active["candidates"]["baseline-seed"]["score"] == 0.5
+          and run_active["candidates"]["baseline-seed"]["predictions"] is not None)
+    check("gepa_observed metadata node is not scored in the bridge",
+          run_active["candidates"]["baseline-seed-gepa"]["score"] is None)
+
+    # ---- after branch A is PROMOTED (terminal): score + predictions appear ---
+    preds = [{"prediction": {}, "score": 1.0}, {"prediction": {}, "score": 0.0}]
+    run_done = em.run_shaped_from_manifest(
+        manifest_with("promoted", 0.833, {"predictions": preds}), examples)
+    dA = run_done["candidates"]["wave2-A"]
+    check("terminal branch status leaves the active set (no more pulse)",
+          dA["status"] not in em.BRIDGE_ACTIVE_STATUSES)
+    check("terminal branch exposes its finalized score", dA["score"] == 0.833)
+    check("terminal branch forwards real predictions for green/red arc",
+          dA["predictions"] == preds)
+    check("node identity is stable across the active->terminal transition",
+          set(run_active["candidates"]) == set(run_done["candidates"]))
+
+
 def main():
     tests = [
         test_global_cap_failure_leaves_branch_unchanged,
@@ -461,6 +527,7 @@ def main():
         test_mixed_protocol_ranking_refused,
         test_canonical_k1_cannot_rank_against_k3,
         test_manifest_requires_provenance_and_holdout_untouched,
+        test_run_shaped_bridge_active_and_terminal_transition,
         test_no_holdout_identifiers_in_fixtures,
     ]
     for t in tests:

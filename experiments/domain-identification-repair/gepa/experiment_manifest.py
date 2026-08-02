@@ -223,6 +223,72 @@ def validate_manifest(manifest):
     return True
 
 
+# The deployed gepa-viz renderer pulses a node WHITE while its candidate.status
+# is in this active set; terminal nodes keep the existing green/red (from
+# predictions). Kept in sync with the deployed renderer.
+BRIDGE_ACTIVE_STATUSES = frozenset(
+    {"started", "running", "screening", "reflecting", "evaluating", "confirming"})
+
+
+def run_shaped_from_manifest(manifest, examples):
+    """Project the combined manifest into the gepa-viz run.json shape
+    ({"examples": [...], "candidates": {id: {...}}}) so PLAIN gepa-viz renders
+    baseline/wave1/wave2 with only the background changing.
+
+    Contract (matches the deployed renderer + Luis's bridge spec):
+      * candidate keys are STABLE node ids; parents reference those same ids;
+      * `status` is carried for every node — the active subset drives the white
+        pulse, terminal stages keep existing green/red;
+      * `score` and `predictions` are included ONLY when the node is finalized
+        (a scored terminal stage with a real score). In-progress nodes never
+        carry a score or fabricated predictions.
+
+    This is a read-only projection; the richer manifest stays the durable
+    sidecar artifact. Never raises on shape (validated up front).
+    """
+    validate_manifest(manifest)
+    candidates = {}
+    for n in manifest["nodes"]:
+        nid = str(n["node_id"])
+        stage = n["stage"]
+        finalized = stage in SCORED_STAGES and n.get("score") is not None
+        parent = n.get("parent")
+        candidates[nid] = {
+            "prompt": n.get("prompt", ""),
+            "parent": (str(parent) if parent is not None else None),
+            "score": (n["score"] if finalized else None),
+            "predictions": (n.get("predictions") if finalized else None),
+            "minibatch": None,
+            "status": stage,
+            "label": n.get("label", nid),
+            "wave": n.get("wave"),
+            "branch_id": n.get("branch_id"),
+        }
+    return {
+        "examples": [dict(e) for e in examples],
+        "candidates": candidates,
+        "split": "dev",
+        "split_provenance": {"dev": manifest["dev_split_sha256"]},
+    }
+
+
+def publish_run_shaped(manifest, examples, ingest_url, timeout=10):
+    """Project the manifest into the gepa-viz run.json shape and POST it to the
+    viewer ingest endpoint so PLAIN gepa-viz renders baseline/wave1/wave2. The
+    combined manifest stays the durable sidecar; this bridge is what the live
+    page consumes. Never raises on a non-2xx (a viewer outage must not kill a
+    run)."""
+    from urllib.request import Request, urlopen
+    run_shaped = run_shaped_from_manifest(manifest, examples)
+    data = json.dumps(run_shaped).encode("utf-8")
+    req = Request(ingest_url, data=data, headers={"content-type": "application/json"})
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            return resp.status
+    except Exception as exc:  # noqa: BLE001 - viewer outage must not kill a run
+        return f"publish-failed: {str(exc)[:120]}"
+
+
 def manifest_digest(manifest):
     payload = {k: manifest[k] for k in manifest if k != "generated_ts"}
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()

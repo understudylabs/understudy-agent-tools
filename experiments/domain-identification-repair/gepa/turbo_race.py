@@ -496,6 +496,77 @@ def main():
 
     seed_prompt = Path(args.seed_prompt).read_text()
 
+    # ---- Live view plumbing (run-shaped bridge to plain gepa-viz) ------------
+    # The combined manifest is the durable sidecar; the run-shaped projection is
+    # what the live page consumes so baseline/wave1/wave2 appear with only the
+    # background changing (white pulse while active).
+    examples = [dict(t) for t in dev]
+    rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha,
+                                     samples_per_task=STAGE_B_K)
+    gepa_proto = em.make_protocol(method="gepa_observed", split_sha256=dev_sha,
+                                  samples_per_task=1)
+    seed_canonical = _load_json(args.wave1_seed_canonical) if args.wave1_seed_canonical else None
+    winner_canonical = _load_json(args.wave1_winner_canonical) if args.wave1_winner_canonical else None
+
+    def _predictions_extra(cached):
+        preds = cached.get("predictions") if cached else None
+        return {"predictions": preds} if preds else None
+
+    def _baseline_wave1_nodes():
+        return [
+            em.make_node(node_id="baseline-seed", label="Seed prompt (canonical k=3)",
+                         wave="baseline", stage="completed", protocol=rank_protocol,
+                         score=(seed_canonical["mean_score"] if seed_canonical else None),
+                         provenance={"note": "wave-1 seed, canonical dev k=3"},
+                         extra=_predictions_extra(seed_canonical)),
+            em.make_node(node_id="baseline-seed-gepa", label="Seed (GEPA-observed, metadata)",
+                         wave="baseline", stage="completed", protocol=gepa_proto, score=None,
+                         rank_eligible=False, provenance={"gepa_observed_score": 0.5625}),
+            em.make_node(node_id="wave1-winner", label="Wave-1 winner 6d19553e (canonical k=3)",
+                         wave="wave1", stage="completed", protocol=rank_protocol,
+                         score=(winner_canonical["mean_score"] if winner_canonical else None),
+                         parent="baseline-seed",
+                         provenance={"candidate_hash": "6d19553e", "gepa_observed_score": 0.75},
+                         extra=_predictions_extra(winner_canonical)),
+        ]
+
+    def _reference_lines():
+        lines = []
+        if args.incumbent_receipt:
+            inc = _load_json(args.incumbent_receipt)
+            lines.append({
+                "label": "Incumbent gpt-4o (canonical k=1)",
+                "score": inc.get("mean_score"),
+                "protocol": em.make_protocol(method="canonical_rollout", split_sha256=dev_sha,
+                                             samples_per_task=int(inc.get("samples", 1))),
+                "rank_comparable": False,
+                "note": "k=1; not rank-comparable to canonical k=3 until rerun at k=3",
+            })
+        return lines
+
+    def publish_live(branch_states):
+        """Build the combined manifest for the CURRENT stage of each wave-2
+        branch, persist it (sidecar) and POST the run-shaped bridge. In-progress
+        branches carry an active status (white pulse) and no score."""
+        nodes = _baseline_wave1_nodes()
+        for _bid, _seed, _subset, _rid in branches:
+            stage, score = branch_states.get(_bid, ("screening", None))
+            rec = results.get(_bid, {})
+            nodes.append(em.make_node(
+                node_id=f"wave2-{_bid}", label=f"Wave-2 {_bid} (canonical k=3)",
+                wave="wave2", stage=stage, protocol=rank_protocol, score=score,
+                branch_id=_bid, parent="wave1-winner",
+                episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
+                episodes_expected=args.branch_max_episodes,
+                provenance={"subset_sha256": rec.get("subset_sha256"),
+                            "run_dir": rec.get("run_dir")}))
+        live = em.build_manifest(
+            experiment=experiment_id, dev_split_sha256=dev_sha, rank_protocol=rank_protocol,
+            nodes=nodes, reference_lines=_reference_lines(),
+            totals={"wall_clock_s": round(time.time() - started)}, holdout_untouched=True)
+        em.write_manifest(live, manifest_path)
+        return em.publish_run_shaped(live, examples, args.ingest_url)
+
     budget = GlobalBudget(
         max_total_episodes=args.max_total_episodes,
         stage_a_global_cap=args.stage_a_global_cap,
@@ -528,6 +599,8 @@ def main():
         ), name=bid)
         t.start()
         threads.append(t)
+    # Live checkpoint: both wave-2 branches are now screening (active/white).
+    print("[live] stage-A screening ->", publish_live({}), flush=True)
     for t in threads:
         t.join()
 
@@ -536,6 +609,14 @@ def main():
     if args.wave1_winner_canonical:
         w = _load_json(args.wave1_winner_canonical)
         canonical_cache[w.get("system_file_sha256") or "wave1-winner"] = w
+    # Live checkpoint: completed branches enter canonical confirmation (active),
+    # failed branches are terminal-red.
+    confirming_states = {
+        bid: (("confirming", None) if results.get(bid, {}).get("status") == "completed"
+              else ("failed", None))
+        for bid, *_ in branches
+    }
+    print("[live] stage-B confirming ->", publish_live(confirming_states), flush=True)
     confirmations = []
     for bid, seed, subset, run_id in branches:
         rec = results.get(bid, {})
@@ -571,25 +652,8 @@ def main():
     winner = select_winner(confirmations)
 
     # ---- Combined experiment manifest (protocol-safe) ------------------------
-    rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha,
-                                     samples_per_task=STAGE_B_K)
-    gepa_proto = em.make_protocol(method="gepa_observed", split_sha256=dev_sha, samples_per_task=1)
-    nodes = [
-        em.make_node(node_id="baseline-seed", label="Seed prompt (canonical k=3)",
-                     wave="baseline", stage="completed", protocol=rank_protocol,
-                     score=(_load_json(args.wave1_seed_canonical)["mean_score"]
-                            if args.wave1_seed_canonical else None),
-                     provenance={"note": "wave-1 seed, canonical dev k=3"}),
-        em.make_node(node_id="baseline-seed-gepa", label="Seed (GEPA-observed, metadata)",
-                     wave="baseline", stage="completed", protocol=gepa_proto, score=None,
-                     rank_eligible=False, provenance={"gepa_observed_score": 0.5625}),
-        em.make_node(node_id="wave1-winner", label="Wave-1 winner 6d19553e (canonical k=3)",
-                     wave="wave1", stage="completed", protocol=rank_protocol,
-                     score=(_load_json(args.wave1_winner_canonical)["mean_score"]
-                            if args.wave1_winner_canonical else None),
-                     parent="baseline-seed",
-                     provenance={"candidate_hash": "6d19553e", "gepa_observed_score": 0.75}),
-    ]
+    # Baseline/wave1 nodes come from the shared builder used by the live view.
+    nodes = _baseline_wave1_nodes()
     for bid, seed, subset, run_id in branches:
         rec = results.get(bid, {})
         conf = next((c for c in confirmations if c["branch_id"] == bid), {})
@@ -600,13 +664,18 @@ def main():
             stage, score = "evaluating", None
         else:
             stage, score = "failed", None
+        wave2_extra = {}
+        if conf.get("malformed_rate") is not None:
+            wave2_extra["malformed_rate"] = conf.get("malformed_rate")
+        if conf.get("predictions") is not None:
+            wave2_extra["predictions"] = conf.get("predictions")
         nodes.append(em.make_node(
             node_id=f"wave2-{bid}", label=f"Wave-2 {bid} (canonical k=3)",
             wave="wave2", stage=stage, protocol=rank_protocol, score=score,
             branch_id=bid, parent="wave1-winner",
             episodes_completed=rec.get("fuses", {}).get("episodes_completed", 0),
             episodes_expected=args.branch_max_episodes,
-            extra={"malformed_rate": conf.get("malformed_rate")} if conf.get("malformed_rate") is not None else None,
+            extra=(wave2_extra or None),
             provenance={
                 "subset_sha256": rec.get("subset_sha256"),
                 "subset_task_ids": rec.get("subset_task_ids"),
@@ -614,17 +683,7 @@ def main():
                 "screening_best_score": rec.get("screening_best_score"),
             }))
 
-    reference_lines = []
-    if args.incumbent_receipt:
-        inc = _load_json(args.incumbent_receipt)
-        reference_lines.append({
-            "label": "Incumbent gpt-4o (canonical k=1)",
-            "score": inc.get("mean_score"),
-            "protocol": em.make_protocol(method="canonical_rollout", split_sha256=dev_sha,
-                                         samples_per_task=int(inc.get("samples", 1))),
-            "rank_comparable": False,
-            "note": "k=1; not rank-comparable to canonical k=3 until rerun at k=3",
-        })
+    reference_lines = _reference_lines()
 
     totals = {
         "wall_clock_s": round(time.time() - started),
