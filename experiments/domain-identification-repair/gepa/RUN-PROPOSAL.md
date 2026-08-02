@@ -220,3 +220,71 @@ UNDERSTUDY_API_KEY=… \
 
 Omitting `--allow-unmetered-cost` ⇒ **fail-closed refusal** to start (student compute
 and reflection $ are not metered synchronously in-process).
+
+---
+
+## Turbo two-stage train/dev-only race (`turbo_race.py`)
+
+Follow-up to the completed wave-1 run. Train/dev only; **holdout untouched**.
+Seeds BOTH branches from the wave-1 winner prompt (candidate `6d19553e`), not the
+original seed. Provider-free logic is gated by `test_turbo.py`.
+
+### Global budget arithmetic (episodes)
+
+Two Stage-A branches at an unbounded per-branch cap could consume the whole
+budget and starve Stage-B. Capacity is therefore partitioned and admitted
+atomically under a single `GlobalBudget` lock:
+
+| Bucket | Cap | Rationale |
+| --- | --- | --- |
+| Stage-A per-branch | 36 | 32 planned metric episodes + ≤4 transient retries |
+| Stage-A global | 72 | 2 × 36; reservations refused past this, so they can never invade the escrow |
+| Stage-B escrow | 48 | 2 distinct winners × 24 (full dev 8 tasks × k=3), reserved **up front** |
+| **Total** | **120** | `stage_a_global_cap + stage_b_escrow` |
+| Reflections | ≤8 global (≤4/branch) | |
+
+Admission is all-or-nothing: a global-cap rejection never touches a branch
+counter and vice-versa. Each branch's confirmation allocation is a single
+per-winner 24-episode block (duplicate/oversized reservation refused, so one
+branch cannot grab 48 and starve the other). Confirmation may be **released only
+before Stage-B dispatch** (winner deduped to a cached score, or branch failed);
+once dispatched it is consumed and cannot be released.
+
+### Stage B
+
+Each branch winner is confirmed canonically on the FULL 8-task dev split at k=3
+via `rollout.mjs` (off the adapter path). The existing incumbent canonical dev
+receipt is **reused** (it is k=1 — a non-rank-comparable reference line, not a
+beat claim, until rerun at k=3). Selection is strictly by full-dev canonical
+score, tie-break malformed rate then latency. No partial promotion.
+
+### Exact command (runs only after green tests + pushed commit)
+
+```bash
+UNDERSTUDY_API_KEY=… \
+.understudy/venvs/optimize/bin/python \
+  experiments/domain-identification-repair/gepa/turbo_race.py \
+  --sidecar http://127.0.0.1:8787 \
+  --base-url http://127.0.0.1:8099/v1 \
+  --model nemotron-3-nano-base \
+  --seed-prompt <wave-1 winner optimized-system-prompt.txt> \
+  --max-metric-calls 32 \
+  --branch-max-episodes 36 \
+  --stage-a-global-cap 72 --stage-b-escrow 48 --max-total-episodes 120 \
+  --max-total-reflections 8 --branch-max-reflections 4 \
+  --concurrency 16 \
+  --max-wall-seconds 1200 \
+  --allow-unmetered-cost --spend-authorization-usd 1000 \
+  --wave1-seed-canonical <cached canonical seed dev json> \
+  --wave1-winner-canonical <cached canonical winner dev json> \
+  --incumbent-receipt <existing incumbent dev receipt json> \
+  --ingest-url http://127.0.0.1:5151/ingest \
+  --runs-root ~/.di-runs
+```
+
+Receipt records `holdout_executed=false`, `gepa_holdout_executed=false`,
+`total_cost_usd=null`, `cost_coverage="out_of_band_clickhouse"`,
+`spend_authorization_usd=1000`. The combined experiment manifest
+(`experiment_manifest.py`) is published to the viewer and is **visualization
+only** — it never orchestrates a run; scores are ranked only within one
+protocol identity (canonical rollout, k=3, dev split).
