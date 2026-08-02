@@ -1,0 +1,23 @@
+{
+  "schema_version": "understudy.gepa_receipt.v1",
+  "seed": 178561,
+  "dspy_version": "3.2.1",
+  "gepa_version": "0.0.27",
+  "student_model": "openai/nemotron-3-nano-base",
+  "reflection_model": "openai/kimi-k3",
+  "metric_budget": 40,
+  "candidates_tried": 1,
+  "state": "invalid_for_model_comparison",
+  "optimized_quality": null,
+  "state_reason": "Budget 40 produced only candidate 0 (unchanged seed); no mutation was promoted. NOT an optimization result. 0.5 is the GEPA-harness seed value only. Harness parity was audited in calibration/calib-20260802T195924Z (canonical vs adapter both span [0.50,0.75]; 0.75-vs-0.50 gap is temp-0 sampling variance at n=8, not a scoring defect).",
+  "best_dev_score_gepa_observed": 0.5,
+  "train_tasks": 24,
+  "dev_tasks": 8,
+  "train_split_sha256": "b358c36f429303d64bb9309a685f78ddfd03bd1602cbf415e8dd1e977ac93017",
+  "dev_split_sha256": "3934011a2182ac6d4b32e7016b705cb908e21c2c1ae469f3b0e116ed7bc345a2",
+  "holdout_executed": true,
+  "gepa_holdout_executed": false,
+  "fixture": "domain-identification-offline-v1",
+  "wall_clock_s": 1108,
+  "reflection_key_source": "UNDERSTUDY_API_KEY"
+}
