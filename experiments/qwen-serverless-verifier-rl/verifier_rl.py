@@ -220,9 +220,8 @@ def canonical_status(result: dict[str, Any]) -> dict[str, Any]:
     output = {
         "state": status.get("state", "queued"),
         "observed_at": observed_at(),
+        "artifact_refs": status.get("artifact_refs", []),
     }
-    if status.get("artifact_refs"):
-        output["artifact_refs"] = status["artifact_refs"]
     if status.get("failure_code"):
         output["failure_code"] = status["failure_code"]
     return output
