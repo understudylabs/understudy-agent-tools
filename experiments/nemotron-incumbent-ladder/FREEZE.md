@@ -10,7 +10,7 @@ Run the generator into a fresh directory, then verify row counts, category
 mix, split disjointness, and SHA-256 hashes before any model or provider call:
 
 ```sh
-node generate-mirror.mjs --out /tmp/incumbent-ladder-mirror
+node mirror/generate.mjs --out=/tmp/incumbent-ladder-mirror
 sha256sum /tmp/incumbent-ladder-mirror/{tasks,train,dev,holdout}.jsonl
 ```
 
