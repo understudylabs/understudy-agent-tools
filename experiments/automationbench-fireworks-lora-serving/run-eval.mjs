@@ -4,7 +4,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { evaluatePool } from "./harness.mjs";
+import { assertArmEntryGate, buildArmEvidenceRow } from "../../dist/arm-evidence/index.js";
+import { fixtureSha256, oraclePolicy, sentinelPolicy, taskBandForId, taskPool } from "../../dist/automationbench-offline.js";
+import { evaluatePool, runTask } from "./harness.mjs";
 import { fireworksCallModel } from "./fireworks-client.mjs";
 import { jsonTextCallModel } from "./json-text-tools.mjs";
 import { nemotronCallModel } from "./nemotron-text-tools.mjs";
@@ -20,9 +22,14 @@ export function parseArgs(argv) {
     label: "",
     protocol: "native",
     temperature: 0,
+    gateOnly: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    if (arg === "--gate-only") {
+      options.gateOnly = true;
+      continue;
+    }
     if (!arg.startsWith("--")) throw new Error(`unexpected argument: ${arg}`);
     const name = arg.slice(2);
     const value = argv[index + 1];
@@ -33,13 +40,22 @@ export function parseArgs(argv) {
     else if (name === "model") options.model = value;
     else if (name === "split") options.split = value;
     else if (name === "out") options.out = value;
+    else if (name === "arm-evidence-out") options.armEvidenceOut = value;
+    else if (name === "arm-id") options.armId = value;
+    else if (name === "lora-rank") options.loraRank = Number(value);
+    else if (name === "steps") options.steps = Number(value);
+    else if (name === "dataset-seed") options.datasetSeed = Number(value);
     else if (name === "label") options.label = value;
     else if (name === "frozen-holdout-sha256") options.frozenHoldoutSha256 = value;
     else if (name === "base-url") options.baseUrl = value;
     else if (name === "protocol") options.protocol = value;
     else throw new Error(`unknown argument: --${name}`);
   }
-  if (!options.model || !options.split || !options.out) {
+  if (options.gateOnly) {
+    options.model ??= "gate-only";
+    options.split ??= "train";
+  }
+  if (!options.model || !options.split || (!options.out && !options.gateOnly)) {
     throw new Error("--model, --split, and --out are required");
   }
   if (!["train", "dev", "holdout"].includes(options.split)) {
@@ -53,6 +69,12 @@ export function parseArgs(argv) {
   }
   if (!Number.isInteger(options.maxTokens) || options.maxTokens < 1) {
     throw new Error("--max-tokens must be a positive integer");
+  }
+  for (const [name, value] of [["lora-rank", options.loraRank], ["steps", options.steps]]) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 0)) throw new Error(`--${name} must be a nonnegative integer`);
+  }
+  if (options.datasetSeed !== undefined && !Number.isInteger(options.datasetSeed)) {
+    throw new Error("--dataset-seed must be an integer");
   }
   if (options.split === "holdout" && options.frozenHoldoutSha256 !== HOLDOUT_SHA256) {
     throw new Error(`holdout requires --frozen-holdout-sha256 ${HOLDOUT_SHA256}`);
@@ -71,8 +93,51 @@ function assertOutputPath(outputPath) {
 }
 
 export async function runEval(options = parseArgs(process.argv.slice(2))) {
+  const sanityTasks = taskPool({ split: "train" }).slice(0, 2);
+  const runOfflinePolicy = async (taskId, makePolicy) => {
+    const policy = makePolicy(taskId);
+    let step = 0;
+    const result = await runTask({
+      taskId,
+      callModel: async () => {
+        const action = policy({ step });
+        step += 1;
+        return action
+          ? {
+              role: "assistant",
+              tool_calls: [{
+                id: `entry-gate-${step}`,
+                type: "function",
+                function: { name: action.name, arguments: JSON.stringify(action.arguments) },
+              }],
+            }
+          : { role: "assistant", content: "" };
+      },
+    });
+    return result.score;
+  };
+  const entryGate = await assertArmEntryGate({
+    sanityTaskIds: sanityTasks.map((task) => task.taskId),
+    oracle: (taskId) => runOfflinePolicy(taskId, oraclePolicy),
+    sentinel: (taskId) => runOfflinePolicy(taskId, () => sentinelPolicy()),
+    holdout: {
+      expectedSha256: HOLDOUT_SHA256,
+      open: (hash) => {
+        const pool = hash === undefined
+          ? taskPool({ split: "holdout" })
+          : taskPool({ split: "holdout", frozenHoldoutSha256: hash });
+        return pool.length;
+      },
+    },
+  });
+  if (options.gateOnly) {
+    process.stdout.write(`${JSON.stringify({ entry_gate: entryGate }, null, 2)}\n`);
+    return { entry_gate: entryGate };
+  }
   const outputPath = assertOutputPath(options.out);
+  const armEvidencePath = assertOutputPath(options.armEvidenceOut ?? `${options.out}.arm-evidence.json`);
   mkdirSync(dirname(outputPath), { recursive: true });
+  mkdirSync(dirname(armEvidencePath), { recursive: true });
   const factory = options.protocol === "nemotron-text"
     ? nemotronCallModel
     : options.protocol === "json-text"
@@ -124,8 +189,34 @@ export async function runEval(options = parseArgs(process.argv.slice(2))) {
       transcript: result.transcript,
     })).join("\n")}\n`,
   );
+  const bandOf = (row) => {
+    if (typeof row.task_id !== "string") throw new Error("eval row has no task_id for band lookup");
+    return taskBandForId(row.task_id);
+  };
+  const armEvidence = buildArmEvidenceRow({
+    arm_id: (options.armId ?? options.label) || `${options.model}-${options.protocol}`,
+    run_id: callModel.runId,
+    created_at: new Date().toISOString(),
+    base_model_id: options.model,
+    renderer: options.protocol,
+    provider: "fireworks",
+    route: "fireworks-openai-compatible",
+    training: { lora_rank: options.loraRank ?? null, steps: options.steps ?? null },
+    dataset: { seed: options.datasetSeed ?? null, sha256: fixtureSha256() },
+    holdout: { split: "holdout", sealed_sha256: HOLDOUT_SHA256 },
+    cost: { usd: null, basis: "provider-usage-receipt-required" },
+    entryGate,
+    evalRows: evaluated.rows,
+    bandOf,
+    provenance: {
+      harness_sha256: evaluated.rows[0]?.provenance?.harness_sha256 ?? null,
+      split_sha256: evaluated.rows[0]?.provenance?.split_sha256 ?? null,
+      artifact_refs: [options.out, `${options.out}.transcripts.jsonl`],
+    },
+  });
+  writeFileSync(armEvidencePath, `${JSON.stringify(armEvidence, null, 2)}\n`);
   process.stdout.write(`${options.label || options.split} tasks=${evaluated.rows.length} mean_score=${evaluated.meanScore.toFixed(4)}\n`);
-  return artifact;
+  return { ...artifact, arm_evidence: armEvidence };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
