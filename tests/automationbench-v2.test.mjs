@@ -23,7 +23,7 @@ import {
 } from "../dist/automationbench-v2.js";
 
 /** The frozen v2 holdout. Changing a task changes this — that is the point. */
-const FROZEN_HOLDOUT_SHA256 = "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9";
+const FROZEN_HOLDOUT_SHA256 = "fd8583b875a4b7438a8f01d39845d5e323926938af82a32a5b3795a836228710";
 
 const READS = [
   { name: "api_search", arguments: { query: "crm contacts mail drafts messages support tickets" } },
@@ -113,7 +113,7 @@ describe("automationbench v2 hard split", () => {
   it("pins the frozen hashes", () => {
     assert.equal(v2SplitSha256("holdout"), FROZEN_HOLDOUT_SHA256);
     assert.match(v2FixtureSha256(), /^[0-9a-f]{64}$/);
-    assert.equal(AUTOMATIONBENCH_V2.fixture_id, "automationbench-simple-api-offline-v2");
+    assert.equal(AUTOMATIONBENCH_V2.fixture_id, "automationbench-simple-api-offline-hard-v2");
   });
 
   it("reports the harder bands", () => {

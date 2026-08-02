@@ -58,8 +58,8 @@ import {
 import type { Assertion, ContactSeed, DraftSeed, MessageSeed, Split, Task, TicketSeed, ToolCall } from "./automationbench-offline.js";
 
 export const AUTOMATIONBENCH_V2 = {
-  fixture_id: "automationbench-simple-api-offline-v2",
-  benchmark_id: "automationbench-simple-api-offline-v2",
+  fixture_id: "automationbench-simple-api-offline-hard-v2",
+  benchmark_id: "automationbench-simple-api-offline-hard-v2",
   /** v2 keeps the v1 subset pin, seed, and verifiers pin; only the task pool grows. */
   base_fixture_id: AUTOMATIONBENCH_SUBSET.fixture_id,
   split_seed: AUTOMATIONBENCH_SUBSET.split_seed,

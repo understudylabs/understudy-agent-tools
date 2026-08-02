@@ -10,7 +10,7 @@ demand a *join* before the first write.
 
 | Pin | Value |
 | --- | --- |
-| fixture id | `automationbench-simple-api-offline-v2` |
+| fixture id | `automationbench-simple-api-offline-hard-v2` |
 | base fixture | `automationbench-simple-api-offline-v1` (unchanged, still valid) |
 | reset / split seed | `7` |
 | tasks | 216 = 72 v1 + 144 hard |
@@ -26,7 +26,7 @@ demand a *join* before the first write.
 | `v2FixtureSha256()` | `918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22` |
 | `v2SplitSha256("train")` | `71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b` |
 | `v2SplitSha256("dev")` | `f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135` |
-| `v2SplitSha256("holdout")` | `2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9` |
+| `v2SplitSha256("holdout")` | `fd8583b875a4b7438a8f01d39845d5e323926938af82a32a5b3795a836228710` |
 | `splits_sha256` | `fa96e1215fc70dddae11d33069dc708c773c26fb1b93f5a72b9c96b04b5e86e0` |
 
 `v2TaskPool({ split: "holdout" })` throws unless the caller passes the holdout
@@ -143,7 +143,7 @@ node scripts/automationbench-v2-zeroshot.mjs \
 ```
 
 Holdout is read exactly once, at the end of an arm, with
-`--frozen-holdout 2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9`.
+`--frozen-holdout fd8583b875a4b7438a8f01d39845d5e323926938af82a32a5b3795a836228710`.
 
 All records are synthetic and index-generated. No private or customer data is
 present in this fixture.

@@ -1,7 +1,7 @@
 {
   "model": "nemotron-3-nano-30b-a3b",
   "split": "dev",
-  "fixture": "automationbench-simple-api-offline-v2",
+  "fixture": "automationbench-simple-api-offline-hard-v2",
   "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
   "pool_size": 36,
   "sampled": 36,

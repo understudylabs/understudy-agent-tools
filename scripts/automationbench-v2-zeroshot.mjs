@@ -207,7 +207,7 @@ async function main() {
   const report = {
     model,
     split,
-    fixture: "automationbench-simple-api-offline-v2",
+    fixture: "automationbench-simple-api-offline-hard-v2",
     split_sha256: v2SplitSha256(split),
     pool_size: V2_TASKS.filter((task) => task.split === split).length,
     sampled: tasks.length,
