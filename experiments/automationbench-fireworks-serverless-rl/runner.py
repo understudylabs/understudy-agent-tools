@@ -252,6 +252,7 @@ class Rollout:
     env_steps: int
     finished_explicitly: bool
     messages: list[Message]
+    terminal: dict[str, Any]
 
 
 def rollout(
@@ -262,9 +263,14 @@ def rollout(
     meter: TokenMeter,
     temperature: float,
     max_tokens: int = DEFAULT_MAX_TOKENS,
+    tokenizer: Any | None = None,
+    action_transform: Any | None = None,
+    prompt_override: str | None = None,
 ) -> Rollout:
     reset = env.reset(task["task_id"])
     episode_id = reset["episode_id"]
+    if prompt_override is not None:
+        reset["prompt"] = prompt_override
     messages: list[Message] = [
         {"role": "system", "content": reset["system_prompt"]},
         {"role": "user", "content": reset["prompt"]},
@@ -295,30 +301,55 @@ def rollout(
             assistant_message, termination = renderer.parse_response(tokens)
             text = get_text_content(assistant_message)
             messages.append({"role": "assistant", "content": text})
+            calls = parse_tool_calls(text)
+            parsed_action = calls[0] if len(calls) == 1 else None
+            action = action_transform(parsed_action) if action_transform else parsed_action
             turn = {
                 "prompt": prompt,
+                "prompt_tokens": [
+                    token
+                    for chunk in prompt.chunks
+                    for token in (getattr(chunk, "tokens", []) or [])
+                ],
+                "prompt_text": (
+                    tokenizer.decode(
+                        [
+                            token
+                            for chunk in prompt.chunks
+                            for token in (getattr(chunk, "tokens", []) or [])
+                        ],
+                        skip_special_tokens=False,
+                    )
+                    if tokenizer is not None
+                    else None
+                ),
                 "tokens": tokens,
                 "logprobs": [float(value) for value in logprobs],
                 "text": text,
                 "termination": str(termination),
+                "sample_seconds": sample_seconds,
+                "parsed_action": parsed_action,
+                "action_sent": action,
             }
             turns.append(turn)
-            calls = parse_tool_calls(text)
-            if len(calls) != 1 or calls[0]["name"] not in {"api_search", "api_fetch", "finish"}:
+            if action is None or action["name"] not in {"api_search", "api_fetch", "finish"}:
                 error = "expected exactly one api_search, api_fetch, or finish tool call"
                 parse_errors.append(error)
                 messages.append(
                     {"role": "tool", "content": json.dumps({"error": error}, separators=(",", ":"))}
                 )
+                turn["tool_observation"] = json.dumps({"error": error}, separators=(",", ":"))
                 continue
-            call = calls[0]
+            call = action
             if call["name"] == "finish":
                 terminal = env.finish(episode_id)
                 finished_explicitly = True
+                turn["tool_observation"] = None
                 break
             step_result = env.step(episode_id, call["name"], call["arguments"])
             env_steps += 1
             messages.append({"role": "tool", "content": step_result["observation"]})
+            turn["tool_observation"] = step_result["observation"]
             if step_result.get("done"):
                 terminal = env.finish(episode_id)
                 break
@@ -333,6 +364,7 @@ def rollout(
             env_steps=env_steps,
             finished_explicitly=finished_explicitly,
             messages=messages,
+            terminal=terminal,
         )
     finally:
         env.delete_episode(episode_id)
@@ -505,6 +537,9 @@ def evaluate_model(
     cap: float,
     output: Path,
     backend_name: str = "serverless",
+    control: str | None = None,
+    transcript_dir: Path | None = None,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     tokenizer, renderer, tokenizer_name, renderer_name = _renderer_for(model)
     backend_cls = ServerlessBackend if backend_name == "serverless" else TinkerBackend
@@ -516,9 +551,22 @@ def evaluate_model(
         sampler = backend.create_sampling_client(snapshot, tokenizer)
         try:
             tasks = env.tasks(split)
+            if limit is not None:
+                tasks = tasks[:limit]
             rows: list[dict[str, Any]] = []
             for task in tasks:
-                rollout_result = rollout(env, sampler, renderer, task, meter, temperature=0.0)
+                transform = _control_transform(control)
+                rollout_result = rollout(
+                    env,
+                    sampler,
+                    renderer,
+                    task,
+                    meter,
+                    temperature=0.0,
+                    tokenizer=tokenizer,
+                    action_transform=transform,
+                    prompt_override="" if control == "blank-prompt" else None,
+                )
                 rows.append(
                     {
                         "task_id": rollout_result.task_id,
@@ -529,10 +577,13 @@ def evaluate_model(
                         "model_turns": len(rollout_result.turns),
                     }
                 )
+                if transcript_dir is not None and len(rows) <= 3:
+                    _write_transcript(transcript_dir, model, split, control, rollout_result)
                 meter.enforce_cap(cap)
             summary = {
                 "model": model,
                 "backend": backend_name,
+                "control": control,
                 "tokenizer": tokenizer_name,
                 "renderer": renderer_name,
                 "split": split,
@@ -552,6 +603,66 @@ def evaluate_model(
             sampler.close()
     finally:
         backend.close()
+
+
+def _control_transform(control: str | None) -> Any | None:
+    if control is None:
+        return None
+    if control == "null":
+        return lambda _action: {
+            "name": "api_search",
+            "arguments": {"query": "this-query-cannot-match-anything"},
+        }
+    if control == "swap":
+        def swap(action: dict[str, Any] | None) -> dict[str, Any]:
+            if action is None:
+                return {
+                    "name": "api_search",
+                    "arguments": {"query": "this-query-cannot-match-anything"},
+                }
+            if action["name"] == "api_search":
+                return {"name": "api_fetch", "arguments": action["arguments"]}
+            if action["name"] == "api_fetch":
+                return {"name": "api_search", "arguments": action["arguments"]}
+            return action
+        return swap
+    if control == "forbidden":
+        return lambda _action: {
+            "name": "api_fetch",
+            "arguments": {
+                "method": "PATCH",
+                "url": "/crm/contacts/c-0",
+                "body": {"name": "forbidden-control"},
+            },
+        }
+    raise ValueError(f"unknown control: {control}")
+
+
+def _write_transcript(
+    directory: Path,
+    model: str,
+    split: str,
+    control: str | None,
+    rollout_result: Rollout,
+) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    safe_model = model.replace("/", "__")
+    suffix = control or "base"
+    payload = {
+        "task_id": rollout_result.task_id,
+        "split": rollout_result.split,
+        "reward": rollout_result.reward,
+        "env_steps": rollout_result.env_steps,
+        "finished_explicitly": rollout_result.finished_explicitly,
+        "parse_errors": rollout_result.parse_errors,
+        "turns": [
+            {key: value for key, value in turn.items() if key != "prompt"}
+            for turn in rollout_result.turns
+        ],
+        "terminal": rollout_result.terminal,
+    }
+    path = directory / f"{safe_model}-{split}-{suffix}-{rollout_result.task_id}.json"
+    path.write_text(json.dumps(payload, indent=2) + "\n")
 
 
 def preflight(models: list[str], task_count: int, max_tokens: int, cap: float) -> None:
@@ -581,6 +692,13 @@ def main() -> None:
     parser.add_argument("command", choices=["gate", "preflight", "eval"])
     parser.add_argument("--model", choices=sorted(RENDERERS))
     parser.add_argument("--backend", choices=["serverless", "tinker"], default="serverless")
+    parser.add_argument(
+        "--control",
+        choices=["null", "swap", "forbidden", "blank-prompt"],
+        default=None,
+    )
+    parser.add_argument("--transcript-dir", type=Path)
+    parser.add_argument("--limit", type=int)
     parser.add_argument("--split", choices=["train", "dev"], default="dev")
     parser.add_argument("--cap", type=float, default=10.0)
     parser.add_argument("--output", type=Path)
@@ -600,7 +718,17 @@ def main() -> None:
             if not args.model:
                 parser.error("--model is required for eval")
             output = args.output or (ARTIFACT_DIR / f"base-{args.model.rsplit('/', 1)[-1]}-{args.split}.json")
-            evaluate_model(args.model, args.split, env, args.cap, output, args.backend)
+            evaluate_model(
+                args.model,
+                args.split,
+                env,
+                args.cap,
+                output,
+                args.backend,
+                args.control,
+                args.transcript_dir,
+                args.limit,
+            )
     finally:
         env.stop()
 
