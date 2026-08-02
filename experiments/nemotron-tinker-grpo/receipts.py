@@ -2,12 +2,55 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import httpx
 import tinker
+from tinker import ServiceClient as TinkerServiceClient
+
+BASE_URL = os.environ.get(
+    "TINKER_BASE_URL",
+    "https://tinker.thinkingmachines.dev/services/tinker-prod",
+).rstrip("/")
+BILLING_USAGE_PATH = "/api/v1/get_billing_usage"
+
+
+def service_client() -> tinker.ServiceClient:
+    api_key = os.environ.get("TINKER_API_KEY")
+    if not api_key:
+        return TinkerServiceClient()
+    headers = {"X-Api-Key": api_key}
+    with httpx.Client(base_url=BASE_URL, headers=headers, timeout=20.0) as client:
+        config = client.post(
+            "/api/v1/client/config",
+            json={"sdk_version": getattr(tinker, "__version__", "0.23.1")},
+        )
+        config.raise_for_status()
+        client_config = config.json()
+        client_config["pjwt_auth_enabled"] = False
+        client_config["use_pyqwest_transport"] = False
+        session = client.post(
+            "/api/v1/create_session",
+            json={
+                "tags": [],
+                "user_metadata": {},
+                "sdk_version": getattr(tinker, "__version__", "0.23.1"),
+            },
+        )
+        session.raise_for_status()
+        session_id = session.json()["session_id"]
+    client = TinkerServiceClient(
+        _client_config=client_config,
+        session_id=session_id,
+    )
+    client.holder._sampling_client_counter = 0
+    client.holder._training_client_counter = 0
+    return client
 
 
 def _window() -> tuple[str, str]:
@@ -38,8 +81,26 @@ def _snapshot_response(response: Any, starting_on: str, ending_before: str) -> d
 def snapshot_usage(rest_client: Any, starting_on: str | None = None, ending_before: str | None = None) -> dict[str, Any]:
     if starting_on is None or ending_before is None:
         starting_on, ending_before = _window()
-    response = rest_client.get_billing_usage(starting_on, ending_before).result()
-    return _snapshot_response(response, starting_on, ending_before)
+    api_key = os.environ.get("TINKER_API_KEY")
+    if not api_key:
+        return _snapshot_response({}, starting_on, ending_before)
+    response = httpx.get(
+        f"{BASE_URL}{BILLING_USAGE_PATH}",
+        headers={"X-Api-Key": api_key},
+        params={"starting_on": starting_on, "ending_before": ending_before},
+        timeout=20.0,
+    )
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"text": response.text}
+    return {
+        "starting_on": starting_on,
+        "ending_before": ending_before,
+        "endpoint": f"{BASE_URL}{BILLING_USAGE_PATH}",
+        "status_code": response.status_code,
+        "response": payload,
+    }
 
 
 async def snapshot_usage_async(
@@ -49,8 +110,7 @@ async def snapshot_usage_async(
 ) -> dict[str, Any]:
     if starting_on is None or ending_before is None:
         starting_on, ending_before = _window()
-    response = await rest_client.get_billing_usage_async(starting_on, ending_before)
-    return _snapshot_response(response, starting_on, ending_before)
+    return await asyncio.to_thread(snapshot_usage, rest_client, starting_on, ending_before)
 
 
 def _event_totals(snapshot: dict[str, Any]) -> dict[str, Any]:

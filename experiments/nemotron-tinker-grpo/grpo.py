@@ -41,7 +41,7 @@ from tinker_cookbook.rl.types import (
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 from env_client import close_service, get_service
-from receipts import snapshot_usage_async, usage_delta
+from receipts import service_client, snapshot_usage_async, usage_delta
 from rollout import (
     LORA_RANK,
     MAX_MODEL_TURNS,
@@ -62,6 +62,7 @@ GROUP_SIZE = 8
 GROUPS_PER_BATCH = 8
 DATASET_SEED = 7
 LEARNING_RATE = 1e-5
+DEFAULT_EVAL_STEPS = (10, 20, 30, 40)
 
 RL_DEVIATION = (
     "This is a Verifiers-style MultiTurnEnv in structure, but the verifiers "
@@ -471,6 +472,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stage", choices=("1", "2"), default="1")
     parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--lora-rank", type=int, default=LORA_RANK)
+    parser.add_argument("--eval-steps", type=int, nargs="+", default=DEFAULT_EVAL_STEPS)
     parser.add_argument("--log-path")
     parser.add_argument("--load-checkpoint-path", default=SFT_STATE_PATH)
     return parser.parse_args()
@@ -485,14 +488,14 @@ def _checkpoint_records(log_path: Path) -> list[dict[str, Any]]:
 
 async def _run_stage(args: argparse.Namespace) -> None:
     max_steps = args.max_steps or (2 if args.stage == "1" else 40)
-    if max_steps < 1:
-        raise SystemExit("--max-steps must be positive")
+    if max_steps < 1 or args.lora_rank < 1 or any(step < 1 for step in args.eval_steps):
+        raise SystemExit("max steps, LoRA rank, and eval steps must be positive")
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     log_path = Path(args.log_path or (ARTIFACT_DIR / f"grpo-stage{args.stage}-log"))
     log_path.mkdir(parents=True, exist_ok=True)
 
-    service_client = tinker.ServiceClient()
-    rest_client = service_client.create_rest_client()
+    client = service_client()
+    rest_client = client.create_rest_client()
     usage_before = await snapshot_usage_async(rest_client)
     started = time.monotonic()
     try:
@@ -515,13 +518,18 @@ async def _run_stage(args: argparse.Namespace) -> None:
             kl_penalty_coef=0.0,
             loss_fn="importance_sampling",
             num_substeps=1,
-            lora_rank=LORA_RANK,
             temperature=1.0,
             remove_constant_reward_groups=True,
             max_steps=max_steps,
+            lora_rank=args.lora_rank,
             rollout_json_export=True,
         )
-        await train.main(config)
+        sdk_service_client = tinker.ServiceClient
+        tinker.ServiceClient = lambda **_: client
+        try:
+            await train.main(config)
+        finally:
+            tinker.ServiceClient = sdk_service_client
     finally:
         close_service()
     elapsed = time.monotonic() - started
@@ -535,7 +543,8 @@ async def _run_stage(args: argparse.Namespace) -> None:
             "wall_clock_seconds": elapsed,
             "model": MODEL_NAME,
             "renderer": RENDERER_NAME,
-            "lora_rank": LORA_RANK,
+            "lora_rank": args.lora_rank,
+            "eval_steps": args.eval_steps,
             "max_tokens": MAX_TOKENS,
             "group_size": GROUP_SIZE,
             "groups_per_batch": GROUPS_PER_BATCH,
@@ -595,10 +604,14 @@ async def _run_stage(args: argparse.Namespace) -> None:
     print(json.dumps({"telemetry": telemetry, "checkpoints": checkpoint_records}, indent=2))
 
 
-def _evaluate_stage2_checkpoints(log_path: Path) -> None:
+def _evaluate_stage2_checkpoints(
+    log_path: Path,
+    eval_steps: Sequence[int],
+    lora_rank: int,
+) -> None:
     records = _checkpoint_records(log_path)
     table: list[dict[str, Any]] = []
-    for step in (10, 20, 30, 40):
+    for step in eval_steps:
         matches = [
             record
             for record in records
@@ -615,6 +628,8 @@ def _evaluate_stage2_checkpoints(log_path: Path) -> None:
             "dev",
             "--model-path",
             checkpoint["sampler_path"],
+            "--lora-rank",
+            str(lora_rank),
             "--label",
             f"grpo-step{step}-dev",
             "--temperature",
@@ -662,7 +677,9 @@ async def main() -> None:
     await _run_stage(args)
     if args.stage == "2":
         _evaluate_stage2_checkpoints(
-            Path(args.log_path or (ARTIFACT_DIR / "grpo-stage2-log"))
+            Path(args.log_path or (ARTIFACT_DIR / "grpo-stage2-log")),
+            args.eval_steps,
+            args.lora_rank,
         )
 
 

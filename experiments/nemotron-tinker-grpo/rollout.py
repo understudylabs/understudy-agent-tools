@@ -100,6 +100,7 @@ class RolloutConfig:
     temperature: float
     frozen_holdout_sha256: str | None = None
     max_model_turns: int = MAX_MODEL_TURNS
+    lora_rank: int = LORA_RANK
 
 
 def _sample_sync(

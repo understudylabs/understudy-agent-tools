@@ -2,7 +2,7 @@
 
 This is intentionally an isolated experiment harness rather than product
 runtime code. It regenerates oracle data from the checked-in Node evaluator,
-trains a rank-32 LoRA adapter, and evaluates every saved epoch checkpoint
+trains a configurable-rank LoRA adapter, and evaluates every saved epoch checkpoint
 through the shared rollout driver.
 """
 
@@ -24,7 +24,7 @@ from tinker_cookbook.supervised.common import compute_mean_nll
 from tinker_cookbook.supervised.data import conversation_to_datum
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
-from receipts import snapshot_usage, usage_delta
+from receipts import service_client, snapshot_usage, usage_delta
 from rollout import LORA_RANK, MODEL_NAME, RENDERER_DEVIATION, RENDERER_NAME
 
 REPO = Path(__file__).resolve().parents[2]
@@ -42,6 +42,7 @@ VARIANCE_SAMPLES = 8
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-training", action="store_true")
+    parser.add_argument("--lora-rank", type=int, default=LORA_RANK)
     parser.add_argument("--epochs", type=int, default=EPOCHS)
     parser.add_argument("--max-length", type=int, default=MAX_LENGTH)
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE)
@@ -173,12 +174,13 @@ def _train(
     epochs: int,
     batch_size: int,
     learning_rate: float,
+    lora_rank: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(datums) % batch_size:
         raise RuntimeError("batch size must divide 48 so every epoch has exactly 3 steps")
     training_client = service_client.create_lora_training_client(
         base_model=MODEL_NAME,
-        rank=LORA_RANK,
+        rank=lora_rank,
     )
     steps_per_epoch = len(datums) // batch_size
     total_steps = epochs * steps_per_epoch
@@ -223,13 +225,12 @@ def _train(
             name=f"sft-epoch{epoch}"
         ).result()
         sampler_path = _extract_path(sampler_response)
+        state_response = training_client.save_state(name=f"sft-epoch{epoch}-state").result()
         checkpoint: dict[str, Any] = {
             "epoch": epoch,
             "sampler_path": sampler_path,
+            "state_path": _extract_path(state_response),
         }
-        if epoch == epochs:
-            state_response = training_client.save_state(name=f"sft-epoch{epoch}-state").result()
-            checkpoint["state_path"] = _extract_path(state_response)
         checkpoints.append(checkpoint)
         print(json.dumps({"sft_checkpoint": checkpoint}, sort_keys=True), flush=True)
     metrics = {
@@ -240,7 +241,7 @@ def _train(
         "wall_clock_seconds": time.monotonic() - started,
         "step_logs": logs,
         "checkpoints": checkpoints,
-        "lora_rank": LORA_RANK,
+        "lora_rank": lora_rank,
         "learning_rate": learning_rate,
         "renderer": RENDERER_NAME,
         "renderer_deviation": RENDERER_DEVIATION,
@@ -260,6 +261,7 @@ def _run_evaluation(
     split: str,
     model_path: str,
     out_path: Path,
+    lora_rank: int,
     samples: int = 1,
     temperature: float = 0.0,
     limit: int | None = None,
@@ -271,6 +273,8 @@ def _run_evaluation(
         split,
         "--model-path",
         model_path,
+        "--lora-rank",
+        str(lora_rank),
         "--label",
         label,
         "--temperature",
@@ -294,11 +298,16 @@ def _select_sft_checkpoint(dev_results: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main() -> None:
     args = _args()
-    if args.epochs < 1 or args.batch_size < 1 or args.max_length < 1:
-        raise SystemExit("epochs, batch size, and max length must be positive")
+    if (
+        args.epochs < 1
+        or args.batch_size < 1
+        or args.max_length < 1
+        or args.lora_rank < 1
+    ):
+        raise SystemExit("epochs, batch size, max length, and LoRA rank must be positive")
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    service_client = tinker.ServiceClient()
-    rest_client = service_client.create_rest_client()
+    client = service_client()
+    rest_client = client.create_rest_client()
 
     data_before = snapshot_usage(rest_client)
     data_started = time.monotonic()
@@ -330,11 +339,12 @@ def main() -> None:
     train_started = time.monotonic()
     checkpoints, train_metrics = _train(
         datums,
-        service_client,
+        client,
         rest_client,
         epochs=args.epochs,
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
+        lora_rank=args.lora_rank,
     )
     train_metrics["wall_clock_seconds"] = time.monotonic() - train_started
     (ARTIFACT_DIR / "sft-training-metrics.json").write_text(
@@ -359,11 +369,13 @@ def main() -> None:
             "dev",
             checkpoint["sampler_path"],
             ARTIFACT_DIR / f"sft-epoch{epoch}-dev.jsonl",
+            lora_rank=args.lora_rank,
         )
         dev_results.append(
             {
                 "epoch": epoch,
                 "sampler_path": checkpoint["sampler_path"],
+                "state_path": checkpoint["state_path"],
                 "mean_reward": summary["mean_reward"],
                 "strict_pass_rate": summary["strict_pass_rate"],
                 "summary_path": str(ARTIFACT_DIR / f"sft-epoch{epoch}-dev.summary.json"),
@@ -386,6 +398,7 @@ def main() -> None:
         "train",
         selected_path,
         ARTIFACT_DIR / "sft-selected-train.jsonl",
+        lora_rank=args.lora_rank,
     )
     evaluation_phases.append(
         {
@@ -402,6 +415,7 @@ def main() -> None:
         "dev",
         selected_path,
         ARTIFACT_DIR / "sft-selected-dev.jsonl",
+        lora_rank=args.lora_rank,
     )
     evaluation_phases.append(
         {
@@ -421,6 +435,7 @@ def main() -> None:
         samples=VARIANCE_SAMPLES,
         temperature=1.0,
         limit=VARIANCE_LIMIT,
+        lora_rank=args.lora_rank,
     )
     evaluation_phases.append(
         {
@@ -449,32 +464,29 @@ def main() -> None:
         )
         + "\n"
     )
-    (ARTIFACT_DIR / "sft-selection.json").write_text(
-        json.dumps(
-            {
-                "per_epoch_dev": dev_results,
-                "selected_epoch": selected["epoch"],
-                "selected_sampler_path": selected_path,
-                "selected_state_path": checkpoints[-1].get("state_path"),
-                "selection_rationale": (
-                    "Epoch 3 and epoch 4 tie on dev reward. Prefer the latest tied "
-                    "epoch, because RL initializes from its saved LoRA state; epoch "
-                    "4 is the tied checkpoint with the resumable state artifact."
-                ),
-                "selected_train_summary": selected_train,
-                "selected_dev_summary": selected_dev,
-                "selected_variance_summary": selected_variance,
-                "baseline_summary_paths": [
-                    str(ARTIFACT_DIR / "baseline-train.summary.json"),
-                    str(ARTIFACT_DIR / "baseline-dev.summary.json"),
-                    str(ARTIFACT_DIR / "variance-train-8x8.summary.json"),
-                ],
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
-    )
+    selection = {
+        "lora_rank": args.lora_rank,
+        "per_epoch_dev": dev_results,
+        "selected_epoch": selected["epoch"],
+        "selected_sampler_path": selected_path,
+        "selected_state_path": selected["state_path"],
+        "selection_rule": "best dev reward, ties select latest epoch",
+        "selection_rationale": (
+            "Select the highest dev reward; when tied, select the latest "
+            "epoch. Every epoch has a resumable state artifact."
+        ),
+        "selected_train_summary": selected_train,
+        "selected_dev_summary": selected_dev,
+        "selected_variance_summary": selected_variance,
+        "baseline_summary_paths": [
+            str(ARTIFACT_DIR / "baseline-train.summary.json"),
+            str(ARTIFACT_DIR / "baseline-dev.summary.json"),
+            str(ARTIFACT_DIR / "variance-train-8x8.summary.json"),
+        ],
+    }
+    selection_json = json.dumps(selection, indent=2, sort_keys=True) + "\n"
+    (ARTIFACT_DIR / "sft-selection.json").write_text(selection_json)
+    (ARTIFACT_DIR / f"sft-selection-rank{args.lora_rank}.json").write_text(selection_json)
     print(
         json.dumps(
             {

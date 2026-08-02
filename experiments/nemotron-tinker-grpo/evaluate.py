@@ -14,7 +14,7 @@ from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 from env_client import close_service, get_service
-from receipts import snapshot_usage_async, write_receipt
+from receipts import service_client, snapshot_usage_async, write_receipt
 from rollout import (
     LORA_RANK,
     MODEL_NAME,
@@ -32,6 +32,7 @@ def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=("train", "dev", "holdout"), required=True)
     parser.add_argument("--model-path", required=True, help="base or a saved tinker:// model path")
+    parser.add_argument("--lora-rank", type=int, default=LORA_RANK)
     parser.add_argument("--label", default="eval")
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--samples", type=int, default=1)
@@ -74,6 +75,8 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("--samples must be positive")
     if args.concurrency < 1:
         raise SystemExit("--concurrency must be positive")
+    if args.lora_rank < 1:
+        raise SystemExit("--lora-rank must be positive")
     if args.split == "holdout" and not args.frozen_holdout_sha256:
         raise SystemExit("--frozen-holdout-sha256 is required for --split holdout")
 
@@ -85,14 +88,14 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     tokenizer = get_tokenizer(MODEL_NAME)
     renderer = renderers.get_renderer(RENDERER_NAME, tokenizer, model_name=MODEL_NAME)
-    service_client = tinker.ServiceClient()
-    rest_client = service_client.create_rest_client()
+    client = service_client()
+    rest_client = client.create_rest_client()
     receipt_path = Path(args.out).with_suffix(".usage.json")
     usage_before = await snapshot_usage_async(rest_client)
     if args.model_path == "base":
-        sampling_client = await service_client.create_sampling_client_async(base_model=MODEL_NAME)
+        sampling_client = await client.create_sampling_client_async(base_model=MODEL_NAME)
     else:
-        sampling_client = await service_client.create_sampling_client_async(model_path=args.model_path)
+        sampling_client = await client.create_sampling_client_async(model_path=args.model_path)
 
     semaphore = asyncio.Semaphore(args.concurrency)
 
@@ -106,6 +109,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 RolloutConfig(
                     temperature=args.temperature,
                     frozen_holdout_sha256=args.frozen_holdout_sha256,
+                    lora_rank=args.lora_rank,
                 ),
             )
             result["sample_index"] = sample_index
@@ -164,7 +168,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "model": model_label,
         "renderer": RENDERER_NAME,
         "renderer_deviation": RENDERER_DEVIATION,
-        "lora_rank": LORA_RANK,
+        "lora_rank": args.lora_rank,
         "temperature": args.temperature,
         "samples_per_task": args.samples,
         "task_count": len(tasks),
