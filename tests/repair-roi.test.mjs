@@ -41,6 +41,56 @@ test("stable task fingerprint masks per-instance values but changes with system/
   assert.equal(maskRepairText("https://x.test 42 a@b.test"), "<url> <num> <email>");
 });
 
+test("coarse task fingerprints ignore conversation turn depth while variants retain it", () => {
+  const oneTurn = capture("one-turn", "classify", {
+    customer_request_body: JSON.stringify({
+      system: "Classify the order.",
+      messages: [
+        { role: "user", content: "classify" },
+        { role: "assistant", content: "working" },
+      ],
+      tools: [{ name: "classify-order" }],
+    }),
+  });
+  const threeTurns = capture("three-turn", "classify", {
+    customer_request_body: JSON.stringify({
+      system: "Classify the order.",
+      messages: [
+        { role: "user", content: "classify" },
+        { role: "assistant", content: "working" },
+        { role: "user", content: "continue" },
+      ],
+      tools: [{ name: "classify-order" }],
+    }),
+  });
+  const a = repairFingerprints(readRepairCaptures(writeFixture([oneTurn]))[0]);
+  const b = repairFingerprints(readRepairCaptures(writeFixture([threeTurns]))[0]);
+  assert.equal(a.task_fingerprint, b.task_fingerprint);
+  assert.notEqual(a.variant_fingerprint, b.variant_fingerprint);
+});
+
+test("recovers token usage from provider SSE frames", () => {
+  const row = capture("sse", "classify", {
+    input_tokens: undefined,
+    output_tokens: undefined,
+    response_body: [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":321,"cache_read_input_tokens":12,"cache_creation_input_tokens":4}}}',
+      "",
+      "event: message_delta",
+      'data: {"type":"message_delta","usage":{"output_tokens":37}}',
+      "",
+      "data: [DONE]",
+    ].join("\n"),
+  });
+  const parsed = readRepairCaptures(writeFixture([row]))[0];
+  assert.equal(parsed.token_source, "observed");
+  assert.equal(parsed.input_tokens, 321);
+  assert.equal(parsed.output_tokens, 37);
+  assert.equal(parsed.cache_read_input_tokens, 12);
+  assert.equal(parsed.cache_creation_input_tokens, 4);
+});
+
 test("rank output is aggregate-only and does not leak capture text", () => {
   const sentinel = "DISTINCTIVE_CAPTURE_SENTINEL_9f4e";
   const captures = Array.from({ length: 22 }, (_, index) => capture(String(index), `${sentinel} order ${index}`));

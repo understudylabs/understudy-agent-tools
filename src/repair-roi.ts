@@ -11,6 +11,8 @@ export type RateCardEntry = {
   output: number;
   source: string;
   checked_at: string;
+  rate_basis?: "nnls" | "blended_fallback" | "published";
+  r2?: number;
 };
 
 export type RepairRateCard = {
@@ -133,11 +135,16 @@ export type RepairWorkload = {
     dominant_incumbent_model: string;
     candidate_model: string;
     model_mix: Record<string, { request_count: number; cost_share: number; priced: boolean }>;
+    rate_basis: Record<string, { basis: "nnls" | "blended_fallback" | "published" | "unknown"; r2: number | null }>;
+    fallback_rate_models: string[];
     unpriced_request_share: number;
     unpriced_models: string[];
+    no_opportunity_reason: "already_on_candidate" | "candidate_not_cheaper" | "unpriced" | null;
     incumbent_cost_30d_usd: number;
     candidate_cost_30d_usd: number;
-    token_source: "observed" | "estimated";
+    token_source: "observed" | "estimated" | "mixed";
+    observed_token_share: number;
+    estimated_request_count: number;
   };
 };
 
@@ -191,6 +198,27 @@ function rows(path: string): JsonObject[] {
 function responseProjection(raw: unknown): JsonObject {
   const parsed = jsonish(raw);
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return object(parsed);
+  if (typeof raw === "string" && /^\s*data:/m.test(raw)) {
+    const usage: JsonObject = {};
+    const toolCalls: JsonObject[] = [];
+    for (const block of raw.split(/\r?\n\r?\n/)) {
+      const data = block.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("\n");
+      if (!data || data === "[DONE]") continue;
+      try {
+        const frame = object(JSON.parse(data));
+        const frameUsage = object(frame.usage ?? object(frame.message).usage);
+        Object.assign(usage, frameUsage);
+        const choices = Array.isArray(frame.choices) ? frame.choices : [];
+        for (const choice of choices) {
+          const calls = object(object(choice).delta).tool_calls;
+          if (Array.isArray(calls)) toolCalls.push(...calls.map(object));
+        }
+      } catch {
+        // Ignore non-JSON SSE comments and provider keep-alive frames.
+      }
+    }
+    return { text: raw, usage, tool_calls: toolCalls };
+  }
   return { text: text(raw) };
 }
 
@@ -319,6 +347,10 @@ function roleSkeleton(messages: JsonObject[]): string {
   return roles.join(">");
 }
 
+function roleSet(messages: JsonObject[]): string[] {
+  return [...new Set(messages.map((message) => text(message.role) || "unknown"))].sort();
+}
+
 function settingShape(settings: JsonObject): JsonObject {
   const max = number(settings.max_tokens ?? settings.max_completion_tokens);
   const temperature = number(settings.temperature);
@@ -343,7 +375,7 @@ export function repairFingerprints(capture: RepairCapture): Fingerprints {
     endpoint: capture.endpoint,
     system: mask(capture.system).slice(0, 4096),
     tools: [...new Set(capture.tools.map((tool) => text(tool.name) || text(object(tool.function).name)))].sort(),
-    roles: roleSkeleton(capture.messages),
+    roles: roleSet(capture.messages),
     shape: setting,
   };
   const taskFingerprint = sha(task).slice(0, 32);
@@ -351,7 +383,10 @@ export function repairFingerprints(capture: RepairCapture): Fingerprints {
   const userText = mask(contentText(firstUser?.content));
   const tokens = [...new Set(userText.toLowerCase().split(/[^a-z0-9<>]+/).filter((token) => token.length > 2))];
   const shingles = tokens.slice(0, 40).map((token, index) => `${tokens[index - 1] ?? "^"}:${token}`).slice(0, 32);
-  return { task_fingerprint: taskFingerprint, variant_fingerprint: sha({ taskFingerprint, shingles }).slice(0, 32) };
+  return {
+    task_fingerprint: taskFingerprint,
+    variant_fingerprint: sha({ taskFingerprint, role_skeleton: roleSkeleton(capture.messages), shingles }).slice(0, 32),
+  };
 }
 
 function rateCard(value: unknown): RepairRateCard {
@@ -456,6 +491,14 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
       cost_share: incumbentCost > 0 && total.priced ? (total.cost / 1_000_000) / incumbentCost : 0,
       priced: total.priced,
     }]));
+    const rateBasis = Object.fromEntries([...modelTotals.keys()].sort().map((model) => {
+      const entry = card.models[model];
+      return [model, {
+        basis: (entry?.rate_basis ?? "unknown") as "nnls" | "blended_fallback" | "published" | "unknown",
+        r2: typeof entry?.r2 === "number" ? entry.r2 : null,
+      }];
+    }));
+    const fallbackRateModels = [...modelTotals.keys()].filter((model) => card.models[model]?.rate_basis === "blended_fallback").sort();
     const dominantIncumbentModel = [...modelTotals.entries()].filter(([, total]) => total.priced).sort(([, a], [, b]) => b.cost - a.cost)[0]?.[0] ?? "unknown";
     const volume = Math.log1p(workloadCaptures.length) / Math.log1p(maxCount);
     const repeatability = hhi;
@@ -468,6 +511,11 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
     const weightTotal = weights.brevity + weights.structured + weights.context + weights.errors || 1;
     const headroom = clamp((weights.brevity * brevity + weights.structured * (structured / workloadCaptures.length) + weights.context * contextPenalty + weights.errors * errorPenalty) / weightTotal);
     const delta = unpricedModels.length === 0 && incumbentCost > 0 ? clamp(1 - candidateCost / incumbentCost) : 0;
+    const noOpportunityReason = unpricedModels.length > 0
+      ? "unpriced"
+      : delta <= 0
+        ? (modelTotals.size === 1 && modelTotals.has(card.candidate_model) ? "already_on_candidate" : "candidate_not_cheaper")
+        : null;
     const roi = volume * repeatability * headroom * delta;
     const dailyIncumbent = incumbentCost / actualDays;
     const savings30 = unpricedModels.length === 0 ? Math.max(0, (dailyIncumbent - candidateCost / actualDays) * 30 * populationScale) : null;
@@ -495,11 +543,20 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
         dominant_incumbent_model: dominantIncumbentModel,
         candidate_model: card.candidate_model,
         model_mix: modelMix,
+        rate_basis: rateBasis,
+        fallback_rate_models: fallbackRateModels,
         unpriced_request_share: unpricedRequests / workloadCaptures.length,
         unpriced_models: unpricedModels,
+        no_opportunity_reason: noOpportunityReason,
         incumbent_cost_30d_usd: dailyIncumbent * populationScale * 30,
         candidate_cost_30d_usd: (candidateCost / actualDays) * populationScale * 30,
-        token_source: workloadCaptures.some((capture) => capture.token_source === "estimated") ? "estimated" : "observed",
+        token_source: workloadCaptures.every((capture) => capture.token_source === "observed")
+          ? "observed"
+          : workloadCaptures.every((capture) => capture.token_source === "estimated")
+            ? "estimated"
+            : "mixed",
+        observed_token_share: workloadCaptures.filter((capture) => capture.token_source === "observed").length / workloadCaptures.length,
+        estimated_request_count: workloadCaptures.filter((capture) => capture.token_source === "estimated").length * populationScale,
       },
     });
   }
@@ -533,6 +590,24 @@ export function rankRepairTargets(captures: RepairCapture[], card: RepairRateCar
 
 export function renderRepairReport(queue: RepairQueue): string {
   const formatCount = (value: number): string => Math.round(value).toLocaleString();
+  const rowTable = (rows: RepairWorkload[], title: string): string[] => {
+    const lines = [
+      title,
+      "",
+      "| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source | No opportunity |",
+      "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+    ];
+    rows.forEach((row, index) => {
+      const conservative = row.projected_savings_usd.conservative === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.conservative.toFixed(2)}`;
+      const optimistic = row.projected_savings_usd.optimistic === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.optimistic.toFixed(2)}`;
+      const pricingFlag = row.raw.unpriced_request_share > 0 ? " ⚠" : "";
+      const confidenceFlag = row.raw.confidence < 0.5 ? " ⚠" : "";
+      const fallbackFlag = row.raw.fallback_rate_models.length ? " ⚠" : "";
+      lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag}${fallbackFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${formatCount(row.raw.request_count)} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} (${(row.raw.observed_token_share * 100).toFixed(1)}% observed) | ${row.raw.no_opportunity_reason ?? "—"} |`);
+    });
+    return lines;
+  };
+  const savingsRows = [...queue.workloads].sort((a, b) => (b.projected_savings_usd.optimistic ?? -1) - (a.projected_savings_usd.optimistic ?? -1));
   const lines = [
     "# Repair target queue",
     "",
@@ -546,17 +621,12 @@ export function renderRepairReport(queue: RepairQueue): string {
     "",
     "Headroom is a heuristic prior, not measured quality. Savings are projections from the observed N-day window at the supplied rate-card prices. Conservative savings cover only addressable repeated-task clusters; optimistic savings cover all traffic. Rows with incomplete pricing show no savings number.",
     "",
-    "| Rank | Workload | ROI | Conservative savings / 30d | Optimistic savings / 30d | Volume | Repeatability | Headroom prior | Cost delta | Confidence | Token source |",
-    "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
-  queue.workloads.forEach((row, index) => {
-    const conservative = row.projected_savings_usd.conservative === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.conservative.toFixed(2)}`;
-    const optimistic = row.projected_savings_usd.optimistic === null ? "— (incomplete pricing)" : `$${row.projected_savings_usd.optimistic.toFixed(2)}`;
-    const pricingFlag = row.raw.unpriced_request_share > 0 ? " ⚠" : "";
-    const confidenceFlag = row.raw.confidence < 0.5 ? " ⚠" : "";
-    lines.push(`| ${index + 1} | ${row.workload.alias}${pricingFlag}${confidenceFlag} | ${row.roi_score.toFixed(4)} | ${conservative} | ${optimistic} | ${formatCount(row.raw.request_count)} | ${row.factors.repeatability.toFixed(3)} | ${row.factors.incumbent_headroom.toFixed(3)} | ${row.factors.serving_cost_delta.toFixed(3)} | ${row.raw.confidence.toFixed(3)} | ${row.raw.token_source} |`);
-  });
+  lines.push(...rowTable(queue.workloads, "## Ranked by ROI score"), "", ...rowTable(savingsRows, "## Ranked by projected optimistic savings"));
   if (queue.missing_rate_models.length) lines.push("", `⚠ Missing rate-card entries: ${queue.missing_rate_models.join(", ")}. Savings are withheld for affected rows.`);
+  if (queue.workloads.some((row) => row.raw.fallback_rate_models.length)) {
+    lines.push("", "⚠ Some rows depend on blended-fallback rate-card entries. Their incumbent dollars are less reliable than rows using clean NNLS rates.");
+  }
   lines.push("", "Scores are aggregates only. ROI is the product of volume, repeatability, incumbent-headroom heuristic prior, and serving-cost delta. Savings are projections, not billing statements.");
   return `${lines.join("\n")}\n`;
 }
