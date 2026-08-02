@@ -131,10 +131,14 @@ class TokenMeter:
     cached_prefill_tokens: int = 0
     sample_tokens: int = 0
     train_tokens: int = 0
+    sampling_seconds: float = 0.0
 
-    def add_sampling(self, prompt_tokens: int, sample_tokens: int) -> None:
+    def add_sampling(
+        self, prompt_tokens: int, sample_tokens: int, elapsed_seconds: float
+    ) -> None:
         self.prefill_tokens += prompt_tokens
         self.sample_tokens += sample_tokens
+        self.sampling_seconds += elapsed_seconds
 
     def add_train(self, tokens: int) -> None:
         self.train_tokens += tokens
@@ -157,6 +161,12 @@ class TokenMeter:
             "cached_prefill_tokens": self.cached_prefill_tokens,
             "sample_tokens": self.sample_tokens,
             "train_tokens": self.train_tokens,
+            "sampling_seconds": self.sampling_seconds,
+            "sampling_tokens_per_second": (
+                self.sample_tokens / self.sampling_seconds
+                if self.sampling_seconds > 0
+                else 0.0
+            ),
             "estimated_usd": self.usd,
         }
 
@@ -267,6 +277,7 @@ def rollout(
     try:
         for _ in range(MAX_MODEL_TURNS):
             prompt = renderer.build_generation_prompt(messages)
+            sample_started = time.monotonic()
             result = sampling_client.sample(
                 prompt=prompt,
                 num_samples=1,
@@ -276,10 +287,11 @@ def rollout(
                     stop=renderer.get_stop_sequences(),
                 ),
             ).result()
+            sample_seconds = time.monotonic() - sample_started
             sequence = result.sequences[0]
             tokens = list(getattr(sequence, "tokens", []) or [])
             logprobs = list(getattr(sequence, "logprobs", []) or [])
-            meter.add_sampling(_prompt_length(prompt), len(tokens))
+            meter.add_sampling(_prompt_length(prompt), len(tokens), sample_seconds)
             assistant_message, termination = renderer.parse_response(tokens)
             text = get_text_content(assistant_message)
             messages.append({"role": "assistant", "content": text})
