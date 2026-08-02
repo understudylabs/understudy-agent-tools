@@ -24,3 +24,6 @@ docs/skill-comparison-audit.md
 # local staging for external snapshots / incoming worktrees — never shipped
 _incoming/
 .trace-viewer-cache*/
+
+# Workload train chunks are resumable local inputs; keep only the merged receipt.
+/outputs/wl-on-event-meeting-orchestrator/base-train-chunk-*.json

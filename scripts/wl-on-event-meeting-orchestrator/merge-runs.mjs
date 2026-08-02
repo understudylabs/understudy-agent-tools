@@ -68,6 +68,7 @@ const output = {
   malformed_rate: rows.length === 0 ? null : rows.reduce((sum, row) => sum + (row.malformed ?? 0), 0) / rows.length,
   prompt_tokens: rows.reduce((sum, row) => sum + (row.prompt_tokens ?? 0), 0),
   completion_tokens: rows.reduce((sum, row) => sum + (row.completion_tokens ?? 0), 0),
+  wall_clock_s: reports.reduce((sum, { report }) => sum + (report.wall_clock_s ?? 0), 0),
   rows,
 };
 mkdirSync(dirname(outPath), { recursive: true });
