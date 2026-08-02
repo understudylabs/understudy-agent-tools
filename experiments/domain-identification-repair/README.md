@@ -30,6 +30,15 @@ prompt, completion, trace, tenant id, or credential appears in any of them.
 | `validate-pairs.mjs` | `pairs_sha256` | `understudy.dpo_pairs_validation.v1` (fail-closed) |
 | `band-report.mjs` | (`split_sha256`, base artifact, candidate artifact) | `understudy.slice_lift.v1` |
 
+This arm is a **candidate-method + verifier/contract** surface, not an executor.
+`submit-payload.mjs` emits its candidate as an `understudy.executor-submit.v1`
+payload ([`outputs/executor-submit.json`](outputs/executor-submit.json)),
+validated against [`../../schemas/understudy.executor-submit.v1.schema.json`](../../schemas/understudy.executor-submit.v1.schema.json)
+and asserted with tests only — no provider calls. It is byte-identical for the
+same (`experiment_id`, `candidate_id`, `attempt`), so a retry resolves to the
+existing job rather than opening a second paid one, and the sealed holdout is
+structurally absent from it.
+
 The one paid step — DPO training on Tinker via
 [`../../scripts/tinker-dpo-train.py`](../../scripts/tinker-dpo-train.py) — is
 keyed on (`pairs_sha256`, base model, beta, epochs) and returns a checkpoint ref
