@@ -21,7 +21,7 @@ function render(set) {
 
 function check(rendered) {
   const drift = Object.entries(files)
-    .filter(([, path]) => !existsSync(path) || readFileSync(path, "utf8") !== rendered[Object.keys(files).find((key) => files[key] === path)])
+    .filter(([key, path]) => !existsSync(path) || readFileSync(path, "utf8") !== rendered[key])
     .map(([key, path]) => `${key}: ${path}`);
   if (drift.length > 0) throw new Error(`automationbench train artifact drift:\n${drift.join("\n")}`);
 }

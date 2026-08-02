@@ -67,11 +67,16 @@ function trajectoryCalls(task: Task, variant: number): ToolCall[] {
 
 function replay(task: Task, calls: ToolCall[]): { score: number; forbiddenEffects: string[] } {
   const { handle } = reset(task.taskId);
+  let lastResult: ReturnType<typeof step> | null = null;
   for (const call of calls) {
-    const result = step(handle, call);
-    if (result.done) break;
+    lastResult = step(handle, call);
+    if (lastResult.done) break;
   }
-  const terminal = handle.done ? { reward: 0, info: { forbidden_effects: handle.forbiddenEffects } } : finish(handle);
+  if (handle.done) {
+    if (!lastResult) throw new Error(`episode terminated without a step for ${task.taskId}`);
+    return { score: lastResult.reward, forbiddenEffects: lastResult.info.forbidden_effects as string[] };
+  }
+  const terminal = finish(handle);
   return { score: terminal.reward, forbiddenEffects: terminal.info.forbidden_effects as string[] };
 }
 
@@ -135,23 +140,24 @@ function assertTaskGates(task: Task): void {
   }
 }
 
-function buildCandidateTasks(variantsPerFamily: number): Task[] {
+function buildCandidateTasks(variantsPerFamily: number): { tasks: Task[]; familyCounts: Record<string, number> } {
   const frozenIds = new Set(TASKS.map((task) => task.taskId));
   const frozenHashes = new Set(TASKS.map(taskContentSha256));
-  const frozenPrompts = new Set(TASKS.map((task) => task.prompt));
+  const excludedPrompts = new Set([...FROZEN_DEV, ...FROZEN_HOLDOUT].map((task) => task.prompt));
   const acceptedIds = new Set<string>();
   const acceptedHashes = new Set<string>();
-  const acceptedPrompts = new Set<string>();
   const tasks: Task[] = [];
+  const familyCounts: Record<string, number> = Object.fromEntries(familySlugs().map((slug) => [slug, 0]));
   familySlugs().forEach((slug, familyIndex) => {
     for (let cycle = 0; cycle < variantsPerFamily; cycle += 1) {
-      const instance = cycle % 6;
-      const offset = (familyIndex * 7 + instance * 5 + (cycle + 1) * RESET_SEED) % 24;
+      const instance = cycle % 4;
+      const offsetIndex = Math.floor(cycle / 4);
+      const offset = (familyIndex * 7 + instance * 5 + (offsetIndex + 1) * RESET_SEED) % 24;
       const authored = authorFamilyCase(slug, instance, offset);
       const task: Task = {
         taskId: `simple-api-${slug}-aug-${String(cycle + 1).padStart(3, "0")}`,
         split: "train",
-        prompt: `${authored.prompt}\nUse the seeded records for this request (phrasing variant ${String(cycle + 1).padStart(2, "0")}, persona rotation ${String(offset).padStart(2, "0")}).`,
+        prompt: authored.prompt,
         initialState: authored.state,
         assertions: authored.assertions,
         allowedWrites: authored.allowedWrites,
@@ -159,14 +165,14 @@ function buildCandidateTasks(variantsPerFamily: number): Task[] {
       };
       const hash = taskContentSha256(task);
       if (frozenIds.has(task.taskId) || acceptedIds.has(task.taskId)) continue;
-      if (frozenHashes.has(hash) || acceptedHashes.has(hash) || frozenPrompts.has(task.prompt) || acceptedPrompts.has(task.prompt)) continue;
+      if (frozenHashes.has(hash) || acceptedHashes.has(hash) || excludedPrompts.has(task.prompt)) continue;
       tasks.push(task);
       acceptedIds.add(task.taskId);
       acceptedHashes.add(hash);
-      acceptedPrompts.add(task.prompt);
+      familyCounts[slug] += 1;
     }
   });
-  return tasks;
+  return { tasks, familyCounts };
 }
 
 export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
@@ -182,7 +188,7 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
   if (!Number.isInteger(variantsPerFamily) || variantsPerFamily < 0) throw new Error("variantsPerFamily must be a non-negative integer");
   if (trajectoriesPerTask !== 3) throw new Error("trajectoriesPerTask must be 3 for the deterministic v1 emission");
   clearAugmentedTasks();
-  const augmented = buildCandidateTasks(variantsPerFamily);
+  const { tasks: augmented, familyCounts } = buildCandidateTasks(variantsPerFamily);
   registerAugmentedTasks(augmented);
   const trainTasks = [...FROZEN_TRAIN, ...augmented];
   for (const task of augmented) assertTaskGates(task);
@@ -194,6 +200,8 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
   const devIds = FROZEN_DEV.map((task) => task.taskId);
   const holdoutIds = FROZEN_HOLDOUT.map((task) => task.taskId);
   const contamination = {
+    counts: { frozen_train: FROZEN_TRAIN.length, augmented: augmented.length, total_train: trainTasks.length, trajectories: trajectories.length },
+    artifact_content_policy: "TRAIN-only tasks and trajectories; no dev/holdout task content is present in any artifact, hashes only.",
     train_vs_dev_ids: trainIds.filter((id) => devIds.includes(id)),
     train_vs_holdout_ids: trainIds.filter((id) => holdoutIds.includes(id)),
     train_vs_dev_content_hashes: trainHashes.filter((hash) => devHashes.has(hash)),
@@ -207,7 +215,9 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
     version,
     benchmark_id: AUTOMATIONBENCH_SUBSET.benchmark_id,
     counts: { before: splitCounts().train, augmented: augmented.length, after: trainTasks.length, trajectories: trajectories.length },
-    task_content_sha256: trainHashes,
+    pool: { frozen_train: FROZEN_TRAIN.length, augmented: augmented.length, total_train: trainTasks.length },
+    per_family_accepted: familyCounts,
+    task_content_sha256: trainTasks.map((task, index) => ({ task_id: task.taskId, content_sha256: trainHashes[index] })),
     augmented_train_sha256: sha256(trainTasks),
     frozen_split_hashes: { train: splitSha256("train"), dev: splitSha256("dev"), holdout: splitSha256("holdout") },
     generator: { reset_seed: RESET_SEED, variants_per_family: variantsPerFamily, trajectories_per_task: trajectoriesPerTask, family_bands: taskBands() },

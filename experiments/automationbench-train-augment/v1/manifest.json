@@ -8,345 +8,1372 @@
     "after": 336,
     "trajectories": 1008
   },
+  "pool": {
+    "frozen_train": 48,
+    "augmented": 288,
+    "total_train": 336
+  },
+  "per_family_accepted": {
+    "crm-close": 24,
+    "crm-lost": 24,
+    "crm-owner": 24,
+    "crm-rename": 24,
+    "mail-draft": 24,
+    "mail-revise": 24,
+    "mail-discard": 24,
+    "mail-send": 24,
+    "crm-bulk-owner": 24,
+    "crm-disambiguate": 24,
+    "crm-mail-churn": 24,
+    "mail-send-and-close": 24
+  },
   "task_content_sha256": [
-    "8ebcc41bf0a3b2dd262b090bf7c96cb5b06ae8f3342e7d9b53ef540d959cc520",
-    "2dfba0820980c0da7e4af396860fc3588c450a6e3f91682b62a7780464c76716",
-    "0d7d85822d2f7a497e2c3f4031afc1236243bed53c546da2a45e86e4bf4dbd57",
-    "2766c41be3f32115718721c99078bdf3635cb1d491783f13bdd689893d64fea0",
-    "2615a6dc83b4c503376e15a8fed8ac8e86e797237daa6c78f0887aac001506d9",
-    "706606b9c382e4f514cf99ef4e2096474ca6ed111dd7a8832532e833e40bf814",
-    "75da5bea4a22f7f6d1ddf6f1b4a7f36383db03236be91292313d2ff444fdea02",
-    "25821477dd18ee85a2403710cbc55065c55de2e32b2135548bfcb1ce86857632",
-    "2493c5d0ad19f5f6349bdd012b23d359d2d61651c9a5ccb1acc9f94c4d4a8368",
-    "3f5d3bfbc88176d1dad49ed585a34702901098679dbf4931f38abeb0af69b722",
-    "ba217d3a2720619e044fafac831b729f4223fe35ff1cbe19afbc4cf7c92c610f",
-    "2936e500d139db54fdc19013c49a9fc050c2ebdc54abfecbf2ffc06d27374f0c",
-    "4d71dded3755d07a58de573fee62e743e3cdc126d0a4fed22cca4a4c9a395333",
-    "785f2c56f64b879fdb93e32836d616a71e2dbc62904e9fa5b65f95d1c61f5f1b",
-    "f2ca84035e3e932da4f3bd7de00b0d9b5a9996ea7b0988b61f35a7e4ad21e773",
-    "d8d3d6f50fb5858e0394e4887a72ea60e0f43242c851cb2c9a8df87bf048e31b",
-    "c2164c99e5d7fb1bbb861cd090a0ff97a9afa9b8fd4f3fa04867d1c3f2da34a9",
-    "40aea911043719b5ef72c545f82bbc002bbc3f010ccb848182de83aa3f193806",
-    "668298205dae4b14c58a0ca914ea05e7b98be0270ab7bb11028e9fb0a1ac2f31",
-    "d253d8ef739e2e3a0a07e8fea58a6c65146f590054bf6b59569236fbfb28acf1",
-    "01aa94aa8af324ac6e06d912630419d46cd0847479cff96bec23d16a5b65b890",
-    "eb242fdc1e12324bd3601bfb0901a409c63d5c44cc9f29db3a34353e628b6ef0",
-    "ddf29e16323c0434694de47099d8e04aab5fb3189844ac40718ceb51e505a4b6",
-    "c31e6c4678723df2ddc298b00a5d6c813f42a6d4dc4f405011b51567f8b646ff",
-    "d83bc0741218237a8b4c2101c3685b5bda49d5a88d248919fd628ac3154e5f43",
-    "0b0be780a48442770535b706708d1759eb938f1cd8898e2e5fb8defc2072b741",
-    "f52c99285829e9b31480bf4489981d49fe849d03e87116c3e85c04b14eb04f36",
-    "bd69d68275c13e1cc8f4e0c42d656ffd4daa993f5574f8670a318d96065be302",
-    "71f36e64157f84fd35627201b101c18b5aa84d115f1fdb6cfa6cf015057fd5d5",
-    "2abd8a88be91607ac2d05ddfa020e390d66c0a6b283fd948c8f3a45fb847e8f0",
-    "d58e089e91c0a1756f3e9273bfe50804173e6e7daa9ae63c69dbf67e948d7dc8",
-    "0df180fb023e5cfac09ba3f830bca66404fb9d414aee32b00a99616dd8456e3b",
-    "ab0f1d0309b5e3d8b13a4588888ae42f8ec070cc3c2858400040da183ddf51e9",
-    "30813f29ab14e0eee20bdb2375960a0832177003041bab8a593bb91926e34d3c",
-    "3174fe6e0743628c66d015b8fd34a181373837a63d86417be072ed3fb2629300",
-    "31a107a8c89c6a80fd8e58da82585a28a8cb2bd8a0a3edc30933e5ea91a7d9ab",
-    "47bf9cbb81cf47d20ace94e7c39820e553c269b13038bb9bc23359c6d4b318c3",
-    "815becbdcb2240c3b9d86e7138d77b6c6b698113fb8bb921687c18ffa0d67eb3",
-    "91e82d513bf1a07996fe5a026060b47afbd9edc85b11d20bec4a239318fe9cb0",
-    "106ececbabd8df13c7c61f35872172e852620c3e3873378c508e838456bd9b23",
-    "320360830959407bd8d6576a8adf5b1f050aa8f551f843b2760e8693178e1e18",
-    "48020e35f20509e82b98f4889e2cdbceb18ab904d29dd12c19de1f555cb8b337",
-    "14853d4e3a24b51fd3f74260d453b27ddd700affc42d2528903a497c55e784dd",
-    "ca477f3091be6ec4c1e62ea04c6f1b9ce17c025a44fdef2ddf085aca4065c192",
-    "4961cbc09ff4dc3edccffa92936e43b302fc1f7ed4edfc3a9e9d53e748539a72",
-    "77f160680066963381b9017481c59a8e2e5189cb596fc68c0d8c021500a244cb",
-    "d9988d6dc5e31db0827fa18aa26bd7a4163c31d339c3865ce911a869924534e9",
-    "2ce793823ab4bef5dd07bb068e00042f98458d739e4724ea6743317cf33b58f9",
-    "444fdc892ecb61cc1ea811634c2a4477b28fefbc30fada44b4a4d106acef2665",
-    "f156eecc9cf0b9f144807c9211944ab40812bb99f99b03486a7392643d0ab6e5",
-    "222a7f52bf6ff97551501394ad9b2b33e3fb7e70973e740925c3787df9c847f3",
-    "b94b30b4aa473cedc3ce43c847f3a1e49ffd1bffb2cf027cce21931d79d01d49",
-    "6a8492f5ccd7a0d7f3958aa7d573ecbab8d7d9c5b2180d28d3bee7e3f94158a8",
-    "5bc90d7bb681ac13718ec81a1c4d5dbcdb0165467c03df67de9556884f0bd0f2",
-    "f06d3c103650c6b73baf4761fcf21628f39adb7c6a2d54ec2ac4e62a3426d072",
-    "48b850415be849bac85c8dc1cb2d899e1d3055e2373287afea398712784b3e43",
-    "9318c3a0ff121f51f3941f71125f74f619569f40987b8fa419a370d86a909303",
-    "1e71c1986ae43abad2f0a1919f4a3064e97840f545ba746ccce9817f48e0a4b5",
-    "0ed3aa8fcea286b41782e0527e460ab2ffbc8a5ccdc1ade44d634520a0b04697",
-    "5c7313b5b0f915c60278b8bf8f412819a8d3fb0f932a268721b0a78beb96530c",
-    "624009951fe0f27d59ff0e1f9d5f663b5bdd4fef820284265868874887fa82ae",
-    "80041f3ee73f94ad774f24d97cdb4cdb18c6a8b29c6760bd6e482eace67ca9fd",
-    "d75d31e01d2f9ad0df69a45063904499e75ac6db42096cf5814847f9fc63cf74",
-    "950c6f686fcaa34162c2a06fe7a60336e6ad18d2c67b06191025631b1971f58e",
-    "4c54e9305bdd29806f3c9cce274a3bb188598e0728018be680fb5500bbc3cf81",
-    "20519f176e34a22affa878e83d11d67c399a86be12e393d14f49f340b24f0df2",
-    "b228b116141d013bd443337c514759e911ff2a8bb23588ce0f1acaf097b1309c",
-    "c1f1c9d122661eacb41ef2f6559ca9705154c8f9ebcaeb962ea42243b479bfe4",
-    "1b551c8101019559ef73787027d7414899ee28795924f31403e6afb88097362e",
-    "a38433eef5200f885038cdff0504c63c34fcfe38f5ceb0275f46b4d4eb51bd3a",
-    "fdedda3f39de8dd8b1a0c3bc356a090dc23ef8735193c9749974aef7719f37ff",
-    "43eabb1122a09b3de0b1bc2ac131c5e154c606fab2f35d461508204f49685334",
-    "9f9eeb2e484f5caf5eea6110e77a2ac2978521d2804316f146bfaf8650244eca",
-    "ee5bab6c49e1dc5cfb30e86a0273f1a27bfe2d3717753b4ede31f85bee06519a",
-    "786bddf28c6b88bb9a5336f999f1e340f9b84a24d1b418d42d28047d95535ab6",
-    "03d85babc0a856c412041a12228847b2fb2204cd31c1dc30ebc47868ee852ca2",
-    "9b9a68135dc24d41d5191af42255df43670ef719549f59feb3b528d24d775e68",
-    "6acd4b60862438334494638e2ac6c6dae225ca4f9e835f2d756d21f80157c30f",
-    "41491237885d866b2a839fdb4004ed578f079130ef958758102e43f8d33e9b34",
-    "c030edca587665f37e9ad01a5ea79b6defc2e89d7262584a5b0b6ffb7716db18",
-    "41450ed5a03f23c0e2fc9db78f62603a885ba858c288d42d95d7913494908034",
-    "4f20016543984172cb21bf666b1b3addfef0d346c5c224672e1d50e435a59ac9",
-    "32cdddc094bcab54e74315e6b2d9ef9ea52a9d410d83d0ef7eed3136937e9b78",
-    "965ea4618bf714449e8b6b0f6630d6912dc325e66ae3dbc5408fc3efbea101d4",
-    "72fda319c53d604e430cfec8805ef1c49b33a4e653784fb7a359c763980f30ed",
-    "6e8bd4c1085986dc13cc1ac53fa01ddcd8afba824277da18ee070460cb79908f",
-    "d27b7b0f5f2e9787a6c76997ce2b8d7c5dad3430086e3c36c749c60d24c25c8d",
-    "4a4370f6cc6f82fadc0d88f745f9118fdd7b5c5e1b0d9808bdca676dae866306",
-    "ede67ff95b41a8cda411b69d45d4559389009efcf8aec0a1b6ac100c8bc9b171",
-    "ae918c0d31ce1282486ce10d937e7e803a63018e45d7861397292f5f136b3092",
-    "822f4e9c12dadf52c5fee41ca30be1930340b378991b0b1bb9de9a1627d96c1e",
-    "56ec190498059fd53e41402d6669b35c623d2a2cd8981340d4525427ea10a759",
-    "2dba8193346627a9e7e40c31f661c55218de494cd587b7500d09baad68f59644",
-    "81b8e15648f1a29c8a3ae67095f40e7381280dc2fa9900d99f02aa0496882b94",
-    "904521ff17fbd27872499c29df284a057c200c645f3f56880869d99ae0ec3425",
-    "4650b4e6bd0c098e7dac421dc84fcc9691840d72b4b6827be436d4762d2917e9",
-    "69bb40cbb69f2530192e14c39fe79b522696fbf2bac4cd0c27c87d32bbad296c",
-    "2b5c91d0956be3d40f7e8284d5c382aca3bef348d7f7940b7ba371dda3970e40",
-    "f1902fc03f56531d5adf5b680597769ab488068166b61bf0358a7c9654d09887",
-    "41f028b240f1814cdef2e1266a9c168d6cf8ac47f174286988c331dc7604a0b9",
-    "7706c6fdf8d505c7cb26a183103f0ccee8dbbf97549b9a4e4557dc558f1f2bbb",
-    "e681f37b02e50cf0ea409a203086cc66b3a707791646577a6c10ae5e98be3e81",
-    "287196a2a47048730dd3c0721e9798a514822c16e1832e9db438ce558d7998bd",
-    "147229abc95c20c4b8cbb9683c5dda3edaac84721a7effc3dcb8edafd5985cfe",
-    "bba7ccf8d6f452e68cd08ccf3ca431c696ccc96b71a9c215cca9c2b7c9c67c1c",
-    "8aba349a89f8aa6cda4c7758b070f0b7a1291ed79fdfa19a56783201b93afd7e",
-    "691179f291ff7f65cce91bb5792c6293eb22bc6e4196d3bb1b5b342571b3b8b9",
-    "a73706183ca3319cb5f652daebafa6eef757abb0d727c7aea791b4cc9f2c9e62",
-    "8bce90c0d41099d3904ff16357c757eff21f9e3529d81ba78a5c198c24dea483",
-    "6c3453bbb4d0ea496ad7cdaede61381423a1d2f453e0b075953376ba161da046",
-    "ba91c76a5ef9b4c88a2265a7c0caafdc3a313d3734ab7ceb7be8e31f1913c824",
-    "aabd40e3bfc9cd45819c30cf13116a68369cb718547797c2b5b26f0ec8947f94",
-    "cb00f6f571a2fd6f53bd048576c78682e5f077842ca186b021ba58723d46aa49",
-    "849ed9519a0694c0fd4cbee7369bff86b8508909c1a1dc74a92dca255749983a",
-    "a69a3d50ecb2336c93533ea46bbbbf32460c74fd24be2b9bf60c2a7219a13adf",
-    "6ec4458b3e0bdf3727ef43eb215446e71e852b2662b3cb21c728ccf305760bea",
-    "9ffcd63b44cb2953ddfec6159e8a5c98271fb8bffc10cc679e3fd43a59568509",
-    "80c996603bd39163e4c62cb95a87647ba5d6f869f99a39c51cd4fab9b4131da4",
-    "1cec9597c885e24ff6ed1f858a9aaabc7cbab382f26c39d95f620e7916e84b89",
-    "26d23c23a1e8db1946e5b61d065ac795a4b36cc5cb3d600097abe95a820d826a",
-    "dc6798a5bf38b324c5f05784d42b63ae9c97dd2ba35850e39802222cc1d3df2d",
-    "ac8c0559af36809de7bedcc327f8eaccf65a83a68c77f2d7ee723a7b3f08c8ee",
-    "d5dc421a13828eeaa2b31014f49b9eee9ce0c621ac3b4659941c44ac16b824a4",
-    "37095dd39baad0283bb1dbabd25aa26d9a70386d67df803f4f4fe9484fd793dc",
-    "113cde4d73c5a225f7a4f0cd081f680e479cfc7746e0866f3029d3ae9c13742d",
-    "6133778458cd296d5fae6d33eb1be91d740360e2231fe971d894bb59c488ec7a",
-    "be1c1eba9270856c6840717f85318ecd1aa04658eb598cb755034cf00c9aa7ce",
-    "77fcac8efd71a848d71dede3c78f60a36c1636cf4c4e5cc1f22b265c32fa9b69",
-    "49eec7470231095a9de46aafee37b80d60806d4f4487105b3df3431d0937a326",
-    "a9e3e8afb13c274e7bb5bd0d91545502e9831051f274beac496da5bcbfd4581c",
-    "12ba519d3134ec0966c3c3d33c5df61e03c8226943512caed3cbd97cdcd93b73",
-    "c0a5dcff9d07e21917825a4688349a746077421465518de68d82be803127c9d8",
-    "20094d4b79a7f6bc3f229493adf37eb00e9383c4cfed5432b5b7fa8c1bf8ee47",
-    "5be516d67e7d0409f55f09b34f05568a847bba4955e599cbcd2a70276a93d511",
-    "28eabd7653ddfccb75ffa551592e62d6a68de14eda72a6f5fd293930edbb8524",
-    "9ceabe58a51c435d168f9e7784531f5be11ccc6ca068cc8852681943f2a97b5c",
-    "de2a3588ba46b69ac868a27faa313d370588c8166d4e6a2d58f454d0ea3cc7cf",
-    "57cf32b93c11f39099f3cc3df13848dbf2dea1a1430333b0860962f40c220876",
-    "9bba2858ce9e78563ed9fa2ec1dcc9e5e318e2e4a1c8dacdfc293fd430449f40",
-    "31ee3059bb4f84f7e541d35b485dc441b073788fdd66430364533cd3c10e7444",
-    "a17ac1aa083918933e1fdfd4a57c33eee2a91d717a150aec1473ba69189405f9",
-    "5b6b848a5d40dc418ccb669efa511e02826f7b3eca02bfe8cb272552ef6d8b79",
-    "342e88bfb052114bfb2c0e7fc01490e3796477f4b9667a563596c5923d3fccca",
-    "8404761298cbde6e291de9afa46406c75f10ca8ee0e2a83edc5c8c5eba102392",
-    "6373bb1165a3748712e7cbd0d4d9f4afde05c4c84458528f31bc5a26897c48fc",
-    "d8177cb035605461f68c35d401b9c7ab2d159a78560729661c52af97e270c44d",
-    "264b8601c43d435fe69169a327f4951a3bb21cf5e30cc273727f4fafa13004df",
-    "cf81c5ea778b0448107d0e68a6718f115cf22ec02d0808a2a521f371286bbfd7",
-    "1e65537993e6ec406c38888d6073a2d1041e52a9c19581b02c28ccba2cb15937",
-    "2f124acefddc74c0c4a9552992c4c17f9c7b6254b62b49eaefbc43b80b7860db",
-    "593fcdc992b5851c5f38d195073ca3b3b97477d3ccc725a4c9e9c1bec24347a1",
-    "e00d9001cc7d3b4ba60e77c68d4beba4562bfd549ad7cfc8d5cb0f5a087a8c65",
-    "fd0c530d0c417348b080db66a22132fb6fb407722f39806e7b24ce1aa75b7ed2",
-    "d22f944ccc86cd7e4403e53c6434ed0411346837d836dbcc0f3289a9659ee1e9",
-    "14c62a59a8aa3b99b953449a8395a296205b000d5ce27e64963d5add9d7d47e2",
-    "d3f3342e4e7133426cf9b95f5892aaa862f2b6c40c0a0bdd5997c72be3e28490",
-    "97aa6b7f162bb5703599e1c33db8608f25daca3bd6eed645ec03959d5cbbd555",
-    "db21889515b72271e07249840cd3aa05fe1ed2872aa2b249521fc7678324293c",
-    "93f7265f18ae14e5e0ab1c3ceeda314cc76d1df46dced1698cb17ff18a35224a",
-    "577c4436cfbc302cfb0812df564cf4e685d845cbbff84e15f63f29a60abd1100",
-    "a1a113813ecf31fae73f69bee906140f3d79b550d327a3732fcb8dcbb80709c9",
-    "4d8136b3b165fa2a48b0e70b63f6f4ca2b0674d251f6603169eed0c4507d27f6",
-    "4bcea724437ececed2caa3aa96d02548b312660547002d518c9ada0973b80ac0",
-    "1377153e100e68ff6b41505c6470cb8606a2ea7b60d970e8f51f2a5aa9f827c1",
-    "632b2c52d8fa8589ac821fddf380b8f87bc0305543980879a8b03bc3f0759913",
-    "80a568a4751cad1c396b00c4c35ac6e5e3db06cba5b504303c991f96db00f385",
-    "a95c9d92d28450fb6e1b24763896bd24aaa68478c9cd3c5b39a0474b440d1487",
-    "32c877fd5d6efc5b63ed8960bb4f57ee633cef42d7e4e593de43728296441a70",
-    "02d4c28aeb634bfc57aa2f3d0ec1ae0fb7cfc3487f9e3ec4534662f25ccf5bd7",
-    "5025bb0fb2604c9dfc6c6b534838f359d801255916fcc271275529cc833e0d0c",
-    "10bd1add46f4235b28e2d41ce2528f774d051b22d2034f36a53a598a843438c4",
-    "c2675e31bd9ef6e1a21ad298cd4da77e610630a6e5511e06a4c3e2e2ff82e8bf",
-    "b59a25505856a6fa3d0d6ada60e288c68c66da56de1f82c97cbea987a65fe5f1",
-    "80cc999ff5dbd040054de25f9a4e6237ccea91c335fc676c5240f7c3d3d7bbda",
-    "d95ad5d51e0defbf0be416f702d18bc7a7e0fd2f44b6716feffcb48c95259cf7",
-    "d231aceb6b5b8bb0448d37dfb6d6a32b5e6a13165dc80c71a8783c3dbf26eeae",
-    "ba94bb614df900f63b13ede3df91a1111e226fa470589b3b48dfad6e5246310e",
-    "f760498387c156ef8d08e6d33ed7611473d356f3a49fff775a899178ab2b148c",
-    "e2dbcb37de894ac0a0da970e5636b4c7909e4ad6167361fd20f123135f814dd0",
-    "0a228b155fc55cdfcbe846c1297b2ebed0bc0a1ebed1e3f3f70bf2856176590f",
-    "f5b7b6981a27d23b886e9302ecb1c810cb5762606313c038145fa054341de637",
-    "ae10221f427609abac749ab948134ad23d9a78547ee126f168b505ff29ee33da",
-    "ec6cb2d0b52a2cc8405d2f187c55860aa935e48158f5b983be6d819a86ff68bf",
-    "5ddc9e3ae60a65e31a5c720a9982006688e61c1613179ff76467270f44d38e8a",
-    "1a0408f2846fc946d8b68780fb770ca275c2aada1775b29ba872cc53e9455280",
-    "24bd7f70386d6a8ba515851ec5416da9455341b8f911a5ce0da5037490e69a7d",
-    "13e95f0e0778658c1f0ca4169baebfa1f54d7291ef9fe98be2d9580e7aebbec7",
-    "5374963a74eeb16a6b7d997eed3531033cf3a9e9fbed43ec8dd83aa2009ccb21",
-    "5204e4079a5f487fd6f05278fe80adb9df2d53aa4d6dc78af268897ae903d5f0",
-    "c3cfeaaa5ab91b380926ce2ea1486fde9086eb1b33dac1c496bb74f0c73c1a5a",
-    "4da3e12c9b8674bc559d9d1eb4e5f7073149cf2364f1ac5aa6590521e1e3f8b1",
-    "18f8f559e296e6cb71ec3f39336b37bb727b52671dc0f26401f93f72e730c77e",
-    "b019aacf0d4caae2e3a4574b9b0f0894c3c7bcdd93f85fb8c1b78ed9fcff76ad",
-    "ff486605875f4610ab0f7e9bf14e8cad56edc1d3ee57be537d02e1fa19ab2608",
-    "4157f3858e43e99066cd5fc1f978b282cdabf4b3f433fee3e74e82a5c7f41917",
-    "6418996f9fec3c722bc55f173e62bc7dddc491398cb364bab4b7c5efcfaae844",
-    "ba2c84b25eb326a5393098fc75631f66c7ef7cf21d6e5acdf37a0d7f09c3eb4b",
-    "d8e85cef337ded37025fd3bace137b8c18b29e847821a50d231cdc94838cc8a4",
-    "0d8dd09de1b3719a5121de2210bd59bb004ccd9eaae8918ead7c8238c17326cc",
-    "300c145c60e8725852b94b25a12bf0dc21a87dda84198f4f4911e591e9e548a7",
-    "a93f61c93071f6deae9187f998e31d021c2d9680a1457cdf025dd444a3fb10ca",
-    "966c656fa06003b292a2c5f7a3710794a600321f27bb2ae767b204fdd017d6df",
-    "4a7ee5b4464f5162af470d1008c37eef1bb8d157d4f0f2c3b16d2eb0fe25db0f",
-    "4f79826116d018f0147a65026563d15e6667927ad9b64ccd6949a24eec2e502d",
-    "4897a4602faad15d2424581d3fbe7b0e6bb9f1b74cbdfe8619414da0c7420369",
-    "fc7ba542075b860a72edfaa86b3b6922f0e6d84e5219b7c941dd7fae3364c245",
-    "71baddbb1a0e0f12b49b4fbb4e563e66b3e1a8b2a2ae5f07142098f414b6c066",
-    "239cf2ca81bb65a13a8347764182fec9e524b71852437d536c76ca55fabf81e4",
-    "ceb93631837a1ec35636ed7550fda8a2591ddff94759b6f1592793e9e63575bf",
-    "cef30f27e10239953c5c408b7bc6109d57e5adc245cfb0980c5a7192fbbb3219",
-    "c17148a02dcdb3da1a8493a100de9890ec9ca71db3212a7c749fdfb65a6150b7",
-    "8abbb6dcc8fc77bba24ef40066916bf8e220a15e8bdb7fb1dcce25573720c9b7",
-    "c243c244eaf2f110778ab37653a8aaa1c4c79d8dcc90ce2761257b494138d313",
-    "3c0a555b8592a5357b99e9b1398c377c6b62bcae9926c3b2fb31c8a389a98593",
-    "cc617424b618b3cfa77f012dedb6a6c4b2a765b4fa82aa85613d47bc07581f55",
-    "06d1b6dec0b29d451a76bbc184b4c104639a74974b01ecd791f2e72b9c9803c3",
-    "46d6c143a16ed42a032d22814679e57c64c861e45489bd5d352f232026d9ca3f",
-    "3ee7485c3886281671fa0bc6b5b8b2a791f2b370ee891bd574112df177a19243",
-    "b4ca41e19e13e1f83ab81b298b27038f3fbf85a8d45de7b13e2e11ab2d092d69",
-    "35bfeb0d90dd7366386d2e94e0111c8d28fd310845cfde9b28c30c1edf37be26",
-    "8cddc3f8b8954d2b55b46a709835efd3e38225a29e58d9c16388b3592f467515",
-    "cb858375ec8b8cb51e1d26123a4b85879f2f8234784dd8c7297244b80cbc5586",
-    "aa3c36687b514380bb2f199c6621a5f8c4f4a3e8cb1329a009944599f31dfefc",
-    "38226b935998f665756b8ee53af71d81c58076a8e5ec639b01669a065a73235b",
-    "4039d25b3856629a1b123570375181d1e3de962d7eae4b1c6047043dbaa45106",
-    "6b44ed011d05c062a43fa5321be2d84814866cfa632b956a5eb0fcba7167199c",
-    "2bd1671994178ee477f68972b074878b90afde9126bd3213416b8bc880edb2e3",
-    "c506dcd19076b2d04f9da3e3d8804138b71fab3aebb9c32505583adc6e203008",
-    "40b13754523670273fa937c2e4259e0944b3816f9258bda05a409d392d95d7fc",
-    "d0b520308961ec0ee800bfae2038dd42a0d8c46c2d7f927fe7abae13b1658e0b",
-    "7dfd735a70c9d0ee00bd182856a0ab171a1f8518fe76473fccdeb290d21cda0b",
-    "b40fbf6312cc43fb06da9794f72a90d2e81d5ca485eb202965afb76f56a847db",
-    "d7a5fc211284e4abfede2243eef0e6cde0a51060ce2c842d32dbd54f44c66589",
-    "966251140c76f1da7d7e7ec295f8d39046bb148d51780958a3e5cfb837ef404a",
-    "af49455d7915741f13a87906fe2defa922f022f560d4db6683b6993fae8d6508",
-    "82d84265bb38219d96e2eb7dd2e582b5d2373b227bc2fcd69456485f1da0c3b2",
-    "1d6cefe2b9adf3ce6a46440b946b35b9b02d7af28464ac271ddc92b83c3d7cff",
-    "2aee13d7caac65d635ac68c872fec4209bbc39c6470fb8a848b7fe9d541eca8c",
-    "a952975531a26b0ccd6732538b54fcbfa7181749a4fda6ce5f433db7f1e0a9df",
-    "68b7302ace35522ee734d291fe494f255dccb412dcad4b0e5631bba6d608c1d7",
-    "d1ffa5f993405d469340d62434b4da7ca0e07c7156513c3c183ec06a3cc545f0",
-    "4e996c7ff645f8e547704e3d939051457d2f368600a4141da556e6ca379cf36d",
-    "424f0928635dfe3711a0fe6e664fc38838c5da3af19c43717ea1daec48037cc9",
-    "5aeb5360fa58b4d8440b38fe102daa928d3cbb8911d8ee635f3f5746d3f111dd",
-    "4242510456600ce5fe98873db08056492edd884cb22d6743d2b0ddce8d599014",
-    "c3a5d0ad3dd8463c53e70a6372d05790d59b690aabc5d12cf7114daa795f7a0c",
-    "5def4320e32186ad34c35780447d669a764034e1feb3764886df6d2d25510245",
-    "7166c58e7ee88347e159314bb61bb1b84c4006d18116a729c4d5b0eca7059273",
-    "495d8d21b9fbbe61c048219d893399c156b69a72cfdaaf7faa09bc001ba3c30d",
-    "11b1b5a0a4f4e9c288bc768135c6b23421d73bb909cfb85547e77433d7dd6e72",
-    "571064abb39a8f8c23e0dff1f100ad299b52e427f4b2af564b2203d35641c956",
-    "e0d97723755e6daa672c51702b342e57e8ea278fb7fe84fb769932a166b4b634",
-    "f4198f07bdf03756cf089f19b754cfff2653541437639ec4b711b32c2390536f",
-    "e36f8b249906ae3d271e77f5baef4adf5142327a9e2d4a730b38247d00214d9c",
-    "b62917d226020a5b3fd58481e693d825261b40ecaa09d216b2965ba9dd6d0d80",
-    "cbebe31b01dcb1dd847b2d92d1a6c44a1acc8753d5a25465442f2aa5c4ec284d",
-    "a13f10be917b82b34ddc3208fbe4da94d51b876d52c235201567b1f96f556ea4",
-    "c67fe7a2a6eaa4d040a0a2d6fa02ff91bc7fa2315c9cdd49054a0052a231b371",
-    "81c47489995bab097eb882f41d4b24c753f18fa78fd83c0df218f81b97b3dc1e",
-    "1cf9a6f4488c860ac5c86a330dec33652368797aee66ca46a1e76585fae85c04",
-    "e08b3fd5354b915238cb92381b9db27e026f57b02dbf96852d435a940b5805d5",
-    "659fd76a8d876c1650d4842d384425c6a03a002fef8986d66f5889d1b66e000a",
-    "b083d1b05a4d588f9e18c1b1fb71be21ac60e2804e4114ffcd4b545c07154825",
-    "3b7bfb709944310f352e6b5dacd21f8cff97ccc87447f534463a696f7c3f7a89",
-    "b839bf16c081b183b74449521ed417809feb4b6db08b0e3dc46930cf4d18c7d2",
-    "d3d0d721a1982bfae256c0ed50368109109e4a5c7deaf50beaeb2e8173deae89",
-    "73f8f96f81cad4429a83f4d6c1caa8947c18c6d3987f17a8a2288b5aea7592dc",
-    "bc1bf38274670e4d8a30776ee216b0c2c6ad890b59d4e5ab083a0f754b73b8c6",
-    "c373150018cd3e41889cdb2f26e6eefb05d9d0df91a54aee14ea296e03e474f9",
-    "c84a74aa385cdfeb716c3e228f1020bc308ae781091336126aeb7d3c3cc3473d",
-    "be3e087d81751cd2022801a42bffa991d9179b64a573c4d7db3395fc147764e2",
-    "6e8e9c3ca8de4f3996307d165ddeb562396249ffcfb7dab8a11e171b898f3e93",
-    "c57f3be58b9efcd0db4cfcde7733ea933825dca702c8e0718ad54869cebaacc3",
-    "3ec66b3c0ef1e37d347c72f8d4192738ea618cf2f300334cc969382180cca3ea",
-    "2261fc9e450e005cc6527295347d58dedf330d4aeec14aa9955ed09db013f211",
-    "5856d1c15e8beaf09401c660a6cac742030f0099eb836ea49650f96cd15bfac8",
-    "46de07d7516061da576e73b7f37cb61156a91a69df7061a53e66e3b9c60fd4ca",
-    "8c9dbef8a76c12fccedbc017f492204faf8ed798c2d3a9e657df9a0f87c94f44",
-    "0b4915d826d36ad11323e623f06cb70499eb8913095679e3e8a2afbf2e615943",
-    "5266c4d380ad59df82cc061f2159157c41ac4a64549d1f56d44b524ffc11db76",
-    "ac686be27170475af2654209687854535c654882229a7c0a7784afc93afdd0c7",
-    "66fcdc80c113a1782a6a4707de9f4a2924d7448a7fad263420920d458f30bf5f",
-    "87f2157a4f05b22e1f1c91337d871d7f493740a85691ae02950b713f1078993d",
-    "a6b1fdbe94d53fa2e754193ba60f3fa494519253c2be09b15e2b069e78f9bb78",
-    "ed21696ce29aa6ddc2e80bdc7c3fa24e74fdbbdbf8fe85abb3789fe62d090f44",
-    "9d4106adcde23772fa859b11fb83d6fcc31c2291932fa247f3dba7604dfe5a23",
-    "f05aed35ed509c46a20c7cc9990ea8b4fdab8f4a8b4ac653b738b8192c8abecd",
-    "75530bbb3d92a6d253192d3663570954cf3a0fc1fe234f51a0370b8eb7d7bd6a",
-    "1924fcfa7fb62a6da581e22e786a1b4862c2f79d76992be828bb552368cda360",
-    "82ddc8d8ce86574d03ba3dc9e22b41a2f2bcc3ff17ccc62c273e75f77877c183",
-    "504da6d3074bceb1345f5ddb302f964c9ebe3385fd89e71c1d3471624cd97511",
-    "6cc369a0c705c019f4b51b8da42540b91fba83cded6764f904bc49c25cdaf475",
-    "cea429dcafedf8c96f8687216f171009b6925ae61cf556812574dfa297148888",
-    "eeaae5337512d2502350ca7aff07e152e0d4aaff4bc4491c9533e7e30f523610",
-    "8bd6495eb4cfdf7d3b0c01937f83f21e0e7f0fc5536e9cde6e7494d8e66e613b",
-    "dadc1ea1f676aec17333d932a263e4b9620fcfb95285a5e9d7eef6cfd5f4b8fb",
-    "c429ff08b28fb629f576f5d538b31c23f481ddf0b88fc68ffd948e81169f3145",
-    "a19fabb46ab7e7848d71d6e1c3d8a5c4ff39785778e7398244030c8b954b3f2d",
-    "b8da76e6e89382ff92ba74ac10acfae2e2661db9754d6e80e128f9ac96416ba4",
-    "598f9714d7a71ae32d0748686b840594931296ac106241fa5adb4e9aa41734a4",
-    "16c6a46a89cf33e30ccce8d2d568d75f78f225e03f4d8e102b087e25b766cd4c",
-    "7c774069014babcea02ce4578e3463539e6df41e93e41911dcf6e31f06dcba43",
-    "24f4798526ef522045b7aad372b483439b43b88a18c02bcb3c3c2afa7707a45a",
-    "5f86b2b6a01c655f8e4282753bbe5b6a86cf150700786666f996ca3ea23de6d5",
-    "1fe798953a2b9e075ad6e67af5cf4ba0f64eb2fe78c915a1e6dab1693bf6cf76",
-    "7324c2a3a7bbfc01a5d680fb47871305091401ae0794243d029f079e16fad9de",
-    "0e8e94b1bed471992092eacaee4f7a59cac53775619ad05cb9847c4a446556a0",
-    "8d518dba1fd95abafdb02b379884d3a6f6b72346ec19661fdfa37c6c9acb04cf",
-    "c31c86bf4dfcddddc99e16c6a96976bef60d566b4fd12b9277dbd48db65570c2",
-    "5cb22cb98a772fb23f49802631e3aca301ab28ca8e35c487e42aa30c4dea43d8",
-    "5815187ad6104cc18e807d74d382899c74a3ca3dea75e91e129b9ccb2fdbf06b",
-    "6604de19366d0ef6c52378faabfc16d80e06ec2716ea6473207609462e9be191",
-    "105e31c652d87a372fd1b02c32311f22ce5ea80567aecd18db9a9214e82e4f55",
-    "cbd0b3164f0f61d2587c534d89f6e6da7a38407298d018477ab25ed007ac8e54",
-    "316eda950328aaceb8ad51fd864979e0509aa5c8caf34c8304fd4c0d596052c9",
-    "4b672211c66ce693d4ec840fc1c44d5887aa228d441b8d2beb10ba4286f94281",
-    "53a6fb689dfcdf5255450bc3c29438529cb376786308fd9cfc2f3f08732054e3",
-    "5ba4b8c1b78094346d48e9f39ae726aa617c73ae7335137e9c8b466ec4a9df82",
-    "7bb6c9724fcc4bbdadadbaab1c4dbbf3c1ff2fe54859078043b55130e6df33c5",
-    "0487a848c8a4afe4c15222fcf2f846d294a362cdadf15b1cf8104faab8867ed1",
-    "922ab58bb3b2794b466d88eea294542597622904ecafca8a9563722322125870",
-    "671db6a8d1ee2733fa73373d985357d47a5d0d48db3f0f4eb6ac9c63e6dcc0a2",
-    "c89e0568e84b462df9fed6ae5ba4e24edfd59ec7cf32c908226aa9fc795726a3",
-    "b9343c7ac298b2d4ceb454dcc87e98d19da8049bfa4b4e660b68ccdefc3ad978",
-    "4d74acacf607bd390f7ac05d69490fcf8ee19d88e36bb3041c1160ac89d0cf1f",
-    "059c803ceb936d053ab79588a62fe0674fd075d36f93df7976891ed4b09bc1b3",
-    "fe05ebd3428d92b4a662a115b02329b1e4dc4b452b85e4f6b5a6a3c8bfb03543",
-    "76094f30540c25e4ebe93fd5a3c384db2a82a62f06585d30332341fc728f16b4",
-    "cd11a22975e90b92667233d4ed3771e37966368f075ecd6d7ca064c6e22521ad",
-    "e8853c38bb52b006e416969453b52fad9b5dc60c87436cd8238f553ae1e1c497",
-    "4ef6d8c5c3b74c0f720fa5726da03cb592963fabe89f82ae9f4387e36e4a47ae",
-    "d2d95310807e9665b6dd63883b2fba12c29670f038a561ebb9b94b6c4762018b",
-    "46c41bce806b836f9bf31cefc043c30d6077cbec969ea9d1c21199a1da29c6e5",
-    "9fbde3cc6844cb33657d74442571770b4421d9784da6b91dfcb38dba61c8433b",
-    "7256f9910fcba8cd88bcd89f609091078e695a20801677dd6c5bc449118cd0a0",
-    "78c6c567a3fd789d9676ab6eb738df45573543111c859010676e9abcb8241495"
+    {
+      "task_id": "simple-api-crm-close-01",
+      "content_sha256": "8ebcc41bf0a3b2dd262b090bf7c96cb5b06ae8f3342e7d9b53ef540d959cc520"
+    },
+    {
+      "task_id": "simple-api-crm-close-02",
+      "content_sha256": "2dfba0820980c0da7e4af396860fc3588c450a6e3f91682b62a7780464c76716"
+    },
+    {
+      "task_id": "simple-api-crm-close-03",
+      "content_sha256": "0d7d85822d2f7a497e2c3f4031afc1236243bed53c546da2a45e86e4bf4dbd57"
+    },
+    {
+      "task_id": "simple-api-crm-close-04",
+      "content_sha256": "2766c41be3f32115718721c99078bdf3635cb1d491783f13bdd689893d64fea0"
+    },
+    {
+      "task_id": "simple-api-crm-lost-01",
+      "content_sha256": "2615a6dc83b4c503376e15a8fed8ac8e86e797237daa6c78f0887aac001506d9"
+    },
+    {
+      "task_id": "simple-api-crm-lost-02",
+      "content_sha256": "706606b9c382e4f514cf99ef4e2096474ca6ed111dd7a8832532e833e40bf814"
+    },
+    {
+      "task_id": "simple-api-crm-lost-03",
+      "content_sha256": "75da5bea4a22f7f6d1ddf6f1b4a7f36383db03236be91292313d2ff444fdea02"
+    },
+    {
+      "task_id": "simple-api-crm-lost-04",
+      "content_sha256": "25821477dd18ee85a2403710cbc55065c55de2e32b2135548bfcb1ce86857632"
+    },
+    {
+      "task_id": "simple-api-crm-owner-01",
+      "content_sha256": "2493c5d0ad19f5f6349bdd012b23d359d2d61651c9a5ccb1acc9f94c4d4a8368"
+    },
+    {
+      "task_id": "simple-api-crm-owner-02",
+      "content_sha256": "3f5d3bfbc88176d1dad49ed585a34702901098679dbf4931f38abeb0af69b722"
+    },
+    {
+      "task_id": "simple-api-crm-owner-03",
+      "content_sha256": "ba217d3a2720619e044fafac831b729f4223fe35ff1cbe19afbc4cf7c92c610f"
+    },
+    {
+      "task_id": "simple-api-crm-owner-04",
+      "content_sha256": "2936e500d139db54fdc19013c49a9fc050c2ebdc54abfecbf2ffc06d27374f0c"
+    },
+    {
+      "task_id": "simple-api-crm-rename-01",
+      "content_sha256": "4d71dded3755d07a58de573fee62e743e3cdc126d0a4fed22cca4a4c9a395333"
+    },
+    {
+      "task_id": "simple-api-crm-rename-02",
+      "content_sha256": "785f2c56f64b879fdb93e32836d616a71e2dbc62904e9fa5b65f95d1c61f5f1b"
+    },
+    {
+      "task_id": "simple-api-crm-rename-03",
+      "content_sha256": "f2ca84035e3e932da4f3bd7de00b0d9b5a9996ea7b0988b61f35a7e4ad21e773"
+    },
+    {
+      "task_id": "simple-api-crm-rename-04",
+      "content_sha256": "d8d3d6f50fb5858e0394e4887a72ea60e0f43242c851cb2c9a8df87bf048e31b"
+    },
+    {
+      "task_id": "simple-api-mail-draft-01",
+      "content_sha256": "c2164c99e5d7fb1bbb861cd090a0ff97a9afa9b8fd4f3fa04867d1c3f2da34a9"
+    },
+    {
+      "task_id": "simple-api-mail-draft-02",
+      "content_sha256": "40aea911043719b5ef72c545f82bbc002bbc3f010ccb848182de83aa3f193806"
+    },
+    {
+      "task_id": "simple-api-mail-draft-03",
+      "content_sha256": "668298205dae4b14c58a0ca914ea05e7b98be0270ab7bb11028e9fb0a1ac2f31"
+    },
+    {
+      "task_id": "simple-api-mail-draft-04",
+      "content_sha256": "d253d8ef739e2e3a0a07e8fea58a6c65146f590054bf6b59569236fbfb28acf1"
+    },
+    {
+      "task_id": "simple-api-mail-revise-01",
+      "content_sha256": "01aa94aa8af324ac6e06d912630419d46cd0847479cff96bec23d16a5b65b890"
+    },
+    {
+      "task_id": "simple-api-mail-revise-02",
+      "content_sha256": "eb242fdc1e12324bd3601bfb0901a409c63d5c44cc9f29db3a34353e628b6ef0"
+    },
+    {
+      "task_id": "simple-api-mail-revise-03",
+      "content_sha256": "ddf29e16323c0434694de47099d8e04aab5fb3189844ac40718ceb51e505a4b6"
+    },
+    {
+      "task_id": "simple-api-mail-revise-04",
+      "content_sha256": "c31e6c4678723df2ddc298b00a5d6c813f42a6d4dc4f405011b51567f8b646ff"
+    },
+    {
+      "task_id": "simple-api-mail-discard-01",
+      "content_sha256": "d83bc0741218237a8b4c2101c3685b5bda49d5a88d248919fd628ac3154e5f43"
+    },
+    {
+      "task_id": "simple-api-mail-discard-02",
+      "content_sha256": "0b0be780a48442770535b706708d1759eb938f1cd8898e2e5fb8defc2072b741"
+    },
+    {
+      "task_id": "simple-api-mail-discard-03",
+      "content_sha256": "f52c99285829e9b31480bf4489981d49fe849d03e87116c3e85c04b14eb04f36"
+    },
+    {
+      "task_id": "simple-api-mail-discard-04",
+      "content_sha256": "bd69d68275c13e1cc8f4e0c42d656ffd4daa993f5574f8670a318d96065be302"
+    },
+    {
+      "task_id": "simple-api-mail-send-01",
+      "content_sha256": "71f36e64157f84fd35627201b101c18b5aa84d115f1fdb6cfa6cf015057fd5d5"
+    },
+    {
+      "task_id": "simple-api-mail-send-02",
+      "content_sha256": "2abd8a88be91607ac2d05ddfa020e390d66c0a6b283fd948c8f3a45fb847e8f0"
+    },
+    {
+      "task_id": "simple-api-mail-send-03",
+      "content_sha256": "d58e089e91c0a1756f3e9273bfe50804173e6e7daa9ae63c69dbf67e948d7dc8"
+    },
+    {
+      "task_id": "simple-api-mail-send-04",
+      "content_sha256": "0df180fb023e5cfac09ba3f830bca66404fb9d414aee32b00a99616dd8456e3b"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "content_sha256": "ab0f1d0309b5e3d8b13a4588888ae42f8ec070cc3c2858400040da183ddf51e9"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-02",
+      "content_sha256": "30813f29ab14e0eee20bdb2375960a0832177003041bab8a593bb91926e34d3c"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-03",
+      "content_sha256": "3174fe6e0743628c66d015b8fd34a181373837a63d86417be072ed3fb2629300"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-04",
+      "content_sha256": "31a107a8c89c6a80fd8e58da82585a28a8cb2bd8a0a3edc30933e5ea91a7d9ab"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-01",
+      "content_sha256": "47bf9cbb81cf47d20ace94e7c39820e553c269b13038bb9bc23359c6d4b318c3"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-02",
+      "content_sha256": "815becbdcb2240c3b9d86e7138d77b6c6b698113fb8bb921687c18ffa0d67eb3"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-03",
+      "content_sha256": "91e82d513bf1a07996fe5a026060b47afbd9edc85b11d20bec4a239318fe9cb0"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-04",
+      "content_sha256": "106ececbabd8df13c7c61f35872172e852620c3e3873378c508e838456bd9b23"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-01",
+      "content_sha256": "320360830959407bd8d6576a8adf5b1f050aa8f551f843b2760e8693178e1e18"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-02",
+      "content_sha256": "48020e35f20509e82b98f4889e2cdbceb18ab904d29dd12c19de1f555cb8b337"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-03",
+      "content_sha256": "14853d4e3a24b51fd3f74260d453b27ddd700affc42d2528903a497c55e784dd"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-04",
+      "content_sha256": "ca477f3091be6ec4c1e62ea04c6f1b9ce17c025a44fdef2ddf085aca4065c192"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-01",
+      "content_sha256": "4961cbc09ff4dc3edccffa92936e43b302fc1f7ed4edfc3a9e9d53e748539a72"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-02",
+      "content_sha256": "77f160680066963381b9017481c59a8e2e5189cb596fc68c0d8c021500a244cb"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-03",
+      "content_sha256": "d9988d6dc5e31db0827fa18aa26bd7a4163c31d339c3865ce911a869924534e9"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-04",
+      "content_sha256": "2ce793823ab4bef5dd07bb068e00042f98458d739e4724ea6743317cf33b58f9"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-001",
+      "content_sha256": "e78bcfea65926f3da6e858d2ea6a38044ee3d61a3079d83394d42157420dcb80"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-002",
+      "content_sha256": "1bacf04d372c3f995ea0c6b152d09463aa162ced446026cc4df85148de0c1723"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-003",
+      "content_sha256": "eff62236e137a2aad33ab42461ce61faacff91fcd1a082046b7b273090ac00c3"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-004",
+      "content_sha256": "77c59f0316f77ea9e544ddc6034317ffa9fd051d5f4fbf7d587f82ed09d6ca81"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-005",
+      "content_sha256": "47278e2966a87461c194b017407cc5f87475aeb230d7b85c17c9556ec6cba55a"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-006",
+      "content_sha256": "f9d35a45feeeaeee4316c828a5aa4a1649f5691079cc5be7943b91a72a7054c1"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-007",
+      "content_sha256": "96be7240b9beccc88c88633c5b69b1a6bb8ba8ff9e1090c7f8cd7bb6034cfd3c"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-008",
+      "content_sha256": "c495841c22ff554d057e88ad37794595de1ea9a9e02cbbaf183e52cd7e6a2cd4"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-009",
+      "content_sha256": "af7b3b6687d79296bee33c82a9ce4f3dc2d95da17705fc1cf12d94d05b11c221"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-010",
+      "content_sha256": "6e272fe42c829f69ec14245626ddd6be8d29129019aaa58b7f148261cd4d2518"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-011",
+      "content_sha256": "2a2d0b26ebc8d7d6f86c0a2cdd04afed4aa156af861afbd5040eeed0ac9121e6"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-012",
+      "content_sha256": "33ff2dd13c7a0b0d3b8f58bb2a18544fd04a5f3b30a1830cfa25d1904afb059e"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-013",
+      "content_sha256": "320af5336c6b32ca1a5a205bc0c54e873478b466dbaf052482e100f8b7eae41e"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-014",
+      "content_sha256": "40a3dbdbde985bf70b1cd7eb08f0036d5db92a6759a12ea7386c89205e2f12a5"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-015",
+      "content_sha256": "4c77e9a6cfc88fb43755a84cbbb1a17024ba01924883ae5d9c9dfe283bd28c19"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-016",
+      "content_sha256": "b5d26531bac6e8898703db2c28923c3b93ee733d8d3da18e86861c40a786262c"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-017",
+      "content_sha256": "4a7c3c001ac25ae35fd3c20ad8dbc9dd82662106dec436a607bdaa840f2d6883"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-018",
+      "content_sha256": "ba786826358d13ca90417838f417f31ed7c877a65d39f9b1430f73a84aa87386"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-019",
+      "content_sha256": "3832aaaa9faca1ee368f1e045a1d785e728fb9d9e4afc5e1b6be692431ba898b"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-020",
+      "content_sha256": "cb223e247e2c4376651ed66bb8c8d3eefa401e8abd12f06d713024ee699c3dd8"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-021",
+      "content_sha256": "77868fa7f1383818199b6b004d2f2846551ad5b8c4d21ce4a9510e771081cc47"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-022",
+      "content_sha256": "e40644106fc8d3d55330f913c5ba375a4da8c7f1125b220048403d365c8b2aaf"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-023",
+      "content_sha256": "0c93e5c5100ca8f0d9946303bdeb099e1074c53bb3b16805c636fe00bf7345de"
+    },
+    {
+      "task_id": "simple-api-crm-close-aug-024",
+      "content_sha256": "e3f7da876280fd1d469d0f4bd002bc58c9c2815299401312a92cb6aae570c925"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-001",
+      "content_sha256": "d6272080b278c86c79057858632d22e2d6250d820cdf4683584c932440775715"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-002",
+      "content_sha256": "9a8a94eaeb07b6e3db5c93b9022033262db27d3acb5c93db963fc695cda9d699"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-003",
+      "content_sha256": "c28b519a2d69a36ac090528013b4057d3a58a96be988d8dbabec1012ec048b72"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-004",
+      "content_sha256": "9211129655efc8180e8d8fd9e0f263649b237c85a90f87575eb56d85b7be71d8"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-005",
+      "content_sha256": "a5a5c6da5434bbd833db37067ae1e7578099dca44087fde11a04b5c5b40894e7"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-006",
+      "content_sha256": "fc956c6008f8fc2e9b85aeef5267ef61447d417fae9030085b22f6039b41a4db"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-007",
+      "content_sha256": "c5492c43693f2bfabe38a94d3d6781f133605609917a8f0bc3f6bcbbd7d4deef"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-008",
+      "content_sha256": "d43351562046e08f48384870dd679c92889df1a7ac0b1787c5440eceabef4ea6"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-009",
+      "content_sha256": "8c8d04f5daf88cd81b75d8e1f19cc11c280e80184e20a6f5c4a2f5caabf64535"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-010",
+      "content_sha256": "1c0a3437bdf88f9fef7c5841997164eb49d80cf9274d757154c4ecc2dac92f64"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-011",
+      "content_sha256": "92e15428380ab863f9405d790cf20def07460e34b8100188dc3444a51386b094"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-012",
+      "content_sha256": "8c8a47ce2322727ff949ab497ff5e5f5972b054d1e0d5ab29fbb1f043d11cdad"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-013",
+      "content_sha256": "6167fb5fa8a9a0f038331017468899d97addc71ad57d49dc21d144cbbcb0762b"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-014",
+      "content_sha256": "5255741f3d4821b61fb27ad1b3febadf257f03b0b63fbff0d5dccea3e3e8d40a"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-015",
+      "content_sha256": "3b64371d69f27d81a1454400906de085bdc1fb530f7e11768750f41a686fe317"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-016",
+      "content_sha256": "ff26ac550e5f948bfb28a24053b25d41645da535daf7e32583a6e4b5e9077d6f"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-017",
+      "content_sha256": "fbf0ee782a708c070f2233e6a45aabf0b6c726742d20f1690a42e22f3a0ce73b"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-018",
+      "content_sha256": "1ccd19551242d21486b94ab915cc7bdd8e2021f94b096c5321d93fe5fb7f45b6"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-019",
+      "content_sha256": "fb7c03475b526c97517f90a405359432fd0617b8d785b58ea772d73b82651298"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-020",
+      "content_sha256": "beccd2436b7039f253491e1120112ee7c2c14efff803d0c16f4d5b914e4415c2"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-021",
+      "content_sha256": "b7c5adafca7e9233f0a6ba817fdd2f3bffeb4ddc6672f180a5574091ebf9c2c1"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-022",
+      "content_sha256": "d799673d9c228135589f16013eab6126da96fb50ce524f0a25795ef19bca323a"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-023",
+      "content_sha256": "fec79e41b1339b061be95fd4120b0478fd7f03a36514225e838de946c353ceee"
+    },
+    {
+      "task_id": "simple-api-crm-lost-aug-024",
+      "content_sha256": "82917547e50232faf3920c9b39816fca54293de401acc661a8ded7dbd6aa060f"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-001",
+      "content_sha256": "5df96b9fe579d196fc3c59cfa1d66722fce24b9ab44789c66763f3dd33e75a8d"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-002",
+      "content_sha256": "468beecec7c0fc558b67b2710dc3f844c6c63bc60199d9ec09dab96a8ec9678b"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-003",
+      "content_sha256": "c72a2214d75a7758bf9cd6042401736c1dbfd806cca65754c25c5b343b4ee394"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-004",
+      "content_sha256": "3f79dfb9284e022963be0b2e4b47783eaf8ac1b5689d389cf7a5b130296f3ed7"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-005",
+      "content_sha256": "eabb3fe5e75ffc1dedb3277f1b2ddd6c63023fd6b3d0848cd6829f1ee85af48c"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-006",
+      "content_sha256": "8416f3eef2ef8165d23d976e966a808b149f000e6aadddbe3307993e478e028b"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-007",
+      "content_sha256": "43a8ba30269221216c5ced2af6a1c06cd6c2a3a964d942f370a8c300cbd59461"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-008",
+      "content_sha256": "fa69d57c1d163451db9846cecfe64c9bbcc2426841ddb3424d3e32172ae8b6ee"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-009",
+      "content_sha256": "9b20f4d38a38016cad657da06aad466c807d16fd9e366358b85bac724e077bcf"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-010",
+      "content_sha256": "fbfed9e8b19b2e65e96aa94b82ef471ae81eca51ccd2ada3cae70c666e730364"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-011",
+      "content_sha256": "4491ee87a32678afbd9412e6d6d9dd6062e57ecd15adce2d48f7d2daf52423fc"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-012",
+      "content_sha256": "239a0963317eff932f5a6ddb981b1327a8fd752070aabd540ae6ae0c9bdca27e"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-013",
+      "content_sha256": "4605de425da041d86c947431412ae514dd47315dbc99d9a7719ce7acedc979ee"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-014",
+      "content_sha256": "cfda24342b5e5cdf2f81a5c5c804af372b4f4d83338c5ee61d7692338dd24b36"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-015",
+      "content_sha256": "33b28ad2082f8fbcaca008299bfb248b97c48387733a18c34fa6101e91f9490f"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-016",
+      "content_sha256": "b1a588f245c87baef030d5af22009f99d1278105b54921fc6e752d2674623ea1"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-017",
+      "content_sha256": "56f4a8883a4f4e940e914a1bc49c4ec23c582cb27a8ef9704eb01ddd3e1b621c"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-018",
+      "content_sha256": "5e529e7c6b226b3ff455c66718ee120677696b6bfda8000319067826c6541726"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-019",
+      "content_sha256": "7ee0aa07a71bed426d21544025b3d28f343b18ba8d5adfea63744d9bec300e85"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-020",
+      "content_sha256": "84aff2bb84f31675e283b105c14dc4dab0cdb9ed44ffa2e01f461946e33b906c"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-021",
+      "content_sha256": "9d55c62c2b376956b1dba3e980c550c8c7801830db6687c682a5bafb6bf3d314"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-022",
+      "content_sha256": "ca22cbf89c89f50c0afd62823b97f07be8448f3d64cb39ac411fe44f92a23c11"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-023",
+      "content_sha256": "a293bfdeb3cb0e75f7795b65595f2ca113339e1908809abd039cd917b13bbd8e"
+    },
+    {
+      "task_id": "simple-api-crm-owner-aug-024",
+      "content_sha256": "4614e86413cf30890532296b514b69e5b791f80c17f9305f0b3f10965d3837fd"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-001",
+      "content_sha256": "2c144f87972d816294c5c5e0e714dbdd17a6d2ce87ba3922fb9b8aade87eaa48"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-002",
+      "content_sha256": "6b99c8dfceccb3e2a33c515fbc3c940d367eab01e5dc33ea2bda4ba16ac5edb6"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-003",
+      "content_sha256": "789038f5184548361a1f7ed413417a60e8785316c582345171cb0dc8b36d89f3"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-004",
+      "content_sha256": "e0a594098e8376bce82b986b8a42e021c268fd4ecf64ff43752e505a44dc28cd"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-005",
+      "content_sha256": "759edb4c1b533744cf1f6ca688a9ff69cdf3530619d77580f0c7e8200b4e16b2"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-006",
+      "content_sha256": "5e92da7b225f43d133eda1c4ee2d98905a2c8815a2cb12eff41c75f963e447f7"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-007",
+      "content_sha256": "2f4cc38a62c1caa720a758f57a348bddaef5a1ae27e410bf7ebca01014226e2e"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-008",
+      "content_sha256": "ab4b69704c7effc725433e99f88ad9aaa666d7cefb05f100d35efa4f46a01db0"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-009",
+      "content_sha256": "6c965acd1f5cc8ce6ce39e72d06ee1f94d591abf4a35f9563e6693cac203b4b7"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-010",
+      "content_sha256": "0a22034166b2454e03f7e9ed6c55cec0fea7d230cd1a0f58627b39cc6dbbc221"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-011",
+      "content_sha256": "2ba9a7efa0de58f99036eab61befbe1cb836d30044ec1fd3b60d7c3d2d0ade4b"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-012",
+      "content_sha256": "721a8491fc008710a10bb415224e1381217b3066186e316cdffc2c05471cadae"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-013",
+      "content_sha256": "f29fa060f844e6a346c8ae88132ae33df1ed86d7d1471961b7b09351be24e451"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-014",
+      "content_sha256": "962b3a6df9969fcac6731e4b5b474c7331816cf41715512c9dc4414de9149c08"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-015",
+      "content_sha256": "b76b9a48e54f0f801928d822ebd255acbd6b44f097aaed3063f14d1261307af7"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-016",
+      "content_sha256": "423c538269b7857964d33595b2daafa39ab166eaa26b5c5334c749ad3e82d1f8"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-017",
+      "content_sha256": "c44b03aa765dd4fcee03230f7c1d34c310c00639469ecb7ae515a2a4e5525c04"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-018",
+      "content_sha256": "aec37cd3f4421054c734c18d45c5e12c4ec1764cde531f4e8438ac121a3dfa56"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-019",
+      "content_sha256": "a542c8a51ef19f2e5d20a6db44f4469bc8faa3f3653ed3c30ea8f7923c0f564b"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-020",
+      "content_sha256": "034c3ed78f5feee89e45602279abf8384809e1070407858655a0f5d33a6a9c8e"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-021",
+      "content_sha256": "0a98b027d9cb7c87f7eb14f324229be4cf496220a0437abacb033aa4bf113647"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-022",
+      "content_sha256": "0044de5ee2d448de3e7bd4226f0fbbb2aab99634b656f54e4277cd879562744c"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-023",
+      "content_sha256": "df591a51c8377386ee6629c52a9ec09e3b629e6fac157fd4be4473f483dbfffb"
+    },
+    {
+      "task_id": "simple-api-crm-rename-aug-024",
+      "content_sha256": "717e165521f98daa2399acb9bd67f3f59a793cf569451a4f383acc54e1d7114d"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-001",
+      "content_sha256": "72705ea09f5cb735b21e8a63e8343fcf325e8b50aecb9b4cd2a688a02318bad1"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-002",
+      "content_sha256": "0133041ea2cea1ccc7e5f9249873125813b4799f9e0b31035e869bbbb6e01cae"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-003",
+      "content_sha256": "b829bb4e88df479d89b3a5f3be628d472025aefe5f0df308f95619c9adff179e"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-004",
+      "content_sha256": "75fbd7412ec28f73aec8d22b187ca11332fba85b5a4390a48da5c568775f587c"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-005",
+      "content_sha256": "45900f2eb8eb8c91df716b40340c8eacc5968ca48cb669b3b2916115fe910fcf"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-006",
+      "content_sha256": "061a80a387b179c34ebc904758dddee466aeff7fd53b705f6d00feec8392d40e"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-007",
+      "content_sha256": "77a772155c080b62b5e956699f9199369254adb8d887e6c1f443fe0c1559903a"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-008",
+      "content_sha256": "8475a58363850725ed588c30701e95f81abd742f9e7eb1cb64a6953161829e5f"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-009",
+      "content_sha256": "bf748d3091e22717c4e72c0053214d6bc27c65e8c75faa247b05f6dd91b028b1"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-010",
+      "content_sha256": "7798c879d734346f26e55027c7929808b8f264d0627c696218ff6e9645a30008"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-011",
+      "content_sha256": "9320c7fd0c79c39aa0ef10b8260fb8ad2a284975b41bf20509d83545ebbe9d0a"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-012",
+      "content_sha256": "3f5ac55ed9d7694ac77753a0587e3208f39e7d07b49aa7eb3aec7fa7c51d440d"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-013",
+      "content_sha256": "f2c8b0d7c7e200b4024f673eded83e0980d811f0d41939bdb1197ba3700b3921"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-014",
+      "content_sha256": "bb3a433ffda190809328136c3aa40e3ec08504b0e37542247bf14cc5bad4f8bb"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-015",
+      "content_sha256": "c18752b592fd7a0015fa0c004d61a9cdd94cc9353f38ec26f44498e350eb2987"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-016",
+      "content_sha256": "3ddf1580b45d9e070f70f91e8d70a219101a51f5c10b44e76927ee4af1fdd537"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-017",
+      "content_sha256": "d69f6bccfbe972a5ec6bb674ac84c77ba8cac23abd0b1133e9886cf4af5a3c18"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-018",
+      "content_sha256": "49787a064eec13016db02899204901165d10f154424c941794d4912404812981"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-019",
+      "content_sha256": "b3af2f11d5e375172f4f734eaa1994764ec6674bc2769e6e8536591bc4fb476e"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-020",
+      "content_sha256": "267d911f295c866a7b9fa41952e6ea33d7e7be119f0295592e1d0d66ea78760b"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-021",
+      "content_sha256": "a8598bf96d93561d626208386a3533091fab1d4f6823432f263325d7227106bb"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-022",
+      "content_sha256": "9486e8ae5fee163488d4baccbd1bb41f3be7c5d52478e51a190a6391be918238"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-023",
+      "content_sha256": "1f15a1b9e4416e850fbb6f29bcecbb0899916d8813e1596c437fc576289dfcc1"
+    },
+    {
+      "task_id": "simple-api-mail-draft-aug-024",
+      "content_sha256": "103ffb82bdff2acfeaaa92a748084e0651c1a0c53ce9f510678bafed6aff504d"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-001",
+      "content_sha256": "1c138fd24a3b9b5d703442493d46926a100f63f4b3bf361a52bf31be26d2dc0a"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-002",
+      "content_sha256": "3e13bc24ac7cb32f21deea80f3094a309f4760ab7bedbb0c778fd57cb90b763e"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-003",
+      "content_sha256": "032f29bcf50cc68ece1f2daea04406b1cb7b7117fc0cafaa4969dc33ad6e2eea"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-004",
+      "content_sha256": "099d66222912275346c0a9f3146c15528bdfd73aeb3b32c51e5455ba2b4c2b05"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-005",
+      "content_sha256": "a7f884089c7849f31cd782f17015ce54128d8cd459c28089e80ad7b032aa415e"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-006",
+      "content_sha256": "265244ae58dcbf2673724430022f4b23c510dda2374a72f6f1c698ed6b63b731"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-007",
+      "content_sha256": "fc699d36e80611cb0d43eb3771591aa1f155a99a1afb90a8ee8be24b734c7a36"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-008",
+      "content_sha256": "868d05e2b4808595f312b2df4ed844eaa68eaaeb30c2437074575080bb448304"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-009",
+      "content_sha256": "9a652c22465943ed4c56aacec1537230f1c403f9f5e501ab4d9fa2d2cb54b81f"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-010",
+      "content_sha256": "ac1d29cb915e35308c53b0131bfe3c4cb76e5912556e6476d3ab9b5e9f841d6c"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-011",
+      "content_sha256": "fe683862a42a75effa6db72c77487286d38b8c4909cf1e6d26c41a5fad53dbcb"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-012",
+      "content_sha256": "6fc3a7736d8ec08e9c3f8707fa17b0b526fca859526e81beeab705ebd0191a6a"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-013",
+      "content_sha256": "9545b5d63365c6cac92347926fcae49898fd62a7cbded5152acfc962f4004e43"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-014",
+      "content_sha256": "423eaea03f3017e4bc971d6ce1b197a4dc4a7509587ab1bacaa94514d97836a1"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-015",
+      "content_sha256": "3f55309a97d517a4ae8b5228e68b78f36327741ee47cb65ada4e01dd69780614"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-016",
+      "content_sha256": "33144fd088a7ce1cd506af393c75fe770a35119b0bd3549cc422d68fb816ee22"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-017",
+      "content_sha256": "8be0afa775db211e4c9d054e18ca7bf2d151df32e5b6dbe617d8d86a7aa91549"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-018",
+      "content_sha256": "8b95ec3b4511129f3f2cb73eed3a0204304e9f32a7f056f442c2b64252960d15"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-019",
+      "content_sha256": "8f3b8b6006d081979c70ea716c2f8656540a2ae5552440e0b62167481749bb5e"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-020",
+      "content_sha256": "b9279958b59a46e4750de518e3e632d789e9ada9075506cad365e57b6852a207"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-021",
+      "content_sha256": "d4a0b372e2041a5a61f82b85ab99d2915512eb22f9aa582dc720731a8770ef9a"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-022",
+      "content_sha256": "4f695de2d2c74f499d96af9f4f204f692d3e89f5909862f0a3f60962d6db3b87"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-023",
+      "content_sha256": "ad5be90eaac2dcf5efa8c4cdbd53df470724e0daa909ecd10b57f2182df60d89"
+    },
+    {
+      "task_id": "simple-api-mail-revise-aug-024",
+      "content_sha256": "ac52367d248ea137534266f146fe7959c26d19fc7e3271dd03a517c53bf29720"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-001",
+      "content_sha256": "1aa91c1fd385473984070f9a28a43ec05ec8b522b7f412d98b55c2c4e68174eb"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-002",
+      "content_sha256": "a2af09cb32d513cec7389b8d3e44907de4c7e51b86d6e5e627eb2d752e4bb358"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-003",
+      "content_sha256": "476953443dc10979aabdd4527f360b8955976589280eefcfd0648c850c55f16a"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-004",
+      "content_sha256": "f2f01a1afeaa3b69b87f694b20717c9dfeb3212b5a0a699d24d632efc2daea02"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-005",
+      "content_sha256": "496df72c572a3dc991eb184742cf7f781be108aeaf22cba51cc50fc515d22d45"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-006",
+      "content_sha256": "272f44cbd01c116d0b597cc0b18ccc3dcdb6e71be0a96eaf4dccd43e30e30e64"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-007",
+      "content_sha256": "7828c49043f9ec03aee5e3aeac844d2fe1537bea364afb50e20f80381f966b3c"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-008",
+      "content_sha256": "1d5aca5737d4589e22a5134beec06251abe120663ff013d54bb4444e87285666"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-009",
+      "content_sha256": "2d057df3b3a62fc782078cea5d25d69fd3ff70925ea44771d99573523307f2a2"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-010",
+      "content_sha256": "a89a182fe1b0259794eb6235bf650a4b27512eb45a2a122baeb55ecac182886c"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-011",
+      "content_sha256": "204324130180206036067e1a281b3be37ad86e9f30353d847aa9ebccafce0188"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-012",
+      "content_sha256": "2ce65e91a3e7a569a83cd821b356909d6bc16438920ac7532beb8ab9ba9ad91a"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-013",
+      "content_sha256": "dd889684b3ae69d98f66990b7d39d7113890202796e85424631cc64a1febff8f"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-014",
+      "content_sha256": "399df1aeacea67ea150c962b3aa90dab7521c45509557bf1b59d598df36cbc77"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-015",
+      "content_sha256": "986d097a58e1554d548d45bf0bcd2dfca522f257ff85332ed68230ba5e5884a9"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-016",
+      "content_sha256": "68a10e62e5208542d4a5661dcf38bbc1e5a7140e0be802a1166fd3b35ed75c5d"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-017",
+      "content_sha256": "a99a720d520e5211e786ae92176de71238c49eff52870cac003db08fff196648"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-018",
+      "content_sha256": "97e83b4fe254bb87aed0ce52952821f57cd4c00a46b0daf52597394bfd65b01c"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-019",
+      "content_sha256": "63a11939fc1979bb861c8990b86670e5739587125cbd8f2dd097dd519e4a77be"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-020",
+      "content_sha256": "d6764f2ab511731ff8cfd4d07767575005319b9d6a3430d7da502aa7d5a455d3"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-021",
+      "content_sha256": "5462c20ac65e3b1edf589b90de85615be66f6d49f9ec95164abb8e1101478301"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-022",
+      "content_sha256": "87ac8bc52e206182b7391891b90325e8e2a8f02557b72b800826ccd18679f502"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-023",
+      "content_sha256": "252a0b933f510a024b5f52d028e5b26440dd2fa9d5217847a5d5b1cb2f11ffe6"
+    },
+    {
+      "task_id": "simple-api-mail-discard-aug-024",
+      "content_sha256": "4824cf9eba6081cf70e46d9f487f5e5d1d2d39531e137eeb195f2e6890263485"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-001",
+      "content_sha256": "36b0fa7d7490173a474172aa69025ecdc921fa898eb34f1c36d7808fa4fab830"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-002",
+      "content_sha256": "fa6c858aab3cc66bfca3f2a62a30c7d1da83ed1cfe456c3ddcca1fe678878ff3"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-003",
+      "content_sha256": "ae910cb5ee9d05cd333aef0b8bb22fe3abf538fd2db5c157e636f7cd1fc1421d"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-004",
+      "content_sha256": "5b06ac2394fb3eaca779bd0accf7b62860e4318400afd80e0acf64ba076a5450"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-005",
+      "content_sha256": "9f1cfd69c1d5a6f8400313e19ee1b3e588de739f2277cd052353e5fdf66be9d8"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-006",
+      "content_sha256": "78d05116da2feb8bfbd3e520cc54dab9cd08fc5537dd8155e5a490bdec588a67"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-007",
+      "content_sha256": "cb2a7be42a4903d33b8f2c343e3d979481723fa8895db58d8d3d9b01dc10a8c1"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-008",
+      "content_sha256": "260e4b4c9b1275d8754be82eefa1cbb312e7d0858c7764d0fddd391254dd91df"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-009",
+      "content_sha256": "57283b5a47ca78d636985bae616187684477dd7e2af0e2c18c2d955942953edf"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-010",
+      "content_sha256": "85c1fbd0deeeed80b27eed8ad21cdaa497cbf23a61d5ece8ecd60e63b23ed994"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-011",
+      "content_sha256": "11ef0922db9b4ac818b9e72e35297ce10da1705c7536fe72c85e037b1d0b7d18"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-012",
+      "content_sha256": "dce4c4498ce667fa04c616d3333f669135736535bdba94078a71091828539b2f"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-013",
+      "content_sha256": "3d90ac782f66cbc8feeabc65d876c32146db69c4d049e298b308c10c84bf87bf"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-014",
+      "content_sha256": "2de362c81e4e75b73f5ba78195d5145dc5518f3009f3e1a4bc91f0375bf5350a"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-015",
+      "content_sha256": "70e9c1d71b9ddc648e40fcf82fa8752240526dda8200db535dad1fcefc262b7a"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-016",
+      "content_sha256": "bb73994000da11ff77fc119b01d4f0029aadd5e47def9d1b7c03c46eaf06b929"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-017",
+      "content_sha256": "11845a9cac1a5c861f5d4e5c7d6d64164954a47082326561a7528b961607e6b0"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-018",
+      "content_sha256": "7d21f983481c3058b42be6d75cd785a8cf8d50f10fbb033788ed779e5d0010e3"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-019",
+      "content_sha256": "42d6758295bcc3e2e5a4b8777f5ab0cc3c2ab49cb27243e32e5faa135ee2b5a1"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-020",
+      "content_sha256": "f59c7f5335ef41dbaa42c6c6cf6c946c76aed263cea34805d73aba6cdb4f091f"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-021",
+      "content_sha256": "506d5d7820e99573d0112115f0c79f1e3d3f5d4363f7d4df6d59cccd25620b6c"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-022",
+      "content_sha256": "e0be29084f86b7016d6493bed59df0051af1c7a9d2a31b78bb6e03b7db283f0d"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-023",
+      "content_sha256": "c0296dd5e1f51e045b4702d87f731a46975235b3bd7cca09b0f6ccb68044d420"
+    },
+    {
+      "task_id": "simple-api-mail-send-aug-024",
+      "content_sha256": "ab30cb604aea5291fe33dbf3cda7c9f9fe0cbac91ad19cc708a94c22f9e13a1f"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-001",
+      "content_sha256": "5ae0cabd0f924a9b170f30291aa559366c0b713b6643b1a02d364042e4492434"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-002",
+      "content_sha256": "5416f4046b7673d2d6fff17ef0a2ba9a4a5372fc082df5337620a88f049af983"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-003",
+      "content_sha256": "cd1b40cc5e01bd2d5293008dda3a8fa13013644910a3cb717dd5d39ece736a72"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-004",
+      "content_sha256": "9a561d6d54aee87224e011ac27426391160fa2265029746c9090ac7865bacb07"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-005",
+      "content_sha256": "438f61bf5505d0125b24a75a128274ea6e414f02c98ca62caad354cf65feee09"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-006",
+      "content_sha256": "e6519a2820bd5ba827d8182f880b31dbc0fb8a5a9b8272f271141bc3fed6f1eb"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-007",
+      "content_sha256": "783a7d1db0f3c638d985ba399dbc07a5fe62d330f8fe98221c113a6b9cfa424c"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-008",
+      "content_sha256": "1c3ff3b01860d163cb79c152b923e7ae31c909a2066673e7a76748e2378c8c16"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-009",
+      "content_sha256": "e5608247e04dfe5139d79b549362de7a644fac70c42919695b83898d3746f5ff"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-010",
+      "content_sha256": "b6c53dc9b67390a8c8d84faea6013c4d4f2572655517372bb3ab8ddc42dc2695"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-011",
+      "content_sha256": "8b59cd3c965211aa07e5d7ab39191401565b90d2ee020e6d1035b46f19b2bf76"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-012",
+      "content_sha256": "d74aedd6c31e0683fc2418ba3ed39593a8d57ed71f983c7a6088e9613ad1b0fd"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-013",
+      "content_sha256": "d89f68f1fe6953a3e414402082b2fc57f5d69762a0c5f8241643046573d4b15d"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-014",
+      "content_sha256": "d4c86419c0a5afd802ffea7425e85c4ecc351f6afe4284aa0ec472b9f3cd410c"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-015",
+      "content_sha256": "73b94331de5b3beb531680581bc702ead8c11d50fdcf379cbd7617520e23cd79"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-016",
+      "content_sha256": "e76a292d56a7c45f4027f5434a3934ca1ecec56c8871152be8259c67776e05c4"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-017",
+      "content_sha256": "362aad5988839e1e54ddacf265450792e1d3ebb4cb70236f4659819bd9a2b25f"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-018",
+      "content_sha256": "697c065a15c049cc3c83cf481ab4dcf6493f38b500af999e59a4949b9b6b9f98"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-019",
+      "content_sha256": "4573fdacfbcd9122ba2ed01cdd8412e9e82081152a96dee08ddb5f741d0a8f21"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-020",
+      "content_sha256": "33f6c6707540e1f6234c1b7e173fe4ea9d4e295bfc7e433948a5d78cd7074437"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-021",
+      "content_sha256": "17f4b477a532fb6a9190f830f40fb5ceda29335261d4abfe2e21ab681d727b6b"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-022",
+      "content_sha256": "64e286aecf2e8de8ab0e6731c9443330e1442ea53a6c0a8a2f8259082d770ba2"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-023",
+      "content_sha256": "d346eeeec77007885f6dc554fc9fd1af0765529d6fd886dd4457288b33ba0146"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-aug-024",
+      "content_sha256": "e4a49b66e820968221b25b45f39b484b37e55c12068b764a51ec029853f348ad"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-001",
+      "content_sha256": "8ae3576b2189813aced87575bdf8125e7ad1a219be90aa28edd900b43899048e"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-002",
+      "content_sha256": "b92b3c3b7d937a2b7eb8ef5ed187402cc8aeb6430af1b99b3aaa63d0e4552e53"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-003",
+      "content_sha256": "81bdf2cc33b08c7182af4fcfe10ff2ff50853839e812010b8e8fc5b493123599"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-004",
+      "content_sha256": "5ce7e972890e55b7b8e047421c73f3ec55fc0f4256e20a4dbca5ecd76077945c"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-005",
+      "content_sha256": "77fce3c58849aeff062ef9368cdc1b4fac7740c3d0636f4f1caf7f7a2026c6bb"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-006",
+      "content_sha256": "5702c97a4d9f395232a88242ba5e0753f70386fd8acaa6b736e0daf84bfbfae5"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-007",
+      "content_sha256": "de78f59864df09da3785d01b2fff9cfd03c91930bb54b5cec16349ab47166390"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-008",
+      "content_sha256": "a4b45bfdd8a446e7d81af1d62cd22d3629c69734c828a32102f087eb396571e2"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-009",
+      "content_sha256": "308d7311cfedad6fc39b85cd7b47f5a2183871287bfe7404fb0ebb5580532c28"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-010",
+      "content_sha256": "926aff71214c8ac749b1714b3a2e484ed094377c67beecd5d4a3f464cb0c5a55"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-011",
+      "content_sha256": "4e854b696939c020d1915a35e7a839dcde5898053ab125fa15af21c2cc958018"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-012",
+      "content_sha256": "261a328f304c8c07c2f2fde90f47366be822592cc3171f0bda34e4676f9b2a4e"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-013",
+      "content_sha256": "99cc098fbdf32e9a550b6be1e1a7b4bf1c4b801b638babc1baa86e5e8f1de233"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-014",
+      "content_sha256": "5aacc63c0a85a66619e61b5f896664f8ec035216ddfe83779d342fc1bbf1d35a"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-015",
+      "content_sha256": "0fd64266a40c5c68dd9de2c997dd83bee959eb4a9d8eb6a29fa7880c5eeefdce"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-016",
+      "content_sha256": "f456450687fa8de11848ab0ad5c90feb69ecab7ea894d33c869fd5756e8daa6b"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-017",
+      "content_sha256": "83a4473acb71a7724cb0cc732a1be92cbb279de2419fece86b885a9aa61a74f9"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-018",
+      "content_sha256": "720a975ba75b18991ce36586b4e26e3af4c07a6798111cb7da35325a4db9110a"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-019",
+      "content_sha256": "eb71be8a4508442eee151a339b72b972afb105912970ebe54892fa7a04697f1c"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-020",
+      "content_sha256": "2fba39fbb78dc5b95e47ff0809ed3a3e8094f37bc6f99bd2e48fbec5d2b7685d"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-021",
+      "content_sha256": "9d1df6d8bd312c271d849575c8803f0d7a161de57de913d1da9f0ba91bddbf47"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-022",
+      "content_sha256": "875d6099bdcdacc72628590660eae27079b0aa2e3b4d4042ebe8d889306118d5"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-023",
+      "content_sha256": "7b23bf22c6220cf0a52c3b89fc22ababa356271caa685d5c7fd6cf311b34ddd7"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-aug-024",
+      "content_sha256": "92ea3ed81de22d761a936abbd04d71ea8136f0ef232c60c933538ca1bc1d3748"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-001",
+      "content_sha256": "0100c12b246b0c971cb8f2e782f7e48e0930d0d83b8356d9d4f8e49e8785040d"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-002",
+      "content_sha256": "9ce5775619ee2dcffe1a4f3eae4ccdbd08ca3bd7424599923aa110907d446d53"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-003",
+      "content_sha256": "f8eb5a9539276da1f585dcafd6bd284fafa1cd416f60bb1d9da008270d390726"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-004",
+      "content_sha256": "060ae9555fcf266032c7927fca165769d66af5e38f0b432bbbc8f9de8b7a4fa9"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-005",
+      "content_sha256": "60d2a63c3599c7ce4398a945475878613463f7f312477abad20a1e8827518ff1"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-006",
+      "content_sha256": "9da526917e2ec7a8054b5905fbd4268612a7ed143e813c07a030e4a7dacfbcc5"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-007",
+      "content_sha256": "7f7aba327000876e52cad3a43181fd9156c62fb7e04a5ed649a315376edae0b0"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-008",
+      "content_sha256": "0394d3d8b7d55a3085b63db6f3e2be477b1e68ca26fb8f5ef11a2d13e25493fb"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-009",
+      "content_sha256": "eb31527c26d445bb43abc21faa589fcbcf5b029652777d3c118b92fcde007166"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-010",
+      "content_sha256": "d0dc6b77e24bf5eb9f8094d7c6b9ed229d7910fe231f9c1b6a68e7ba1a51018b"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-011",
+      "content_sha256": "5fb600274418b6c165894e26b4461b1aded89a2142773459541152d0f05f124c"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-012",
+      "content_sha256": "647144947e9bd660b160c63571dfa16cd0141bd37b3cff24a26ac84f8678e331"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-013",
+      "content_sha256": "d70612aca104b3a22a8aea9f6333cc9eee6eca4745d5a7f31fe1d5b3e26b97bd"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-014",
+      "content_sha256": "a0b940336bd0754af26c4233ec3cb89c730bdc08ea6f47e4ce77636c8a32e68b"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-015",
+      "content_sha256": "35bf67c8d08f2d321bc4db2f3a38599487eec9c08c84c6d72cd0b930940bd5b1"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-016",
+      "content_sha256": "e0b72d460a7bf0b9eb30e3b4fc3f1d1ec1b494059d31cdecebdb5b881267b394"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-017",
+      "content_sha256": "4d5125206f2425d77d6aa4d212997fd8886367b62e1a872f599b414b6b7a9e63"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-018",
+      "content_sha256": "abac8306789a8f79e7846c6edde7e36d51e0c0287a51d6ab22b922638b6b96bd"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-019",
+      "content_sha256": "f9f9766e7a9010504b0947eee684d8aa3817b97014f8eb614245e8dc59fb298b"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-020",
+      "content_sha256": "49ffd3b9f9757eb2218750b37ab55f69d399b2477027d2d61530a1602fad3bfe"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-021",
+      "content_sha256": "97d63073c6c0ec0f5d91c32056728ca8ecbc26dc0669374a7aeb12e6e64e3086"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-022",
+      "content_sha256": "f9d735400b58176e7c0f6153bdf5f180f39ac16a01e7075229c3c124b8e6dac2"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-023",
+      "content_sha256": "b4403556a04773270ca23d3c6fa0fa35437ef0fc8db74dd5b2c1fba75042b8cd"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-aug-024",
+      "content_sha256": "2831f6be69573cfb6f110f2e7a0f4fa214e6363855e8ff14d5401626b271e6ae"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-001",
+      "content_sha256": "15dcd015c75546e27352a07e8333446aae3a57c55ff84e4cc0477bcd7b59d8d7"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-002",
+      "content_sha256": "ac166375e6aad0c4e57e7fd06387e1e55a57b0807f75159a509804b0d1cb4629"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-003",
+      "content_sha256": "a21cec2f1c7e5ee33ccf5976eafa251e933b6c76a7f36acedfb56b1803de0a74"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-004",
+      "content_sha256": "b24f12fa3d5a47003c5360b46fbf6e3a9498549c118618db082bf4d64b9e93d8"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-005",
+      "content_sha256": "c95370bcc1f3881b0391634b2137fa948afe8834974b42313d1e1291e0516775"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-006",
+      "content_sha256": "bff1cc5e3bd92227a72a434bc2560f4b64941269ab2ead1808d52baa31655e52"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-007",
+      "content_sha256": "c953059cbc505662b5ecba87fa11f703d411979b7b615d268690ecb1e4fdfc6c"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-008",
+      "content_sha256": "c2bba0b9fe89a208837ddb98885c3eec6a449531df45eeca242e6c0a1936b87c"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-009",
+      "content_sha256": "f47f55b6b9ebe41e632d4ad2a2b05d20e061087dd621bb6bddd0a07dd97da5b6"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-010",
+      "content_sha256": "82f320ee16b4dbf9d7edd7c4eb893d8706f47960907237318293afb33e16fb07"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-011",
+      "content_sha256": "acb66a58bd6c5c5bcba2ac3ba9cd0eea8dddbf90085bc91d07fd115a6fc8b416"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-012",
+      "content_sha256": "7a38c53a5ff802ee7bd3842b15d9acc4e7071da6a5806a821e9714f399ba6606"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-013",
+      "content_sha256": "819eef0cc522547b26fcf05b474acffe1d1191a74bace76e1ab3ccd1c3681df4"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-014",
+      "content_sha256": "e516bdfcaaadeeadce5affe9dc07963627c2966614d1917058498512530a8d28"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-015",
+      "content_sha256": "3bbc1ab88f9063273e6e94f91c58347c921de7cb2f8716fa32f203536dc73117"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-016",
+      "content_sha256": "6c45a54420fb35a2400d599b5ad4d22d0b5f48051095918d4eec7a5aeb6f6c6e"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-017",
+      "content_sha256": "93886aaf7a59902cd3fa216f45b8d1dc7356b2666095b62fc2e6cf8108f7e955"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-018",
+      "content_sha256": "72b569825cc35cffd0e062a4ba5405cd6c7b45a3103d45a65a775c616a142e4e"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-019",
+      "content_sha256": "f03b595d00db34251dcd6fcd2a65e9eaac92cf5ec754f41e8eddf970e1d86a74"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-020",
+      "content_sha256": "136f85c7539d23ab71b08efb0c6ae37d5dd89dc40671cda9d81ea31b29609924"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-021",
+      "content_sha256": "e4abfcb0886a731ba07de6e128950dad0644cdcb075e83374c7a30a6728e7519"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-022",
+      "content_sha256": "b47f12c5e66e84ac8a90f27305b825493023976cbce39b12e7f48a7d6fee3ee2"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-023",
+      "content_sha256": "9ae45028bdb70835623c339252e6d0023035e453af5932b2eab674e89b0a7a5c"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-aug-024",
+      "content_sha256": "e1d795aa68417188c88d2452d029e615c559068decda52da78cae4458fd0ddde"
+    }
   ],
-  "augmented_train_sha256": "14b94431a6a1f4331b4c36e98e822a769fe6dfc03df1a69f4ade4dd51abf60c6",
+  "augmented_train_sha256": "6dd05e7b2280070df9b220fb144e0f61517b43463f7a07cf78b23b2ede7551c3",
   "frozen_split_hashes": {
     "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89",
     "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",

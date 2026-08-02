@@ -66,14 +66,20 @@ describe("augmented AutomationBench train set", () => {
     assert.deepEqual(set.contamination.train_vs_dev_content_hashes, []);
     assert.deepEqual(set.contamination.train_vs_holdout_content_hashes, []);
     assert.equal(set.contamination.holdout_hash_equal, true);
+    assert.deepEqual(Object.keys(set.manifest.task_content_sha256[0]).sort(), ["content_sha256", "task_id"]);
+    for (const task of augmented) assert.ok(!task.prompt.includes("phrasing variant"));
   });
 
   it("replays every emitted trajectory to exactly 1.0", () => {
     const set = buildAugmentedTrainSet();
     for (const trajectory of set.trajectories) {
       const { handle } = reset(trajectory.task_id);
-      for (const call of trajectoryToolCalls(trajectory)) step(handle, call);
-      const result = handle.done ? { reward: 0 } : finish(handle);
+      let lastResult = null;
+      for (const call of trajectoryToolCalls(trajectory)) {
+        lastResult = step(handle, call);
+        if (lastResult.done) break;
+      }
+      const result = handle.done ? lastResult : finish(handle);
       assert.equal(result.reward, 1, `${trajectory.task_id} variant ${trajectory.variant}`);
       assert.deepEqual(handle.forbiddenEffects, []);
     }
@@ -95,6 +101,7 @@ describe("augmented AutomationBench train set", () => {
     assert.equal(JSON.parse(readFileSync(join(artifactRoot, "manifest.json"), "utf8")).augmented_train_sha256, set.manifest.augmented_train_sha256);
     assert.deepEqual(JSON.parse(readFileSync(join(artifactRoot, "contamination-report.json"), "utf8")), set.contamination);
     assert.equal(set.manifest.task_content_sha256.length, 336);
+    assert.deepEqual(set.manifest.per_family_accepted, Object.fromEntries(Object.keys(set.manifest.generator.family_bands).map((slug) => [slug, 24])));
     assert.equal(set.tasks.slice(48).map(taskContentSha256).length, 288);
   });
 });

@@ -1,4 +1,11 @@
 {
+  "counts": {
+    "frozen_train": 48,
+    "augmented": 288,
+    "total_train": 336,
+    "trajectories": 1008
+  },
+  "artifact_content_policy": "TRAIN-only tasks and trajectories; no dev/holdout task content is present in any artifact, hashes only.",
   "train_vs_dev_ids": [],
   "train_vs_holdout_ids": [],
   "train_vs_dev_content_hashes": [],
