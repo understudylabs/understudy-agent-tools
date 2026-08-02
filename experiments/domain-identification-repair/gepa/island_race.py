@@ -173,6 +173,12 @@ class LiveManifest:
             if state.get("failure_reason"):
                 failures.append({"node_id": node_id, "category": state.get("failure_category"),
                                  "reason": state.get("failure_reason")})
+        latencies = sorted(float(rec["wall_clock_s"]) for rec in records.values()
+                           if isinstance(rec.get("wall_clock_s"), (int, float)))
+        def percentile(values, q):
+            if not values:
+                return None
+            return values[min(len(values) - 1, round((len(values) - 1) * q))]
         totals = {
             "state": "completed" if states and all(s.get("status") in em.TERMINAL_STAGES for s in states.values()) else "running",
             "wall_clock_s": round(time.time() - self.started),
@@ -185,6 +191,9 @@ class LiveManifest:
             "islands_succeeded": sum(s.get("status") in {"completed", "promoted"} for s in states.values()),
             "islands_failed": sum(s.get("status") == "failed" for s in states.values()),
             "failure_events": failures,
+            "latency_s": {"p50": percentile(latencies, .50),
+                          "p95": percentile(latencies, .95),
+                          "samples": len(latencies)},
             "cost_usd": None,
             "cost_coverage": "out_of_band_clickhouse",
             "holdout_executed": False,

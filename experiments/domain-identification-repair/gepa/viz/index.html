@@ -37,6 +37,11 @@
     .wave-note { margin-top: 3px; color: #71717a; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .progress { height: 3px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: #27272a; }
     .progress-fill { height: 100%; width: 0; border-radius: inherit; background: #e4e4e7; transition: width .35s ease; }
+    .stream { display: flex; align-items: center; gap: 14px; min-height: 20px; margin-top: 8px; color: #71717a; font-size: 10px; font-variant-numeric: tabular-nums; }
+    .stream b { color: #d4d4d8; font-weight: 650; }
+    .stream .ok { color: #4ade80; }
+    .stream .bad { color: #f87171; }
+    .failure { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
     @keyframes pulse { 0%, 100% { background: rgba(255, 255, 255, .08); } 50% { background: rgba(255, 255, 255, .24); } }
     @media (max-width: 680px) {
       .card { padding: 12px; }
@@ -87,6 +92,12 @@
 
       <div class="waves" id="waves"></div>
       <div class="progress" aria-label="Episode budget progress"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="stream" aria-live="polite">
+        <span>islands <b id="island-state">—</b></span>
+        <span>latency <b id="latency">—</b></span>
+        <span>cost <b id="cost">—</b></span>
+        <span class="failure" id="failure">waiting for events</span>
+      </div>
     </section>
   </div>
 
@@ -133,6 +144,25 @@
       document.getElementById("episode-count").textContent = cap ? `${completed}/${cap}` : String(completed || "—");
       document.getElementById("reflection-count").textContent = reflectionCap ? `${reflections}/${reflectionCap} reflections` : `${reflections} reflections`;
       document.getElementById("progress-fill").style.width = cap ? `${Math.min(100, completed / cap * 100)}%` : "0%";
+      const succeeded = Number(manifest.totals?.islands_succeeded ?? 0);
+      const failed = Number(manifest.totals?.islands_failed ?? 0);
+      const islandState = document.getElementById("island-state");
+      islandState.innerHTML = `<span class="ok">${succeeded} success</span> · ${active.length} running · <span class="bad">${failed} failed</span>`;
+      const latency = manifest.totals?.latency_s || {};
+      document.getElementById("latency").textContent = latency.p50 == null
+        ? "collecting"
+        : `p50 ${duration(latency.p50)} · p95 ${duration(latency.p95)}`;
+      const cost = manifest.totals?.cost_usd;
+      document.getElementById("cost").textContent = cost == null
+        ? (manifest.totals?.cost_coverage || "unmetered")
+        : `$${Number(cost).toFixed(2)}`;
+      const failures = Array.isArray(manifest.totals?.failure_events) ? manifest.totals.failure_events : [];
+      const latestFailure = failures.at(-1);
+      const failure = document.getElementById("failure");
+      failure.className = `failure${latestFailure ? " bad" : ""}`;
+      failure.textContent = latestFailure
+        ? `${latestFailure.node_id}: ${latestFailure.category} — ${latestFailure.reason}`
+        : active.length ? "no failures reported" : "run complete";
 
       const waveData = [
         ["baseline", "Baseline"],
