@@ -1,0 +1,10 @@
+{
+  "disposition": "already_terminal",
+  "job": {
+    "executor": "fixture",
+    "idempotency_key": "b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674",
+    "job_id": "tinker://sync/b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674",
+    "submitted_at": "2026-08-02T02:45:44.414Z"
+  },
+  "observed_at": "2026-08-02T02:45:44.414Z"
+}

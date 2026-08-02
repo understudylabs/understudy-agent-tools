@@ -28,6 +28,14 @@ def _sha256(path: Path) -> str:
 
 
 def _phase_for(name: str) -> str:
+    if name in {
+        "contract-tests.json",
+        "executor-submit.json",
+        "experiment-result.json",
+        "executor-cancellation.json",
+        "student-sft-epoch1-policy.json",
+    } or name.endswith(".json") and name in {"provenance.json"}:
+        return "E-contracts"
     if "entry-gate" in name:
         return "A"
     if "teacher-trajectories" in name:
@@ -42,6 +50,18 @@ def _phase_for(name: str) -> str:
 
 
 def _step_for(name: str) -> str:
+    if name == "contract-tests.json":
+        return "contract_tests"
+    if name == "executor-submit.json":
+        return "build_submit_payload"
+    if name == "experiment-result.json":
+        return "build_experiment_result"
+    if name == "executor-cancellation.json":
+        return "build_experiment_result"
+    if name == "student-sft-epoch1-policy.json":
+        return "build_submit_payload"
+    if name == "provenance.json":
+        return "vendor_canonical_contracts"
     if "entry-gate" in name:
         return "entry_gate"
     if "teacher-trajectories" in name:
@@ -79,6 +99,8 @@ def _artifact_entries() -> list[dict[str, Any]]:
 
 
 def _manifest() -> dict[str, Any]:
+    provenance = json.loads((EXPERIMENT_DIR / "contracts" / "provenance.json").read_text())
+    canonical_commit = provenance["source_commit"]
     serving_contracts = json.loads(
         (ARTIFACT_DIR / "serving-contracts.json").read_text()
     )
@@ -98,7 +120,7 @@ def _manifest() -> dict[str, Any]:
         },
         "verifier": {
             "identity": "automationbench-simple-api-offline",
-            "revision": FIXTURE_SHA256,
+            "revision": "dd7a9d71f38b40ffbecbbe4a711dd37bfa44d6ce",
             "service_runtime": "/home/ubuntu/wt-402",
         },
         "model_serving_contracts": serving_contracts,
@@ -106,10 +128,49 @@ def _manifest() -> dict[str, Any]:
             "requested": "tinker",
             "workflow_spec_union": ["modal", "wafer", "fireworks", "spark"],
             "spec_amendment_required": True,
+            "canonical_submit_schema": "understudy.executor-submit.v1",
             "limitation": (
                 "The Tinker SDK calls used by this arm are blocking and do not "
                 "return an async provider job handle; executor_tinker reports "
                 "synchronous terminal receipts rather than faking async state."
+            ),
+        },
+        "submit_contract": {
+            "payload_ref": "artifact://nemotron-distillation/executor-submit.json",
+            "policy_ref": "artifact://nemotron-distillation/student-sft-epoch1-policy.json",
+            "canonical_commit": canonical_commit,
+            "provenance_ref": "artifact://nemotron-distillation/provenance.json",
+            "holdout_absence_assertion": (
+                "serialized submit payload contains neither the frozen holdout "
+                "hash nor the substring 'holdout'"
+            ),
+            "enum_blocker": (
+                "Add 'tinker' to the executor union in "
+                "experiment-executor-submit-request.json, "
+                "experiment-executor-job-ref.json, and "
+                "experiment-executor-cancellation-receipt.json."
+            ),
+        },
+        "result_contract": {
+            "schema": "understudy.experiment-result.v1",
+            "result_ref": "artifact://nemotron-distillation/experiment-result.json",
+            "holdout_binding": {
+                "included": True,
+                "sha256": SPLIT_SHA256["holdout"],
+                "reason": (
+                    "Terminal results bind the sealed holdout; submit payloads "
+                    "remain structurally holdout-free."
+                ),
+            },
+            "holdout_clean_reading": (
+                "true means the single authorized holdout execution occurred "
+                "after the committed predeclaration with no prior access."
+            ),
+            "request_isolation_proven": False,
+            "quality_evidence_status": "measured",
+            "quality_evidence_reading": (
+                "Metrics are measured and verifier-checked, but the fixture is "
+                "saturated and cannot discriminate the compared models."
             ),
         },
         "claim_boundary": {

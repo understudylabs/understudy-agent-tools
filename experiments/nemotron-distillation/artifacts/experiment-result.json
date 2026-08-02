@@ -1,0 +1,94 @@
+{
+  "artifact_refs": [
+    "artifact://nemotron-distillation/sealed-holdout.json",
+    "artifact://nemotron-distillation/sealed-holdout-student-base.usage.json",
+    "artifact://nemotron-distillation/sealed-holdout-student-sft.usage.json",
+    "artifact://nemotron-distillation/sealed-holdout-teacher.usage.json",
+    "artifact://nemotron-distillation/holdout-lock.json",
+    "artifact://nemotron-distillation/holdout-verdict-smoke.json",
+    "artifact://nemotron-distillation/executor-cancellation.json"
+  ],
+  "baseline_metrics": {
+    "discovery_mean_reward": 1.0,
+    "mean_model_turns": 4.583333333333333,
+    "mean_per_task_latency_seconds": 5.677245163249988,
+    "mean_per_turn_latency_seconds": 1.2386716719818154,
+    "mean_prompt_plus_sampled_tokens": 2371.1666666666665,
+    "mean_reward": 1.0,
+    "multi_write_mean_reward": 1.0,
+    "p50_per_turn_latency_seconds": 1.2687840030002917,
+    "p90_per_turn_latency_seconds": 1.6759424085998944,
+    "parse_error_rate": 0.16666666666666666,
+    "single_write_mean_reward": 1.0
+  },
+  "budget_usd": 100.0,
+  "cancellation_receipts": [
+    {
+      "disposition": "already_terminal",
+      "job": {
+        "executor": "fixture",
+        "idempotency_key": "b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674",
+        "job_id": "tinker://sync/b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674",
+        "submitted_at": "2026-08-02T02:45:44.414Z"
+      },
+      "observed_at": "2026-08-02T02:45:44.414Z"
+    }
+  ],
+  "claim_boundary": "Quality parity is claimed within the predeclared tolerance on a saturated 12-task holdout fixture; warm-start latency and token wins are measured, not cost claims. No dollar evidence exists, the teacher is an approximately 3B-active 30B-A3B MoE while the student is a dense 9B, no upstream AutomationBench claim is made, and n=12 for train, dev, and holdout comparisons.",
+  "experiment_id": "P3-nemotron-distillation",
+  "failure_clusters": [
+    {
+      "artifact_refs": [
+        "artifact://nemotron-distillation/sealed-holdout.json"
+      ],
+      "cluster": "student-base parse/protocol failures",
+      "count": 2
+    }
+  ],
+  "holdout_clean": true,
+  "holdout_executed": true,
+  "optimized_metrics": {
+    "discovery_mean_reward": 1.0,
+    "mean_model_turns": 3.3333333333333335,
+    "mean_per_task_latency_seconds": 4.1466945332499945,
+    "mean_per_turn_latency_seconds": 1.2440083599749983,
+    "mean_prompt_plus_sampled_tokens": 1401.3333333333333,
+    "mean_reward": 1.0,
+    "multi_write_mean_reward": 1.0,
+    "p50_per_turn_latency_seconds": 1.0784400894999635,
+    "p90_per_turn_latency_seconds": 1.669776225700025,
+    "parse_error_rate": 0.0,
+    "single_write_mean_reward": 1.0
+  },
+  "quality_evidence": {
+    "calibration_artifact_refs": [],
+    "reason": "Holdout quality and protocol metrics were measured and verifier-checked, but the fixture is saturated: teacher, untuned student base, and selected SFT student all scored 1.000, so the comparison has no discriminating power.",
+    "required_calibration": null,
+    "status": "measured"
+  },
+  "request_isolation_proven": false,
+  "schema_version": "understudy.experiment-result.v1",
+  "split_manifest_refs": {
+    "dev": "artifact://automationbench-simple-api-offline-v1/dev.json",
+    "holdout": "artifact://automationbench-simple-api-offline-v1/holdout.json",
+    "train": "artifact://automationbench-simple-api-offline-v1/train.json"
+  },
+  "split_manifest_sha256": {
+    "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+    "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+  },
+  "state": "succeeded",
+  "usage": {
+    "actual_usd": null,
+    "estimated_usd": null,
+    "evidence_scope": "unknown",
+    "input_tokens": 15980,
+    "observed_at": "2026-08-02T02:45:44.414Z",
+    "output_tokens": 836,
+    "requests": null,
+    "upper_bound_usd": null
+  },
+  "verifier_environment": "offline AutomationBench evaluator",
+  "verifier_revision": "dd7a9d71f38b40ffbecbbe4a711dd37bfa44d6ce"
+}

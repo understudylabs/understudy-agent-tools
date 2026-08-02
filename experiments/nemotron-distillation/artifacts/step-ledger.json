@@ -92,6 +92,17 @@
       },
       "status": "completed"
     },
+    "b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674": {
+      "attempt": 1,
+      "candidate_id": "student-sft-epoch1",
+      "experiment_id": "P3-nemotron-distillation",
+      "result": {
+        "artifact_ref": "artifact://nemotron-distillation/probe.json",
+        "executor": "fixture",
+        "job_ref": "tinker://sync/b5643d3d980d9dae8432b227511d8a0310e9306e4df6e1caeef2aed12b976674"
+      },
+      "status": "completed"
+    },
     "e34eceb3d7f2568dd756611f2395e100a0b7fef1b788a33f4425572aaa4fe7ee": {
       "attempt": 1,
       "candidate_id": "student-base-warm",

@@ -1,0 +1,48 @@
+{
+  "api_key_present": false,
+  "canonical_commit": "c299ca4",
+  "enum_blocker": "Blocking amendment: add 'tinker' to the executor union in experiment-executor-submit-request.json, experiment-executor-job-ref.json, and experiment-executor-cancellation-receipt.json.",
+  "holdout_absence": {
+    "assertion": "PASS",
+    "holdout_sha256_present": false,
+    "holdout_substring_present": false
+  },
+  "observed_at": "2026-08-02T02:50:08.432Z",
+  "provider_calls": 0,
+  "real_tinker_cancellation_validation": {
+    "errors": [
+      "'tinker' is not one of ['modal', 'wafer', 'fireworks', 'spark', 'fixture']"
+    ],
+    "result": "FAIL_ENUM"
+  },
+  "real_tinker_job_ref_validation": {
+    "errors": [
+      "'tinker' is not one of ['modal', 'wafer', 'fireworks', 'spark', 'fixture']"
+    ],
+    "result": "FAIL_ENUM"
+  },
+  "receipts": {
+    "cancellation": "PASS",
+    "cancellation_disposition": "already_terminal",
+    "dollar_fields": null,
+    "job_ref": "PASS",
+    "job_status": "PASS",
+    "real_tinker_cancellation_validation": "FAIL_ENUM",
+    "usage_empty_evidence_scope": "unknown",
+    "usage_nonempty_evidence_scope": "account_window"
+  },
+  "result_holdout_binding": {
+    "assertion": "PASS",
+    "holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701"
+  },
+  "schema_version": "understudy.distillation_contract_tests.v1",
+  "submit": {
+    "conformance_probe_executor": "fixture",
+    "conformance_probe_validation": "PASS",
+    "real_errors": [
+      "'tinker' is not one of ['modal', 'wafer', 'fireworks', 'spark', 'fixture']"
+    ],
+    "real_executor": "tinker",
+    "real_validation": "FAIL"
+  }
+}

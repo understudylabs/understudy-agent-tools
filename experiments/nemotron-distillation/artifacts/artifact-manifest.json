@@ -2,6 +2,13 @@
   "artifact_refs_only": true,
   "artifacts": [
     {
+      "bytes": 1647,
+      "phase": "E-contracts",
+      "produced_by_step": "contract_tests",
+      "ref": "artifact://nemotron-distillation/contract-tests.json",
+      "sha256": "e18eb68d6d81e6862b42bd9935cc1c7a26c51ef71fa4722058d6885de5be6941"
+    },
+    {
       "bytes": 10683,
       "phase": "B3/B4",
       "produced_by_step": "evaluate_dev",
@@ -21,6 +28,27 @@
       "produced_by_step": "phase_event_emission",
       "ref": "artifact://nemotron-distillation/events.jsonl",
       "sha256": "1c8072952d547aa210022149ad2ddfb7d942190671367186a945049ffc288554"
+    },
+    {
+      "bytes": 362,
+      "phase": "E-contracts",
+      "produced_by_step": "build_experiment_result",
+      "ref": "artifact://nemotron-distillation/executor-cancellation.json",
+      "sha256": "5967742405ddde6e8464a0a6be368a78fe7fb02208fe39c3708d7de77fb0aaf8"
+    },
+    {
+      "bytes": 1491,
+      "phase": "E-contracts",
+      "produced_by_step": "build_submit_payload",
+      "ref": "artifact://nemotron-distillation/executor-submit.json",
+      "sha256": "ff0af3259b4c430b8b58562e5060397b6b9ec9d06cbbcc310d4bea78f800c674"
+    },
+    {
+      "bytes": 4123,
+      "phase": "E-contracts",
+      "produced_by_step": "build_experiment_result",
+      "ref": "artifact://nemotron-distillation/experiment-result.json",
+      "sha256": "72ce26065f109027c1cf013cbabf9fdaf54148af30c22c633b0d0940261b78c6"
     },
     {
       "bytes": 458,
@@ -114,11 +142,11 @@
       "sha256": "266b661fc6103e4ee0580f98d9a30d9d95bf0a0bc01808f18116da11c28ce167"
     },
     {
-      "bytes": 4086,
+      "bytes": 4539,
       "phase": "C",
       "produced_by_step": "step_ledger",
       "ref": "artifact://nemotron-distillation/step-ledger.json",
-      "sha256": "516ce7d734ebed43345b6a8ccdf75f769788c3a1ec2e16ddd133bda1e516ba22"
+      "sha256": "c07898515f43cb3feec32980759032d9288a071b80acd5f92f986e0e1a11011e"
     },
     {
       "bytes": 158178,
@@ -224,6 +252,13 @@
       "produced_by_step": "evaluate_dev",
       "ref": "artifact://nemotron-distillation/student-sft-epoch1-dev.usage.json",
       "sha256": "318e3f40fed06f7d63a93b9d03e155a69fb38e0ffa8bb7080aac5331442097dd"
+    },
+    {
+      "bytes": 741,
+      "phase": "E-contracts",
+      "produced_by_step": "build_submit_payload",
+      "ref": "artifact://nemotron-distillation/student-sft-epoch1-policy.json",
+      "sha256": "b21eebc3a41a0e35bcab769f8631ec1bccc7bf7acf7751abc39285e0c1f8671d"
     },
     {
       "bytes": 45692,
@@ -391,6 +426,7 @@
     "train_rows": 48
   },
   "executor": {
+    "canonical_submit_schema": "understudy.executor-submit.v1",
     "limitation": "The Tinker SDK calls used by this arm are blocking and do not return an async provider job handle; executor_tinker reports synchronous terminal receipts rather than faking async state.",
     "requested": "tinker",
     "spec_amendment_required": true,
@@ -477,11 +513,32 @@
     "prompt_variant": "nemotron-v1",
     "schema_version": "understudy.serving_contracts.v1"
   },
+  "result_contract": {
+    "holdout_binding": {
+      "included": true,
+      "reason": "Terminal results bind the sealed holdout; submit payloads remain structurally holdout-free.",
+      "sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701"
+    },
+    "holdout_clean_reading": "true means the single authorized holdout execution occurred after the committed predeclaration with no prior access.",
+    "quality_evidence_reading": "Metrics are measured and verifier-checked, but the fixture is saturated and cannot discriminate the compared models.",
+    "quality_evidence_status": "measured",
+    "request_isolation_proven": false,
+    "result_ref": "artifact://nemotron-distillation/experiment-result.json",
+    "schema": "understudy.experiment-result.v1"
+  },
   "schema_version": "understudy.distillation_artifact.v1",
   "self_reference_excluded": true,
+  "submit_contract": {
+    "canonical_commit": "c299ca4",
+    "enum_blocker": "Add 'tinker' to the executor union in experiment-executor-submit-request.json, experiment-executor-job-ref.json, and experiment-executor-cancellation-receipt.json.",
+    "holdout_absence_assertion": "serialized submit payload contains neither the frozen holdout hash nor the substring 'holdout'",
+    "payload_ref": "artifact://nemotron-distillation/executor-submit.json",
+    "policy_ref": "artifact://nemotron-distillation/student-sft-epoch1-policy.json",
+    "provenance_ref": "artifact://nemotron-distillation/provenance.json"
+  },
   "verifier": {
     "identity": "automationbench-simple-api-offline",
-    "revision": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+    "revision": "dd7a9d71f38b40ffbecbbe4a711dd37bfa44d6ce",
     "service_runtime": "/home/ubuntu/wt-402"
   }
 }

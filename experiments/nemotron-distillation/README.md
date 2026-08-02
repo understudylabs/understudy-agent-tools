@@ -151,12 +151,117 @@ a second durable controller:
 - `artifacts/events.jsonl`: small redacted `run`, `candidate`, `rollout`,
   `score`, `usage`, and `error` event schema with no raw prompts or traces.
 
+The executor work here is contract and test work only: zero provider calls and
+zero provider spend. We did not duplicate the Modal executor-contract work,
+and we did not create a controller, poller, inbox, decision database, or other
+durable controller machinery. This arm neither touches nor depends on the
+legacy Spark `buzz-experiment-controller.timer`; systemd timers are outside
+the experiment boundary and are left alone.
+
 The reference Workflow executor union is
 `'modal' | 'wafer' | 'fireworks' | 'spark'`; it does not include `tinker`.
 The required `'tinker'` executor-union amendment is explicitly recorded in
 the manifest. Tinker calls used here are blocking and expose no asynchronous
 provider job handle, so the executor returns synchronous terminal receipts
 and never fabricates an async job.
+
+### Canonical submit contract
+
+Phase E originally pinned the canonical Workflow 4.6.0 contracts from
+`/home/ubuntu/up-spec`, branch `yolo/vercel-experiment-orchestrator`, commit
+`16b69a3e89882cb2bc6bd9c3f7b5d1e2b0320863`; the current provenance pin is
+`c299ca4` (controller review surface PR #545). The
+candidate-method payload is
+`artifacts/executor-submit.json` and has schema version
+`understudy.executor-submit.v1`. Its mapping is:
+
+- `experiment_id`, `candidate.candidate_id`, and `attempt` identify the
+  selected `student-sft-epoch1` arm and match the local step ledger.
+- `candidate.model` is `Qwen/Qwen3.5-9B`; `model_revision` is the selected
+  epoch-1 sampler checkpoint.
+- `candidate.policy_ref` and `policy_sha256` point to the immutable policy
+  artifact containing only the serving contract and SFT recipe. Prompt text
+  is not inlined.
+- `workload.dataset_manifest_sha256` is the frozen fixture hash; the verifier
+  environment is the offline AutomationBench evaluator and
+  `verifier_revision` is the real base-branch revision
+  `dd7a9d71f38b40ffbecbbe4a711dd37bfa44d6ce` of
+  `src/automationbench-offline.ts`.
+- `splits` contain train and dev manifest references and hashes only.
+- `limits` record the bounded `390` rollout envelope, concurrency `8`, runtime
+  ceiling, and the declared `$100` budget ceiling.
+
+The serialized submit payload contains neither the frozen holdout hash nor the
+substring `holdout`; this is asserted by
+`artifacts/contract-tests.json`. Holdout is structurally absent from the
+submit schema and no sealed-holdout reference is permitted to leak into this
+candidate payload.
+
+The real candidate executor is `tinker`, and canonical validation therefore
+fails exactly at the executor enum. An offline conformance probe substitutes
+`fixture`, which is truthful only for the provider-free verifier lane and
+validates every other payload field. The blocking amendment is explicit:
+**add `'tinker'` to the executor union in
+`experiment-executor-submit-request.json`,
+`experiment-executor-job-ref.json`, and
+`experiment-executor-cancellation-receipt.json`.** It must not be papered over
+by labeling a Tinker candidate as `fixture`.
+
+`executor_tinker.py` emits canonical job references, job status, cancellation
+receipts, and usage receipts. Cancellation records
+`disposition: already_terminal` for synchronous Tinker calls. Usage
+`evidence_scope` is `unknown` for the empty billing response and
+`account_window` when billing data is present; all dollar fields remain null
+because no dollar amounts are returned.
+
+### Terminal result contract
+
+Phase F re-pinned the vendored contracts to controller commit
+`8c8fb65ed5b796b0eb6dfa4bb587484dd509a7f8`; Phase G re-pinned provenance to
+current head `c299ca4`. Every vendored schema is byte-identical between the
+Phase F and Phase G pins. The submit schema is byte-identical all the way back
+to the Phase E pin at `16b69a3e89882cb2bc6bd9c3f7b5d1e2b0320863`, so the
+`understudy.executor-submit.v1` field mapping and the Tinker enum blocker are
+unchanged. The newer pin adds the expanded
+`understudy.experiment-result.v1` and
+`understudy.experiment-run-status-response.json` contracts.
+
+`scripts/build_experiment_result.py` emits
+`artifacts/experiment-result.json`. Unlike the submit payload, this terminal
+result binds train, dev, and holdout refs and hashes, including the frozen
+holdout hash. Contract tests assert both deliberate directions:
+
+- submit payload: holdout hash and the substring `holdout` are absent;
+- terminal result: the holdout hash is present and bound.
+
+The result compares the untuned `student-base` baseline with selected SFT
+epoch 1 using the sealed holdout's verifier-checked reward, per-band reward,
+warm-start latency, token, turn, and parse-error measurements. `holdout_clean`
+is `true` under the platform semantic reading used here: the single authorized
+holdout execution occurred after the committed tolerance predeclaration and
+there was no prior access.
+
+`quality_evidence.status` is `measured`, not `calibrated`: the measurements
+are real and verifier-checked, but the fixture is saturated, with teacher,
+untuned base, and selected SFT all at mean reward `1.000`, so the comparison
+has no discriminating power. `request_isolation_proven` is `false` because
+Tinker's billing endpoint returned empty account-window data; token counts are
+real evaluator measurements, but billing isolation for this run cannot be
+proved.
+
+The result records the only genuine holdout failure cluster: two
+student-base parse/protocol failures, which SFT eliminated. Its cancellation
+receipt is the E3 synchronous `already_terminal` conformance receipt; it uses
+the truthful `fixture` executor label because the canonical embedded
+cancellation schema still excludes `tinker`, and is not a label for the
+Tinker candidate.
+
+The claim boundary is intentionally narrow: quality parity is within the
+predeclared tolerance on a saturated 12-task holdout; warm-start latency and
+token wins are measured; there is no cost claim because dollar evidence is
+absent and the teacher is an approximately 3B-active 30B-A3B MoE versus a
+dense 9B student; there is no upstream AutomationBench claim; and each split
+has n=12.
 
 ## Receipts, usage, and cleanup
 
@@ -176,6 +281,13 @@ all provider-backed artifacts retain `cost.usd: null`.
 
 No always-on resource or service process remains running. No holdout run,
 GRPO run, or additional provider job was started after the paired pass.
+
+The sealed holdout was executed exactly once in Phase D, before the later
+directive not to run or enable holdout arrived. That execution was authorized
+by the original task brief, occurred after the tolerance predeclaration was
+committed, and was guarded by the single-use holdout lock. No further holdout
+access is possible: the lock remains present and `evaluate.py` refuses
+`--split holdout`. The lock and all holdout artifacts are preserved unchanged.
 
 ## What would actually move this
 

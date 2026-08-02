@@ -1,0 +1,27 @@
+{
+  "serving_contract": {
+    "action_parser_id": "automationbench.parse_agent_action.v1",
+    "base_model": "Qwen/Qwen3.5-9B",
+    "prompt_variant": "nemotron-v1",
+    "renderer_name": "qwen3_5_disable_thinking",
+    "sampling_params": {
+      "max_tokens": 192,
+      "num_samples": 1,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "stop_sequences": [
+      248046
+    ]
+  },
+  "training_recipe": {
+    "batch_size": 4,
+    "data_selection_rule": "train-only verifier-accepted teacher trajectories; terminal reward == 1.0; deduplicate action sequences per task; cap four per task",
+    "epochs": 4,
+    "learning_rate": 0.0001,
+    "lora_rank": 32,
+    "max_length": 4096,
+    "train_rows": 66,
+    "train_candidates": 240
+  }
+}
