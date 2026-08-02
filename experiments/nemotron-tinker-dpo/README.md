@@ -89,7 +89,7 @@ The sealed #402 rows used for comparison came from these artifacts:
 | SFT | `sft-selected-train.summary.json` 0.955 | `sft-selected-dev.summary.json` 0.944 | `holdout-sft-epoch4.summary.json` 0.944 |
 | SFT + GRPO | `grpo-selected-step20-train.summary.json` 0.979 | `grpo-step20-dev.summary.json` 1.000 | `holdout-grpo-step20.summary.json` 1.000 |
 
-# Verdict
+## Verdict
 
 This fixture produces a **tie at the ceiling**. DPO and GRPO both add
 `+0.056` over SFT on dev and holdout, with the gain concentrated in
@@ -116,7 +116,10 @@ approximately `5,349,611` tokens:
 | **Total** | **5,349,611** |
 
 DPO required one sampling pass for pair construction plus 24 optimizer steps;
-GRPO used a multi-stage online rollout/training loop.
+GRPO used a multi-stage online rollout/training loop. Both arms share the same
+baseline and SFT phases, so the like-for-like marginal comparison is GRPO's
+Stage 1 + Stage 2 (`4,494,140` tokens) against this arm's `777,833` — roughly
+a 5.8x difference in tokens for the same measured lift.
 
 ## SFT train-cell noise
 
