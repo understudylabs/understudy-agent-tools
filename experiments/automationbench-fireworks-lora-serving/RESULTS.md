@@ -94,11 +94,11 @@ abo-q38b-livemerge       23:43–00:04
 abo-q38b-base            23:53–00:04
 ```
 
-Separately, probing the pre-existing `vr590ywn` 4xH200 deployment (minimum
-replica count 0) triggered an unintended scale-up. It auto-scales back to zero
-after the one-hour idle window; worst-case account exposure is approximately
-$28. This deployment was not created by this experiment and could not be
-deleted.
+Separately, probing a pre-existing unrelated 4xH200 deployment with
+`min-replica-count 0` triggered an unintended scale-up. It auto-scales back to
+zero after the one-hour idle window; worst-case account exposure is
+approximately $28. This deployment was not created by this experiment and
+could not be deleted.
 
 For the record only: Fireworks is offering a serverless training private
 preview with $500 credits, Qwen 3.5 9B and Qwen 3.6 27B launch models (LoRA up
