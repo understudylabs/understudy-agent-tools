@@ -28,6 +28,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { V2_TASKS, v2SplitSha256, v2TaskBands } from "../dist/automationbench-v2.js";
+import { TASKS as CHAT_TASKS, splitSha256 as chatSplitSha256 } from "../dist/grounded-chat-offline.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -43,9 +44,16 @@ if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
+const fixture = argValue("--fixture", "automationbench-v2");
 
-const BANDS = v2TaskBands();
-const SPLIT_BY_TASK = new Map(V2_TASKS.map((task) => [task.taskId, task.split]));
+const isGroundedChat = fixture === "grounded-chat-offline-v1" || fixture === "grounded-chat";
+if (!isGroundedChat && fixture !== "automationbench-v2") {
+  throw new Error(`unknown --fixture ${fixture}; expected automationbench-v2 or grounded-chat-offline-v1`);
+}
+const BANDS = isGroundedChat ? new Map(CHAT_TASKS.map((task) => [task.taskId, task.band])) : v2TaskBands();
+const SPLIT_BY_TASK = new Map((isGroundedChat ? CHAT_TASKS : V2_TASKS).map((task) => [task.taskId, task.split]));
+const TRAIN_SPLIT_SHA256 = isGroundedChat ? chatSplitSha256("train") : v2SplitSha256("train");
+const FIXTURE_ID = isGroundedChat ? "grounded-chat-offline-v1" : "automationbench-simple-api-offline-v2";
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -71,7 +79,10 @@ if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== v2SplitSha256("train")) {
+if (manifest.fixture_id && manifest.fixture_id !== FIXTURE_ID) {
+  fail(0, `manifest fixture_id ${manifest.fixture_id} does not match ${FIXTURE_ID}`);
+}
+if (manifest.train_split_sha256 && manifest.train_split_sha256 !== TRAIN_SPLIT_SHA256) {
   fail(0, "manifest train_split_sha256 does not match this fixture's frozen train split");
 }
 
@@ -140,8 +151,10 @@ lines.forEach((line, index) => {
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
   seen.add(key);
 
-  const family = taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
-  const band = BANDS[family] ?? "unknown";
+  const family = isGroundedChat
+    ? taskId.replace(/^chat-/, "").replace(/-\d{3}$/, "")
+    : taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
+  const band = isGroundedChat ? BANDS.get(taskId) ?? "unknown" : BANDS[family] ?? "unknown";
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
   normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
 });
@@ -154,14 +167,16 @@ const report = {
   pairs_path: pairsPath,
   manifest_path: manifestPath,
   pairs_sha256: pairsSha256,
+  fixture_id: FIXTURE_ID,
+  fixture: fixture,
   manifest_declared_sha256: manifest.pairs_sha256 ?? null,
   lines: lines.length,
   accepted: normalized.length,
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
-  holdout_split_sha256: v2SplitSha256("holdout"),
-  train_split_sha256: v2SplitSha256("train"),
+  holdout_split_sha256: isGroundedChat ? chatSplitSha256("holdout") : v2SplitSha256("holdout"),
+  train_split_sha256: TRAIN_SPLIT_SHA256,
   failures: failures.slice(0, 50),
   verdict: failures.length === 0 ? "pass" : "fail",
 };
