@@ -1,0 +1,53 @@
+{
+  "schema_version": "understudy.generalization_transfer_summary.v1",
+  "run_id": "transfer-base-event-categorizer-dev-1785629268183",
+  "arm": "base",
+  "group": "event-categorizer",
+  "split": "dev",
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "route": "tinker-sampling",
+  "sampler_url": "http://127.0.0.1:18790",
+  "sampler_health": {
+    "ok": true,
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "model_path": null,
+    "renderer": "nemotron3_disable_thinking",
+    "lora_rank": null,
+    "checkpoint_base_model": null,
+    "weights_info": null,
+    "sampling_defaults": {
+      "temperature": 0,
+      "max_tokens": 192,
+      "max_model_turns": 12
+    }
+  },
+  "prompt": {
+    "system_sha256": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6c",
+    "task_id": "evt-009",
+    "task_prompt_sha256": "a1d56da9dd4698a1cb98476fd8951c5ca9706e7aaa4fe934951b6c418cfaf77b"
+  },
+  "task_count": 2,
+  "mean_score": 1,
+  "strict_pass_rate": 1,
+  "parse_failure_rows": 0,
+  "error_rate": 0,
+  "tokens": {
+    "prompt": 1155,
+    "completion": 65,
+    "total": 1220
+  },
+  "wall_clock_ms": 6855,
+  "estimated_cost": {
+    "usd": 0.001415,
+    "inputUsdPerMillion": 1,
+    "outputUsdPerMillion": 4,
+    "basis": "estimated Tinker-equivalent price; Tinker exposes no USD accounting"
+  },
+  "artifacts": {
+    "rows": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/rows/base-event-categorizer-dev.jsonl",
+    "receipts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/receipts/base-event-categorizer-dev.jsonl",
+    "transcripts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/transcripts/base-event-categorizer-dev.jsonl",
+    "prompts": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/prompts.json",
+    "sanity_gate": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/sanity-gate.json"
+  }
+}

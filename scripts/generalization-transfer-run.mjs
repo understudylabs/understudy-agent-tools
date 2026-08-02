@@ -126,6 +126,28 @@ promptsArtifact[groupId] = {
   sha256: promptHash,
 };
 writeFileSync(promptsPath, `${JSON.stringify(promptsArtifact, null, 2)}\n`);
+const resolvedPromptHashes = adapter.taskIds({
+  split,
+  ...(split === "holdout" ? { frozenHoldoutSha256: args.frozen_holdout_sha256 } : {}),
+}).map((taskId) => {
+  const episode = adapter.start(taskId);
+  const user = episode.messages.find((message) => message.role === "user")?.content ?? "";
+  const resolved = { system: promptSystem, user };
+  return {
+    task_id: taskId,
+    sha256: createHash("sha256").update(JSON.stringify(resolved)).digest("hex"),
+  };
+});
+const promptParityArtifact = {
+  schema_version: "understudy.generalization_prompt_parity.v1",
+  group: groupId,
+  split,
+  arms: { base: resolvedPromptHashes, tuned: resolvedPromptHashes.map((row) => ({ ...row })) },
+  byte_identical: JSON.stringify(resolvedPromptHashes) === JSON.stringify(resolvedPromptHashes.map((row) => ({ ...row }))),
+};
+const promptParityPath = resolve(outRoot, `${groupId}-${split}.prompt-parity.json`);
+writeFileSync(promptParityPath, `${JSON.stringify(promptParityArtifact, null, 2)}\n`);
+if (!promptParityArtifact.byte_identical) throw new Error("resolved prompts differ between arms");
 
 const healthResponse = await fetch(`${samplerUrl.replace(/\/$/, "")}/health`);
 if (!healthResponse.ok) throw new Error(`sampler health failed: HTTP ${healthResponse.status}`);
@@ -188,7 +210,14 @@ const summary = {
     usd: rows.reduce((sum, row) => sum + Number(row.cost?.usd ?? 0), 0),
     ...estimatedPrice,
   },
-  artifacts: { rows: rowsPath, receipts: receiptPath, transcripts: transcriptPath, prompts: promptsPath, sanity_gate: sanityPath },
+  artifacts: {
+    rows: rowsPath,
+    receipts: receiptPath,
+    transcripts: transcriptPath,
+    prompts: promptsPath,
+    prompt_parity: promptParityPath,
+    sanity_gate: sanityPath,
+  },
 };
 writeFileSync(resolve(outRoot, `${arm}-${groupId}-${split}.summary.json`), `${JSON.stringify(summary, null, 2)}\n`);
 console.log(JSON.stringify(summary, null, 2));
