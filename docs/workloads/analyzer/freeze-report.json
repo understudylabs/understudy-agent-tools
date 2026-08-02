@@ -1,0 +1,102 @@
+{
+  "fixture_id": "analyzer-verdict-offline-v1",
+  "fixture_sha256": "866dc4256dd13441a5c6cf723ed59ee7a9afa4e3fb916cf08d560fb0d584597f",
+  "split_sha256": {
+    "train": "6a07ce41907d85457a697eab6eb79b7802a4caf8d0e759508e7bb861acd6e4db",
+    "dev": "24f35c42ef96cb05d19e43cae5da0d701aa8c3d129c3334f6f6ff441a7b1992a",
+    "holdout": "ee29b364f28f35a1f74f8b0f3e162360a07d9e250723f7b0ed76e288b87077c2"
+  },
+  "counts": {
+    "train": 54,
+    "dev": 18,
+    "holdout": 36
+  },
+  "bands": {
+    "owner-unresponsive": "single-signal",
+    "dependency-stalled": "single-signal",
+    "budget-exceeded": "single-signal",
+    "recency-conflict": "conflicting-signals",
+    "severity-conflict": "conflicting-signals",
+    "superseded-record": "conflicting-signals",
+    "unrelated-chatter": "insufficient-evidence",
+    "truncated-record": "insufficient-evidence",
+    "ambiguous-owner": "insufficient-evidence"
+  },
+  "gates": {
+    "oracle_mean": 1,
+    "oracle_exact_1_rate": 1,
+    "sentinel_max": 0,
+    "null_max": 0,
+    "trivial": [
+      {
+        "verdict": {
+          "status": "at_risk",
+          "severity": "none",
+          "primary_signal": "no_signal",
+          "citations": [
+            "ev-05"
+          ]
+        },
+        "mean_score": 0.03935185185185185,
+        "exact_1_rate": 0
+      },
+      {
+        "verdict": {
+          "status": "insufficient_evidence",
+          "severity": "none",
+          "primary_signal": "no_signal",
+          "citations": []
+        },
+        "mean_score": 0.3055555555555556,
+        "exact_1_rate": 0
+      }
+    ],
+    "upper_half_citation_tasks": 71,
+    "gold_verdict_distribution": [
+      {
+        "status": "insufficient_evidence",
+        "severity": "none",
+        "primary_signal": "no_signal",
+        "count": 36
+      },
+      {
+        "status": "at_risk",
+        "severity": "low",
+        "primary_signal": "owner_unresponsive",
+        "count": 12
+      },
+      {
+        "status": "blocked",
+        "severity": "high",
+        "primary_signal": "dependency_stalled",
+        "count": 12
+      },
+      {
+        "status": "at_risk",
+        "severity": "medium",
+        "primary_signal": "budget_exceeded",
+        "count": 12
+      },
+      {
+        "status": "on_track",
+        "severity": "none",
+        "primary_signal": "no_signal",
+        "count": 12
+      },
+      {
+        "status": "blocked",
+        "severity": "high",
+        "primary_signal": "approval_pending",
+        "count": 12
+      },
+      {
+        "status": "at_risk",
+        "severity": "low",
+        "primary_signal": "scope_expanded",
+        "count": 12
+      }
+    ],
+    "dominant_triple_rate": 0.3333333333333333,
+    "failures": []
+  }
+}

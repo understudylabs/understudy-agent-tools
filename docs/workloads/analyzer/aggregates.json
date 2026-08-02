@@ -1,0 +1,59 @@
+{
+  "schema": "understudy.workload_repair_aggregates.v1",
+  "workload": "analyzer",
+  "source": "design-partner gateway telemetry, aggregates only (no rows, prompts, completions, or identifiers)",
+  "window": { "first_seen": "2026-06-26", "last_seen": "2026-08-01" },
+  "volume": {
+    "requests": 904,
+    "project_requests": 915301,
+    "request_share_pct": 0.1
+  },
+  "cost": {
+    "customer_cost_usd": 57.05,
+    "upstream_cost_usd": 56.49,
+    "project_customer_cost_usd": 31382.9,
+    "cost_share_pct": 0.18,
+    "usd_per_request": 0.0631,
+    "monthly_usd": { "2026-06": 3.07, "2026-07": 53.12, "2026-08_partial": 0.86 }
+  },
+  "tokens": {
+    "uncached_input": 16433330,
+    "cache_read_input": 619457,
+    "cache_creation_input": 970813,
+    "output_plus_reasoning": 350479,
+    "cache_read_share_pct": 3.44,
+    "output_to_input_ratio": 0.0194
+  },
+  "input_length_tokens": { "p10": 5660, "p50": 8950, "p90": 42878, "p95": 54792, "max": 470205 },
+  "output_length_tokens": {
+    "min": 0, "p10": 107, "p50": 238, "p90": 1016, "p95": 1142, "p99": 1438, "max": 2389,
+    "mean": 387.7, "stddev": 365.4
+  },
+  "bands": [
+    { "band": "A_short_0_150", "requests": 227, "request_pct": 25.1, "output_p50": 114, "input_p50": 6904, "input_p95": 36015, "customer_cost_usd": 7.55, "cost_pct": 13.2, "avg_total_ms": 3201, "errors": 29 },
+    { "band": "B_mid_151_400", "requests": 448, "request_pct": 49.6, "output_p50": 238, "input_p50": 7563, "input_p95": 48801, "customer_cost_usd": 22.85, "cost_pct": 40.1, "avg_total_ms": 5644, "errors": 0 },
+    { "band": "C_long_401_900", "requests": 100, "request_pct": 11.1, "output_p50": 756, "input_p50": 24073, "input_p95": 81323, "customer_cost_usd": 10.06, "cost_pct": 17.6, "avg_total_ms": 18288, "errors": 0 },
+    { "band": "D_xlong_900plus", "requests": 129, "request_pct": 14.3, "output_p50": 1069, "input_p50": 29969, "input_p95": 92959, "customer_cost_usd": 16.59, "cost_pct": 29.1, "avg_total_ms": 26434, "errors": 0 }
+  ],
+  "incumbents": [
+    { "provider": "anthropic", "served_model": "claude-sonnet-4-6", "requests": 819, "customer_cost_usd": 53.947 },
+    { "provider": "anthropic", "served_model": "claude-sonnet-5", "requests": 71, "customer_cost_usd": 1.984 },
+    { "provider": "fireworks", "served_model": "glm-5p2", "requests": 6, "customer_cost_usd": 0.761 },
+    { "provider": "lilac", "served_model": "glm-5.2", "requests": 8, "customer_cost_usd": 0.358 }
+  ],
+  "reliability": {
+    "success": 875,
+    "error": 29,
+    "error_status_code": 400,
+    "error_origin": "provider",
+    "error_rate_pct": 3.2,
+    "streaming_share": 0.97,
+    "total_ms_p50": 5326,
+    "total_ms_p95": 28812
+  },
+  "repeatability_proxy": {
+    "distinct_payload_hashes": 904,
+    "exact_repeat_pct": 0.0,
+    "caveat": "payload_hash is the request payload hash, not a semantic task fingerprint; 0% exact repeats does not establish that the underlying work is non-repetitive. Semantic repeated-work analysis needs capture bodies or a stable task fingerprint, neither of which is in scope here."
+  }
+}
