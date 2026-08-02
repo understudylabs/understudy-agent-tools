@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "understudy.executor-submit.v1"
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "candidate": {
+      "type": "object",
+      "properties": {
+        "candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "executor": {
+          "type": "string",
+          "enum": [
+            "modal",
+            "wafer",
+            "fireworks",
+            "spark",
+            "fixture"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "model_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "policy_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "policy_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "executor",
+        "model",
+        "policy_ref",
+        "policy_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000
+    },
+    "workload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "dataset_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "dataset_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "verifier_environment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "verifier_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "id",
+        "dataset_manifest_ref",
+        "dataset_manifest_sha256",
+        "verifier_environment",
+        "verifier_revision"
+      ],
+      "additionalProperties": false
+    },
+    "splits": {
+      "type": "object",
+      "properties": {
+        "train_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "dev_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "train_manifest_ref",
+        "dev_manifest_ref"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "budget_usd": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "max_concurrent_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_concurrent_requests_per_candidate": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "max_rollouts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "max_runtime_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        }
+      },
+      "required": [
+        "budget_usd",
+        "max_concurrent_candidates",
+        "max_concurrent_requests_per_candidate",
+        "max_rollouts",
+        "max_runtime_seconds"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "candidate",
+    "attempt",
+    "workload",
+    "splits",
+    "limits"
+  ],
+  "additionalProperties": false,
+  "$id": "https://understudylabs.com/schemas/understudy-train-v1/experiment-executor-submit-request.json"
+}
