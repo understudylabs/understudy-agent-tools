@@ -1,0 +1,3 @@
+{"schema_version":"understudy.experiment-event.v1","event":"run","phase":"sft","status":"started"}
+{"schema_version":"understudy.experiment-event.v1","event":"error","class":"ValueError","status":"failed"}
+{"schema_version":"understudy.experiment-event.v1","event":"usage","tokens":{"prefill":0,"cached":0,"sample":0,"train":0},"upper_bound_usd":0.0,"prefill_priced_at_uncached_rate":true}

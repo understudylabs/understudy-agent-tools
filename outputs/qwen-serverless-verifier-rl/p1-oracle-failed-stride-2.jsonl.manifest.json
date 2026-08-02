@@ -1,0 +1,12 @@
+{
+  "schema_version": "understudy.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "role": "oracle_jsonl",
+      "path": "outputs/qwen-serverless-verifier-rl/p1-oracle-failed-stride-2.jsonl",
+      "sha256": "e3c1ccc908f48580930a16467f5bb6849a2295d851debace3b8ac50831c658e7",
+      "size_bytes": 208479,
+      "row_count": 60
+    }
+  ]
+}
