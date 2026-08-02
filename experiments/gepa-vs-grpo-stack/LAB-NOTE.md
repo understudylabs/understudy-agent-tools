@@ -56,6 +56,13 @@ dev:     5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc
 holdout: a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701
 ```
 
+Every number in this note is a v1 72-task-fixture number, produced at base
+commit `2278a77`. The base branch has since frozen an AutomationBench offline
+v2 hard split (216 tasks, 60 holdout), and this branch was merged up to it.
+The four hashes above were recomputed after that merge and are unchanged, so
+the results here remain reproducible on the merged branch — but they are not
+comparable to v2 numbers, and a v2 rerun would be a separate arm.
+
 Models and renderer:
 
 ```text
