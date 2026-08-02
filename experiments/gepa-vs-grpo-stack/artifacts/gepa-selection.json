@@ -1,0 +1,57 @@
+{
+  "candidates": [
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+      "candidate_id": "empty",
+      "dev_mean": 0.9444444444444445,
+      "iteration": 0,
+      "prompt_tokens": 32913,
+      "sampled_tokens": 2222,
+      "suffix": ""
+    },
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/gepa-iter-8-ba879af7-dev.jsonl",
+      "candidate_id": "iter-8-ba879af7",
+      "dev_mean": 0.8611111111111112,
+      "iteration": 8,
+      "prompt_tokens": 37995,
+      "sampled_tokens": 2096,
+      "suffix": "After retrieving a contact list or individual contact record, do not fetch that same URL again. If the first GET /crm/contacts returns a list, scan it immediately for the target contact's id, then proceed directly to the PATCH update \u2014 never re-fetch the list or individual records in a loop. If a GET returns data you can act on, act on it in the very next step. If a PATCH succeeds (2xx response), call finish immediately. Do not enter any retry loop on a successful response. If a response is unexpected, try exactly one alternative approach, then finish regardless."
+    },
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/gepa-iter-7-2dd1fd72-dev.jsonl",
+      "candidate_id": "iter-7-2dd1fd72",
+      "dev_mean": 0.8611111111111112,
+      "iteration": 7,
+      "prompt_tokens": 46632,
+      "sampled_tokens": 2461,
+      "suffix": "Before starting any task, use api_search to discover available endpoints and their exact methods. Only call endpoints confirmed to exist from discovery results. For CRM status updates, use PATCH /crm/contacts/{id} with the appropriate status field \u2014 do not attempt any additional actions (such as sending emails) unless the task explicitly requires them. If the task only says to record a deal as won or lost, a single successful PATCH is sufficient \u2014 call finish immediately after. Do not attempt to send emails or create drafts unless the task explicitly instructs you to do so. If an endpoint returns an error, try one alternative, then move on rather than retrying the same call repeatedly. Never call finish while a forbidden write (email send, draft creation) is pending unless the task requires it."
+    },
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/gepa-iter-1-d5cf5bf3-dev.jsonl",
+      "candidate_id": "iter-1-d5cf5bf3",
+      "dev_mean": 0.8194444444444445,
+      "iteration": 1,
+      "prompt_tokens": 44391,
+      "sampled_tokens": 2208,
+      "suffix": "When updating a CRM contact by name, always begin by fetching the full contacts list (GET /crm/contacts) to discover the correct contact id before attempting any PATCH. Never guess or assume an id. Match the person's name from the task to the retrieved list, then PATCH only that contact's record with the required status field."
+    }
+  ],
+  "holdout_touched": false,
+  "reflection_input_tokens": 26278,
+  "reflection_model": "claude-sonnet-4-6",
+  "reflection_output_tokens": 1059,
+  "split": "train/dev only",
+  "total_prompt_tokens": 2073105,
+  "total_rollouts": 476,
+  "total_sampled_tokens": 100983,
+  "winner": {
+    "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+    "candidate_id": "empty",
+    "dev_mean": 0.9444444444444445,
+    "iteration": 0,
+    "prompt_tokens": 32913,
+    "sampled_tokens": 2222,
+    "suffix": ""
+  }
+}

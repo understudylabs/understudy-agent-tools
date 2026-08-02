@@ -1,0 +1,12 @@
+{
+  "sdk_version": "tinker==0.23.1",
+  "sampling_params_signature": "(*, max_tokens: Optional[int] = None, seed: Optional[int] = None, stop: Union[str, Sequence[str], Sequence[int], None] = None, temperature: float = 1, top_k: int = -1, top_p: float = 1) -> None",
+  "runner_values": {
+    "temperature": 0,
+    "top_p": 1,
+    "top_k": -1,
+    "seed": null,
+    "stop": "renderer.get_stop_sequences()"
+  },
+  "finding": "Tinker exposes SamplingParams.seed, but this runner does not set it; None means a random seed. The changed-task artifacts show different sampled assistant texts and action trajectories, not parser-only differences."
+}

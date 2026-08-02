@@ -1,0 +1,32 @@
+{
+  "best_non_empty": null,
+  "candidates": [
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+      "candidate_id": "empty",
+      "dev_mean": 0.9444444444444445,
+      "iteration": 0,
+      "prompt_tokens": 32913,
+      "sampled_tokens": 2222,
+      "suffix": ""
+    }
+  ],
+  "holdout_touched": false,
+  "reflection_input_tokens": 26554,
+  "reflection_model": "claude-sonnet-4-6",
+  "reflection_output_tokens": 2329,
+  "split": "train/dev only",
+  "stop_reason": null,
+  "total_prompt_tokens": 4536588,
+  "total_rollouts": 496,
+  "total_sampled_tokens": 171163,
+  "winner": {
+    "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+    "candidate_id": "empty",
+    "dev_mean": 0.9444444444444445,
+    "iteration": 0,
+    "prompt_tokens": 32913,
+    "sampled_tokens": 2222,
+    "suffix": ""
+  }
+}

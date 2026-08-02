@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "results": [
+    {
+      "task_id": "simple-api-crm-close-01",
+      "split": "train",
+      "band": "single-write",
+      "oracle": 1,
+      "sentinel": 0,
+      "oracle_steps": 3,
+      "sentinel_steps": 4,
+      "sentinel_forbidden_effects": [
+        "crm.contacts.c-0"
+      ]
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "split": "train",
+      "band": "multi-write",
+      "oracle": 1,
+      "sentinel": 0,
+      "oracle_steps": 3,
+      "sentinel_steps": 4,
+      "sentinel_forbidden_effects": [
+        "crm.contacts.c-0"
+      ]
+    }
+  ]
+}

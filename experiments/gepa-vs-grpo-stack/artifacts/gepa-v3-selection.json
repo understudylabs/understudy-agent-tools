@@ -1,0 +1,57 @@
+{
+  "best_non_empty": null,
+  "candidates": [
+    {
+      "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+      "candidate_id": "empty",
+      "dev_mean": 0.9444444444444445,
+      "iteration": 0,
+      "prompt_tokens": 32913,
+      "sampled_tokens": 2222,
+      "suffix": ""
+    }
+  ],
+  "environment_surface_audit": {
+    "endpoint_catalog_source": "observed api_search results in failing rollouts",
+    "grader_fields_excluded": [
+      "\"assertions\"",
+      "\"gold\"",
+      "\"allowed_writes\"",
+      "\"allowedWrites\"",
+      "\"oracle\"",
+      "\"initial_state\"",
+      "\"expected_final_state\""
+    ],
+    "tool_catalog": [
+      {
+        "description": "Read-only endpoint discovery. Args: {query: string}.",
+        "name": "api_search"
+      },
+      {
+        "description": "Apply one API call. Args: {method: string, url: string, body?: object}.",
+        "name": "api_fetch"
+      },
+      {
+        "description": "End the episode and score the final state.",
+        "name": "finish"
+      }
+    ]
+  },
+  "holdout_touched": false,
+  "reflection_input_tokens": 56648,
+  "reflection_model": "claude-sonnet-4-6",
+  "reflection_output_tokens": 2590,
+  "split": "train/dev only",
+  "total_prompt_tokens": 3266371,
+  "total_rollouts": 496,
+  "total_sampled_tokens": 126290,
+  "winner": {
+    "artifact": "/home/ubuntu/repos/understudy-agent-tools/experiments/gepa-vs-grpo-stack/artifacts/cell-a-base-baseline-dev.jsonl",
+    "candidate_id": "empty",
+    "dev_mean": 0.9444444444444445,
+    "iteration": 0,
+    "prompt_tokens": 32913,
+    "sampled_tokens": 2222,
+    "suffix": ""
+  }
+}

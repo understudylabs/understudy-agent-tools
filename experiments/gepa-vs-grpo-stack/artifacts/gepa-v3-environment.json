@@ -1,0 +1,108 @@
+{
+  "audit": {
+    "evaluator_audit_observation_leakage_findings": [],
+    "excluded_grader_fields": [
+      "\"assertions\"",
+      "\"gold\"",
+      "\"allowed_writes\"",
+      "\"allowedWrites\"",
+      "\"oracle\"",
+      "\"initial_state\"",
+      "\"expected_final_state\""
+    ],
+    "source": "base TRAIN failures, public tool responses only"
+  },
+  "endpoint_catalog": [
+    {
+      "methods": [
+        "GET"
+      ],
+      "summary": "List CRM contacts and their ids.",
+      "url": "/crm/contacts"
+    },
+    {
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "summary": "Read or update a CRM contact.",
+      "url": "/crm/contacts/{id}"
+    },
+    {
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "summary": "List or create a mail draft.",
+      "url": "/mail/drafts"
+    },
+    {
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "summary": "Read a mail draft, retitle it, or mark it discarded.",
+      "url": "/mail/drafts/{id}"
+    },
+    {
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "summary": "List sent mail, or send an existing draft by draft_id.",
+      "url": "/mail/messages"
+    }
+  ],
+  "observed_tool_responses_by_failure": {
+    "simple-api-crm-mail-churn-04": [
+      "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+      "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita Borg\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"leslie.lamport@example.test\",\"name\":\"Leslie Lamport\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+      "{\"contact\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita Borg\",\"owner\":\"u-1\",\"status\":\"open\"},\"status\":200}",
+      "{\"draft_id\":\"d-1\",\"status\":201}",
+      "{\"message_id\":\"m-2\",\"status\":201}"
+    ],
+    "simple-api-mail-draft-04": [
+      "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+      "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"claude.shannon@example.test\",\"name\":\"Claude Shannon\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"evelyn.boyd@example.test\",\"name\":\"Evelyn Boyd\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"mary.jackson@example.test\",\"name\":\"Mary Jackson\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+      "{\"draft_id\":\"d-1\",\"status\":201}"
+    ],
+    "simple-api-mail-send-04": [
+      "{\"error\":\"unknown endpoint: /mail/drafts/Pricing update\",\"status\":404}",
+      "{\"results\":[{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"}]}",
+      "{\"results\":[{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"}]}",
+      "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Duplicate quote\",\"to\":\"hedy.lamarr@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Pricing update\",\"to\":\"adele.goldberg@example.test\"}},\"status\":200}",
+      "{\"error\":\"method not allowed: POST\",\"status\":405}",
+      "{\"draft\":{\"status\":\"sent\",\"subject\":\"Pricing update\",\"to\":\"adele.goldberg@example.test\"},\"status\":200}"
+    ],
+    "simple-api-mail-send-and-close-03": [
+      "{\"error\":\"unknown endpoint: /mail/drafts?title=Kickoff agenda\",\"status\":404}",
+      "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+      "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Legacy renewal note\",\"to\":\"adele.goldberg@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Kickoff agenda\",\"to\":\"lynn.conway@example.test\"}},\"status\":200}",
+      "{\"error\":\"unknown endpoint: /crm/contacts/lynn.conway@example.test\",\"status\":404}",
+      "{\"results\":[{\"methods\":[\"GET\"],\"summary\":\"List CRM contacts and their ids.\",\"url\":\"/crm/contacts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read or update a CRM contact.\",\"url\":\"/crm/contacts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List or create a mail draft.\",\"url\":\"/mail/drafts\"},{\"methods\":[\"GET\",\"PATCH\"],\"summary\":\"Read a mail draft, retitle it, or mark it discarded.\",\"url\":\"/mail/drafts/{id}\"},{\"methods\":[\"GET\",\"POST\"],\"summary\":\"List sent mail, or send an existing draft by draft_id.\",\"url\":\"/mail/messages\"}]}",
+      "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"adele.goldberg@example.test\",\"name\":\"Adele Goldberg\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"hedy.lamarr@example.test\",\"name\":\"Hedy Lamarr\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+      "{\"contact\":{\"email\":\"lynn.conway@example.test\",\"name\":\"Lynn Conway\",\"owner\":\"u-2\",\"status\":\"won\"},\"status\":200}"
+    ],
+    "simple-api-mail-send-and-close-04": [
+      "{\"drafts\":{\"d-1\":{\"status\":\"draft\",\"subject\":\"Security review\",\"to\":\"andrew.yao@example.test\"},\"d-2\":{\"status\":\"draft\",\"subject\":\"Duplicate quote\",\"to\":\"ruth.teitelbaum@example.test\"}},\"status\":200}",
+      "{\"error\":\"method not allowed: POST\",\"status\":405}",
+      "{\"draft\":{\"status\":\"sent\",\"subject\":\"Security review\",\"to\":\"andrew.yao@example.test\"},\"status\":200}",
+      "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"evelyn.boyd@example.test\",\"name\":\"Evelyn Boyd\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"mary.jackson@example.test\",\"name\":\"Mary Jackson\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"ruth.teitelbaum@example.test\",\"name\":\"Ruth Teitelbaum\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+      "{\"contact\":{\"email\":\"andrew.yao@example.test\",\"name\":\"Andrew Yao\",\"owner\":\"u-3\",\"status\":\"won\"},\"status\":200}"
+    ]
+  },
+  "tool_catalog": [
+    {
+      "description": "Read-only endpoint discovery. Args: {query: string}.",
+      "name": "api_search"
+    },
+    {
+      "description": "Apply one API call. Args: {method: string, url: string, body?: object}.",
+      "name": "api_fetch"
+    },
+    {
+      "description": "End the episode and score the final state.",
+      "name": "finish"
+    }
+  ]
+}

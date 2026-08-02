@@ -1,0 +1,13 @@
+{
+  "source_ref": "pr410:outputs/gepa-automationbench/nemotron-nano-3-30b-a3b-v3/summary.json",
+  "source_prompt_sha256": "cd40fea74a04902a3a96ddc4856a4480ff19d243396d414a4a59409c2f407727",
+  "source_prompt_artifact": "artifacts/transfer-gepa-prompt-source.txt",
+  "adapted_prompt_artifact": "artifacts/transfer-gepa-prompt.txt",
+  "adaptation": "Replaced the sibling text protocol output-contract examples and hard rules with the canonical one-JSON-action-per-turn protocol; retained the Working method and Finishing guidance.",
+  "parse_probe": {
+    "artifact": "artifacts/transfer-probe-base-train.jsonl",
+    "tasks": 4,
+    "parse_error_rate": 0.0
+  },
+  "holdout_manifest": "artifacts/sealed-holdout-manifest.json"
+}

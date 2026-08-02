@@ -1,0 +1,39 @@
+{
+  "declared_in_advance": true,
+  "split": "holdout",
+  "frozen_holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "temperature": 0,
+  "samples": 1,
+  "max_model_turns": 12,
+  "runs": [
+    {
+      "run": 1,
+      "label": "sealed-base-empty",
+      "model_path": "base",
+      "prompt": "empty",
+      "role": "cells (a)/(b)"
+    },
+    {
+      "run": 2,
+      "label": "sealed-grpo-empty",
+      "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "prompt": "empty",
+      "role": "cells (c)/(d)"
+    },
+    {
+      "run": 3,
+      "label": "sealed-base-transfer",
+      "model_path": "base",
+      "prompt": "artifacts/transfer-gepa-prompt.txt",
+      "role": "transfer cell"
+    },
+    {
+      "run": 4,
+      "label": "sealed-grpo-transfer",
+      "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "prompt": "artifacts/transfer-gepa-prompt.txt",
+      "role": "transfer cell"
+    }
+  ],
+  "reruns_authorized": false
+}
