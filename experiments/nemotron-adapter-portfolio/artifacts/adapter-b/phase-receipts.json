@@ -1,0 +1,98 @@
+{
+  "billing_note": "Tinker get_billing_usage returned empty data for every captured phase; token counts above are evaluator prompt plus sampled token totals, and training model-input tokens.",
+  "evaluations": [
+    {
+      "band": "single-write",
+      "label": "adapter-b-epoch1-dev",
+      "prompt_tokens": 5646,
+      "provider_equivalent_tokens": 5919,
+      "sampled_tokens": 273,
+      "split": "dev",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/epoch1-dev.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-epoch2-dev",
+      "prompt_tokens": 4831,
+      "provider_equivalent_tokens": 5089,
+      "sampled_tokens": 258,
+      "split": "dev",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/epoch2-dev.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-epoch3-dev",
+      "prompt_tokens": 4831,
+      "provider_equivalent_tokens": 5089,
+      "sampled_tokens": 258,
+      "split": "dev",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/epoch3-dev.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-epoch4-dev",
+      "prompt_tokens": 4831,
+      "provider_equivalent_tokens": 5089,
+      "sampled_tokens": 258,
+      "split": "dev",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/epoch4-dev.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-selected-train",
+      "prompt_tokens": 22835,
+      "provider_equivalent_tokens": 23949,
+      "sampled_tokens": 1114,
+      "split": "train",
+      "task_count": 16,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/selected-train.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-selected-dev",
+      "prompt_tokens": 5646,
+      "provider_equivalent_tokens": 5919,
+      "sampled_tokens": 273,
+      "split": "dev",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/selected-dev.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-base-holdout-single-write",
+      "prompt_tokens": 7304,
+      "provider_equivalent_tokens": 7822,
+      "sampled_tokens": 518,
+      "split": "holdout",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/base-holdout.summary.usage.json",
+      "wall_clock_seconds": null
+    },
+    {
+      "band": "single-write",
+      "label": "adapter-b-selected-holdout-single-write",
+      "prompt_tokens": 4814,
+      "provider_equivalent_tokens": 5072,
+      "sampled_tokens": 258,
+      "split": "holdout",
+      "task_count": 4,
+      "usage_receipt": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/selected-holdout.summary.usage.json",
+      "wall_clock_seconds": null
+    }
+  ],
+  "training": {
+    "model_input_tokens": 8961,
+    "provider_billing_usage_delta": {},
+    "wall_clock_seconds": 273.248423271
+  }
+}

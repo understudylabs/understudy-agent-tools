@@ -1,0 +1,10 @@
+{
+  "adapter_evaluated_once": true,
+  "adapter_run": "adapter-b-selected-holdout-single-write",
+  "band": "single-write",
+  "base_evaluated_once": true,
+  "base_run": "adapter-b-base-holdout-single-write",
+  "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+  "holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "selection_record_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-b/selection.json"
+}
