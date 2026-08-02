@@ -23,8 +23,10 @@ interface is intended to be consumed by that Workflow.
 
 ## Executor submit conformance
 
-The submit payload conforms to `understudy.executor-submit.v1` from the
-authoritative experiment-controller schema at `c299ca4`. It contains only:
+The submit payload is validated against this repository's copy of the
+authoritative experiment-controller schema,
+[`schemas/understudy.executor-submit.v1.schema.json`](../schemas/understudy.executor-submit.v1.schema.json),
+which is byte-identical to the controller head at `c299ca4`. It contains only:
 
 - experiment identity and attempt;
 - candidate identity, executor, model, and hashed policy reference;

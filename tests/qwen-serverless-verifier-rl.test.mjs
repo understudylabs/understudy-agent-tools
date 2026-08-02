@@ -91,7 +91,7 @@ test("RL service exposes shared parsing without changing synthetic protocol", as
 
 test("canonical executor submit payload has no holdout or extra fields", () => {
   const schema = JSON.parse(readFileSync(
-    join(root, "experiments/qwen-serverless-verifier-rl/experiment-executor-submit-request.json"),
+    join(root, "schemas/understudy.executor-submit.v1.schema.json"),
     "utf8",
   ));
   const submitSchema = z.fromJSONSchema(schema);
