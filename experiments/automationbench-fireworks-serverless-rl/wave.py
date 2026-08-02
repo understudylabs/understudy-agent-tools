@@ -44,6 +44,12 @@ GRPO_LR = 1e-5
 TOTAL_CAP_USD = 120.0
 
 
+def _close_sampler(sampler: Any) -> None:
+    close = getattr(sampler, "close", None)
+    if close:
+        close()
+
+
 def _sft_datums(rows, renderer, tokenizer):
     datums = []
     for row in rows:
@@ -99,7 +105,7 @@ def _eval_checkpoint(
             if transcript_dir and len(rows) <= 3:
                 _write_transcript(transcript_dir, model, split, None, result)
     finally:
-        sampler.close()
+        _close_sampler(sampler)
     return {
         "count": len(rows),
         "mean_reward": statistics.fmean(row["reward"] for row in rows),
@@ -207,7 +213,7 @@ def run_model(
                             )
                         )
             finally:
-                sampler.close()
+                _close_sampler(sampler)
             datums = _build_datums(rollouts)
             update = train_step(backend, datums, grpo_meter, learning_rate=GRPO_LR)
             update["step"] = step

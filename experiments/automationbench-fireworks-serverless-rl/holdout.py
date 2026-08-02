@@ -25,6 +25,12 @@ from runner import (
 REPO = Path(__file__).resolve().parents[2]
 
 
+def _close_sampler(sampler: Any) -> None:
+    close = getattr(sampler, "close", None)
+    if close:
+        close()
+
+
 def evaluate_checkpoint(
     env: EnvService,
     backend: Any,
@@ -80,7 +86,7 @@ def evaluate_checkpoint(
             "rows": rows,
         }
     finally:
-        sampler.close()
+        _close_sampler(sampler)
 
 
 def run(model: str, backend_name: str, training_artifact: Path, output: Path) -> None:
