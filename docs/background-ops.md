@@ -90,6 +90,8 @@ fi
 When using a native agent background task, use the platform's status/notify
 mechanism instead of `wait` — do not poll `status` in a tight loop.
 
+For live Fireworks GPU burn during a provider sweep, run `FIREWORKS_API_KEY="$FIREWORKS_API_KEY" node scripts/gauntlet-monitor.mjs` from the repository root; add `--account <account>` to select an account or `--json` for machine-readable output. The monitor is read-only, reports deployments with `desiredReplicaCount > 0`, and labels GPU-hour pricing as an estimate rather than an invoice source.
+
 ### General download (hf download, pip install, brew install)
 
 Same pattern: send to background with `&`, log to a file, poll completion via

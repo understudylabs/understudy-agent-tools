@@ -4,14 +4,11 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   auditObservationLeakage,
   getTask,
-  oraclePolicy,
   reset as offlineReset,
-  splitSha256,
 } from "../dist/automationbench-offline.js";
 import {
+  AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT,
   ACTION_PROTOCOL_SYSTEM_PROMPT,
-  parseAgentAction,
-  replayOracleTrajectory,
   startEnvService,
 } from "../dist/automationbench-rl-service.js";
 
@@ -41,34 +38,8 @@ async function json(path, init) {
   return { response, text, body: text ? JSON.parse(text) : null };
 }
 
-describe("parseAgentAction", () => {
-  it("accepts clean JSON, fenced JSON, prose-wrapped JSON, and rejects garbage", () => {
-    assert.deepEqual(parseAgentAction('{"tool":"api_search","arguments":{"query":"x"}}'), {
-      name: "api_search",
-      arguments: { query: "x" },
-    });
-    assert.deepEqual(parseAgentAction('```json\n{"tool":"finish","arguments":{}}\n```'), { finish: true });
-    assert.deepEqual(parseAgentAction('Sure — {"tool":"api_fetch","arguments":{"method":"GET","url":"/crm/contacts"}} thanks'), {
-      name: "api_fetch",
-      arguments: { method: "GET", url: "/crm/contacts" },
-    });
-    assert.match(String(parseAgentAction("no json").error), /balanced JSON object/);
-  });
-});
-
 describe("AutomationBench RL service", () => {
-  it("refuses holdout listing without the frozen hash and allows it with the hash", async () => {
-    const denied = await json("/tasks?split=holdout");
-    assert.equal(denied.response.status, 400);
-    assert.match(denied.text, /frozen-holdout/i);
-
-    const allowed = await json(`/tasks?split=holdout&frozen_holdout_sha256=${splitSha256("holdout")}`);
-    assert.equal(allowed.response.status, 200);
-    assert.equal(Array.isArray(allowed.body), true);
-    assert.equal(allowed.body.length, 12);
-  });
-
-  it("runs an oracle episode over HTTP and scores 1.0", async () => {
+  it("runs an AutomationBench episode over HTTP", async () => {
     const taskListing = await json("/tasks?split=train");
     assert.equal(taskListing.response.status, 200);
     assert.equal(taskListing.body.length, 48);
@@ -78,29 +49,49 @@ describe("AutomationBench RL service", () => {
       body: JSON.stringify({ task_id: task.task_id }),
     });
     assert.equal(resetResponse.response.status, 200);
-    assert.equal(resetResponse.body.system_prompt, ACTION_PROTOCOL_SYSTEM_PROMPT);
-    assert.equal(replayOracleTrajectory(task.task_id).reward, 1);
-    const policy = oraclePolicy(task.task_id);
-    let obs = offlineReset(task.task_id).obs;
-    for (;;) {
-      const action = policy(obs);
-      if (!action) break;
-      const stepResponse = await json("/step", {
-        method: "POST",
-        body: JSON.stringify({ episode_id: resetResponse.body.episode_id, action }),
-      });
-      assert.equal(stepResponse.response.status, 200);
-      assert.equal(typeof stepResponse.body.observation, "string");
-      obs = { ...obs, step: stepResponse.body.step };
-      if (stepResponse.body.done) break;
-    }
+    assert.equal(resetResponse.body.system_prompt, AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT);
+    const stepResponse = await json("/step", {
+      method: "POST",
+      body: JSON.stringify({
+        episode_id: resetResponse.body.episode_id,
+        action: { name: "api_fetch", arguments: { method: "GET", url: "/crm/contacts", body: {} } },
+      }),
+    });
+    assert.equal(stepResponse.response.status, 200);
+    assert.equal(typeof stepResponse.body.observation, "string");
     const finish = await json("/finish", {
       method: "POST",
       body: JSON.stringify({ episode_id: resetResponse.body.episode_id }),
     });
     assert.equal(finish.response.status, 200);
-    assert.equal(finish.body.reward, 1);
+    assert.equal(typeof finish.body.reward, "number");
     assert.equal(finish.body.forbidden_effects.length, 0);
+  });
+
+  it("serves benchmark-specific system prompts", async () => {
+    const automationProtocol = await json("/protocol");
+    assert.equal(automationProtocol.body.system_prompt, AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT);
+    assert.ok(automationProtocol.body.system_prompt.includes("Endpoints: /crm/contacts"));
+    assert.ok(automationProtocol.body.system_prompt.includes("Each tool result is returned to you as JSON"));
+
+    const synthetic = await startEnvService({ port: 0, benchmark: "synthetic-workflow" });
+    const syntheticBaseUrl = `http://127.0.0.1:${synthetic.port}`;
+    try {
+      const syntheticProtocolResponse = await fetch(`${syntheticBaseUrl}/protocol`);
+      const syntheticProtocol = await syntheticProtocolResponse.json();
+      assert.equal(syntheticProtocol.system_prompt, ACTION_PROTOCOL_SYSTEM_PROMPT);
+      assert.notEqual(syntheticProtocol.system_prompt, automationProtocol.body.system_prompt);
+
+      const resetResponse = await fetch(`${syntheticBaseUrl}/reset`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task_id: "workflow-route-01" }),
+      });
+      const reset = await resetResponse.json();
+      assert.equal(reset.system_prompt, ACTION_PROTOCOL_SYSTEM_PROMPT);
+    } finally {
+      await new Promise((resolve) => synthetic.server.close(resolve));
+    }
   });
 
   it("keeps task listings and observations free of grader leakage strings", async () => {

@@ -36,6 +36,15 @@ The Qwen3 renderer deliberately disables visible thinking traces. The action
 protocol requires one canonical JSON object per turn; the evaluator supplies
 tool observations and permits up to 12 turns for recovery.
 
+The arm ran against the pre-generalization AutomationBench service. The
+merged generalized service restores the benchmark-specific AutomationBench
+system prompt, including its endpoint catalog and JSON observation instruction,
+and serves a byte-identical AutomationBench contract. This was verified by
+starting the merged service with its default benchmark, comparing both
+`/protocol` and `/reset` `system_prompt` values byte-for-byte against
+`messages[0].content` in `artifacts/holdout-base.jsonl`, and separately
+checking that the synthetic-workflow service retains the generic prompt.
+
 ## Results
 
 All values are means over the complete split. Strict pass means reward exactly
