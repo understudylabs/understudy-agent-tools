@@ -3,7 +3,7 @@ import { z } from "zod";
 const identifier = z.string().min(1).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 
 // Derived from schemas/understudy.executor-submit.v1.schema.json, vendored
-// from understudy-platform commit c299ca4.
+// from the platform contract head at commit c299ca4.
 export const ExperimentSubmitRequestSchema = z.object({
   schema_version: z.literal("understudy.executor-submit.v1"),
   experiment_id: identifier,
