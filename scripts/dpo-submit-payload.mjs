@@ -146,8 +146,10 @@ export function buildSubmitPayload({
       verifier_revision: `v2:${v2FixtureSha256().slice(0, 12)}`,
     },
     splits: {
-      train_manifest_ref: `fixture://${FIXTURE_ID}/train#${trainSha}`,
-      dev_manifest_ref: `fixture://${FIXTURE_ID}/dev#${devSha}`,
+      train_manifest_ref: `fixture://${FIXTURE_ID}/train`,
+      train_manifest_sha256: trainSha,
+      dev_manifest_ref: `fixture://${FIXTURE_ID}/dev`,
+      dev_manifest_sha256: devSha,
     },
     limits,
   };
