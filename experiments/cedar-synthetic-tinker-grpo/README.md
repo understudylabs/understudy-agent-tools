@@ -1,8 +1,8 @@
-# AutomationBench Nemotron SFT → GRPO arm
+# Cedar-synthetic Nemotron SFT → GRPO arm
 
-This directory contains a reproducible, train-only-warm-started SFT → GRPO
-research arm for the synthetic offline AutomationBench fixture. The Node
-evaluator in `src/automationbench-offline.ts` is the sole authority for state
+This directory contains a reproducible SFT → GRPO research arm for the
+sanitized Cedar-shaped synthetic fixture. The Node evaluator in
+`src/synthetic-workflow-offline.ts` is the sole authority for state
 transitions, terminal reward, split membership, and holdout authorization.
 
 ## Arm and provenance
@@ -11,7 +11,7 @@ transitions, terminal reward, split membership, and holdout authorization.
 - Renderer: `nemotron3_disable_thinking`
 - LoRA rank: `32`
 - RL dataset seed: `7`
-- SFT data: 48 oracle trajectories from `train`
+- SFT data: 48 oracle trajectories regenerated from `train` only
 - GRPO: 40 steps, group size 8, 8 groups per batch, temperature 1.0,
   `importance_sampling`, learning rate `1e-5`, constant-reward filtering
   enabled
@@ -20,10 +20,10 @@ transitions, terminal reward, split membership, and holdout authorization.
 The renderer and split provenance are:
 
 ```text
-fixture_sha256: 0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f
-train:         783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89
-dev:           5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc
-holdout:       a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701
+fixture_sha256: c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
+train:         95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5
+dev:           e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3
+holdout:       6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144
 counts:        train 48, dev 12, holdout 12
 ```
 
@@ -110,7 +110,7 @@ fixture.
 2. Dev and holdout contain only 12 tasks each; see the uncertainty warning
    above.
 3. This is a synthetic, offline fixture and is **not** an upstream
-   AutomationBench result.
+   Cedar-synthetic result.
 
 ## Deviations from the brief
 
@@ -123,7 +123,7 @@ fixture.
   importance sampling, avoiding a hand-rolled high-risk RL implementation.
   This is Verifiers-style MultiTurnEnv structure without the package. The
   Node service is the verifier, and terminal reward is literally
-  `partialCredit` from `src/automationbench-offline.ts` reached over HTTP,
+  `partialCredit` from `src/synthetic-workflow-offline.ts` reached over HTTP,
   so remote reward equals local reward by construction.
 - The action protocol uses JSON parsed through the sampling/renderer path
   rather than `tools=`; the latter raises `NotImplementedError` for this
@@ -137,58 +137,58 @@ this run (`/home/ubuntu/tinker-venv/bin/python`), so substitute your own
 interpreter. Provide `TINKER_API_KEY` only through the process environment.
 Never write the key to an artifact.
 
-Start the evaluator service:
+Start the Cedar evaluator service:
 
 ```bash
-node scripts/automationbench-rl-service.mjs
+node scripts/synthetic-workflow-rl-service.mjs
 ```
 
 Regenerate oracle data:
 
 ```bash
-node scripts/automationbench-oracle-trajectories.mjs \
-  --out experiments/nemotron-tinker-grpo/artifacts/oracle-train.jsonl
+node scripts/synthetic-workflow-oracle-trajectories.mjs \
+  --out experiments/cedar-synthetic-tinker-grpo/artifacts/oracle-train.jsonl
 ```
 
 Baseline evaluation:
 
 ```bash
-/home/ubuntu/tinker-venv/bin/python experiments/nemotron-tinker-grpo/evaluate.py \
+/home/ubuntu/venvs/tinker/bin/python experiments/cedar-synthetic-tinker-grpo/evaluate.py \
   --split train --model-path base --label baseline-train \
   --temperature 0.0 --samples 1 \
-  --out experiments/nemotron-tinker-grpo/artifacts/baseline-train.jsonl
+  --out experiments/cedar-synthetic-tinker-grpo/artifacts/base-train.jsonl
 
-/home/ubuntu/tinker-venv/bin/python experiments/nemotron-tinker-grpo/evaluate.py \
+/home/ubuntu/venvs/tinker/bin/python experiments/cedar-synthetic-tinker-grpo/evaluate.py \
   --split dev --model-path base --label baseline-dev \
   --temperature 0.0 --samples 1 \
-  --out experiments/nemotron-tinker-grpo/artifacts/baseline-dev.jsonl
+  --out experiments/cedar-synthetic-tinker-grpo/artifacts/base-dev.jsonl
 ```
 
 SFT:
 
 ```bash
 /home/ubuntu/tinker-venv/bin/python \
-  experiments/nemotron-tinker-grpo/sft.py
+  experiments/cedar-synthetic-tinker-grpo/sft.py
 ```
 
 GRPO Stage 1 and Stage 2:
 
 ```bash
 /home/ubuntu/tinker-venv/bin/python \
-  experiments/nemotron-tinker-grpo/grpo.py --stage 1 --max-steps 2
+  experiments/cedar-synthetic-tinker-grpo/grpo.py --stage 1 --max-steps 2
 
 /home/ubuntu/tinker-venv/bin/python \
-  experiments/nemotron-tinker-grpo/grpo.py --stage 2 --max-steps 40
+  experiments/cedar-synthetic-tinker-grpo/grpo.py --stage 2 --max-steps 40
 ```
 
 The sealed holdout commands used for this arm were:
 
 ```bash
-/home/ubuntu/tinker-venv/bin/python experiments/nemotron-tinker-grpo/evaluate.py --split holdout --model-path base --label holdout-base --temperature 0.0 --samples 1 --frozen-holdout-sha256 a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701 --out experiments/nemotron-tinker-grpo/artifacts/holdout-base.jsonl
+/home/ubuntu/venvs/tinker/bin/python experiments/cedar-synthetic-tinker-grpo/evaluate.py --split holdout --model-path base --label holdout-base-sealed --temperature 0.0 --samples 1 --frozen-holdout-sha256 6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144 --out experiments/cedar-synthetic-tinker-grpo/artifacts/holdout-base-sealed.jsonl
 
-/home/ubuntu/tinker-venv/bin/python experiments/nemotron-tinker-grpo/evaluate.py --split holdout --model-path tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4 --label holdout-sft-epoch4 --temperature 0.0 --samples 1 --frozen-holdout-sha256 a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701 --out experiments/nemotron-tinker-grpo/artifacts/holdout-sft-epoch4.jsonl
+/home/ubuntu/venvs/tinker/bin/python experiments/cedar-synthetic-tinker-grpo/evaluate.py --split holdout --model-path tinker://f59c948b-5fb7-5ac3-8c37-f003c535953a:train:0/sampler_weights/sft-epoch2 --label holdout-sft-epoch2-sealed --temperature 0.0 --samples 1 --frozen-holdout-sha256 6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144 --out experiments/cedar-synthetic-tinker-grpo/artifacts/holdout-sft-epoch2-sealed.jsonl
 
-/home/ubuntu/tinker-venv/bin/python experiments/nemotron-tinker-grpo/evaluate.py --split holdout --model-path tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020 --label holdout-grpo-step20 --temperature 0.0 --samples 1 --frozen-holdout-sha256 a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701 --out experiments/nemotron-tinker-grpo/artifacts/holdout-grpo-step20.jsonl
+/home/ubuntu/venvs/tinker/bin/python experiments/cedar-synthetic-tinker-grpo/evaluate.py --split holdout --model-path tinker://58055612-dcc4-5fae-a14b-f1f8156ca380:train:0/sampler_weights/000010 --label holdout-grpo-step10-sealed --temperature 0.0 --samples 1 --frozen-holdout-sha256 6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144 --out experiments/cedar-synthetic-tinker-grpo/artifacts/holdout-grpo-step10-sealed.jsonl
 ```
 
 The three holdout runs were executed exactly once. They must not be rerun.
