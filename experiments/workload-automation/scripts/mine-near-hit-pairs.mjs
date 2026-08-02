@@ -36,50 +36,11 @@ import { fileURLToPath } from "node:url";
 
 import { finish, partialCredit, reset, step } from "../../../dist/automationbench-offline.js";
 import { v2SplitSha256, v2TaskBands, v2TaskPool } from "../../../dist/automationbench-v2.js";
-
-/** Byte-identical to the scorer's system prompt; the tests pin them together. */
-export const SYSTEM = [
-  "You operate business apps through two tools.",
-  'api_search — read-only endpoint discovery. arguments: {"query": string}',
-  'api_fetch  — apply ONE API call. arguments: {"method": string, "url": string, "body": object}',
-  "",
-  "Reply with EXACTLY ONE JSON object and nothing else — no prose, no code fences, no second object:",
-  '  {"tool": "api_search", "arguments": {"query": "..."}}',
-  '  {"tool": "api_fetch", "arguments": {"method": "GET", "url": "/crm/contacts"}}',
-  '  {"tool": "finish", "arguments": {}}   <- when the requested change is complete',
-  "",
-  "Read before you write: list the relevant collections first, then make the smallest set of writes that satisfies the request.",
-  "Writing to a record the request did not ask you to change scores zero for the whole task.",
-].join("\n");
-
-/** Strict parse: one JSON object naming a known tool. No repair, no salvage of prose. */
-export function parseAction(text) {
-  const visible = String(text ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").replace(/^[\s\S]*<\/think>/, "");
-  const trimmed = visible.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end <= start) return { error: "no JSON object in reply" };
-  let decoded;
-  try {
-    decoded = JSON.parse(trimmed.slice(start, end + 1));
-  } catch {
-    return { error: "reply is not valid JSON" };
-  }
-  const name = decoded.tool ?? decoded.name ?? decoded.function?.name;
-  if (typeof name !== "string") return { error: "reply has no tool name" };
-  if (name === "finish") return { finish: true };
-  if (name !== "api_search" && name !== "api_fetch") return { error: `unknown tool: ${name}` };
-  let args = decoded.arguments ?? decoded.args ?? decoded.function?.arguments ?? {};
-  if (typeof args === "string") {
-    try {
-      args = JSON.parse(args);
-    } catch {
-      return { error: "arguments are not valid JSON" };
-    }
-  }
-  if (!args || typeof args !== "object" || Array.isArray(args)) return { error: "arguments must be an object" };
-  return { action: { name, arguments: args } };
-}
+import {
+  ACTION_PROTOCOL_SYSTEM_PROMPT as SYSTEM,
+  parseAction,
+} from "../../../dist/automationbench-action-protocol.js";
+export { SYSTEM, parseAction };
 
 /** Order-insensitive canonical JSON, so `{a,b}` and `{b,a}` are one action. */
 function canonical(value) {
