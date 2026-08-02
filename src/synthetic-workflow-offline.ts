@@ -200,14 +200,49 @@ const ENDPOINTS = [
   { url: "/conversations", methods: ["GET"], summary: "List workflow conversations." },
   { url: "/conversations/{id}", methods: ["GET"], summary: "Read one workflow conversation." },
   { url: "/documents", methods: ["GET"], summary: "List workflow documents." },
-  { url: "/documents/{id}", methods: ["GET", "PATCH", "POST"], summary: "Read, move, or write a document." },
+  {
+    url: "/documents/{id}",
+    methods: ["GET", "PATCH", "POST"],
+    summary: "Read, move, or append to a document.",
+    body_schema: { PATCH: ["path"], POST: ["append"] },
+  },
   { url: "/records", methods: ["GET"], summary: "List workflow records." },
-  { url: "/records/{id}", methods: ["GET", "PATCH"], summary: "Read or update a record." },
-  { url: "/drafts", methods: ["GET", "POST"], summary: "List or create drafts." },
-  { url: "/meetings", methods: ["GET", "POST"], summary: "List or schedule meetings." },
-  { url: "/agent-state/{id}", methods: ["GET", "PATCH"], summary: "Read or update agent state." },
-  { url: "/summaries", methods: ["GET", "POST"], summary: "List or persist summaries." },
-  { url: "/analysis", methods: ["GET", "POST"], summary: "List or persist analysis findings." },
+  {
+    url: "/records/{id}",
+    methods: ["GET", "PATCH"],
+    summary: "Read or update a record.",
+    body_schema: { PATCH: ["stage", "observations"] },
+  },
+  {
+    url: "/drafts",
+    methods: ["GET", "POST"],
+    summary: "List or create drafts.",
+    body_schema: { POST: ["to", "subject", "body"] },
+  },
+  {
+    url: "/meetings",
+    methods: ["GET", "POST"],
+    summary: "List or schedule meetings.",
+    body_schema: { POST: ["attendee", "slot", "durationMin"] },
+  },
+  {
+    url: "/agent-state/{id}",
+    methods: ["GET", "PATCH"],
+    summary: "Read or update agent state.",
+    body_schema: { PATCH: ["awake", "reasoning"] },
+  },
+  {
+    url: "/summaries",
+    methods: ["GET", "POST"],
+    summary: "List or persist workflow summaries.",
+    body_schema: { POST: ["status", "summary", "toolsCalled"] },
+  },
+  {
+    url: "/analysis",
+    methods: ["GET", "POST"],
+    summary: "List or persist analysis findings.",
+    body_schema: { POST: ["recordRef", "category", "priority", "finding"] },
+  },
 ];
 
 const MAX_STEPS = 12;
@@ -432,7 +467,12 @@ function apiFetch(
         content: "",
       };
       recordWrite(handle, `documents.${id}`);
-      next.content = String(body.content ?? "");
+      if (Array.isArray(body.append)) {
+        const sections = body.append.filter((value): value is string => typeof value === "string");
+        next.content = [next.content, ...sections].join("\n");
+      } else {
+        next.content = String(body.content ?? "");
+      }
       state.documents[id] = next;
       return { status: document ? 200 : 201, document: { ...next } };
     }

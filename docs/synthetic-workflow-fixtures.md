@@ -32,7 +32,7 @@ The report uses `fixtureSha256()` and `splitSha256()` from
 Fixture SHA-256:
 
 ```text
-c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
+eb1ba85916c7a026928399d448cd1d9f9db7d1f8043b4208690d61c7ced707a7
 ```
 
 The split is family-stratified: each family contributes four train, one dev,
@@ -43,6 +43,12 @@ discovery:   30
 multi-write: 24
 single-write:18
 ```
+
+The endpoint-discovery catalog exposes method-specific `body_schema` key lists
+for every write endpoint. Readable workflow events identify the persistence
+resource for semantic operations, and document writes use an `append` body so
+the environment preserves existing content rather than requiring verbatim
+multi-line reproduction.
 
 ## Families
 

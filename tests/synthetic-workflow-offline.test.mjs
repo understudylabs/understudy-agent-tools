@@ -92,13 +92,45 @@ describe("reachability", () => {
         }
         break;
       }
+      const catalogResult = step(handle, {
+        name: "api_search",
+        arguments: { query: "" },
+      });
+      visible.push(catalogResult.obs.messages.at(-1)?.content ?? "");
       const readable = visible.join("\n");
       const isVisible = (literal) =>
         readable.includes(literal) ||
         readable.includes(JSON.stringify(literal).slice(1, -1));
+      const catalogs = visible.flatMap((content) => {
+        try {
+          const parsed = JSON.parse(content);
+          return Array.isArray(parsed.results) ? parsed.results : [];
+        } catch {
+          return [];
+        }
+      });
+      const endpointMatches = (template, url) => {
+        const pattern = `^${template
+          .split("/")
+          .map((part) => part.startsWith("{") ? "[^/]+" : part)
+          .join("/")}$`;
+        return new RegExp(pattern).test(url);
+      };
       for (const action of task.oracle) {
         const method = String(action.arguments.method ?? "").toUpperCase();
         if (action.name !== "api_fetch" || method === "GET") continue;
+        const endpoint = catalogs.find((candidate) =>
+          Array.isArray(candidate.methods) &&
+          candidate.methods.includes(method) &&
+          endpointMatches(String(candidate.url ?? ""), String(action.arguments.url ?? "")));
+        assert.ok(endpoint, `${task.taskId} cannot discover ${method} ${action.arguments.url}`);
+        const requiredKeys = endpoint.body_schema?.[method] ?? [];
+        for (const key of requiredKeys) {
+          assert.ok(
+            Object.prototype.hasOwnProperty.call(action.arguments.body ?? {}, key),
+            `${task.taskId} oracle ${method} ${action.arguments.url} omits catalog body key ${key}`,
+          );
+        }
         const bodyLiterals = collectStrings(action.arguments.body);
         for (const literal of bodyLiterals) {
           assert.ok(isVisible(literal), `${task.taskId} cannot reach write literal ${literal}`);

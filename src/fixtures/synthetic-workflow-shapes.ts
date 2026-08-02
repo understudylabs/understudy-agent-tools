@@ -78,7 +78,7 @@ const eventRouting: SyntheticFamily = {
     const decoy = `conv_route_decoy_${instance + 1}`;
     const state = baseState({
       [id]: conversation(id, "inbound event", [
-        { type: "inbound", note: `event ${kind}; route to ${handler} on ${queue}; persist status routed with operation route_event` },
+        { type: "inbound", note: `event ${kind}; route to ${handler} on ${queue}; persist the routed result at POST /summaries with status, summary, and toolsCalled fields; operation route_event` },
       ]),
       [decoy]: conversation(decoy, "unrelated event", [
         { type: "inbound", note: "event archive; route to handler-archive on queue-archive" },
@@ -231,7 +231,7 @@ const actionSelection: SyntheticFamily = {
       [
         call("GET", `/conversations/${conv}`),
         call("GET", "/records"),
-        call("PATCH", `/records/${target}`, { stage }),
+        call("PATCH", `/records/${target}`, { stage, observations: [action] }),
       ],
     );
   },
@@ -259,7 +259,7 @@ const analysisPersist: SyntheticFamily = {
     const decoy = `rec_analysis_decoy_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "produce an account analysis", [
-        { type: "analysis-request", note: `inspect ${doc} and ${record}; category ${category}; priority ${priority}; finding ${finding}` },
+        { type: "analysis-request", note: `inspect ${doc} and ${record}; category ${category}; priority ${priority}; finding ${finding}; persist the finding at POST /analysis with recordRef, category, priority, and finding fields` },
       ]),
     }, {
       documents: {
@@ -313,7 +313,7 @@ const documentPreservation: SyntheticFamily = {
     const content = `${original}\n${section}\n${risks}\n${next}`;
     const state = baseState({
       [conv]: conversation(conv, "organize the referenced document", [
-        { type: "document-request", note: `update ${doc}; move to ${path}; preserve existing context; append ${section}, ${risks}, and ${next}; final content ${content}; finish with status complete, summary document organized, using operations move_document and write_document` },
+        { type: "document-request", note: `update ${doc}; move to ${path}; preserve existing context; append sections ${section}, ${risks}, and ${next} through POST /documents/{id}; finish with status complete, summary document organized, using operations move_document and write_document` },
       ]),
     }, {
       documents: {
@@ -336,7 +336,7 @@ const documentPreservation: SyntheticFamily = {
         call("GET", `/conversations/${conv}`),
         call("GET", "/documents"),
         call("PATCH", `/documents/${doc}`, { path }),
-        call("POST", `/documents/${doc}`, { content }),
+        call("POST", `/documents/${doc}`, { append: [section, risks, next] }),
         call("POST", "/summaries", { status: "complete", summary: "document organized", toolsCalled: ["move_document", "write_document"] }),
       ],
     );
@@ -379,7 +379,7 @@ const partialAgent: SyntheticFamily = {
     const doc = `doc_partial_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "complete workflow with unavailable state", [
-        { type: "workflow-request", note: `update ${doc}; move to archive/partial-${instance + 1}.md; agent state unavailable; attempt reasoning synchronized; save status partial using operations move_document and update_agent_state` },
+        { type: "workflow-request", note: `update ${doc}; move to archive/partial-${instance + 1}.md; agent state unavailable; attempt reasoning synchronized; save the partial result at POST /summaries with status, summary, and toolsCalled fields; operations move_document and update_agent_state` },
       ], false),
     }, {
       documents: {
@@ -417,7 +417,7 @@ const summaryOrchestration: SyntheticFamily = {
     const stage = ["closed", "approved", "active", "paused", "qualified", "renewed"][instance];
     const state = baseState({
       [conv]: conversation(conv, "complete the account workflow", [
-        { type: "summary-request", note: `update ${record} to stage ${stage} with observation summary-${instance + 1} and summarize after reading; save status ok with summary updated ${record}, using operations update_record and read_record` },
+        { type: "summary-request", note: `update ${record} to stage ${stage} with observation summary-${instance + 1}; read it again; save status ok with summary updated ${record} at POST /summaries with status, summary, and toolsCalled fields; operations update_record and read_record` },
       ]),
     }, {
       records: {
@@ -465,7 +465,7 @@ const mailFollowup: SyntheticFamily = {
     const conv = `conv_mail_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "prepare a routed follow-up", [
-        { type: "mail-request", note: `recipient ${to}; subject ${subject}; body ${body}` },
+        { type: "mail-request", note: `recipient=${to}; subject=${subject}; body=${body}` },
       ]),
     }, {
       drafts: {
@@ -512,7 +512,7 @@ const multiStepChain: SyntheticFamily = {
     const original = `Chain context ${instance + 1}.`;
     const state = baseState({
       [conv]: conversation(conv, "run the complete orchestrator chain", [
-        { type: "chain-request", note: `entity ${record}; set stage ${stage}; document ${doc}; archive path ${path}; marker ${marker}; final content ${original}\n${marker}; save status complete with summary chain ${marker}, using operations update_record, archive_document, and write_document` },
+        { type: "chain-request", note: `entity ${record}; set stage ${stage}; document ${doc}; archive path ${path}; append marker ${marker} through POST /documents/{id}; save status complete with summary chain ${marker} at POST /summaries with status, summary, and toolsCalled fields; operations update_record, archive_document, and write_document` },
       ]),
     }, {
       records: {
@@ -540,7 +540,7 @@ const multiStepChain: SyntheticFamily = {
         call("PATCH", `/records/${record}`, { stage, observations: [marker] }),
         call("GET", `/documents/${doc}`),
         call("PATCH", `/documents/${doc}`, { path }),
-        call("POST", `/documents/${doc}`, { content: `${original}\n${marker}` }),
+        call("POST", `/documents/${doc}`, { append: [marker] }),
         call("POST", "/summaries", { status: "complete", summary: `chain ${marker}`, toolsCalled: ["update_record", "archive_document", "write_document"] }),
       ],
     );
@@ -575,7 +575,7 @@ const recordObservation: SyntheticFamily = {
       [
         call("GET", `/conversations/${conv}`),
         call("GET", "/records"),
-        call("PATCH", `/records/${record}`, { observations: ["existing", note] }),
+        call("PATCH", `/records/${record}`, { stage: "open", observations: ["existing", note] }),
       ],
     );
   },
