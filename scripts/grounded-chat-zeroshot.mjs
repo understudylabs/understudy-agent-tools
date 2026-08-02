@@ -23,6 +23,7 @@ const baseUrl = argValue("--base-url");
 const split = argValue("--split", "dev");
 const temperature = Number(argValue("--temperature", "0"));
 const samplesPerTask = Number(argValue("--samples-per-task", "1"));
+const concurrency = Number(argValue("--concurrency", "8"));
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
 if (!model) throw new Error("--model is required");
@@ -31,6 +32,7 @@ if (!outPath) throw new Error("--out is required");
 if (!["train", "dev", "holdout"].includes(split)) throw new Error("--split must be train, dev, or holdout");
 if (!Number.isFinite(temperature) || temperature < 0) throw new Error("--temperature must be non-negative");
 if (!Number.isInteger(samplesPerTask) || samplesPerTask < 1) throw new Error("--samples-per-task must be a positive integer");
+if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
 if (split === "holdout" && frozenHoldout !== splitSha256("holdout")) {
   throw new Error(`holdout requires --frozen-holdout ${splitSha256("holdout")}`);
 }
@@ -73,13 +75,18 @@ async function request(task) {
   };
 }
 
-const rows = [];
-for (const task of pool) {
-  for (let sampleIndex = 0; sampleIndex < samplesPerTask; sampleIndex += 1) {
+const jobs = pool.flatMap((task) => Array.from({ length: samplesPerTask }, (_, sampleIndex) => ({ task, sampleIndex })));
+const rows = Array.from({ length: jobs.length });
+let nextJob = 0;
+async function worker() {
+  while (nextJob < jobs.length) {
+    const jobIndex = nextJob;
+    nextJob += 1;
+    const { task, sampleIndex } = jobs[jobIndex];
     try {
       const response = await request(task);
       const result = evaluateTask(task.taskId, response.answer);
-      rows.push({
+      rows[jobIndex] = {
         task_id: task.taskId,
         split,
         band: task.band,
@@ -89,9 +96,9 @@ for (const task of pool) {
         over_budget: result.overBudget,
         answer: response.answer,
         usage: response.usage,
-      });
+      };
     } catch (error) {
-      rows.push({
+      rows[jobIndex] = {
         task_id: task.taskId,
         split,
         band: task.band,
@@ -102,10 +109,11 @@ for (const task of pool) {
         answer: "",
         usage: {},
         error: String(error?.message ?? error),
-      });
+      };
     }
   }
 }
+await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, () => worker()));
 
 const artifact = {
   schema_version: "understudy.grounded_chat_eval.v1",

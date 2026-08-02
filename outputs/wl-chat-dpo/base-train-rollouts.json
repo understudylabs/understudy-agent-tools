@@ -1,0 +1,3371 @@
+{
+  "schema_version": "understudy.grounded_chat_eval.v1",
+  "fixture_id": "grounded-chat-offline-v1",
+  "model": "nemotron-3-nano-base",
+  "split": "train",
+  "temperature": 0.8,
+  "samples_per_task": 4,
+  "split_sha256": "3560630887f4d432cd460422cca83e2c3251c37d3b3cfddef343f503d655bd0f",
+  "rows": [
+    {
+      "task_id": "chat-lookup-001",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Archivist",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 49
+      }
+    },
+    {
+      "task_id": "chat-lookup-001",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Archivist.",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 47
+      }
+    },
+    {
+      "task_id": "chat-lookup-001",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Archivist",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 38
+      }
+    },
+    {
+      "task_id": "chat-lookup-001",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Bex Nori’s role is **archivist**.",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 55
+      }
+    },
+    {
+      "task_id": "chat-synthesis-002",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Gio Rook  \nStatus: deferred  \nNext step: check the source list",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 101
+      }
+    },
+    {
+      "task_id": "chat-synthesis-002",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Gio Rook; Status: deferred; Next step: check the source list.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 136
+      }
+    },
+    {
+      "task_id": "chat-synthesis-002",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Gio Rook  \nStatus: deferred  \nNext step: check the source list",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 108
+      }
+    },
+    {
+      "task_id": "chat-synthesis-002",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Gio Rook, its status is deferred, and the next step is to check the source list.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 165
+      }
+    },
+    {
+      "task_id": "chat-aggregation-003",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 153
+      }
+    },
+    {
+      "task_id": "chat-aggregation-003",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 153
+      }
+    },
+    {
+      "task_id": "chat-aggregation-003",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 232
+      }
+    },
+    {
+      "task_id": "chat-aggregation-003",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 209
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-004",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Quin Alder is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 186
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-004",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Quin Alder is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 163
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-004",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Quin Alder is not specified in the provided workspace data.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 211
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-004",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Quin Alder is not provided.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 203
+      }
+    },
+    {
+      "task_id": "chat-lookup-005",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Liaison",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 50
+      }
+    },
+    {
+      "task_id": "chat-lookup-005",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "liaison",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 50
+      }
+    },
+    {
+      "task_id": "chat-lookup-005",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "liaison",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 39
+      }
+    },
+    {
+      "task_id": "chat-lookup-005",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Vera Cloud's role is liaison.",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 65
+      }
+    },
+    {
+      "task_id": "chat-synthesis-006",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Asha Rill, its status is **approved**, and the next step is to **confirm the date**.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 171
+      }
+    },
+    {
+      "task_id": "chat-synthesis-006",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Asha Rill  \nStatus: approved  \nNext step: confirm the date",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 112
+      }
+    },
+    {
+      "task_id": "chat-synthesis-006",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Asha Rill  \nStatus: approved  \nNext step: confirm the date",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 119
+      }
+    },
+    {
+      "task_id": "chat-synthesis-006",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Asha Rill, its status is approved, and the next step is to confirm the date.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 133
+      }
+    },
+    {
+      "task_id": "chat-aggregation-007",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 197
+      }
+    },
+    {
+      "task_id": "chat-aggregation-007",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 196
+      }
+    },
+    {
+      "task_id": "chat-aggregation-007",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are **2 open Trellis tasks**, and the earliest due date among them is **2027‑01‑14**.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 111
+      }
+    },
+    {
+      "task_id": "chat-aggregation-007",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are **2 open trellis tasks**, and the earliest due date among them is **2027‑01‑14**.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 218
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-008",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Juno Birch is not specified in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 246
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-008",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Juno Birch is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 281
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-008",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Juno Birch is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 169
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-008",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Juno Birch is not provided in the synthetic workspace.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 192
+      }
+    },
+    {
+      "task_id": "chat-lookup-009",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Oren Slate’s role is **forecaster**.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 51
+      }
+    },
+    {
+      "task_id": "chat-lookup-009",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "forecaster",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 56
+      }
+    },
+    {
+      "task_id": "chat-lookup-009",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "forecaster",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 42
+      }
+    },
+    {
+      "task_id": "chat-lookup-009",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Oren Slate is listed as a forecaster.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 48
+      }
+    },
+    {
+      "task_id": "chat-synthesis-010",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Tala Brook, its current status is paused, and the next step is to close the open task.",
+      "usage": {
+        "prompt_tokens": 1694,
+        "completion_tokens": 178
+      }
+    },
+    {
+      "task_id": "chat-synthesis-010",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Tala Brook, its status is paused, and the next step is to close the open task.",
+      "usage": {
+        "prompt_tokens": 1694,
+        "completion_tokens": 126
+      }
+    },
+    {
+      "task_id": "chat-synthesis-010",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Tala Brook; Status: paused; Next step: close the open task.",
+      "usage": {
+        "prompt_tokens": 1694,
+        "completion_tokens": 121
+      }
+    },
+    {
+      "task_id": "chat-synthesis-010",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Tala Brook  \nStatus: paused  \nNext step: close the open task",
+      "usage": {
+        "prompt_tokens": 1694,
+        "completion_tokens": 126
+      }
+    },
+    {
+      "task_id": "chat-aggregation-011",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are **3 open harbor tasks**, and the earliest due date among them is **2027‑04‑09**.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 181
+      }
+    },
+    {
+      "task_id": "chat-aggregation-011",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 188
+      }
+    },
+    {
+      "task_id": "chat-aggregation-011",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 106
+      }
+    },
+    {
+      "task_id": "chat-aggregation-011",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 103
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-012",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Cato Vale is not mentioned in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 159
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-012",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Cato Vale is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 179
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-012",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Cato Vale is not listed in the provided workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 237
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-012",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Cato Vale is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 208
+      }
+    },
+    {
+      "task_id": "chat-lookup-013",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "curator",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 44
+      }
+    },
+    {
+      "task_id": "chat-lookup-013",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "curator",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 33
+      }
+    },
+    {
+      "task_id": "chat-lookup-013",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Curator.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 47
+      }
+    },
+    {
+      "task_id": "chat-lookup-013",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Hana Pike is listed with the role of **curator**.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 61
+      }
+    },
+    {
+      "task_id": "chat-synthesis-014",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Mara Glen. Status: ready. Next step: draft the summary.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 108
+      }
+    },
+    {
+      "task_id": "chat-synthesis-014",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Mara Glen; Status: ready; Next step: draft the summary.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 117
+      }
+    },
+    {
+      "task_id": "chat-synthesis-014",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by **Mara Glen**, its status is **ready**, and the next step is to **draft the summary**.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 122
+      }
+    },
+    {
+      "task_id": "chat-synthesis-014",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by **Mara Glen**, its current **status is “ready,”** and the next step is to **draft the summary**.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 113
+      }
+    },
+    {
+      "task_id": "chat-aggregation-015",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 130
+      }
+    },
+    {
+      "task_id": "chat-aggregation-015",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 118
+      }
+    },
+    {
+      "task_id": "chat-aggregation-015",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 115
+      }
+    },
+    {
+      "task_id": "chat-aggregation-015",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 207
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-016",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Wes Rowan is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 145
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-016",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Wes Rowan is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 132
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-016",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "2027-05-13",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 240
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-016",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Wes Rowan is not mentioned in the provided context.",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 165
+      }
+    },
+    {
+      "task_id": "chat-lookup-017",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Ari Quill is listed as a navigator.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 56
+      }
+    },
+    {
+      "task_id": "chat-lookup-017",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Ari Quill’s role is **navigator**.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 50
+      }
+    },
+    {
+      "task_id": "chat-lookup-017",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Ari Quill's role is navigator.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 65
+      }
+    },
+    {
+      "task_id": "chat-lookup-017",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Ari Quill’s role is navigator.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 53
+      }
+    },
+    {
+      "task_id": "chat-synthesis-018",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Fia Moss, its current status is blocked, and the next step is to assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 132
+      }
+    },
+    {
+      "task_id": "chat-synthesis-018",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread (Quarry‑018) is owned by Fia Moss, its status is blocked, and the next step is to assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 194
+      }
+    },
+    {
+      "task_id": "chat-synthesis-018",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Fia Moss, its current status is **blocked**, and the next step is to **assign the reviewer**.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 128
+      }
+    },
+    {
+      "task_id": "chat-synthesis-018",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread (Quarry‑018) is owned by **Fia Moss**, its current status is **blocked**, and the next step is to **assign the reviewer**.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 127
+      }
+    },
+    {
+      "task_id": "chat-aggregation-019",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑10‑12.",
+      "usage": {
+        "prompt_tokens": 1698,
+        "completion_tokens": 176
+      }
+    },
+    {
+      "task_id": "chat-aggregation-019",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open Trellis tasks, and the earliest due date among them is 2027‑10‑12.",
+      "usage": {
+        "prompt_tokens": 1698,
+        "completion_tokens": 232
+      }
+    },
+    {
+      "task_id": "chat-aggregation-019",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open Trellis tasks, and the earliest due date among them is 2027‑10‑12.",
+      "usage": {
+        "prompt_tokens": 1698,
+        "completion_tokens": 228
+      }
+    },
+    {
+      "task_id": "chat-aggregation-019",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date is 2027‑10‑12.",
+      "usage": {
+        "prompt_tokens": 1698,
+        "completion_tokens": 202
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-020",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Pia Crest is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 217
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-020",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for **Pia Crest** is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 175
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-020",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Pia Crest is not specified in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 238
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-020",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Pia Crest is not provided in the given synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 163
+      }
+    },
+    {
+      "task_id": "chat-lookup-021",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Allocator",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 47
+      }
+    },
+    {
+      "task_id": "chat-lookup-021",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Allocator",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 47
+      }
+    },
+    {
+      "task_id": "chat-lookup-021",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Allocator",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 47
+      }
+    },
+    {
+      "task_id": "chat-lookup-021",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Allocator",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 48
+      }
+    },
+    {
+      "task_id": "chat-synthesis-022",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Zane Birch; Status: in review; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1697,
+        "completion_tokens": 123
+      }
+    },
+    {
+      "task_id": "chat-synthesis-022",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Zane Birch, its current status is “in review,” and the next step is to archive the thread.",
+      "usage": {
+        "prompt_tokens": 1697,
+        "completion_tokens": 159
+      }
+    },
+    {
+      "task_id": "chat-synthesis-022",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Zane Birch, its status is “in review,” and the next step is to archive the thread.",
+      "usage": {
+        "prompt_tokens": 1697,
+        "completion_tokens": 161
+      }
+    },
+    {
+      "task_id": "chat-synthesis-022",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Zane Birch; Status: in review; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1697,
+        "completion_tokens": 217
+      }
+    },
+    {
+      "task_id": "chat-aggregation-023",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑02‑18.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 104
+      }
+    },
+    {
+      "task_id": "chat-aggregation-023",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑02‑18.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 200
+      }
+    },
+    {
+      "task_id": "chat-aggregation-023",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑02‑18.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 187
+      }
+    },
+    {
+      "task_id": "chat-aggregation-023",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑02‑18.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 123
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-024",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ivo Reed is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 171
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-024",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ivo Reed is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 173
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-024",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ivo Reed is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 174
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-024",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ivo Reed is not specified in the provided context; the entity in question is **Ivo Reed**.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 322
+      }
+    },
+    {
+      "task_id": "chat-lookup-025",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "cataloger",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 49
+      }
+    },
+    {
+      "task_id": "chat-lookup-025",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "cataloger",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 44
+      }
+    },
+    {
+      "task_id": "chat-lookup-025",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "cataloger",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 62
+      }
+    },
+    {
+      "task_id": "chat-lookup-025",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "cataloger",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 54
+      }
+    },
+    {
+      "task_id": "chat-synthesis-026",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Soren Vale; Status: queued; Next step: compare the notes.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 144
+      }
+    },
+    {
+      "task_id": "chat-synthesis-026",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Soren Vale; Status: queued; Next step: compare the notes.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 201
+      }
+    },
+    {
+      "task_id": "chat-synthesis-026",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Soren Vale, its current status is queued, and the next step is to compare the notes.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 130
+      }
+    },
+    {
+      "task_id": "chat-synthesis-026",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Soren Vale, its status is queued, and the next step is to compare the notes.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 162
+      }
+    },
+    {
+      "task_id": "chat-aggregation-027",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is May 13, 2027.",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 211
+      }
+    },
+    {
+      "task_id": "chat-aggregation-027",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date is 2027‑05‑13.",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 105
+      }
+    },
+    {
+      "task_id": "chat-aggregation-027",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑05‑13.",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 103
+      }
+    },
+    {
+      "task_id": "chat-aggregation-027",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑05‑13.",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 125
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-028",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Bex Nori is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 169
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-028",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Bex Nori is not provided in the synthetic workspace.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 251
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-028",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Bex Nori is not provided.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 194
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-028",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Bex Nori is not listed in the provided context.",
+      "usage": {
+        "prompt_tokens": 1691,
+        "completion_tokens": 163
+      }
+    },
+    {
+      "task_id": "chat-lookup-029",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "scribe",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 43
+      }
+    },
+    {
+      "task_id": "chat-lookup-029",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Scribe",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 45
+      }
+    },
+    {
+      "task_id": "chat-lookup-029",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "scribe",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 32
+      }
+    },
+    {
+      "task_id": "chat-lookup-029",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "scribe",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 44
+      }
+    },
+    {
+      "task_id": "chat-synthesis-030",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by **Lio Fern**, its current **status is deferred**, and the next step is to **request a second look**.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 137
+      }
+    },
+    {
+      "task_id": "chat-synthesis-030",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Lio Fern; Status: deferred; Next step: request a second look.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 145
+      }
+    },
+    {
+      "task_id": "chat-synthesis-030",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by **Lio Fern**, its status is **deferred**, and the next step is to **request a second look**.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 126
+      }
+    },
+    {
+      "task_id": "chat-synthesis-030",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Lio Fern  \nStatus: deferred  \nNext step: request a second look.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 137
+      }
+    },
+    {
+      "task_id": "chat-aggregation-031",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date is 2027‑08‑26.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 197
+      }
+    },
+    {
+      "task_id": "chat-aggregation-031",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are two open trellis tasks, and the earliest due date is 2027‑08‑26.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 287
+      }
+    },
+    {
+      "task_id": "chat-aggregation-031",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑08‑26.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 248
+      }
+    },
+    {
+      "task_id": "chat-aggregation-031",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date is 2027‑08‑26.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 271
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-032",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Vera Cloud is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 189
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-032",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "No renewal review date for Vera Cloud is listed in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 355
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-032",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Vera Cloud is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 251
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-032",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Vera Cloud is not specified in the provided workspace context.",
+      "usage": {
+        "prompt_tokens": 1672,
+        "completion_tokens": 264
+      }
+    },
+    {
+      "task_id": "chat-lookup-033",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "ledgerer",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 54
+      }
+    },
+    {
+      "task_id": "chat-lookup-033",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Asha Rill is listed as a **ledgerer** in the contacts.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 70
+      }
+    },
+    {
+      "task_id": "chat-lookup-033",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Asha Rill’s listed role is **ledgerer**.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 76
+      }
+    },
+    {
+      "task_id": "chat-lookup-033",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "ledgerer",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 59
+      }
+    },
+    {
+      "task_id": "chat-synthesis-034",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by **Eli Sable**, its status is **approved**, and the next step is to **send the outline**.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 131
+      }
+    },
+    {
+      "task_id": "chat-synthesis-034",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Eli Sable; Status: approved; Next step: send the outline.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 109
+      }
+    },
+    {
+      "task_id": "chat-synthesis-034",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Eli Sable  \nStatus: approved  \nNext step: send the outline",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 108
+      }
+    },
+    {
+      "task_id": "chat-synthesis-034",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Eli Sable  \nStatus: approved  \nNext step: send the outline",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 112
+      }
+    },
+    {
+      "task_id": "chat-aggregation-035",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑11‑16.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 198
+      }
+    },
+    {
+      "task_id": "chat-aggregation-035",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑11‑16.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 168
+      }
+    },
+    {
+      "task_id": "chat-aggregation-035",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑11‑16.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 182
+      }
+    },
+    {
+      "task_id": "chat-aggregation-035",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑11‑16.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 141
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-036",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Oren Slate is not specified in the provided synthetic workspace data.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 202
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-036",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Oren Slate is not specified in the provided workspace context.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 170
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-036",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Oren Slate is not specified in the provided workspace context.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 305
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-036",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Oren Slate is not specified in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 233
+      }
+    },
+    {
+      "task_id": "chat-lookup-037",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "chronicler",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 46
+      }
+    },
+    {
+      "task_id": "chat-lookup-037",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Tala Brook’s role is **chronicler**.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 49
+      }
+    },
+    {
+      "task_id": "chat-lookup-037",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Tala Brook’s role is chronicler.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 62
+      }
+    },
+    {
+      "task_id": "chat-lookup-037",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Tala Brook is listed as a chronicler.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 62
+      }
+    },
+    {
+      "task_id": "chat-synthesis-038",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Yara Slate, its current status is **paused**, and the next step is to **check the source list**.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 105
+      }
+    },
+    {
+      "task_id": "chat-synthesis-038",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Yara Slate, its status is paused, and the next step is to check the source list.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 132
+      }
+    },
+    {
+      "task_id": "chat-synthesis-038",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Yara Slate; Status: paused; Next step: check the source list.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 123
+      }
+    },
+    {
+      "task_id": "chat-synthesis-038",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Yara Slate, currently paused, and the next step is to check the source list.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 120
+      }
+    },
+    {
+      "task_id": "chat-aggregation-039",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑03‑22.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 184
+      }
+    },
+    {
+      "task_id": "chat-aggregation-039",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑03‑22.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 200
+      }
+    },
+    {
+      "task_id": "chat-aggregation-039",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑03‑22.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 118
+      }
+    },
+    {
+      "task_id": "chat-aggregation-039",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑03‑22.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 134
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-040",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for **Hana Pike** is not specified in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 213
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-040",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Hana Pike is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 190
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-040",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "No renewal review date for Hana Pike is listed in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 205
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-040",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Hana Pike is not provided.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 181
+      }
+    },
+    {
+      "task_id": "chat-lookup-041",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Mara Glen’s listed role is **mapper**.",
+      "usage": {
+        "prompt_tokens": 1667,
+        "completion_tokens": 45
+      }
+    },
+    {
+      "task_id": "chat-lookup-041",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "mapper",
+      "usage": {
+        "prompt_tokens": 1667,
+        "completion_tokens": 55
+      }
+    },
+    {
+      "task_id": "chat-lookup-041",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Mara Glen's role is mapper.",
+      "usage": {
+        "prompt_tokens": 1667,
+        "completion_tokens": 82
+      }
+    },
+    {
+      "task_id": "chat-lookup-041",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Mara Glen’s role is mapper.",
+      "usage": {
+        "prompt_tokens": 1667,
+        "completion_tokens": 45
+      }
+    },
+    {
+      "task_id": "chat-synthesis-042",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Rhea Stone; Status: ready; Next step: confirm the date.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 106
+      }
+    },
+    {
+      "task_id": "chat-synthesis-042",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Rhea Stone; Status: ready; Next step: confirm the date.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 122
+      }
+    },
+    {
+      "task_id": "chat-synthesis-042",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by **Rhea Stone**, its current **status is “ready,”** and the next step is to **confirm the date**.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 127
+      }
+    },
+    {
+      "task_id": "chat-synthesis-042",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Rhea Stone; its current status is ready; the next step is to confirm the date.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 201
+      }
+    },
+    {
+      "task_id": "chat-aggregation-043",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑06‑17.",
+      "usage": {
+        "prompt_tokens": 1692,
+        "completion_tokens": 211
+      }
+    },
+    {
+      "task_id": "chat-aggregation-043",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open Trellis tasks, and the earliest due date among them is 2027‑06‑17.",
+      "usage": {
+        "prompt_tokens": 1692,
+        "completion_tokens": 196
+      }
+    },
+    {
+      "task_id": "chat-aggregation-043",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 0.5,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are **2 open trellis tasks**, and the earliest due date among them is **2027‑06‑17**.",
+      "usage": {
+        "prompt_tokens": 1692,
+        "completion_tokens": 207
+      }
+    },
+    {
+      "task_id": "chat-aggregation-043",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑06‑17.",
+      "usage": {
+        "prompt_tokens": 1692,
+        "completion_tokens": 179
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-044",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ari Quill is not provided in the given workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 172
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-044",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ari Quill is not provided.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 245
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-044",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ari Quill is not specified.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 311
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-044",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Ari Quill is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 180
+      }
+    },
+    {
+      "task_id": "chat-lookup-045",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Auditor",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 43
+      }
+    },
+    {
+      "task_id": "chat-lookup-045",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Auditor",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 66
+      }
+    },
+    {
+      "task_id": "chat-lookup-045",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Auditor",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 40
+      }
+    },
+    {
+      "task_id": "chat-lookup-045",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Auditor",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 34
+      }
+    },
+    {
+      "task_id": "chat-synthesis-046",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by **Kira Flint**, its current **status is blocked**, and the next step is to **close the open task**.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 124
+      }
+    },
+    {
+      "task_id": "chat-synthesis-046",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by **Kira Flint**, its current **status is blocked**, and the next step is to **close the open task**.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 152
+      }
+    },
+    {
+      "task_id": "chat-synthesis-046",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Kira Flint, its current status is blocked, and the next step is to close the open task.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 194
+      }
+    },
+    {
+      "task_id": "chat-synthesis-046",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by **Kira Flint**, its current **status is blocked**, and the next step listed is to **close the open task**.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 135
+      }
+    },
+    {
+      "task_id": "chat-aggregation-047",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are three open harbor tasks, and the earliest due date is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 179
+      }
+    },
+    {
+      "task_id": "chat-aggregation-047",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 243
+      }
+    },
+    {
+      "task_id": "chat-aggregation-047",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 198
+      }
+    },
+    {
+      "task_id": "chat-aggregation-047",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 188
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-048",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Uma Frost is not listed in the provided context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 204
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-048",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Uma Frost is not specified in the provided workspace context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 235
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-048",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Uma Frost is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 166
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-048",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Uma Frost is not provided in the given context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 342
+      }
+    },
+    {
+      "task_id": "chat-lookup-049",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "host",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 48
+      }
+    },
+    {
+      "task_id": "chat-lookup-049",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Zane Birch is listed as a **host**.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 74
+      }
+    },
+    {
+      "task_id": "chat-lookup-049",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "host",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 61
+      }
+    },
+    {
+      "task_id": "chat-lookup-049",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Zane Birch is listed as a **host**.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 60
+      }
+    },
+    {
+      "task_id": "chat-synthesis-050",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Dara Wren, its status is “in review,” and the next step is to draft the summary.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 117
+      }
+    },
+    {
+      "task_id": "chat-synthesis-050",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Dara Wren, its status is “in review,” and the next step is to draft the summary.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 123
+      }
+    },
+    {
+      "task_id": "chat-synthesis-050",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Dara Wren; Status: in review; Next step: draft the summary.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 149
+      }
+    },
+    {
+      "task_id": "chat-synthesis-050",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Dara Wren  \nStatus: in review  \nNext step: draft the summary",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 113
+      }
+    },
+    {
+      "task_id": "chat-aggregation-051",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 216
+      }
+    },
+    {
+      "task_id": "chat-aggregation-051",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027-01-14.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 118
+      }
+    },
+    {
+      "task_id": "chat-aggregation-051",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 104
+      }
+    },
+    {
+      "task_id": "chat-aggregation-051",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 199
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-052",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Nia Hollow is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 172
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-052",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Nia Hollow is not provided in the given synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 197
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-052",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": true,
+      "over_budget": false,
+      "answer": "We are given a synthetic workspace context and asked to answer about the renewal review date for Nia Hollow.\n\nLooking at the provided information:\n\n1. In the \"Meeting notes\" section:\n   - \"2027-10-12: Nia Hollow discussed Trellis and recorded status: paused.\"\n\n2. In the \"Email-thread summaries\":\n   - Thread Trellis-052: owner: Nia Hollow; status: paused; next step: send the outline.\n   - Thread decoy-052: owner: Soren Vale; status: blocked; next step: compare the notes.\n   - Distractor note: renewal review date for Soren Vale is 2027-10-12; this note does not answer questions about another contact.\n\n3. In the \"Open tasks\" section:\n   - \"2 open trellis tasks; earliest due date is 2027-10-12.\"\n   - \"One closed trellis task was completed on 2027-08-26.\"\n   - \"Archived snapshot (stale): 3 open trellis tasks; earliest due date is 2027-08-26.\"\n\n4. In the \"Reference cards\", we have a card R-0929: topic Quarry / Tala Brook; ... but note that Nia Hollow is the role \"cataloger\" and we are to find the renewal review date for Nia Hollow.\n\nHowever, note that the question asks for the renewal review date for Nia Hollow.\n\nFrom the context:\n\n- The meeting note for 2027-10-12 mentions Nia Hollow in the context of discussing Trellis and recording status as paused. But it does not explicitly state a renewal review date for Nia Hollow.\n\n- The email-thread summaries mention a \"Distractor note\" that says \"renewal review date for Soren Vale is 2027-10-12\". This note specifically refers to Soren Vale, not Nia Hollow.\n\n- There is no explicit mention of a renewal review date for Nia Hollow in the provided context.\n\nLet's check the reference cards for any mention of Nia Hollow:\n\n- The reference cards are about topics like \"Quarry / Bex Nori\", \"Mica / Gio Rook\", etc. None of them mention Nia Hollow by name in the topic or summary in a way that",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 512
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-052",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Nia Hollow is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 152
+      }
+    },
+    {
+      "task_id": "chat-lookup-053",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Soren Vale’s listed role is convener.",
+      "usage": {
+        "prompt_tokens": 1673,
+        "completion_tokens": 67
+      }
+    },
+    {
+      "task_id": "chat-lookup-053",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Soren Vale's role is convener.",
+      "usage": {
+        "prompt_tokens": 1673,
+        "completion_tokens": 71
+      }
+    },
+    {
+      "task_id": "chat-lookup-053",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Soren Vale is listed as a convener.",
+      "usage": {
+        "prompt_tokens": 1673,
+        "completion_tokens": 120
+      }
+    },
+    {
+      "task_id": "chat-lookup-053",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Soren Vale’s role is convener.",
+      "usage": {
+        "prompt_tokens": 1673,
+        "completion_tokens": 69
+      }
+    },
+    {
+      "task_id": "chat-synthesis-054",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Xara Field; Status: queued; Next step: assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 124
+      }
+    },
+    {
+      "task_id": "chat-synthesis-054",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Xara Field; Status: queued; Next step: assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 114
+      }
+    },
+    {
+      "task_id": "chat-synthesis-054",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread (Thread Quarry‑054) is owned by **Xara Field**, its current **status is “queued,”** and the next step is to **assign the reviewer**.",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 127
+      }
+    },
+    {
+      "task_id": "chat-synthesis-054",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Xara Field; Status: queued; Next step: assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1687,
+        "completion_tokens": 108
+      }
+    },
+    {
+      "task_id": "chat-aggregation-055",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 170
+      }
+    },
+    {
+      "task_id": "chat-aggregation-055",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 196
+      }
+    },
+    {
+      "task_id": "chat-aggregation-055",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 476
+      }
+    },
+    {
+      "task_id": "chat-aggregation-055",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 262
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-056",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Gio Rook is not provided in the given context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 187
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-056",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Gio Rook is not provided.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 217
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-056",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Gio Rook is not provided in the given context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 275
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-056",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Gio Rook is not provided.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 228
+      }
+    },
+    {
+      "task_id": "chat-lookup-057",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "moderator",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 37
+      }
+    },
+    {
+      "task_id": "chat-lookup-057",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Lio Fern is listed as a **moderator**.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 57
+      }
+    },
+    {
+      "task_id": "chat-lookup-057",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "moderator",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 52
+      }
+    },
+    {
+      "task_id": "chat-lookup-057",
+      "split": "train",
+      "band": "lookup",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "moderator",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 41
+      }
+    },
+    {
+      "task_id": "chat-synthesis-058",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Quin Alder; Status: deferred; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 164
+      }
+    },
+    {
+      "task_id": "chat-synthesis-058",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Quin Alder; Status: deferred; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 118
+      }
+    },
+    {
+      "task_id": "chat-synthesis-058",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 2,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Trellis thread is owned by Quin Alder, its status is **deferred**, and the next step is to **archive the thread**.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 179
+      }
+    },
+    {
+      "task_id": "chat-synthesis-058",
+      "split": "train",
+      "band": "synthesis",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Quin Alder; Status: deferred; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 160
+      }
+    },
+    {
+      "task_id": "chat-aggregation-059",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 215
+      }
+    },
+    {
+      "task_id": "chat-aggregation-059",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 181
+      }
+    },
+    {
+      "task_id": "chat-aggregation-059",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 215
+      }
+    },
+    {
+      "task_id": "chat-aggregation-059",
+      "split": "train",
+      "band": "aggregation",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑07‑21.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 207
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-060",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Asha Rill is not listed in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 193
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-060",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 1,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Asha Rill is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 219
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-060",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 2,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Asha Rill is not listed in the provided synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 225
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-060",
+      "split": "train",
+      "band": "unanswerable",
+      "sample_index": 3,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Asha Rill is not provided.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 236
+      }
+    }
+  ]
+}

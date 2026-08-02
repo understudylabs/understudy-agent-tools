@@ -1,0 +1,25 @@
+{
+  "schema_version": "understudy.dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T02:36:26.054Z",
+  "pairs_path": "outputs/wl-chat-dpo/dpo_pairs.jsonl",
+  "manifest_path": "outputs/wl-chat-dpo/dpo_pairs.manifest.json",
+  "pairs_sha256": "d3b4c96c1ccea58e5c062525b653b8b2e634854370ba47420c9fac0d319ac4ad",
+  "fixture_id": "grounded-chat-offline-v1",
+  "fixture": "grounded-chat-offline-v1",
+  "manifest_declared_sha256": "d3b4c96c1ccea58e5c062525b653b8b2e634854370ba47420c9fac0d319ac4ad",
+  "lines": 16,
+  "accepted": 16,
+  "rejected": 0,
+  "split_counts": {
+    "train": 16
+  },
+  "band_counts": {
+    "synthesis": 8,
+    "aggregation": 4,
+    "unanswerable": 4
+  },
+  "holdout_split_sha256": "b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850",
+  "train_split_sha256": "3560630887f4d432cd460422cca83e2c3251c37d3b3cfddef343f503d655bd0f",
+  "failures": [],
+  "verdict": "pass"
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": "understudy.grounded_chat_band_report.v1",
+  "fixture_id": "grounded-chat-offline-v1",
+  "split": "holdout",
+  "split_sha256": "b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850",
+  "base": {
+    "lookup": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "synthesis": {
+      "episodes": 5,
+      "mean_score": 0.6,
+      "pass_rate": 0.4,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "aggregation": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "unanswerable": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    }
+  },
+  "candidate": {
+    "lookup": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "synthesis": {
+      "episodes": 5,
+      "mean_score": 0.7333333333333333,
+      "pass_rate": 0.6,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "aggregation": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "unanswerable": {
+      "episodes": 5,
+      "mean_score": 1,
+      "pass_rate": 1,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    }
+  },
+  "deltas": {
+    "aggregation": {
+      "mean_score": 0,
+      "pass_rate": 0,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "lookup": {
+      "mean_score": 0,
+      "pass_rate": 0,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "synthesis": {
+      "mean_score": 0.1333333333333333,
+      "pass_rate": 0.19999999999999996,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    },
+    "unanswerable": {
+      "mean_score": 0,
+      "pass_rate": 0,
+      "fabrication_episodes": 0,
+      "over_budget_episodes": 0
+    }
+  }
+}

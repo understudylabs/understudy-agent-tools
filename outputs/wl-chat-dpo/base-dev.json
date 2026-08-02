@@ -1,0 +1,291 @@
+{
+  "schema_version": "understudy.grounded_chat_eval.v1",
+  "fixture_id": "grounded-chat-offline-v1",
+  "model": "nemotron-3-nano-base",
+  "split": "dev",
+  "temperature": 0,
+  "samples_per_task": 1,
+  "split_sha256": "1c670bb1fe990552f5b2ba21144b5fbf49db6bbbd27e4e20074e92b7959f77c0",
+  "rows": [
+    {
+      "task_id": "chat-lookup-061",
+      "split": "dev",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "planner",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 51
+      }
+    },
+    {
+      "task_id": "chat-synthesis-062",
+      "split": "dev",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Juno Birch, its status is approved, and the next step is to compare the notes.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 181
+      }
+    },
+    {
+      "task_id": "chat-aggregation-063",
+      "split": "dev",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑10‑12.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 213
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-064",
+      "split": "dev",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Tala Brook is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 292
+      }
+    },
+    {
+      "task_id": "chat-lookup-065",
+      "split": "dev",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "inspector",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 53
+      }
+    },
+    {
+      "task_id": "chat-synthesis-066",
+      "split": "dev",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Cato Vale; Status: paused; Next step: request a second look.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 114
+      }
+    },
+    {
+      "task_id": "chat-aggregation-067",
+      "split": "dev",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑02‑18.",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 193
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-068",
+      "split": "dev",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Mara Glen is not provided in the synthetic workspace context.",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 243
+      }
+    },
+    {
+      "task_id": "chat-lookup-069",
+      "split": "dev",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Rhea Stone’s role is steward.",
+      "usage": {
+        "prompt_tokens": 1671,
+        "completion_tokens": 61
+      }
+    },
+    {
+      "task_id": "chat-synthesis-070",
+      "split": "dev",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Wes Rowan; Status: ready; Next step: send the outline.",
+      "usage": {
+        "prompt_tokens": 1690,
+        "completion_tokens": 111
+      }
+    },
+    {
+      "task_id": "chat-aggregation-071",
+      "split": "dev",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date is 2027‑05‑13.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 145
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-072",
+      "split": "dev",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Fia Moss is not provided in the given context.",
+      "usage": {
+        "prompt_tokens": 1677,
+        "completion_tokens": 226
+      }
+    },
+    {
+      "task_id": "chat-lookup-073",
+      "split": "dev",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "editor",
+      "usage": {
+        "prompt_tokens": 1686,
+        "completion_tokens": 50
+      }
+    },
+    {
+      "task_id": "chat-synthesis-074",
+      "split": "dev",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Pia Crest, its status is blocked, and the next step is to check the source list.",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 131
+      }
+    },
+    {
+      "task_id": "chat-aggregation-075",
+      "split": "dev",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑08‑26.",
+      "usage": {
+        "prompt_tokens": 1685,
+        "completion_tokens": 202
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-076",
+      "split": "dev",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Zane Birch is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1689,
+        "completion_tokens": 246
+      }
+    },
+    {
+      "task_id": "chat-lookup-077",
+      "split": "dev",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "coordinator",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 44
+      }
+    },
+    {
+      "task_id": "chat-synthesis-078",
+      "split": "dev",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Ivo Reed; Status: in review; Next step: confirm the date.",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 112
+      }
+    },
+    {
+      "task_id": "chat-aggregation-079",
+      "split": "dev",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑11‑16.",
+      "usage": {
+        "prompt_tokens": 1693,
+        "completion_tokens": 207
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-080",
+      "split": "dev",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Soren Vale is not provided.",
+      "usage": {
+        "prompt_tokens": 1674,
+        "completion_tokens": 239
+      }
+    }
+  ]
+}

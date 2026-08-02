@@ -10,13 +10,14 @@ unanswerable/refusal band.
 | Pin | Value |
 | --- | --- |
 | fixture | `grounded-chat-offline-v1` |
+| rubric version | `1.1` |
 | tasks | 100 |
 | splits | train 60 / dev 20 / holdout 20 |
-| fixture SHA-256 | `5843d51a3c5ff2d649daf890cb006bd0d0f9a676bfba56c5e009cb4e02edbd61` |
-| train SHA-256 | `c5e0869b320c8f7044956c6b05bdf4fb5b83c3c247d854cf2145f1243dac94da` |
-| dev SHA-256 | `48b03a0fdc3ec04c0e813b1ea71c5029669bbed45587f5f3268dd5a9afb0cea5` |
-| holdout SHA-256 | `9358fd294b22b62b6af7a05dd3c56bce904c771589088510cc74325f99800e4d` |
-| splits SHA-256 | `9d549e1554d651e37ba7a17bd060151c0eeba05302636ffe174e0ff2a824dbd7` |
+| fixture SHA-256 | `e0953bd8487e0665729921ecb71ec3eb106016c21243bc4b8d64cb5d4c62c12e` |
+| train SHA-256 | `3560630887f4d432cd460422cca83e2c3251c37d3b3cfddef343f503d655bd0f` |
+| dev SHA-256 | `1c670bb1fe990552f5b2ba21144b5fbf49db6bbbd27e4e20074e92b7959f77c0` |
+| holdout SHA-256 | `b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850` |
+| splits SHA-256 | `1ba08287e0d93446bc72c6f0f4858ac672854ffd1249ee8bafa779819b1390f7` |
 | base model | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` |
 | renderer | `nemotron3` |
 
@@ -64,7 +65,7 @@ node scripts/grounded-chat-zeroshot.mjs \
   --split holdout \
   --temperature 0 \
   --samples-per-task 1 \
-  --frozen-holdout 9358fd294b22b62b6af7a05dd3c56bce904c771589088510cc74325f99800e4d \
+  --frozen-holdout b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850 \
   --out outputs/wl-chat/<model>-holdout.json
 ```
 
@@ -80,6 +81,10 @@ node scripts/grounded-chat-band-report.mjs \
 The regression guard is **fabrication episode count per band**, reported beside
 mean score, pass rate, and over-budget episode count. A candidate must not trade
 grounding safety for fact recall.
+
+This v1.1 rubric-validity fix keeps the same fixture id but rescored the stored
+answers offline so the base holdout evidence is compared on the corrected rubric
+without resampling.
 
 ## DPO input validation
 
@@ -107,7 +112,7 @@ TINKER_API_KEY=… python scripts/tinker-dpo-train.py \
   --renderer nemotron3 \
   --lora-rank 32 \
   --beta 0.1 \
-  --epochs 2 \
+  --epochs 3 \
   --out outputs/wl-chat/train-receipt.json
 
 TINKER_API_KEY=… python scripts/tinker-openai-shim.py \

@@ -1,0 +1,291 @@
+{
+  "schema_version": "understudy.grounded_chat_eval.v1",
+  "fixture_id": "grounded-chat-offline-v1",
+  "model": "nemotron-3-nano-base",
+  "split": "holdout",
+  "temperature": 0,
+  "samples_per_task": 1,
+  "split_sha256": "b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850",
+  "rows": [
+    {
+      "task_id": "chat-lookup-081",
+      "split": "holdout",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Xara Field is listed as a **recorder**.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 60
+      }
+    },
+    {
+      "task_id": "chat-synthesis-082",
+      "split": "holdout",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Bex Nori; Status: queued; Next step: close the open task.",
+      "usage": {
+        "prompt_tokens": 1697,
+        "completion_tokens": 124
+      }
+    },
+    {
+      "task_id": "chat-aggregation-083",
+      "split": "holdout",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑03‑22.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 143
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-084",
+      "split": "holdout",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Lio Fern is not provided in the workspace context.",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 247
+      }
+    },
+    {
+      "task_id": "chat-lookup-085",
+      "split": "holdout",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "indexer",
+      "usage": {
+        "prompt_tokens": 1682,
+        "completion_tokens": 53
+      }
+    },
+    {
+      "task_id": "chat-synthesis-086",
+      "split": "holdout",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.3333333333333333,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Vera Cloud, its status is **deferred**, and the next step is to **draft the summary**.",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 114
+      }
+    },
+    {
+      "task_id": "chat-aggregation-087",
+      "split": "holdout",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑06‑17.",
+      "usage": {
+        "prompt_tokens": 1681,
+        "completion_tokens": 202
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-088",
+      "split": "holdout",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Eli Sable is not provided.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 235
+      }
+    },
+    {
+      "task_id": "chat-lookup-089",
+      "split": "holdout",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Scheduler.",
+      "usage": {
+        "prompt_tokens": 1673,
+        "completion_tokens": 43
+      }
+    },
+    {
+      "task_id": "chat-synthesis-090",
+      "split": "holdout",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0.6666666666666666,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Quarry thread is owned by Oren Slate, its status is approved, and the next step is to assign the reviewer.",
+      "usage": {
+        "prompt_tokens": 1683,
+        "completion_tokens": 115
+      }
+    },
+    {
+      "task_id": "chat-aggregation-091",
+      "split": "holdout",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 2 open trellis tasks, and the earliest due date among them is 2027‑09‑30.",
+      "usage": {
+        "prompt_tokens": 1696,
+        "completion_tokens": 195
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-092",
+      "split": "holdout",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Yara Slate is not provided in the context.",
+      "usage": {
+        "prompt_tokens": 1678,
+        "completion_tokens": 289
+      }
+    },
+    {
+      "task_id": "chat-lookup-093",
+      "split": "holdout",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "reviewer",
+      "usage": {
+        "prompt_tokens": 1670,
+        "completion_tokens": 43
+      }
+    },
+    {
+      "task_id": "chat-synthesis-094",
+      "split": "holdout",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Owner: Hana Pike; Status: paused; Next step: archive the thread.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 112
+      }
+    },
+    {
+      "task_id": "chat-aggregation-095",
+      "split": "holdout",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 3 open harbor tasks, and the earliest due date among them is 2027‑01‑14.",
+      "usage": {
+        "prompt_tokens": 1676,
+        "completion_tokens": 125
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-096",
+      "split": "holdout",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Rhea Stone is not specified in the provided context.",
+      "usage": {
+        "prompt_tokens": 1675,
+        "completion_tokens": 218
+      }
+    },
+    {
+      "task_id": "chat-lookup-097",
+      "split": "holdout",
+      "band": "lookup",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "Cartographer",
+      "usage": {
+        "prompt_tokens": 1680,
+        "completion_tokens": 52
+      }
+    },
+    {
+      "task_id": "chat-synthesis-098",
+      "split": "holdout",
+      "band": "synthesis",
+      "sample_index": 0,
+      "score": 0,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The Harbor thread is owned by Ari Quill, its status is **ready**, and the next step is to **compare the notes**.",
+      "usage": {
+        "prompt_tokens": 1679,
+        "completion_tokens": 120
+      }
+    },
+    {
+      "task_id": "chat-aggregation-099",
+      "split": "holdout",
+      "band": "aggregation",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "There are 4 open quarry tasks, and the earliest due date among them is 2027‑04‑09.",
+      "usage": {
+        "prompt_tokens": 1684,
+        "completion_tokens": 206
+      }
+    },
+    {
+      "task_id": "chat-unanswerable-100",
+      "split": "holdout",
+      "band": "unanswerable",
+      "sample_index": 0,
+      "score": 1,
+      "fabrication": false,
+      "over_budget": false,
+      "answer": "The renewal review date for Kira Flint is not provided.",
+      "usage": {
+        "prompt_tokens": 1688,
+        "completion_tokens": 252
+      }
+    }
+  ]
+}

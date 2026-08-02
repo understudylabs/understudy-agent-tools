@@ -1,0 +1,24 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "fixture_id": "grounded-chat-offline-v1",
+  "source": "grounded-chat-offline-v1 synthetic fixture",
+  "split": "train",
+  "train_split_sha256": "3560630887f4d432cd460422cca83e2c3251c37d3b3cfddef343f503d655bd0f",
+  "pairs_sha256": "d3b4c96c1ccea58e5c062525b653b8b2e634854370ba47420c9fac0d319ac4ad",
+  "pair_count": 16,
+  "mining": {
+    "train_tasks": 60,
+    "tasks_with_pass": 53,
+    "tasks_with_fail": 23,
+    "tasks_with_signal": 16,
+    "skipped_no_pass": 7,
+    "skipped_no_fail": 37,
+    "skipped_identical": 0,
+    "pair_count": 16,
+    "failure_kinds": {
+      "fabrication": 1,
+      "over_budget": 0,
+      "missing_fact": 15
+    }
+  }
+}

@@ -57,6 +57,30 @@ describe("grounded chat scoring", () => {
     }
   });
 
+  it("accepts semantically correct lookup, aggregation, and unanswerable phrasing", () => {
+    const lookup = TASKS.find((candidate) => candidate.band === "lookup");
+    const aggregation = TASKS.find((candidate) => candidate.band === "aggregation");
+    const unanswerable = TASKS.find((candidate) => candidate.band === "unanswerable");
+    assert.ok(lookup && aggregation && unanswerable);
+    assert.equal(evaluateTask(lookup.taskId, lookup.gold.required_facts[0]).score, 1);
+    const aggregationMatch = /- (\d+) open ([^ ]+) tasks; earliest due date is ([0-9-‑–]+)/i.exec(aggregation.context);
+    assert.ok(aggregationMatch);
+    assert.equal(
+      evaluateTask(
+        aggregation.taskId,
+        `There are ${["zero", "one", "two", "three", "four", "five"][Number(aggregationMatch[1])] ?? aggregationMatch[1]} open ${aggregationMatch[2]} tasks, and the earliest due date is ${aggregationMatch[3]}.`,
+      ).score,
+      1,
+    );
+    assert.equal(
+      evaluateTask(
+        unanswerable.taskId,
+        `The renewal review date for ${/for (.+?)\?/i.exec(unanswerable.question)[1]} is not provided in the context.`,
+      ).score,
+      1,
+    );
+  });
+
   it("zeroes fabricated and over-budget answers", () => {
     const task = TASKS.find((candidate) => candidate.band === "lookup");
     assert.ok(task);

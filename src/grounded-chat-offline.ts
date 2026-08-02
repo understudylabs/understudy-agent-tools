@@ -29,15 +29,16 @@ export type GroundedChatTask = {
 
 export const GROUNDED_CHAT_FIXTURE = {
   fixture_id: "grounded-chat-offline-v1",
+  rubric_version: "1.1",
   benchmark_id: "grounded-chat-offline",
   split_seed: 7,
   task_count: 100,
   split_counts: { train: 60, dev: 20, holdout: 20 },
-  fixture_sha256: "5843d51a3c5ff2d649daf890cb006bd0d0f9a676bfba56c5e009cb4e02edbd61",
-  train_sha256: "c5e0869b320c8f7044956c6b05bdf4fb5b83c3c247d854cf2145f1243dac94da",
-  dev_sha256: "48b03a0fdc3ec04c0e813b1ea71c5029669bbed45587f5f3268dd5a9afb0cea5",
-  holdout_sha256: "9358fd294b22b62b6af7a05dd3c56bce904c771589088510cc74325f99800e4d",
-  splits_sha256: "9d549e1554d651e37ba7a17bd060151c0eeba05302636ffe174e0ff2a824dbd7",
+  fixture_sha256: "e0953bd8487e0665729921ecb71ec3eb106016c21243bc4b8d64cb5d4c62c12e",
+  train_sha256: "3560630887f4d432cd460422cca83e2c3251c37d3b3cfddef343f503d655bd0f",
+  dev_sha256: "1c670bb1fe990552f5b2ba21144b5fbf49db6bbbd27e4e20074e92b7959f77c0",
+  holdout_sha256: "b1a7f5a49f7d90a0cca13a4ec5357fc1cc3eed839299453317ad192663a02850",
+  splits_sha256: "1ba08287e0d93446bc72c6f0f4858ac672854ffd1249ee8bafa779819b1390f7",
 } as const;
 
 const RESET_SEED = GROUNDED_CHAT_FIXTURE.split_seed;
@@ -111,6 +112,18 @@ function normalize(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function regexFact(pattern: string): Fact {
+  return { regex: pattern, flags: "i" };
+}
+
+function escaped(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function flexibleDate(value: string): string {
+  return escaped(value).replace(/-/g, "[-‑–]");
+}
+
 function matchesFact(answer: string, fact: Fact): boolean {
   if (typeof fact === "string") return normalize(answer).includes(normalize(fact));
   try {
@@ -175,25 +188,39 @@ function makeTask(index: number): GroundedChatTask {
 
   if (band === "lookup") {
     question = `What role is listed for ${target[0]}?`;
-    required = [`role: ${target[1]}`];
-    forbidden = [`role: ${other[1]}`];
+    required = [target[1]];
+    forbidden = [other[1]];
   } else if (band === "synthesis") {
     question = `Summarize the ${project} thread's owner, status, and next step.`;
-    required = [`owner: ${target[0]}`, `status: ${status}`, `next step: ${nextStep}`];
+    required = [
+      regexFact(`(?:owner|owned by)\\s*:?\\s*${escaped(target[0])}`),
+      regexFact(`status\\s*(?:is|:)\\s*${escaped(status)}`),
+      regexFact(`next step\\s*(?:is|:)\\s*${escaped(nextStep)}`),
+    ];
     forbidden = [
       `owner: ${other[0]}`,
       `status: ${STATUSES[((index + 1) * 5 + 1) % STATUSES.length]}`,
     ];
   } else if (band === "aggregation") {
     question = `How many open ${project.toLowerCase()} tasks are there, and what is the earliest due date?`;
-    required = [`${count} open ${project.toLowerCase()} tasks`, `earliest due date is ${date}`];
+    const countWords = ["zero", "one", "two", "three", "four", "five"];
+    required = [
+      regexFact(`\\b(?:${count}|${countWords[count]})\\s+open\\s+${escaped(project.toLowerCase())}\\s+tasks\\b`),
+      regexFact(`earliest due date(?:\\s+among\\s+(?:them|these tasks))?\\s+is\\s+${flexibleDate(date)}`),
+    ];
     forbidden = [
       `${count + 1} open ${project.toLowerCase()} tasks`,
       `earliest due date is ${DATES[((index + 1) * 9 + 1) % DATES.length]}`,
     ];
   } else {
     question = `What is the renewal review date for ${target[0]}?`;
-    required = [target[0], { regex: "(?:not available|not in the workspace|cannot find)", flags: "i" }];
+    required = [
+      target[0],
+      {
+        regex: "(?:not available|not provided|not listed|not specified|not mentioned|no record|not in the (?:workspace|context)|cannot find|does not appear|unavailable|no information)",
+        flags: "i",
+      },
+    ];
     forbidden = [`renewal review date for ${other[0]} is ${date}`];
   }
 
@@ -291,7 +318,11 @@ export function oracleAnswer(taskId: string): string {
     return `${task.gold.required_facts[0]}: the requested information is not available in the workspace.`;
   }
   return task.gold.required_facts
-    .map((fact) => (typeof fact === "string" ? fact : "the requested fact is available"))
+    .map((fact) => {
+      if (typeof fact === "string") return fact;
+      const match = new RegExp(fact.regex, fact.flags).exec(task.context);
+      return match?.[0] ?? "the requested fact is available";
+    })
     .join("; ");
 }
 
