@@ -4,7 +4,6 @@ export const ACTIVE_STAGES = Object.freeze([
   "screening", "reflecting", "evaluating", "confirming", "running", "started",
 ]);
 
-const FINAL_STAGES = new Set(["completed", "promoted", "rejected", "failed"]);
 const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
 const text = (value) => value == null ? "" : String(value);
 const escapeHTML = (value) => text(value)
@@ -14,6 +13,7 @@ const escapeHTML = (value) => text(value)
   .replaceAll('"', "&quot;")
   .replaceAll("'", "&#39;");
 const scoreText = (value) => value == null ? "—" : `${(Number(value) * 100).toFixed(1)}%`;
+const countText = (value) => value == null ? "—" : String(value);
 
 function nodeSummary(node) {
   return {
@@ -26,17 +26,38 @@ function nodeSummary(node) {
   };
 }
 
-function completedScoreNode(node) {
+function canonicalProtocolMatch(node, rankProtocol) {
+  if (!node?.protocol || !rankProtocol) return false;
+  return [
+    "method", "scorer_version", "rollout_contract", "split_sha256", "samples_per_task",
+  ].every((key) => node.protocol[key] === rankProtocol[key]);
+}
+
+function confirmedWave2Node(node, rankProtocol) {
   return node?.rank_eligible === true
-    && FINAL_STAGES.has(node.stage)
+    && (node.stage === "promoted" || node.stage === "completed")
     && node.score !== null
-    && node.score !== undefined;
+    && node.score !== undefined
+    && canonicalProtocolMatch(node, rankProtocol);
+}
+
+function completedEpisodes(budget) {
+  if (!budget || typeof budget !== "object") return null;
+  const stageA = budget.stage_a_completed;
+  const stageB = firstDefined(
+    budget.stage_b_completed,
+    budget.stage_b_consumed,
+    budget.stage_b_episodes_completed,
+  );
+  if (stageA === undefined && stageB === undefined) return null;
+  return Number(stageA || 0) + Number(stageB || 0);
 }
 
 export function summarizeManifest(manifest) {
   const nodes = Array.isArray(manifest?.nodes) ? manifest.nodes : [];
   const totals = manifest?.totals || {};
   const budget = totals.budget || {};
+  const rankProtocol = manifest?.rank_protocol ? { ...manifest.rank_protocol } : null;
   const active = new Set(ACTIVE_STAGES);
   const referenceLine = (manifest?.reference_lines || [])
     .find((line) => line.rank_comparable === false);
@@ -58,22 +79,21 @@ export function summarizeManifest(manifest) {
     },
     activeStages: nodes.filter((node) => active.has(node.stage)).map(nodeSummary),
     episodes: {
-      completed: Number(firstDefined(
-        budget.stage_a_completed, totals.episodes_completed, totals.completed_episodes, 0,
-      )),
-      cap: 120,
+      completed: completedEpisodes(manifest?.totals?.budget),
+      cap: budget.max_total_episodes ?? null,
     },
     reflections: {
-      completed: Number(firstDefined(
-        budget.total_reflections, totals.reflections_completed, totals.completed_reflections, 0,
-      )),
-      cap: 8,
+      completed: budget.total_reflections ?? null,
+      cap: budget.max_total_reflections ?? null,
     },
     elapsedS: Number(firstDefined(totals.wall_clock_s, totals.elapsed_s, 0)),
     winner,
     incumbentReference: reference,
-    holdoutUntouched: manifest?.holdout_untouched === true,
-    isPreview: !nodes.some((node) => node.wave === "wave2" && completedScoreNode(node)),
+    holdoutUntouched: manifest?.holdout_untouched === undefined
+      ? null
+      : manifest.holdout_untouched === true,
+    isPreview: !nodes.some((node) =>
+      node.wave === "wave2" && confirmedWave2Node(node, rankProtocol)),
   };
 }
 
@@ -96,17 +116,20 @@ export function renderSummaryHTML(summary) {
   const preview = summary.isPreview
     ? '<div class="monitor-panel__preview">PREVIEW — not yet backed by canonical confirm receipts</div>'
     : "";
+  const holdout = summary.holdoutUntouched === true
+    ? '<span class="monitor-panel__holdout-ok">holdout untouched</span>'
+    : '<span class="monitor-panel__holdout-fail">HOLDOUT UNTOUCHED: UNVERIFIED — FAIL CLOSED</span>';
   return `<div class="monitor-panel__inner">
     <div class="monitor-panel__title">Overall experiment</div>
     ${preview}
     <div class="monitor-panel__headline">${scoreText(summary.headlineHighScore)}
       <small>canonical k=${escapeHTML(protocol.samples_per_task ?? "—")}</small></div>
     <div class="monitor-panel__facts">
-      <span>episodes ${summary.episodes.completed}/${summary.episodes.cap}</span>
-      <span>reflections ${summary.reflections.completed}/${summary.reflections.cap}</span>
+      <span>episodes ${countText(summary.episodes.completed)}/${countText(summary.episodes.cap)}</span>
+      <span>reflections ${countText(summary.reflections.completed)}/${countText(summary.reflections.cap)}</span>
       <span>elapsed ${escapeHTML(summary.elapsedS)}s</span>
       <span>winner ${escapeHTML(summary.winner || "—")}</span>
-      <span>${summary.holdoutUntouched ? "holdout untouched" : "holdout status unknown"}</span>
+      ${holdout}
     </div>
     <div class="monitor-panel__protocol">
       <span>${escapeHTML(protocol.method || "—")}</span>
