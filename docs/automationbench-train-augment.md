@@ -1,10 +1,13 @@
 # AutomationBench synthetic TRAIN augmentation
 
 `src/automationbench-train-augment.ts` deterministically expands the frozen
-synthetic `simple/api` TRAIN pool without reading or emitting dev/holdout task
-content. It authors cases through the existing family builders, registers them
-only in an in-memory runtime registry, validates each case and oracle
-trajectory, and emits a hash-stamped TRAIN-only artifact.
+synthetic v1 `simple/api` TRAIN pool without reading or emitting dev/holdout
+task content. It coexists with the harder v2 fixture
+([`automationbench-v2-hard-split.md`](automationbench-v2-hard-split.md)) but
+does not add v2 families to this artifact. It authors cases through the v1
+family builders, registers them only in the shared in-memory runtime registry,
+validates each case and oracle trajectory, and emits a hash-stamped TRAIN-only
+artifact.
 
 This is synthetic data for local evaluator and training experiments. It is not
 an upstream AutomationBench result.
@@ -83,11 +86,12 @@ and each entry's `arguments` is also a JSON string, matching the on-disk
 AutomationBench encoding accepted by `parseToolCalls()`. Consumers can replay
 the parsed calls through `reset()` and `step()`, then take the terminal reward.
 
-`manifest.json` records counts, per-family accepted counts, the frozen split
-hashes, per-task `{task_id, content_sha256}` entries, generator parameters,
-provenance, and `augmented_train_sha256`. `contamination-report.json` repeats
-the headline counts and records explicit empty id/content-hash intersections
-with dev and holdout plus the frozen holdout hash equality proof.
+`manifest.json` records counts, per-family accepted counts, both v1 and v2
+frozen split hashes, per-task `{task_id, content_sha256}` entries, generator
+parameters, provenance, and `augmented_train_sha256`.
+`contamination-report.json` repeats the headline counts and records explicit
+empty id/content-hash intersections with both v1 and v2 dev/holdout pools,
+plus both frozen holdout hash equality proofs.
 
 ## Gates
 
@@ -101,10 +105,11 @@ Every augmented task is hard-failed unless all gates pass:
 - at least one assertion is unsatisfied at reset;
 - guard contact `c-0` is absent from `allowedWrites`;
 - every emitted trajectory replays to exactly `1.0` with zero forbidden effects;
-- task IDs and canonical content hashes are disjoint from frozen dev/holdout;
-- the frozen holdout split hash equals the pinned value.
+- task IDs and canonical content hashes are disjoint from frozen v1 and v2
+  dev/holdout pools;
+- both frozen v1 and v2 holdout split hashes equal their pinned values.
 
-For v1, the contamination report is:
+The contamination report's intersections are:
 
 ```json
 {
@@ -112,7 +117,12 @@ For v1, the contamination report is:
   "train_vs_holdout_ids": [],
   "train_vs_dev_content_hashes": [],
   "train_vs_holdout_content_hashes": [],
-  "holdout_hash_equal": true
+  "train_vs_v2_dev_ids": [],
+  "train_vs_v2_holdout_ids": [],
+  "train_vs_v2_dev_content_hashes": [],
+  "train_vs_v2_holdout_content_hashes": [],
+  "holdout_hash_equal": true,
+  "v2_holdout_hash_equal": true
 }
 ```
 
@@ -127,6 +137,10 @@ dev/holdout task content, hashes only.
 | `splitSha256("train")` | `783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89` |
 | `splitSha256("dev")` | `5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc` |
 | `splitSha256("holdout")` | `a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701` |
+| `v2FixtureSha256()` | `918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22` |
+| `v2SplitSha256("train")` | `71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b` |
+| `v2SplitSha256("dev")` | `f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135` |
+| `v2SplitSha256("holdout")` | `2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9` |
 | `augmented_train_sha256` | `6dd05e7b2280070df9b220fb144e0f61517b43463f7a07cf78b23b2ede7551c3` |
 
 ## Regeneration
@@ -143,6 +157,7 @@ node --test tests/automationbench-train-augment.test.mjs
 ## Limitations
 
 - Synthetic data only; this is not an upstream AutomationBench number.
+- The artifact remains v1-family TRAIN-only; v2 hard families are not added.
 - Family-stratified: dev and holdout share task families with TRAIN.
 - Augmentation uses the four TRAIN phrasings by construction; templated
   phrasings therefore remain shared across splits.

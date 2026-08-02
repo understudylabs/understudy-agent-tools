@@ -24,6 +24,7 @@ import {
   type Task,
   type ToolCall,
 } from "./automationbench-offline.js";
+import { v2SplitSha256, v2TaskPool } from "./automationbench-v2.js";
 
 export type AugmentOptions = {
   variantsPerFamily?: number;
@@ -44,6 +45,9 @@ type ReadCall = ToolCall;
 const FROZEN_TRAIN = TASKS.filter((task) => task.split === "train");
 const FROZEN_DEV = TASKS.filter((task) => task.split === "dev");
 const FROZEN_HOLDOUT = TASKS.filter((task) => task.split === "holdout");
+const V2_DEV = v2TaskPool({ split: "dev" });
+const V2_HOLDOUT_HASH = v2SplitSha256("holdout");
+const V2_HOLDOUT = v2TaskPool({ split: "holdout", frozenHoldoutSha256: V2_HOLDOUT_HASH });
 
 function cloneCall(call: ToolCall): ToolCall {
   return JSON.parse(JSON.stringify(call)) as ToolCall;
@@ -196,10 +200,14 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
   const trajectories = trainTasks.flatMap((task) => Array.from({ length: trajectoriesPerTask }, (_, variant) => encodeTrajectory(task, variant)));
   const devHashes = new Set(FROZEN_DEV.map(taskContentSha256));
   const holdoutHashes = new Set(FROZEN_HOLDOUT.map(taskContentSha256));
+  const v2DevHashes = new Set(V2_DEV.map(taskContentSha256));
+  const v2HoldoutHashes = new Set(V2_HOLDOUT.map(taskContentSha256));
   const trainIds = trainTasks.map((task) => task.taskId);
   const trainHashes = trainTasks.map(taskContentSha256);
   const devIds = FROZEN_DEV.map((task) => task.taskId);
   const holdoutIds = FROZEN_HOLDOUT.map((task) => task.taskId);
+  const v2DevIds = V2_DEV.map((task) => task.taskId);
+  const v2HoldoutIds = V2_HOLDOUT.map((task) => task.taskId);
   const contamination = {
     counts: { frozen_train: FROZEN_TRAIN.length, augmented: augmented.length, total_train: trainTasks.length, trajectories: trajectories.length },
     artifact_content_policy: "TRAIN-only tasks and trajectories; no dev/holdout task content is present in any artifact, hashes only.",
@@ -207,9 +215,16 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
     train_vs_holdout_ids: trainIds.filter((id) => holdoutIds.includes(id)),
     train_vs_dev_content_hashes: trainHashes.filter((hash) => devHashes.has(hash)),
     train_vs_holdout_content_hashes: trainHashes.filter((hash) => holdoutHashes.has(hash)),
+    train_vs_v2_dev_ids: trainIds.filter((id) => v2DevIds.includes(id)),
+    train_vs_v2_holdout_ids: trainIds.filter((id) => v2HoldoutIds.includes(id)),
+    train_vs_v2_dev_content_hashes: trainHashes.filter((hash) => v2DevHashes.has(hash)),
+    train_vs_v2_holdout_content_hashes: trainHashes.filter((hash) => v2HoldoutHashes.has(hash)),
     holdout_hash_expected: "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
     holdout_hash_actual: splitSha256("holdout"),
     holdout_hash_equal: splitSha256("holdout") === "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    v2_holdout_hash_expected: V2_HOLDOUT_HASH,
+    v2_holdout_hash_actual: v2SplitSha256("holdout"),
+    v2_holdout_hash_equal: v2SplitSha256("holdout") === V2_HOLDOUT_HASH,
   };
   const manifest = {
     schema_version: "understudy.automationbench_train_augment.v1",
@@ -220,7 +235,10 @@ export function buildAugmentedTrainSet(options: AugmentOptions = {}): {
     per_family_accepted: familyCounts,
     task_content_sha256: trainTasks.map((task, index) => ({ task_id: task.taskId, content_sha256: trainHashes[index] })),
     augmented_train_sha256: sha256(trainTasks),
-    frozen_split_hashes: { train: splitSha256("train"), dev: splitSha256("dev"), holdout: splitSha256("holdout") },
+    frozen_split_hashes: {
+      v1: { train: splitSha256("train"), dev: splitSha256("dev"), holdout: splitSha256("holdout") },
+      v2: { train: v2SplitSha256("train"), dev: v2SplitSha256("dev"), holdout: V2_HOLDOUT_HASH },
+    },
     generator: { reset_seed: RESET_SEED, variants_per_family: variantsPerFamily, trajectories_per_task: trajectoriesPerTask, family_bands: taskBands() },
     provenance: { origin: "synthetic", network: false, model_spend_usd: 0, source: `fixture://${AUTOMATIONBENCH_SUBSET.fixture_id}` },
   };

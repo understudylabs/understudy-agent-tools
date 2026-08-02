@@ -65,7 +65,12 @@ describe("augmented AutomationBench train set", () => {
     assert.deepEqual(set.contamination.train_vs_holdout_ids, []);
     assert.deepEqual(set.contamination.train_vs_dev_content_hashes, []);
     assert.deepEqual(set.contamination.train_vs_holdout_content_hashes, []);
+    assert.deepEqual(set.contamination.train_vs_v2_dev_ids, []);
+    assert.deepEqual(set.contamination.train_vs_v2_holdout_ids, []);
+    assert.deepEqual(set.contamination.train_vs_v2_dev_content_hashes, []);
+    assert.deepEqual(set.contamination.train_vs_v2_holdout_content_hashes, []);
     assert.equal(set.contamination.holdout_hash_equal, true);
+    assert.equal(set.contamination.v2_holdout_hash_equal, true);
     assert.deepEqual(Object.keys(set.manifest.task_content_sha256[0]).sort(), ["content_sha256", "task_id"]);
     for (const task of augmented) assert.ok(!task.prompt.includes("phrasing variant"));
   });

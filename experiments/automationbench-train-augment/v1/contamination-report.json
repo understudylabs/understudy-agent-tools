@@ -10,7 +10,14 @@
   "train_vs_holdout_ids": [],
   "train_vs_dev_content_hashes": [],
   "train_vs_holdout_content_hashes": [],
+  "train_vs_v2_dev_ids": [],
+  "train_vs_v2_holdout_ids": [],
+  "train_vs_v2_dev_content_hashes": [],
+  "train_vs_v2_holdout_content_hashes": [],
   "holdout_hash_expected": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
   "holdout_hash_actual": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
-  "holdout_hash_equal": true
+  "holdout_hash_equal": true,
+  "v2_holdout_hash_expected": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "v2_holdout_hash_actual": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "v2_holdout_hash_equal": true
 }
