@@ -54,6 +54,8 @@ const apiKeyEnv = argValue("--api-key-env", "FIREWORKS_API_KEY");
 const includeTranscripts = process.argv.includes("--transcripts");
 const systemPrompt = systemFile ? readFileSync(systemFile, "utf8") : DEFAULT_SYSTEM;
 const systemPromptSha256 = createHash("sha256").update(systemPrompt).digest("hex");
+// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
+// which authenticates to Tinker itself and ignores the bearer token.
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
 const apiKey = process.env[apiKeyEnv] ?? (isLocalShim ? "local-shim" : "");
 if (!apiKey) throw new Error(`${apiKeyEnv} is required (never hard-code it)`);
@@ -61,6 +63,7 @@ if (!apiKey) throw new Error(`${apiKeyEnv} is required (never hard-code it)`);
 const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 const strided = pool.filter((_task, index) => index % stride === 0);
 const tasks = limit > 0 ? strided.slice(0, limit) : strided;
+// Reporting-only difficulty band per family; scoring never reads it.
 const bands = v2TaskBands();
 const chat = makeChat({ baseUrl, apiKey, model, temperature, maxTokens });
 
