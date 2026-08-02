@@ -1,0 +1,265 @@
+{
+  "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/ev7ne1ot",
+  "split": "dev",
+  "repeats": 3,
+  "rollouts": 72,
+  "stats": {
+    "bare": {
+      "means": [
+        0.16666666666666666,
+        0.5833333333333334,
+        0.3333333333333333
+      ],
+      "mean": 0.3611111111111111,
+      "min": 0.16666666666666666,
+      "max": 0.5833333333333334,
+      "stdev_population": 0.1712337223046938
+    },
+    "qwen-winning": {
+      "means": [
+        0.5972222222222222,
+        0.6805555555555555,
+        0.8472222222222222
+      ],
+      "mean": 0.7083333333333334,
+      "min": 0.5972222222222222,
+      "max": 0.8472222222222222,
+      "stdev_population": 0.10393492741038726
+    }
+  },
+  "per_repeat": [
+    {
+      "repeat": 1,
+      "prompt": "bare",
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "mean": 0.16666666666666666,
+      "scores": {
+        "simple-api-crm-close-05": 0,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 0,
+        "simple-api-mail-draft-05": 0,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 0,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 0,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      }
+    },
+    {
+      "repeat": 1,
+      "prompt": "qwen-winning",
+      "prompt_sha256": "682c5c98f4a66ad5e1d4c83648d65004bd0c3a4858cf66a3e6369c56b496b641",
+      "mean": 0.5972222222222222,
+      "scores": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 0,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0.5,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      }
+    },
+    {
+      "repeat": 2,
+      "prompt": "bare",
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "mean": 0.5833333333333334,
+      "scores": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      }
+    },
+    {
+      "repeat": 2,
+      "prompt": "qwen-winning",
+      "prompt_sha256": "682c5c98f4a66ad5e1d4c83648d65004bd0c3a4858cf66a3e6369c56b496b641",
+      "mean": 0.6805555555555555,
+      "scores": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 0,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 1,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0.5,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      }
+    },
+    {
+      "repeat": 3,
+      "prompt": "bare",
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "mean": 0.3333333333333333,
+      "scores": {
+        "simple-api-crm-close-05": 0,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 0,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 0,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      }
+    },
+    {
+      "repeat": 3,
+      "prompt": "qwen-winning",
+      "prompt_sha256": "682c5c98f4a66ad5e1d4c83648d65004bd0c3a4858cf66a3e6369c56b496b641",
+      "mean": 0.8472222222222222,
+      "scores": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 0,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 1,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 1,
+        "simple-api-crm-bulk-owner-05": 1,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0.5,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      }
+    }
+  ],
+  "task_score_matrix": {
+    "bare": {
+      "repeat-1": {
+        "simple-api-crm-close-05": 0,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 0,
+        "simple-api-mail-draft-05": 0,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 0,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 0,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      },
+      "repeat-2": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      },
+      "repeat-3": {
+        "simple-api-crm-close-05": 0,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 0,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0,
+        "simple-api-crm-disambiguate-05": 0,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0
+      }
+    },
+    "qwen-winning": {
+      "repeat-1": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 1,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 0,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 0.5,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      },
+      "repeat-2": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 0,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 0,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 0,
+        "simple-api-crm-bulk-owner-05": 1,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0.5,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      },
+      "repeat-3": {
+        "simple-api-crm-close-05": 1,
+        "simple-api-crm-lost-05": 0,
+        "simple-api-crm-owner-05": 1,
+        "simple-api-crm-rename-05": 1,
+        "simple-api-mail-draft-05": 1,
+        "simple-api-mail-revise-05": 1,
+        "simple-api-mail-discard-05": 1,
+        "simple-api-mail-send-05": 1,
+        "simple-api-crm-bulk-owner-05": 1,
+        "simple-api-crm-disambiguate-05": 1,
+        "simple-api-crm-mail-churn-05": 0.5,
+        "simple-api-mail-send-and-close-05": 0.6666666666666666
+      }
+    }
+  },
+  "tokens": {
+    "prompt": 884204,
+    "completion": 226627,
+    "usd": 0
+  },
+  "gpu": {
+    "elapsed_ms": 221404.37719899998,
+    "gpu_hours": 0.061501215888611106,
+    "usd": 0.615012158886111,
+    "usd_per_gpu_hour": 10,
+    "gpu_count": 1,
+    "phases": [
+      {
+        "phase": "dev-repeats",
+        "elapsed_ms": 221404.37719899998,
+        "gpu_hours": 0.061501215888611106,
+        "usd": 0.615012158886111
+      }
+    ]
+  },
+  "rate_limit_429s": 0,
+  "retries": 0,
+  "winning_prompt_sha256": "682c5c98f4a66ad5e1d4c83648d65004bd0c3a4858cf66a3e6369c56b496b641"
+}

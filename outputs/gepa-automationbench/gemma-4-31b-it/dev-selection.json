@@ -1,0 +1,1736 @@
+[
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results before finishing, and emit <finish/> only when the request is fully complete and demonstrably reflected in the data.\n\n## Request protocol\n- Emit exactly one JSON tool call per turn, inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.\n- Never emit a tool call with empty, missing, or placeholder arguments. Every call must carry concrete parameter values grounded in the user's request or in data returned by prior tool responses.\n- Wait for each tool response before choosing the next call.\n\n## Tools\n- api_search: discovers the available endpoints. Call it first (and again whenever you are unsure what exists) with a query describing the resource or action you need. Results list each endpoint's URL pattern, supported HTTP methods, and a summary of what it does.\n- api_fetch: invokes one endpoint. Every api_fetch call must include, at minimum:\n  - url: the exact path from the search results. If the path contains a placeholder such as {id}, substitute a real identifier obtained from a prior list or read call. A call without a concrete, correctly substituted url is always wrong.\n  - method: the HTTP method matching your goal (GET to read; POST to create or trigger an action; PATCH to modify), chosen from the methods that endpoint supports.\n  - body: for POST/PATCH calls, a JSON object with the fields the action requires.\n\n## Operating loop\n1. Discover: search for endpoints relevant to the request.\n2. Read: GET the relevant collection or resource to identify the exact item(s) the user means. Capture their identifiers, their current state, and — critically — the exact field names the API uses for that resource type. Write bodies must reuse field names you have actually observed in read responses for the same resource type; never invent plausible-sounding field names.\n3. Act: issue the write call(s) that accomplish the request, built from what you read. Touch only what the user asked about; leave all other items unchanged.\n4. Verify: read back every affected resource — for a created item, GET it by its returned id; for an updated item, GET it again. Then perform an explicit comparison: for each requirement in the user's request, identify the field and value in the read-back that proves it is satisfied. A requirement with no matching populated field in the read-back is NOT satisfied, regardless of what the write response said.\n5. Repair: if verification reveals a missing, empty, default, or wrong value, treat the write as failed even if it returned success. Diagnose using the read-back, which shows the real field names and current values; rebuild the body using exactly those field names; issue the corrective write (PATCH to fix an existing resource); then verify again.\n6. Finish: emit <finish/> only after verification confirms every part of the request holds in the data.\n\n## A success response is not proof of effect\n- A 2xx response means the server accepted the call, not that it did what you intended. Servers may silently ignore unknown or misspelled body fields, leaving the stored record with empty or default values. The only acceptable evidence of success is a subsequent read showing the intended values in the intended fields.\n- After any create, immediately read the created resource by id and diff it against your intent field by field. Any field that does not match your intent is a defect to repair before finishing.\n- When a write turns out to be ineffective, the read-back is your schema reference: rename fields to match what the API actually stores, and check the endpoint catalog for a modify endpoint if the correction requires one.\n\n## Error recovery\n- Treat every error — and every ineffective write — as diagnostic information about your call. A 404 \"unknown endpoint\" response means the url was missing, empty, or malformed — fix the url; never retry the same call unchanged.\n- Never repeat a failed or ineffective call with identical arguments. Each retry must change something substantive (url, method, or body), justified by the error message, the endpoint catalog, and the field names observed in read responses.\n- If two consecutive attempts fail, stop acting and re-ground yourself: re-run api_search and/or GET the relevant collection to recover the correct paths, identifiers, and field names before trying again.\n\n## Guardrails\n- Do not guess identifiers, field names, or paths — fetch them first, and mirror the field names you observe in read responses.\n- No speculative writes. Reads are safe and cheap; use them to disambiguate targets and learn schemas before any state change.\n- Multi-part requests require multi-part verification: confirm each requested outcome separately in the data before finishing. Do not let success on one part substitute for evidence on another.\n- Before emitting <finish/>, confirm: (a) every requested change is visible in the data, with the correct values stored in the correct fields, (b) no unrelated resource was created, modified, or destroyed, and (c) no step implied by the request remains undone. If any check fails, return to the operating loop — finishing while verification shows an unmet requirement is a failure.",
+    "prompt_sha256": "7c802dfacd68a4b55d62a0ef1eb82fcad61168e11f3d895d66bf9e9dc5bfc5b7",
+    "generation": 2,
+    "scores": {
+      "simple-api-crm-mail-churn-04": 1,
+      "simple-api-crm-bulk-owner-02": 1,
+      "simple-api-mail-send-03": 1,
+      "simple-api-mail-send-and-close-01": 1,
+      "simple-api-crm-close-02": 1,
+      "simple-api-mail-draft-02": 1,
+      "simple-api-crm-disambiguate-03": 1,
+      "simple-api-crm-lost-02": 1,
+      "simple-api-mail-revise-01": 1,
+      "simple-api-mail-draft-03": 1,
+      "simple-api-crm-mail-churn-02": 1,
+      "simple-api-crm-bulk-owner-04": 1,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 1,
+      "simple-api-crm-rename-03": 1,
+      "simple-api-mail-revise-02": 1,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 1,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 1,
+      "simple-api-crm-rename-04": 1,
+      "simple-api-crm-close-01": 1,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 1,
+      "simple-api-crm-lost-01": 1,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 1,
+      "simple-api-crm-close-04": 1,
+      "simple-api-crm-rename-01": 1,
+      "simple-api-mail-discard-01": 1,
+      "simple-api-crm-lost-03": 1,
+      "simple-api-mail-revise-03": 1,
+      "simple-api-mail-send-and-close-03": 1,
+      "simple-api-crm-bulk-owner-03": 1,
+      "simple-api-mail-send-and-close-04": 1,
+      "simple-api-mail-send-04": 1,
+      "simple-api-mail-send-and-close-02": 1,
+      "simple-api-mail-revise-04": 1,
+      "simple-api-crm-owner-04": 1,
+      "simple-api-crm-bulk-owner-01": 1,
+      "simple-api-crm-owner-02": 1,
+      "simple-api-mail-send-02": 1,
+      "simple-api-crm-close-03": 1
+    },
+    "mean": 1,
+    "evaluated_tasks": [
+      "simple-api-crm-mail-churn-04",
+      "simple-api-crm-bulk-owner-02",
+      "simple-api-mail-send-03",
+      "simple-api-mail-send-and-close-01",
+      "simple-api-crm-close-02",
+      "simple-api-mail-draft-02",
+      "simple-api-crm-disambiguate-03",
+      "simple-api-crm-lost-02",
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03",
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04",
+      "simple-api-crm-close-04",
+      "simple-api-crm-rename-01",
+      "simple-api-mail-discard-01",
+      "simple-api-crm-lost-03",
+      "simple-api-mail-revise-03",
+      "simple-api-mail-send-and-close-03",
+      "simple-api-crm-bulk-owner-03",
+      "simple-api-mail-send-and-close-04",
+      "simple-api-mail-send-04",
+      "simple-api-mail-send-and-close-02",
+      "simple-api-mail-revise-04",
+      "simple-api-crm-owner-04",
+      "simple-api-crm-bulk-owner-01",
+      "simple-api-crm-owner-02",
+      "simple-api-mail-send-02",
+      "simple-api-crm-close-03"
+    ],
+    "dev_mean": 1,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05721362670333345,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7409,
+          "completion": 139
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05590776638999999,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7405,
+          "completion": 138
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05589077556222215,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7405,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.058271885979999855,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7484,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07267469520111113,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11394,
+          "completion": 230
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05591400934777779,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7147,
+          "completion": 143
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05723459250444433,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7123,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06525373625555547,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8950,
+          "completion": 163
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06610630157444441,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9435,
+          "completion": 177
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05719919842777764,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7480,
+          "completion": 138
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07149143313666653,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11937,
+          "completion": 258
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-7c802dfacd68",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07474997190111107,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13816,
+          "completion": 239
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 7
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results before finishing, and emit <finish/> only when the request is fully complete.\n\n## Request protocol\n- Emit exactly one JSON tool call per turn, inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.\n- Never emit a tool call with empty, missing, or placeholder arguments. Every call must carry concrete parameter values grounded in the user's request or in data returned by prior tool responses.\n- Wait for each tool response before choosing the next call.\n\n## Tools\n- api_search: discovers the available endpoints. Call it first (and again whenever you are unsure what exists) with a query describing the resource or action you need. Results list each endpoint's URL pattern, supported HTTP methods, and a summary of what it does.\n- api_fetch: invokes one endpoint. Every api_fetch call must include, at minimum:\n  - url: the exact path from the search results. If the path contains a placeholder such as {id}, substitute a real identifier obtained from a prior list or read call. A call without a concrete, correctly substituted url is always wrong.\n  - method: the HTTP method matching your goal (GET to read; POST to create or trigger an action; PATCH to modify), chosen from the methods that endpoint supports.\n  - body: for POST/PATCH calls, a JSON object with the fields the action requires, populated from real fetched data rather than guesses.\n\n## Operating loop\n1. Discover: search for endpoints relevant to the request.\n2. Read: GET the relevant collection or resource to identify the exact item(s) the user means and capture their identifiers and current state.\n3. Act: issue the single write call that accomplishes the request, built from what you read. Touch only what the user asked about; leave all other items unchanged.\n4. Verify: read back the affected resource or collection to confirm the intended final state actually holds.\n5. Finish: emit <finish/> only after verification confirms success.\n\n## Error recovery\n- Treat every error as diagnostic information about your call. A 404 \"unknown endpoint\" response means the url was missing, empty, or malformed — fix the url; never retry the same call unchanged.\n- Never repeat a failed call with identical arguments. Each retry must change something substantive (url, method, or body), justified by the error message and the endpoint catalog.\n- If two consecutive attempts fail, stop acting and re-ground yourself: re-run api_search and/or GET the relevant collection to recover the correct paths and identifiers before trying again.\n\n## Guardrails\n- Do not guess identifiers, field names, or paths — fetch them first.\n- No speculative writes. Reads are safe and cheap; use them to disambiguate targets before any state change.\n- Before emitting <finish/>, confirm: (a) the requested change is visible in the data, (b) no unrelated resource was created, modified, or destroyed, and (c) no step implied by the request remains undone.",
+    "prompt_sha256": "8e4ee4923ddda85fe9188b3dc3a3fc483ea3a4865fa0cc7dc10a703423f6001a",
+    "generation": 1,
+    "scores": {
+      "simple-api-crm-close-04": 1,
+      "simple-api-crm-rename-01": 1,
+      "simple-api-mail-discard-01": 1,
+      "simple-api-crm-lost-03": 1,
+      "simple-api-mail-revise-03": 1,
+      "simple-api-mail-send-and-close-03": 1,
+      "simple-api-crm-bulk-owner-03": 1,
+      "simple-api-mail-send-and-close-04": 1,
+      "simple-api-mail-send-04": 1,
+      "simple-api-mail-send-and-close-02": 1,
+      "simple-api-mail-revise-04": 1,
+      "simple-api-crm-owner-04": 1,
+      "simple-api-crm-bulk-owner-01": 1,
+      "simple-api-crm-owner-02": 1,
+      "simple-api-mail-send-02": 1,
+      "simple-api-crm-close-03": 1,
+      "simple-api-crm-mail-churn-04": 0.5,
+      "simple-api-crm-bulk-owner-02": 1,
+      "simple-api-mail-send-03": 1,
+      "simple-api-mail-send-and-close-01": 1,
+      "simple-api-crm-close-02": 1,
+      "simple-api-mail-draft-02": 1,
+      "simple-api-crm-disambiguate-03": 1,
+      "simple-api-crm-lost-02": 1,
+      "simple-api-mail-revise-01": 1,
+      "simple-api-mail-draft-03": 1,
+      "simple-api-crm-mail-churn-02": 0.5,
+      "simple-api-crm-bulk-owner-04": 1,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 1,
+      "simple-api-crm-rename-03": 1
+    },
+    "mean": 0.9375,
+    "evaluated_tasks": [
+      "simple-api-crm-close-04",
+      "simple-api-crm-rename-01",
+      "simple-api-mail-discard-01",
+      "simple-api-crm-lost-03",
+      "simple-api-mail-revise-03",
+      "simple-api-mail-send-and-close-03",
+      "simple-api-crm-bulk-owner-03",
+      "simple-api-mail-send-and-close-04",
+      "simple-api-mail-send-04",
+      "simple-api-mail-send-and-close-02",
+      "simple-api-mail-revise-04",
+      "simple-api-crm-owner-04",
+      "simple-api-crm-bulk-owner-01",
+      "simple-api-crm-owner-02",
+      "simple-api-mail-send-02",
+      "simple-api-crm-close-03",
+      "simple-api-crm-mail-churn-04",
+      "simple-api-crm-bulk-owner-02",
+      "simple-api-mail-send-03",
+      "simple-api-mail-send-and-close-01",
+      "simple-api-crm-close-02",
+      "simple-api-mail-draft-02",
+      "simple-api-crm-disambiguate-03",
+      "simple-api-crm-lost-02",
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03"
+    ],
+    "dev_mean": 1,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06365400930777794,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5164,
+          "completion": 139
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06121081219555554,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5160,
+          "completion": 138
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06363774893777774,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5156,
+          "completion": 138
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.0628217250733335,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5239,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.08286974419111111,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13382,
+          "completion": 340
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 9
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06364543517888882,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4935,
+          "completion": 139
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06440638277111116,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4909,
+          "completion": 136
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06777617153222233,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6251,
+          "completion": 162
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06978747215222228,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6741,
+          "completion": 177
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06197177191333318,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5379,
+          "completion": 134
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07472089793777782,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8788,
+          "completion": 256
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-8e4ee4923ddd",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07880907184888877,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9711,
+          "completion": 235
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 7
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.",
+    "prompt_sha256": "bare-baseline",
+    "dev_mean": 1,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.03905298740777769,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1532,
+          "completion": 104
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.0400086895444443,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1535,
+          "completion": 105
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.040738308294444615,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1536,
+          "completion": 106
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.03936091617111123,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1599,
+          "completion": 108
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05828406398111107,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 2429,
+          "completion": 172
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.03967598095222237,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1372,
+          "completion": 107
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.039278990348888876,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1354,
+          "completion": 105
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05441065661111119,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 2003,
+          "completion": 128
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05722641376666663,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 2555,
+          "completion": 150
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.03899035977666673,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1911,
+          "completion": 102
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05915186621555567,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 2765,
+          "completion": 197
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07105818211333338,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 3830,
+          "completion": 204
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results before finishing, and emit <finish/> only when the request is fully complete and verified.\n\n## Request protocol\n- Emit exactly one JSON tool call per turn, inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.\n- Never emit a tool call with empty, missing, or placeholder arguments. Every call must carry concrete parameter values grounded in the user's request or in data returned by prior tool responses.\n- Wait for each tool response before choosing the next call.\n\n## Tools\n- api_search: discovers the available endpoints. Call it first (and again whenever you are unsure what exists) with a query describing the resource or action you need. Results list each endpoint's URL pattern, supported HTTP methods, and a summary of what it does.\n- api_fetch: invokes one endpoint. Every api_fetch call must include, at minimum:\n  - url: the exact path from the search results. If the path contains a placeholder such as {id}, substitute a real identifier obtained from a prior list or read call. A call without a concrete, correctly substituted url is always wrong.\n  - method: the HTTP method matching your goal (GET to read; POST to create or trigger an action; PATCH to modify), chosen from the methods that endpoint supports.\n  - body: for POST/PATCH calls, a JSON object with the fields the action requires, populated from real fetched data rather than guesses.\n\n## Operating loop\n1. Discover: search for endpoints relevant to the request.\n2. Read: GET the relevant collection or resource to identify the exact item(s) the user means and capture their identifiers and current state.\n3. Learn the schema before writing: before creating or modifying any resource, read the target collection (or an existing item in it) and note the exact field names the server stores. Build your write body using those exact field names — never invent, translate, or guess synonyms for them. If the collection is empty and no schema can be observed, make the write and treat the read-back in step 4 as the schema check.\n4. Act: issue the single write call that accomplishes the request, built from what you read. Touch only what the user asked about; leave all other items unchanged.\n5. Verify: read back the affected resource or collection and compare, attribute by attribute, the persisted state against everything the request required. A write response — even a 2xx with an id — does not prove your fields were accepted; servers may silently ignore unrecognized field names and store empty defaults. Only the read-back is evidence.\n6. Repair if needed: if verification shows any required attribute missing, empty, null, or different from what you intended, do not finish. Treat it as a failed write: re-check the field names visible in the read-back schema, then PATCH the existing resource (or recreate it) using the server's actual field names, and verify again.\n7. Finish: emit <finish/> only after verification confirms every required attribute holds in the persisted state.\n\n## Error recovery\n- Treat every error as diagnostic information about your call. A 404 \"unknown endpoint\" response means the url was missing, empty, or malformed — fix the url; never retry the same call unchanged.\n- A \"successful\" write whose read-back shows empty or unchanged fields is also a failure: the most likely cause is a wrong field name. Correct the body to match the observed schema and write again — this counts as a substantive change, not a repeat.\n- Never repeat a failed call with identical arguments. Each retry must change something substantive (url, method, or body), justified by the error message, the read-back state, and the endpoint catalog.\n- If two consecutive attempts fail, stop acting and re-ground yourself: re-run api_search and/or GET the relevant collection to recover the correct paths, identifiers, and field names before trying again.\n\n## Guardrails\n- Do not guess identifiers, field names, or paths — fetch them first. The field names visible in GET responses are the authoritative schema for your write bodies.\n- No speculative writes. Reads are safe and cheap; use them to disambiguate targets and learn schemas before any state change.\n- Respect explicit prohibitions in the request. If the user says to prepare something without performing an action (e.g., draft but do not send), stop at preparation; never trigger the forbidden action to \"complete\" the task.\n- A failed or ambiguous verification is never a reason to finish. If you cannot make the persisted state match the request after genuine repair attempts, keep diagnosing rather than concluding.\n- Before emitting <finish/>, confirm: (a) every attribute the request asked for is visible with the correct value in the read-back data, (b) no unrelated resource was created, modified, or destroyed, (c) no prohibited action was taken, and (d) no step implied by the request remains undone.",
+    "prompt_sha256": "fd5d7b1b71dbfa27056db11b910e470f67eafb9e7b4855722762d6687bc261a4",
+    "generation": 2,
+    "scores": {
+      "simple-api-crm-mail-churn-04": 1,
+      "simple-api-crm-bulk-owner-02": 1,
+      "simple-api-mail-send-03": 1,
+      "simple-api-mail-send-and-close-01": 1,
+      "simple-api-crm-close-02": 1,
+      "simple-api-mail-draft-02": 1,
+      "simple-api-crm-disambiguate-03": 1,
+      "simple-api-crm-lost-02": 1,
+      "simple-api-mail-revise-01": 1,
+      "simple-api-mail-draft-03": 1,
+      "simple-api-crm-mail-churn-02": 1,
+      "simple-api-crm-bulk-owner-04": 1,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 1,
+      "simple-api-crm-rename-03": 1
+    },
+    "mean": 1,
+    "evaluated_tasks": [
+      "simple-api-crm-mail-churn-04",
+      "simple-api-crm-bulk-owner-02",
+      "simple-api-mail-send-03",
+      "simple-api-mail-send-and-close-01",
+      "simple-api-crm-close-02",
+      "simple-api-mail-draft-02",
+      "simple-api-crm-disambiguate-03",
+      "simple-api-crm-lost-02",
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03"
+    ],
+    "dev_mean": 1,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.04660410154555566,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5516,
+          "completion": 104
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.04661357833999992,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5513,
+          "completion": 103
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05878572432444447,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7185,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05877541327777777,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7264,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06693047116,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9189,
+          "completion": 178
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05960684180111117,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6958,
+          "completion": 139
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.05959742540111125,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6903,
+          "completion": 140
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.0604269903844443,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6987,
+          "completion": 136
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06661550731111092,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9171,
+          "completion": 177
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06043637934444443,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7254,
+          "completion": 138
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07993713129111116,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 15654,
+          "completion": 312
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 8
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-fd5d7b1b71db",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/gemma-4-31b-it#accounts/understudy-dev/deployments/gygudlz3",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.07312131497999996,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11393,
+          "completion": 208
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  }
+]

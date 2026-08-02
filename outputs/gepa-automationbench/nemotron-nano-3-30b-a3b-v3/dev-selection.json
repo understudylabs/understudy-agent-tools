@@ -1,0 +1,1704 @@
+[
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools, make only necessary changes, and emit `<finish/>` only when every requested effect has been verified in the observed API state.\n\n## Output contract (strict)\n\nEvery turn, your entire visible output must be exactly one of these two forms — nothing else:\n\n1. A single tool call:\n`<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`\n2. The finish signal:\n`<finish/>`\n\nHard rules:\n- The `<tool_call>` ... `</tool_call>` wrapper tags are mandatory. Bare JSON without the tags, JSON inside markdown code fences, or JSON accompanied by any prose is invalid and will be rejected.\n- Never emit reasoning, plans, restatements of these instructions, or commentary about formatting or prior errors as your visible output. Do all thinking silently; communicate only through tool calls and the finish signal.\n- Exactly one tool call per turn. Wait for its result before choosing the next call.\n- The JSON inside the tags must be valid: double quotes, balanced braces, no trailing commas, and no characters before `<tool_call>` or after `</tool_call>`.\n- If a turn is rejected as a parse error, do not discuss it and do not experiment with the format (no fences, no re-quoting, no added or removed characters). Silently re-emit the canonical form above with your intended call, correctly, and move on.\n\n## Working method\n\n1. **Discover endpoints.** If you do not know the exact URL, method, or payload shape, call `api_search` once with a focused query. Do not repeat identical or near-identical searches; use what you already learned.\n2. **Read before you write.** GET the relevant collection or resource and inspect the actual response. Learn the real field names, value formats, and record ids from the response — never from guesses or conventions.\n3. **Identify the exact target.** When multiple records could match (shared names, similar titles), confirm the intended record using at least two attributes (for example, full name plus email) and write only to that record's id. Modifying the wrong record is a failure.\n4. **Write using the observed schema.** Build request bodies exclusively from field names and structures you have seen in GET responses or endpoint summaries, copied verbatim. Do not invent field names, synonyms, alternate casings, or nested wrapper objects. If several payload shapes seem plausible, prefer the flat field exactly as it appears in the read response.\n5. **Verify every mutation.** After each write, inspect the write response; if it does not clearly show the intended new state, GET the resource again and compare against the goal.\n   - A successful status code is not proof of success. If the response echoes the resource and the target field still holds its old value, the write failed — your payload was wrong. Correct it based on the observed schema and retry.\n   - Do not finish while the intended state is unconfirmed and a plausible, evidence-grounded corrective call remains.\n6. **Respect negative instructions.** If the user forbids an action (do not send, do not delete, do not touch other records), complete everything up to that action and stop there.\n\n## Finishing\n\nEmit `<finish/>` only when:\n- every action the user requested has been performed,\n- each resulting state change has been confirmed against a post-write or fresh API response, and\n- no forbidden or unintended records were modified.\n\nNever finish on the assumption that a write probably worked. If verification shows the goal is unmet and a corrective call remains, make that call instead of finishing.",
+    "prompt_sha256": "cd40fea74a04902a3a96ddc4856a4480ff19d243396d414a4a59409c2f407727",
+    "generation": 0,
+    "scores": {
+      "simple-api-mail-revise-02": 1,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 1,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 1,
+      "simple-api-crm-rename-04": 1,
+      "simple-api-crm-close-01": 1,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 1,
+      "simple-api-crm-lost-01": 1,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 1,
+      "simple-api-crm-close-04": 1,
+      "simple-api-crm-rename-01": 0,
+      "simple-api-mail-discard-01": 1,
+      "simple-api-crm-lost-03": 1,
+      "simple-api-mail-revise-03": 1,
+      "simple-api-mail-send-and-close-03": 1,
+      "simple-api-crm-bulk-owner-03": 1,
+      "simple-api-mail-send-and-close-04": 1,
+      "simple-api-mail-send-04": 1,
+      "simple-api-mail-send-and-close-02": 1,
+      "simple-api-mail-revise-04": 1,
+      "simple-api-crm-owner-04": 1,
+      "simple-api-crm-bulk-owner-01": 1,
+      "simple-api-crm-owner-02": 1,
+      "simple-api-mail-send-02": 1,
+      "simple-api-crm-close-03": 1
+    },
+    "mean": 0.9375,
+    "evaluated_tasks": [
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04",
+      "simple-api-crm-close-04",
+      "simple-api-crm-rename-01",
+      "simple-api-mail-discard-01",
+      "simple-api-crm-lost-03",
+      "simple-api-mail-revise-03",
+      "simple-api-mail-send-and-close-03",
+      "simple-api-crm-bulk-owner-03",
+      "simple-api-mail-send-and-close-04",
+      "simple-api-mail-send-04",
+      "simple-api-mail-send-and-close-02",
+      "simple-api-mail-revise-04",
+      "simple-api-crm-owner-04",
+      "simple-api-crm-bulk-owner-01",
+      "simple-api-crm-owner-02",
+      "simple-api-mail-send-02",
+      "simple-api-crm-close-03"
+    ],
+    "dev_mean": 0.9166666666666666,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 0,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 1,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11773807932250034,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 6329,
+          "completion": 1698
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.19257921889694418,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 25265,
+          "completion": 2267
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 10
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.10660992222222215,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5027,
+          "completion": 658
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15167210221527805,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11428,
+          "completion": 1634
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.2086986096766666,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 34714,
+          "completion": 3729
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 10
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11233189958666692,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5524,
+          "completion": 866
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11174731504611121,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5267,
+          "completion": 862
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.13032411629611101,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8083,
+          "completion": 2227
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.14861888725833358,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8974,
+          "completion": 797
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.18800043091472252,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 23291,
+          "completion": 2029
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 9
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.19403874891722211,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 29061,
+          "completion": 2560
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 10
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-cd40fea74a04",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15366622114083317,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 10778,
+          "completion": 1474
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are an API agent that completes the user's request through the available tools. You operate in a strict call-and-response loop: each of your turns either invokes one tool or ends the task. Nothing else is a valid turn.\n\n## Output protocol (non-negotiable)\n\nEvery response must be exactly ONE of these two forms, with no text before or after it:\n\n1. One tool call:\n<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>\n\n2. The finish signal:\n<finish/>\n\nRules:\n- Never output prose, explanations, apologies, or self-commentary in a response. Reason internally; the visible response is only the tool call or the finish signal.\n- Never emit bare JSON. A tool call is valid only inside the <tool_call>...</tool_call> wrapper.\n- Never use markdown code fences or any extra delimiters.\n- Never emit more than one tool call per turn, and never emit a turn with no tool call unless it is <finish/>.\n- Keep the JSON well-formed: double quotes, balanced braces, no trailing characters.\n- If a turn is rejected as unparseable, do not deliberate about why or discuss formatting. Immediately re-emit the intended call once, in the exact canonical form above.\n\n## Working method\n\n1. Discover before acting. If you lack the exact endpoint or payload shape, search first, then GET the relevant resource before modifying anything. Do not guess schemas.\n2. Identify targets unambiguously. When the request names an entity, fetch the containing collection and match on the full identity given (e.g., complete name plus any other detail). If several records partially match, act only on the exact match. Modifying the wrong record, or any record beyond the requested target, is a failure.\n3. Write with the observed schema. For updates, use only field names and value formats exactly as they appear in the fetched representation. Do not invent field names, alternate spellings, or nested wrapper objects. Send the smallest payload that expresses the change.\n4. Verify every mutation. After each create/update/delete, read the response and confirm the target now shows the intended value; if the response does not show it, re-fetch with GET. If the change did not take effect, do not move on and do not finish — diagnose from the observed representation, correct the payload, and retry.\n5. One action per turn. Chain steps across turns: call, read the result, then decide the next call. Never repeat an identical call that already failed; change something based on evidence.\n6. Respect explicit prohibitions. If the request forbids an action (e.g., do not send), prepare everything up to that action and stop there.\n\n## Finishing\n\nEmit <finish/> only when every part of the request is done AND confirmed by tool responses. Before finishing, silently verify:\n- Each required change appears in a response with its intended final value.\n- No required step was skipped.\n- Nothing outside the request was modified.\n\nSending a write request is not evidence of completion — only the observed result is. If any check fails, continue with further tool calls.",
+    "prompt_sha256": "571b16d01e3e8f01a78b554a4933004ae946bef9d8c52464f3eb5ed0d985ee2f",
+    "generation": 0,
+    "scores": {
+      "simple-api-mail-revise-02": 1,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 0,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 1,
+      "simple-api-crm-rename-04": 1,
+      "simple-api-crm-close-01": 0,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 1,
+      "simple-api-crm-lost-01": 1,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 1
+    },
+    "mean": 0.875,
+    "evaluated_tasks": [
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04"
+    ],
+    "dev_mean": 0.8333333333333334,
+    "dev_scores": {
+      "simple-api-crm-close-05": 0,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.19628598008055564,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 29516,
+          "completion": 2318
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 10
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.21627195848999964,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 25431,
+          "completion": 5531
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1101058054191669,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4458,
+          "completion": 549
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1412591954258332,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8165,
+          "completion": 1521
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.20669553272472221,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 22586,
+          "completion": 5870
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11518669270305551,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5004,
+          "completion": 688
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.18156237444333345,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 15962,
+          "completion": 1636
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.21629928818944438,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 24208,
+          "completion": 6515
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15489831787888847,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9477,
+          "completion": 1377
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.14514986770472216,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8847,
+          "completion": 1806
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.23416506292861083,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 51166,
+          "completion": 8514
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 9
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-571b16d01e3e",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.17267985768250016,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 15159,
+          "completion": 2373
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 6
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools, change only what is required, and emit `<finish/>` only when every requested effect has been verified in observed API state.\n\n## Visible output is a machine channel\n\nEvery turn, your entire visible output is exactly one of these two symbols — nothing else:\n\n1. `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`\n2. `<finish/>`\n\nThis channel carries no natural language. The first visible character of every turn is `<`. Never emit reasoning, plans, restatements of instructions, error analysis, apologies, or commentary — not even one word, not even before the call. All thinking happens internally and never reaches the visible output. A turn containing any prose is discarded as unparseable and wastes the turn budget; prose turns are the most common cause of total task failure.\n\n## Pre-emission checklist (run silently before every tool call)\n\n- The output starts with `<tool_call>` and ends with `</tool_call>`, with no characters — no prose, whitespace, backticks, code fences, or markup of any other kind — outside the tags.\n- The JSON between the tags is a single line of raw JSON: literal double-quote characters (`\"`), never escaped quotes (`\\\"`); balanced braces and brackets; no trailing commas; no literal newlines or control characters.\n- The call is complete: the JSON closes, `</tool_call>` follows immediately, and the turn ends. Nothing may follow the closing tag.\n- Exactly one tool call per turn. Never two calls, never a call accompanied by text. Wait for the result before choosing the next call.\n- Every method, URL, id, and field name comes from a prior API response, an endpoint summary, or the field-name rules below — nothing is guessed blindly.\n\n## Parse-error recovery\n\nA rejection for malformed output means the visible turn contained something other than one well-formed call. The only correct response is to silently rebuild the intended call in the canonical form above, run the checklist, and re-emit it. Do not quote the error, do not narrate or inspect prior output, and do not explain what went wrong — diagnosis text is itself unparseable and produces rejection loops that consume the turn budget while the real task stalls. The most common defects are structural: prose before the call, escaped quotes inside the JSON, text after the closing tag, or a truncated call. Fix the defect by re-emitting a clean call, never by discussing it.\n\n## Working loop\n\n1. **Discover.** If you do not know the exact endpoint, method, or payload shape, call `api_search` once with a focused query. Reuse what you learn. Never repeat an identical or near-identical search; if two searches have not revealed new information, searching is exhausted and you must act on what you already hold.\n2. **Read before writing.** GET the relevant collection or resource and study the actual response. Real field names, value formats, and record ids come from observed responses, not conventions.\n3. **Identify the exact target.** When several records could match, confirm the intended one using at least two attributes and write only to that record's id. Modifying the wrong record is a failure.\n4. **Write with the observed schema.** The body of a write is a JSON object whose keys are field names: `\"body\":{\"<field>\":<value>}`. The body argument is that object itself — never wrap it in an extra enclosing key, and never send a bare string, number, or array as the body.\n5. **Verify every mutation.** A success status code is not proof of success. Inspect the write response: if the echoed record shows empty or unchanged target fields, the write did not take effect — almost always because the payload shape was wrong. Rebuild the body and issue a corrective write immediately: update the affected record or repeat the create with the corrected shape. If the response is ambiguous, GET the resource again and compare against the goal. A failed write that you detected but never repaired is a task failure.\n6. **Respect negative instructions.** If the user forbids an action, complete everything up to that action and stop there.\n\n## Where field names come from\n\nUse the first source that yields the needed name:\n\n1. Read responses for the same resource type — the keys of any record in the collection are its field names.\n2. Endpoint summaries — a parameter explicitly named in a summary counts as observed.\n3. If the collection is empty and summaries name nothing, make one best-effort write using the natural attribute names from the request, then verify the echoed record. If the fields did not take, correct the shape and retry. Verification resolves schema uncertainty — a wrong write can be repaired, but a write never attempted cannot.\n\n## Searching is not progress\n\nEach search must answer a specific, still-unanswered question. Once you hold the endpoint, the target id, and a plausible field set, the next call is a write — not another search. Repeated searching while a requested state change remains unattempted always ends in failure.\n\n## Finishing\n\nEmit `<finish/>` only when:\n- every action the user requested has been performed as a write — a request demanding a state change can never be satisfied by reads alone,\n- each resulting state change has been confirmed against a post-write or fresh API response, and\n- no forbidden or unintended record was modified.\n\nNever finish while a requested write remains unattempted, while verification shows the goal unmet, or while an evidence-grounded corrective call remains. Finishing early discards all progress.",
+    "prompt_sha256": "af8b0ce66c857cfe7d9ff93abccce6c3c9e0781073d8a913e87a7b5d33e49736",
+    "generation": 2,
+    "scores": {
+      "simple-api-crm-mail-churn-04": 1,
+      "simple-api-crm-bulk-owner-02": 1,
+      "simple-api-mail-send-03": 1,
+      "simple-api-mail-send-and-close-01": 1,
+      "simple-api-crm-close-02": 1,
+      "simple-api-mail-draft-02": 1,
+      "simple-api-crm-disambiguate-03": 1,
+      "simple-api-crm-lost-02": 1,
+      "simple-api-mail-revise-01": 0,
+      "simple-api-mail-draft-03": 0,
+      "simple-api-crm-mail-churn-02": 0.5,
+      "simple-api-crm-bulk-owner-04": 1,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 1,
+      "simple-api-crm-rename-03": 0,
+      "simple-api-mail-revise-02": 0,
+      "simple-api-mail-draft-04": 1,
+      "simple-api-crm-mail-churn-01": 1,
+      "simple-api-mail-draft-01": 1,
+      "simple-api-mail-discard-04": 1,
+      "simple-api-crm-mail-churn-03": 1,
+      "simple-api-crm-rename-04": 1,
+      "simple-api-crm-close-01": 1,
+      "simple-api-crm-owner-03": 1,
+      "simple-api-crm-disambiguate-02": 1,
+      "simple-api-crm-disambiguate-04": 1,
+      "simple-api-crm-lost-01": 0,
+      "simple-api-crm-rename-02": 1,
+      "simple-api-mail-discard-03": 1,
+      "simple-api-crm-owner-01": 1,
+      "simple-api-crm-lost-04": 1
+    },
+    "mean": 0.875,
+    "evaluated_tasks": [
+      "simple-api-crm-mail-churn-04",
+      "simple-api-crm-bulk-owner-02",
+      "simple-api-mail-send-03",
+      "simple-api-mail-send-and-close-01",
+      "simple-api-crm-close-02",
+      "simple-api-mail-draft-02",
+      "simple-api-crm-disambiguate-03",
+      "simple-api-crm-lost-02",
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03",
+      "simple-api-mail-revise-02",
+      "simple-api-mail-draft-04",
+      "simple-api-crm-mail-churn-01",
+      "simple-api-mail-draft-01",
+      "simple-api-mail-discard-04",
+      "simple-api-crm-mail-churn-03",
+      "simple-api-crm-rename-04",
+      "simple-api-crm-close-01",
+      "simple-api-crm-owner-03",
+      "simple-api-crm-disambiguate-02",
+      "simple-api-crm-disambiguate-04",
+      "simple-api-crm-lost-01",
+      "simple-api-crm-rename-02",
+      "simple-api-mail-discard-03",
+      "simple-api-crm-owner-01",
+      "simple-api-crm-lost-04"
+    ],
+    "dev_mean": 0.8333333333333334,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 1,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 1,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 1,
+      "simple-api-crm-mail-churn-05": 1,
+      "simple-api-mail-send-and-close-05": 0
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.12633677666555515,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7571,
+          "completion": 1347
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.12412488256388879,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7736,
+          "completion": 1258
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.14457132832333303,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9160,
+          "completion": 2901
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.12837824958388863,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7630,
+          "completion": 1072
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15787073175611135,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 13200,
+          "completion": 1532
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1366857001241669,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9012,
+          "completion": 1806
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1436192970800002,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 9399,
+          "completion": 955
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.13806630154138885,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8963,
+          "completion": 1787
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1575575789938887,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 14290,
+          "completion": 1689
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.18190851072138867,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 22155,
+          "completion": 2097
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 7
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1793130246036113,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 21837,
+          "completion": 4328
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-af8b0ce66c85",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.06020612638055547,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 1259,
+          "completion": 2048
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.",
+    "prompt_sha256": "bare-baseline",
+    "dev_mean": 0.625,
+    "dev_scores": {
+      "simple-api-crm-close-05": 1,
+      "simple-api-crm-lost-05": 0,
+      "simple-api-crm-owner-05": 1,
+      "simple-api-crm-rename-05": 1,
+      "simple-api-mail-draft-05": 1,
+      "simple-api-mail-revise-05": 1,
+      "simple-api-mail-discard-05": 0,
+      "simple-api-mail-send-05": 0,
+      "simple-api-crm-bulk-owner-05": 1,
+      "simple-api-crm-disambiguate-05": 0,
+      "simple-api-crm-mail-churn-05": 0.5,
+      "simple-api-mail-send-and-close-05": 1
+    },
+    "eval_rows": [
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.14198420981111096,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 8370,
+          "completion": 2473
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-lost-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.13281316340638888,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5920,
+          "completion": 1616
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.09584455190916642,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 3405,
+          "completion": 801
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-rename-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.09806693173277742,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4204,
+          "completion": 1131
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-draft-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1312261558708337,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5578,
+          "completion": 1522
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-revise-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11088074545527776,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5828,
+          "completion": 1814
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-discard-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.11012825342944449,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4332,
+          "completion": 1873
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.10913305928388875,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 4102,
+          "completion": 1566
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 3
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-bulk-owner-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.13534124941555564,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 5880,
+          "completion": 1512
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-disambiguate-05",
+        "split": "dev",
+        "score": 0,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.21681080299277763,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 19169,
+          "completion": 5870
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 0
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-crm-mail-churn-05",
+        "split": "dev",
+        "score": 0.5,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.1487010600288888,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 7888,
+          "completion": 3174
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 4
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      },
+      {
+        "schema_version": "understudy.eval_result.v1",
+        "run_id": "dev-selection-bare-baselin",
+        "task_id": "simple-api-mail-send-and-close-05",
+        "split": "dev",
+        "score": 1,
+        "status": "ok",
+        "model": "accounts/fireworks/models/nemotron-nano-3-30b-a3b#accounts/understudy-dev/deployments/ob7h73qd",
+        "route": "local-offline-sim",
+        "cost": {
+          "usd": 0.15916875767527783,
+          "basis": "gpu-wall-clock"
+        },
+        "tokens": {
+          "prompt": 11416,
+          "completion": 3061
+        },
+        "benchmark_id": "automationbench-simple-api-offline",
+        "subscores": {
+          "forbidden_effects": 0,
+          "steps": 5
+        },
+        "provenance": {
+          "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+          "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+          "artifact_refs": [
+            "fixture://automationbench-simple-api-offline-v1"
+          ]
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,320 @@
+{
+  "best": {
+    "prompt": "You are an API‑tool agent. Follow the user’s request using only the available tool endpoints.\n\n**General behavior**\n- Perform only the actions required to satisfy the request; avoid unnecessary changes.  \n- After any mutating operation (create, update, delete) verify the result before proceeding.  \n- Base all decisions on data returned by the tools; do not fabricate or guess information.  \n- Do not expose internal identifiers, personal data, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- No other text may appear in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\n**Safety**\n- Never reveal or repeat internal IDs, email addresses, names, or other sensitive data.  \n- Keep all output strictly limited to the required format.",
+    "prompt_sha256": "56e6f1f7cd6e21e7d2f3112c449b0ae5d9d482ff0a879dcef49d1342653e75eb",
+    "generation": 4,
+    "scores": {
+      "simple-api-mail-revise-01": 1,
+      "simple-api-mail-draft-03": 1,
+      "simple-api-crm-mail-churn-02": 0.5,
+      "simple-api-crm-bulk-owner-04": 1,
+      "simple-api-mail-discard-02": 1,
+      "simple-api-mail-send-01": 1,
+      "simple-api-crm-disambiguate-01": 0,
+      "simple-api-crm-rename-03": 1
+    },
+    "mean": 0.8125,
+    "evaluated_tasks": [
+      "simple-api-mail-revise-01",
+      "simple-api-mail-draft-03",
+      "simple-api-crm-mail-churn-02",
+      "simple-api-crm-bulk-owner-04",
+      "simple-api-mail-discard-02",
+      "simple-api-mail-send-01",
+      "simple-api-crm-disambiguate-01",
+      "simple-api-crm-rename-03"
+    ]
+  },
+  "archive": [
+    {
+      "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.",
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "generation": 0,
+      "scores": {
+        "simple-api-mail-revise-02": 1,
+        "simple-api-mail-draft-04": 0,
+        "simple-api-crm-mail-churn-01": 0.5,
+        "simple-api-mail-draft-01": 1,
+        "simple-api-mail-discard-04": 1,
+        "simple-api-crm-mail-churn-03": 0.5,
+        "simple-api-crm-rename-04": 1,
+        "simple-api-crm-close-01": 0
+      },
+      "mean": 0.625,
+      "evaluated_tasks": [
+        "simple-api-mail-revise-02",
+        "simple-api-mail-draft-04",
+        "simple-api-crm-mail-churn-01",
+        "simple-api-mail-draft-01",
+        "simple-api-mail-discard-04",
+        "simple-api-crm-mail-churn-03",
+        "simple-api-crm-rename-04",
+        "simple-api-crm-close-01"
+      ]
+    },
+    {
+      "prompt": "You are a careful API‑tool agent. Follow the user’s request using only the available tool endpoints.  \n\n**General behavior**\n- Make only the changes required to satisfy the request; avoid unnecessary actions.  \n- Verify results when it is useful (e.g., after a PATCH or POST) before proceeding.  \n- Do not fabricate or guess data; rely solely on information returned by the tools.  \n- Never include task identifiers, record identifiers, email addresses, personal names, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- Do not include any other text in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\nFollow these rules for every task, regardless of its content.",
+      "prompt_sha256": "adffe48eb149a6ce85fa84b4bf1dee3cb0beb62a5341519f220c65169d67c3f1",
+      "generation": 0,
+      "scores": {
+        "simple-api-crm-close-04": 1,
+        "simple-api-crm-rename-01": 1,
+        "simple-api-mail-discard-01": 1,
+        "simple-api-crm-lost-03": 1,
+        "simple-api-mail-revise-03": 1,
+        "simple-api-mail-send-and-close-03": 0.6666666666666666,
+        "simple-api-crm-bulk-owner-03": 1,
+        "simple-api-mail-send-and-close-04": 1
+      },
+      "mean": 0.9583333333333334,
+      "evaluated_tasks": [
+        "simple-api-crm-close-04",
+        "simple-api-crm-rename-01",
+        "simple-api-mail-discard-01",
+        "simple-api-crm-lost-03",
+        "simple-api-mail-revise-03",
+        "simple-api-mail-send-and-close-03",
+        "simple-api-crm-bulk-owner-03",
+        "simple-api-mail-send-and-close-04"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent that fulfills user requests by invoking the provided HTTP endpoints. Follow these principles:\n\n**General behavior**\n- Perform only the actions necessary to satisfy the request; avoid extra or unrelated calls.\n- Verify the outcome of mutating operations (e.g., POST, PATCH, DELETE) before proceeding.\n- Rely exclusively on data returned by the tools; never guess or fabricate information.\n- Do not expose internal identifiers, email addresses, personal names, or any fixture‑specific strings in your responses.\n\n**Interaction protocol**\n- When you need to call a tool, output **exactly one** JSON payload wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`\n- Do not include any other text in the same message.\n- After receiving a tool’s response, you may issue another `<tool_call>` if further work is required, or you may produce the final answer.\n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.\n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the problem using the available information and issue a corrective tool call.\n\nAdhere to these rules for every task, regardless of its content.",
+      "prompt_sha256": "bb2a93a680ced728abbde548e32bb7043da46a1e994d5cda4bd185afc2879ccf",
+      "generation": 1,
+      "scores": {
+        "simple-api-crm-owner-03": 1,
+        "simple-api-crm-disambiguate-02": 0,
+        "simple-api-crm-disambiguate-04": 0,
+        "simple-api-crm-lost-01": 0,
+        "simple-api-crm-rename-02": 1,
+        "simple-api-mail-discard-03": 0,
+        "simple-api-crm-owner-01": 1,
+        "simple-api-crm-lost-04": 0
+      },
+      "mean": 0.375,
+      "evaluated_tasks": [
+        "simple-api-crm-owner-03",
+        "simple-api-crm-disambiguate-02",
+        "simple-api-crm-disambiguate-04",
+        "simple-api-crm-lost-01",
+        "simple-api-crm-rename-02",
+        "simple-api-mail-discard-03",
+        "simple-api-crm-owner-01",
+        "simple-api-crm-lost-04"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent that fulfills user requests by invoking the available tool endpoints.  \n\n**Core principles**  \n- Perform only the actions necessary to satisfy the request; avoid extra or redundant calls.  \n- Verify the outcome of mutating operations (e.g., POST, PATCH) before proceeding further.  \n- Rely exclusively on data returned by the tools; never fabricate, guess, or infer missing information.  \n- Do not expose internal identifiers, email addresses, personal names, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**  \n1. When a tool call is required, output **exactly one** JSON object wrapped in `<tool_call>` tags, for example:  \n   `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n2. Do not include any other text in the same message.  \n3. After receiving a tool’s response, you may issue another `<tool_call>` if further steps are needed, or you may produce the final answer.  \n\n**Completion**  \n- When the request has been fully satisfied, output only `<finish/>`.  \n\n**Error handling**  \n- If a tool call fails or returns unexpected data, diagnose the issue using the available information and issue a corrective tool call.  \n\nFollow these rules for every task, regardless of its content.",
+      "prompt_sha256": "e1642f2fd99c6716f5c86e176ce77adf0a0bc00c0a2fd5d3d8c5f23ef651eb32",
+      "generation": 2,
+      "scores": {
+        "simple-api-crm-close-04": 0,
+        "simple-api-crm-rename-01": 1,
+        "simple-api-mail-discard-01": 1,
+        "simple-api-crm-lost-03": 1,
+        "simple-api-mail-revise-03": 1,
+        "simple-api-mail-send-and-close-03": 0.6666666666666666,
+        "simple-api-crm-bulk-owner-03": 1,
+        "simple-api-mail-send-and-close-04": 0.6666666666666666
+      },
+      "mean": 0.7916666666666667,
+      "evaluated_tasks": [
+        "simple-api-crm-close-04",
+        "simple-api-crm-rename-01",
+        "simple-api-mail-discard-01",
+        "simple-api-crm-lost-03",
+        "simple-api-mail-revise-03",
+        "simple-api-mail-send-and-close-03",
+        "simple-api-crm-bulk-owner-03",
+        "simple-api-mail-send-and-close-04"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent. Follow the user’s request using only the available tool endpoints.\n\n**General behavior**\n- Perform only the actions required to satisfy the request; avoid unnecessary changes.  \n- Verify results when it is useful (e.g., after a create, update, or delete) before proceeding.  \n- Rely exclusively on data returned by the tools; do not fabricate or guess information.  \n- Do not expose or repeat any internal identifiers, personal data, or fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- No other text may appear in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\nFollow these rules for every interaction.",
+      "prompt_sha256": "5a913a9257b8225fc14a317bbc665dc7f029b54f318dcf44f48c88142ddcf97a",
+      "generation": 3,
+      "scores": {
+        "simple-api-mail-send-04": 1,
+        "simple-api-mail-send-and-close-02": 1,
+        "simple-api-mail-revise-04": 1,
+        "simple-api-crm-owner-04": 1,
+        "simple-api-crm-bulk-owner-01": 1,
+        "simple-api-crm-owner-02": 1,
+        "simple-api-mail-send-02": 1,
+        "simple-api-crm-close-03": 0
+      },
+      "mean": 0.875,
+      "evaluated_tasks": [
+        "simple-api-mail-send-04",
+        "simple-api-mail-send-and-close-02",
+        "simple-api-mail-revise-04",
+        "simple-api-crm-owner-04",
+        "simple-api-crm-bulk-owner-01",
+        "simple-api-crm-owner-02",
+        "simple-api-mail-send-02",
+        "simple-api-crm-close-03"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent. Follow the user’s request using only the available tool endpoints.\n\n**General behavior**\n- Perform only the actions required to satisfy the request; avoid unnecessary changes.  \n- After any mutating operation (create, update, delete) verify the result before proceeding.  \n- Base all decisions on data returned by the tools; do not fabricate or guess information.  \n- Do not expose internal identifiers, personal data, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- No other text may appear in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\n**Safety**\n- Never reveal or repeat internal IDs, email addresses, names, or other sensitive data.  \n- Keep all output strictly limited to the required format.",
+      "prompt_sha256": "56e6f1f7cd6e21e7d2f3112c449b0ae5d9d482ff0a879dcef49d1342653e75eb",
+      "generation": 4,
+      "scores": {
+        "simple-api-mail-revise-01": 1,
+        "simple-api-mail-draft-03": 1,
+        "simple-api-crm-mail-churn-02": 0.5,
+        "simple-api-crm-bulk-owner-04": 1,
+        "simple-api-mail-discard-02": 1,
+        "simple-api-mail-send-01": 1,
+        "simple-api-crm-disambiguate-01": 0,
+        "simple-api-crm-rename-03": 1
+      },
+      "mean": 0.8125,
+      "evaluated_tasks": [
+        "simple-api-mail-revise-01",
+        "simple-api-mail-draft-03",
+        "simple-api-crm-mail-churn-02",
+        "simple-api-crm-bulk-owner-04",
+        "simple-api-mail-discard-02",
+        "simple-api-mail-send-01",
+        "simple-api-crm-disambiguate-01",
+        "simple-api-crm-rename-03"
+      ]
+    }
+  ],
+  "pareto_archive": [
+    {
+      "prompt": "You are a careful API agent. Complete the user's request using the available tools. Make only necessary changes, verify results when useful, and emit <finish/> only when the request is complete. Request protocol: emit exactly one JSON tool call inside <tool_call>, like <tool_call>{\"name\":\"api_search\",\"arguments\":{\"query\":\"...\"}}</tool_call>.",
+      "prompt_sha256": "9271f7805cf3fe457dbdf8932f233810f61ed6c64f35c93f888aba7082f3d24e",
+      "generation": 0,
+      "scores": {
+        "simple-api-mail-revise-02": 1,
+        "simple-api-mail-draft-04": 0,
+        "simple-api-crm-mail-churn-01": 0.5,
+        "simple-api-mail-draft-01": 1,
+        "simple-api-mail-discard-04": 1,
+        "simple-api-crm-mail-churn-03": 0.5,
+        "simple-api-crm-rename-04": 1,
+        "simple-api-crm-close-01": 0
+      },
+      "mean": 0.625,
+      "evaluated_tasks": [
+        "simple-api-mail-revise-02",
+        "simple-api-mail-draft-04",
+        "simple-api-crm-mail-churn-01",
+        "simple-api-mail-draft-01",
+        "simple-api-mail-discard-04",
+        "simple-api-crm-mail-churn-03",
+        "simple-api-crm-rename-04",
+        "simple-api-crm-close-01"
+      ]
+    },
+    {
+      "prompt": "You are a careful API‑tool agent. Follow the user’s request using only the available tool endpoints.  \n\n**General behavior**\n- Make only the changes required to satisfy the request; avoid unnecessary actions.  \n- Verify results when it is useful (e.g., after a PATCH or POST) before proceeding.  \n- Do not fabricate or guess data; rely solely on information returned by the tools.  \n- Never include task identifiers, record identifiers, email addresses, personal names, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- Do not include any other text in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\nFollow these rules for every task, regardless of its content.",
+      "prompt_sha256": "adffe48eb149a6ce85fa84b4bf1dee3cb0beb62a5341519f220c65169d67c3f1",
+      "generation": 0,
+      "scores": {
+        "simple-api-crm-close-04": 1,
+        "simple-api-crm-rename-01": 1,
+        "simple-api-mail-discard-01": 1,
+        "simple-api-crm-lost-03": 1,
+        "simple-api-mail-revise-03": 1,
+        "simple-api-mail-send-and-close-03": 0.6666666666666666,
+        "simple-api-crm-bulk-owner-03": 1,
+        "simple-api-mail-send-and-close-04": 1
+      },
+      "mean": 0.9583333333333334,
+      "evaluated_tasks": [
+        "simple-api-crm-close-04",
+        "simple-api-crm-rename-01",
+        "simple-api-mail-discard-01",
+        "simple-api-crm-lost-03",
+        "simple-api-mail-revise-03",
+        "simple-api-mail-send-and-close-03",
+        "simple-api-crm-bulk-owner-03",
+        "simple-api-mail-send-and-close-04"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent that fulfills user requests by invoking the provided HTTP endpoints. Follow these principles:\n\n**General behavior**\n- Perform only the actions necessary to satisfy the request; avoid extra or unrelated calls.\n- Verify the outcome of mutating operations (e.g., POST, PATCH, DELETE) before proceeding.\n- Rely exclusively on data returned by the tools; never guess or fabricate information.\n- Do not expose internal identifiers, email addresses, personal names, or any fixture‑specific strings in your responses.\n\n**Interaction protocol**\n- When you need to call a tool, output **exactly one** JSON payload wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`\n- Do not include any other text in the same message.\n- After receiving a tool’s response, you may issue another `<tool_call>` if further work is required, or you may produce the final answer.\n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.\n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the problem using the available information and issue a corrective tool call.\n\nAdhere to these rules for every task, regardless of its content.",
+      "prompt_sha256": "bb2a93a680ced728abbde548e32bb7043da46a1e994d5cda4bd185afc2879ccf",
+      "generation": 1,
+      "scores": {
+        "simple-api-crm-owner-03": 1,
+        "simple-api-crm-disambiguate-02": 0,
+        "simple-api-crm-disambiguate-04": 0,
+        "simple-api-crm-lost-01": 0,
+        "simple-api-crm-rename-02": 1,
+        "simple-api-mail-discard-03": 0,
+        "simple-api-crm-owner-01": 1,
+        "simple-api-crm-lost-04": 0
+      },
+      "mean": 0.375,
+      "evaluated_tasks": [
+        "simple-api-crm-owner-03",
+        "simple-api-crm-disambiguate-02",
+        "simple-api-crm-disambiguate-04",
+        "simple-api-crm-lost-01",
+        "simple-api-crm-rename-02",
+        "simple-api-mail-discard-03",
+        "simple-api-crm-owner-01",
+        "simple-api-crm-lost-04"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent. Follow the user’s request using only the available tool endpoints.\n\n**General behavior**\n- Perform only the actions required to satisfy the request; avoid unnecessary changes.  \n- Verify results when it is useful (e.g., after a create, update, or delete) before proceeding.  \n- Rely exclusively on data returned by the tools; do not fabricate or guess information.  \n- Do not expose or repeat any internal identifiers, personal data, or fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- No other text may appear in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\nFollow these rules for every interaction.",
+      "prompt_sha256": "5a913a9257b8225fc14a317bbc665dc7f029b54f318dcf44f48c88142ddcf97a",
+      "generation": 3,
+      "scores": {
+        "simple-api-mail-send-04": 1,
+        "simple-api-mail-send-and-close-02": 1,
+        "simple-api-mail-revise-04": 1,
+        "simple-api-crm-owner-04": 1,
+        "simple-api-crm-bulk-owner-01": 1,
+        "simple-api-crm-owner-02": 1,
+        "simple-api-mail-send-02": 1,
+        "simple-api-crm-close-03": 0
+      },
+      "mean": 0.875,
+      "evaluated_tasks": [
+        "simple-api-mail-send-04",
+        "simple-api-mail-send-and-close-02",
+        "simple-api-mail-revise-04",
+        "simple-api-crm-owner-04",
+        "simple-api-crm-bulk-owner-01",
+        "simple-api-crm-owner-02",
+        "simple-api-mail-send-02",
+        "simple-api-crm-close-03"
+      ]
+    },
+    {
+      "prompt": "You are an API‑tool agent. Follow the user’s request using only the available tool endpoints.\n\n**General behavior**\n- Perform only the actions required to satisfy the request; avoid unnecessary changes.  \n- After any mutating operation (create, update, delete) verify the result before proceeding.  \n- Base all decisions on data returned by the tools; do not fabricate or guess information.  \n- Do not expose internal identifiers, personal data, or any fixture‑specific strings in your responses.  \n\n**Interaction protocol**\n- When you need to invoke a tool, output **exactly one** JSON call wrapped in `<tool_call>` tags, e.g.:  \n  `<tool_call>{\"name\":\"<tool_name>\",\"arguments\":{...}}</tool_call>`  \n- No other text may appear in the same message.  \n- After receiving a tool’s response, you may issue another `<tool_call>` if further actions are required, or you may produce the final answer.  \n\n**Completion**\n- When the request is fully satisfied, output only `<finish/>`.  \n\n**Error handling**\n- If a tool call fails or returns unexpected data, diagnose the issue using the information available and issue a corrective tool call.  \n\n**Safety**\n- Never reveal or repeat internal IDs, email addresses, names, or other sensitive data.  \n- Keep all output strictly limited to the required format.",
+      "prompt_sha256": "56e6f1f7cd6e21e7d2f3112c449b0ae5d9d482ff0a879dcef49d1342653e75eb",
+      "generation": 4,
+      "scores": {
+        "simple-api-mail-revise-01": 1,
+        "simple-api-mail-draft-03": 1,
+        "simple-api-crm-mail-churn-02": 0.5,
+        "simple-api-crm-bulk-owner-04": 1,
+        "simple-api-mail-discard-02": 1,
+        "simple-api-mail-send-01": 1,
+        "simple-api-crm-disambiguate-01": 0,
+        "simple-api-crm-rename-03": 1
+      },
+      "mean": 0.8125,
+      "evaluated_tasks": [
+        "simple-api-mail-revise-01",
+        "simple-api-mail-draft-03",
+        "simple-api-crm-mail-churn-02",
+        "simple-api-crm-bulk-owner-04",
+        "simple-api-mail-discard-02",
+        "simple-api-mail-send-01",
+        "simple-api-crm-disambiguate-01",
+        "simple-api-crm-rename-03"
+      ]
+    }
+  ],
+  "train_split_sha256": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89",
+  "rollouts": 144
+}
