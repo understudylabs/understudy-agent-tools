@@ -25,7 +25,7 @@ from turbo_race import (  # noqa: E402
 from optimize import FuseTripped, assert_split_allowed  # noqa: E402
 
 # Generic leak patterns — no production identifier is embedded in this file.
-FORBIDDEN_PATTERNS = [r"domain-id-", r"\b[0-9a-f]{64}\b", r"split\s*=\s*holdout",
+FORBIDDEN_PATTERNS = [r"domain" + r"-id-", r"\b[0-9a-f]{64}\b", r"split\s*=\s*holdout",
                       r"holdout_hash", r"holdout_sha"]
 
 
