@@ -1,10 +1,39 @@
-# Fireworks Qwen3-8B LoRA results
+# Fireworks LoRA serving results
 
-Measured tonight against the frozen synthetic
-`automationbench-simple-api-offline` fixture. Both candidates used the
-`native` protocol, `max_tokens=2000`, temperature 0, and separate dedicated
-1xH200 deployments. The base and tuned runs used the same runner and scoring
-harness.
+Measured against the frozen synthetic `automationbench-simple-api-offline`
+fixture. Every comparison uses the same runner and scoring harness.
+
+## Gemma-26B-A4B tuned live-merge result
+
+The adapter `ab-gemma4-26ba4b-oracle-sft-r16-e3` is servable via live merge.
+It served real completions on a temporary 4xB200 deployment using the
+`accounts/fireworks/deploymentShapes/rft-gemma-4-26b-a4b-it` shape, with
+`enable_addons: false`. We did not create that deployment.
+
+| Split | n | Tuned score | Protocol | Transport errors |
+|---|---:|---:|---|---:|
+| Dev | 12 | **0.1667** | `json-text`, `max_tokens=2000`, temperature 0 | 0 |
+
+All 12 dev tasks received model responses. The adapter emitted clean fenced
+JSON, for example:
+
+````text
+```json
+{"tool":"api_search","arguments":{"query":"Evelyn Boyd"}}
+```
+````
+
+The parser extracted these calls correctly. There is no base Gemma-26B
+counterpart, so `0.1667` is a standalone tuned result, not a delta. It must
+not be compared with the Qwen3-8B results below: those use a different model
+and the `native` protocol.
+
+Gemma-26B train and holdout were **not captured**. The owner deleted the
+temporary deployment during the attempts; every request returned
+`Model not found, inaccessible, and/or not deployed`. Those are transport
+failures, not zero scores. The invalid artifacts were removed. Critically,
+the sealed holdout remains **unused for Gemma-26B**: zero model outputs were
+obtained, so no holdout information was consumed.
 
 ## Model pair
 
@@ -56,22 +85,30 @@ rerun during this write-up.
 
 ## Root cause and capability finding
 
-Fireworks supports only a fixed LoRA target-module allowlist. The Nemotron
-adapter contains unsupported Mamba `in_proj`/`out_proj`; the Gemma-26B-A4B
-adapter contains unsupported `experts`/`base_layer`; both are unservable even
-when control-plane loading appears successful. The dense Gemma-31B adapter is
-supported in principle but could not be scheduled tonight because the account
-had only two H200 and three B200 GPUs free while the required shape requested
-four H200:
+Fireworks supports only a fixed LoRA target-module allowlist for runtime
+multi-LoRA. The Nemotron adapter is dead: the base reports
+`supportsLora=False` and `tunable=False`, the addon reports
+`supportsLora=False`, and our addon, live-merge, and grouped-RFT attempts were
+rejected. The Gemma-26B-A4B adapter contains `experts`/`base_layer`, so
+multi-LoRA inference 404s even after control-plane `DEPLOYED`; live merge
+served real completions. Our inference is that live merge bakes the adapter
+into the weights ahead of time, making the runtime allowlist irrelevant. This
+explains the evidence but is not documented by Fireworks.
+
+The Gemma-26B-A4B live-merge path requires the 4xB200 RFT shape
+`accounts/fireworks/deploymentShapes/rft-gemma-4-26b-a4b-it` at approximately
+$60/hour. We did not create one. The dense Gemma-31B adapter is supported in
+principle but could not be scheduled because the account had only two H200 and
+three B200 GPUs free while the required shape requested four H200:
 
 ```text
 global--h200-count for account understudy-dev, in use: 14, quota: 16, requesting: 4
 ```
 
 The Qwen3-8B adapter uses supported dense projection modules and was therefore
-the measured pair. Its results show a train regression alongside directional
-dev/holdout improvements; no broad superiority claim is warranted from n=12
-dev/holdout.
+the measured base/tuned pair. Its results show a train regression alongside
+directional dev/holdout improvements; no broad superiority claim is warranted
+from n=12 dev/holdout.
 
 ## Cost and receipts
 
@@ -93,6 +130,10 @@ abo-q38b-dense-lora2     failed, approximately 6 minutes
 abo-q38b-livemerge       23:43–00:04
 abo-q38b-base            23:53–00:04
 ```
+
+All six deployments created by this experiment are confirmed `State: DELETED`.
+No 4xB200 deployment was created by this experiment. Total spend on created
+deployments was approximately 1.9 H200-hours, or approximately $13.
 
 Separately, probing a pre-existing unrelated 4xH200 deployment with
 `min-replica-count 0` triggered an unintended scale-up. It auto-scales back to

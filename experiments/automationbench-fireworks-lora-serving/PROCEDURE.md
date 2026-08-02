@@ -18,16 +18,24 @@ lm_head (Llama/Mistral/Qwen2/Qwen2-VL/Kimi K2.5 only)
 Embedding modules are unsupported. Check the adapter target modules before
 creating a deployment:
 
-| Adapter | Base | Actual target modules | Capability |
-|---|---|---|---|
-| `abo-nemotron-nano3-30b-sft-r16-v1` | `nemotron-nano-3-30b-a3b` | `down_proj, in_proj, k_proj, o_proj, out_proj, q_proj, up_proj, v_proj` | **Unservable**: `in_proj`, `out_proj` are unsupported Mamba modules |
-| `ab-gemma4-26ba4b-oracle-sft-r16-e3` | `gemma-4-26b-a4b` | `base_layer, down_proj, experts, gate_proj, k_proj, o_proj, q_proj, up_proj, v_proj` | **Unservable**: `experts`, `base_layer` unsupported |
-| `ab-gemma4-31b-oracle-sft-r16-e3` | `gemma-4-31b` | `down_proj, gate_proj, k_proj, o_proj, q_proj, up_proj, v_proj` | **Servable in principle**; blocked in this run by GPU quota |
-| `qwen3-8b-abo-simpleapi-sft-r16e3` | `qwen3-8b` | supported dense projection modules | **Servable**; measured pair |
+| Adapter | Base | Actual target modules | Multi-LoRA / `--enable-addons` | Live merge |
+|---|---|---|---|---|
+| `abo-nemotron-nano3-30b-sft-r16-v1` | `nemotron-nano-3-30b-a3b` | `down_proj, in_proj, k_proj, o_proj, out_proj, q_proj, up_proj, v_proj` | **No**: base `supportsLora=False`, `tunable=False`; addon reports `supportsLora=False` and our addon load was rejected | **No verified path**: live-merge attempt rejected and grouped RFT shape returned `PermissionDenied` |
+| `ab-gemma4-26ba4b-oracle-sft-r16-e3` | `gemma-4-26b-a4b` | `base_layer, down_proj, experts, gate_proj, k_proj, o_proj, q_proj, up_proj, v_proj` | **No**: three independent addon deployments showed control-plane `DEPLOYED` but inference 404 | **Yes**: real completions verified on a 4xB200 live-merge RFT shape |
+| `ab-gemma4-31b-oracle-sft-r16-e3` | `gemma-4-31b` | `down_proj, gate_proj, k_proj, o_proj, q_proj, up_proj, v_proj` | **Yes in principle**: targets are supported; not tested because quota blocked the required 4-GPU shape | **Yes in principle**: targets are supported; not tested because quota blocked the required 4-GPU shape |
+| `qwen3-8b-abo-simpleapi-sft-r16e3` | `qwen3-8b` | supported dense projection modules | **Not usable in this run**: two BF16 addon deployments entered `FAILED` with internal errors | **Yes**: measured base/tuned pair |
+
+The allowlist constrains the runtime multi-LoRA path. Our inference is that
+live merge bakes the adapter into the weights ahead of time, so unsupported
+runtime modules stop mattering there; this is an explanation that fits the
+observations, not a Fireworks-documented guarantee.
 
 ## Working path: live merge (recommended for one adapter)
 
-Live merge supports native tool calls and requires no addon flags:
+Live merge supports native tool calls and requires no addon flags. It is the
+only serving path verified for the Gemma-26B-A4B MoE adapter; that path used a
+4xB200 RFT shape and costs approximately $60/hour, so this experiment did not
+create one:
 
 ```bash
 firectl create deployment accounts/<acct>/models/<TUNED_MODEL_ID> \
@@ -97,8 +105,10 @@ decoding, and 2xH100):
 
 `firectl model load-lora` can report success and the control plane can show
 `State: DEPLOYED / Default: true`, while inference still returns the 404
-above. Treat this silent-success-then-404 pattern as an adapter capability or
-serving-path failure, not proof of a usable deployment.
+above. For the Gemma-26B-A4B adapter, this is a multi-LoRA limitation, not a
+general adapter limitation: live merge served real completions. Treat this
+silent-success-then-404 pattern as an addon capability or serving-path
+failure, not proof that live merge is impossible.
 
 ```text
 draft model precision validation failed: addons cannot be enabled with quantized precisions (FP8/FP4)
@@ -127,6 +137,12 @@ Internal error occurred, please contact the Fireworks AI team at https://discord
 
 This occurred twice for a Qwen3-8B BF16 `--enable-addons` deployment; both
 deployments entered `state FAILED`.
+
+Nemotron is dropped after three independent capability signals: the base
+reports `supportsLora=False` and `tunable=False`, the addon reports
+`supportsLora=False`, and our addon, live-merge, and grouped-RFT attempts were
+rejected (`addons are not supported for this model`, the live-merge
+configuration error above, and `PermissionDenied` respectively).
 
 ```text
 deployment has received inference requests in the last hour, pass --ignore-checks to skip this check

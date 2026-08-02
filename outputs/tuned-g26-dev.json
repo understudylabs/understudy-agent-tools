@@ -1,10 +1,10 @@
 {
   "schema_version": "understudy.eval_result.v1",
   "label": "tuned-g26-dev",
-  "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+  "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
   "split": "dev",
   "protocol": "json-text",
-  "mean_score": 0,
+  "mean_score": 0.16666666666666666,
   "rows": [
     {
       "schema_version": "understudy.eval_result.v1",
@@ -12,9 +12,8 @@
       "task_id": "simple-api-crm-close-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-bbce418a2901477b96aeaa93eefaad49\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -23,8 +22,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -40,9 +39,8 @@
       "task_id": "simple-api-crm-lost-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-d60bb5d913074c19a1712c38ebd578e5\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -51,8 +49,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -68,9 +66,8 @@
       "task_id": "simple-api-crm-owner-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-9d6b1679a6bc4c99a8177f283f460d19\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -79,8 +76,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -96,9 +93,8 @@
       "task_id": "simple-api-crm-rename-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-e39fc1641c6548dd9f42dedc08a228b1\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -107,8 +103,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -124,9 +120,8 @@
       "task_id": "simple-api-mail-draft-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-4e99111c0c0e4d8aaa6d9bf1fe3ebf54\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -135,8 +130,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -152,9 +147,8 @@
       "task_id": "simple-api-mail-revise-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-4c99961fc380420abba4ea930a247236\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -163,8 +157,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -180,9 +174,8 @@
       "task_id": "simple-api-mail-discard-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-d2aec4647f3542c2b26780f7d978f9e8\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -191,8 +184,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -207,10 +200,9 @@
       "run_id": "tuned-g26-dev",
       "task_id": "simple-api-mail-send-05",
       "split": "dev",
-      "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-2c2937811a384cd5ac295eeec821ca41\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -219,7 +211,7 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
+        "steps": 3,
         "malformed": 0
       },
       "provenance": {
@@ -236,9 +228,8 @@
       "task_id": "simple-api-crm-bulk-owner-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-847b8516023344878436c37ef066279a\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -247,8 +238,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 1,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -263,10 +254,9 @@
       "run_id": "tuned-g26-dev",
       "task_id": "simple-api-crm-disambiguate-05",
       "split": "dev",
-      "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-cd87ed3e8d0d4c98b46bd9f7ac3e57bc\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "score": 1,
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -275,7 +265,7 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
+        "steps": 3,
         "malformed": 0
       },
       "provenance": {
@@ -292,9 +282,8 @@
       "task_id": "simple-api-crm-mail-churn-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-1fb1d4ca9e414eea831ea2c5356436be\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -303,8 +292,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -320,9 +309,8 @@
       "task_id": "simple-api-mail-send-and-close-05",
       "split": "dev",
       "score": 0,
-      "status": "error",
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-be9d76bf2eda4d938ba6b665163dba56\"}",
-      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r0",
+      "status": "ok",
+      "model": "accounts/understudy-dev/models/ab-gemma4-26ba4b-oracle-sft-r16-e3#accounts/understudy-dev/deployments/bij-abx-tuned-td-v2-r1",
       "route": "fireworks-openai-compatible",
       "cost": {
         "usd": null,
@@ -331,8 +319,8 @@
       "benchmark_id": "automationbench-simple-api-offline",
       "subscores": {
         "forbidden_effects": 0,
-        "steps": 0,
-        "malformed": 0
+        "steps": 2,
+        "malformed": 1
       },
       "provenance": {
         "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
@@ -347,107 +335,95 @@
     {
       "task_id": "simple-api-crm-close-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-bbce418a2901477b96aeaa93eefaad49\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-lost-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-d60bb5d913074c19a1712c38ebd578e5\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-owner-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-9d6b1679a6bc4c99a8177f283f460d19\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-rename-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-e39fc1641c6548dd9f42dedc08a228b1\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-mail-draft-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-4e99111c0c0e4d8aaa6d9bf1fe3ebf54\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-mail-revise-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-4c99961fc380420abba4ea930a247236\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-mail-discard-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-d2aec4647f3542c2b26780f7d978f9e8\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-mail-send-05",
-      "score": 0,
-      "steps": 0,
+      "score": 1,
+      "steps": 3,
       "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-2c2937811a384cd5ac295eeec821ca41\"}"
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-bulk-owner-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-847b8516023344878436c37ef066279a\"}"
+      "steps": 1,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-disambiguate-05",
-      "score": 0,
-      "steps": 0,
+      "score": 1,
+      "steps": 3,
       "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-cd87ed3e8d0d4c98b46bd9f7ac3e57bc\"}"
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-crm-mail-churn-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-1fb1d4ca9e414eea831ea2c5356436be\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     },
     {
       "task_id": "simple-api-mail-send-and-close-05",
       "score": 0,
-      "steps": 0,
-      "malformed": 0,
-      "forbidden_effects": [],
-      "error": "Fireworks chat completion failed (404): {\"error\":{\"message\":\"Model not found, inaccessible, and/or not deployed\",\"param\":\"model\",\"code\":\"NOT_FOUND\",\"type\":\"error\"},\"request_id\":\"chatcmpl-be9d76bf2eda4d938ba6b665163dba56\"}"
+      "steps": 2,
+      "malformed": 1,
+      "forbidden_effects": []
     }
   ],
   "usage": {
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "requests": 0
+    "prompt_tokens": 20730,
+    "completion_tokens": 13947,
+    "total_tokens": 34677,
+    "requests": 37
   },
-  "elapsed_ms": 153,
+  "elapsed_ms": 35972,
   "provenance": {
     "split_sha256": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
     "harness_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f"
