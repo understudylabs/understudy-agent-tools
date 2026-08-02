@@ -46,14 +46,19 @@ TOTAL_CAP_USD = 120.0
 def _sft_datums(rows, renderer, tokenizer):
     datums = []
     for row in rows:
-        datums.append(
-            conversation_to_datum(
-                row["messages"],
-                renderer,
-                max_length=4096,
-                train_on_what=TrainOnWhat.ALL_ASSISTANT_MESSAGES,
+        conversation = row["messages"]
+        for index, message in enumerate(conversation):
+            if message["role"] != "assistant":
+                continue
+            prefix = conversation[: index + 1]
+            datums.append(
+                conversation_to_datum(
+                    prefix,
+                    renderer,
+                    max_length=4096,
+                    train_on_what=TrainOnWhat.LAST_ASSISTANT_MESSAGE,
+                )
             )
-        )
     return datums
 
 
