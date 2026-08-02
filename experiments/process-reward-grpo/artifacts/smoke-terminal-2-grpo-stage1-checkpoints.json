@@ -1,0 +1,11 @@
+{
+  "log_path": "experiments/process-reward-grpo/artifacts/smoke-terminal-2-log",
+  "records": [
+    {
+      "batch": 2,
+      "name": "final",
+      "sampler_path": "tinker://1eb6d96a-00c6-5cae-85db-482617c28215:train:0/sampler_weights/final",
+      "state_path": "tinker://1eb6d96a-00c6-5cae-85db-482617c28215:train:0/weights/final"
+    }
+  ]
+}

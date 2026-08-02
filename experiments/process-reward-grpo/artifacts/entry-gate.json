@@ -1,0 +1,48 @@
+{
+  "schema_version": "understudy.process_reward_grpo_entry_gate.v1",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "expected_holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "sanity_task_ids": [
+    "simple-api-crm-close-01",
+    "hard-api-churn-cascade-01"
+  ],
+  "checks": [
+    {
+      "id": "oracle:simple-api-crm-close-01",
+      "status": "pass",
+      "detail": "oracle terminal reward = 1; expected exactly 1.0"
+    },
+    {
+      "id": "sentinel:simple-api-crm-close-01",
+      "status": "pass",
+      "detail": "sentinel terminal reward = 0; expected exactly 0.0"
+    },
+    {
+      "id": "oracle:hard-api-churn-cascade-01",
+      "status": "pass",
+      "detail": "oracle terminal reward = 1; expected exactly 1.0"
+    },
+    {
+      "id": "sentinel:hard-api-churn-cascade-01",
+      "status": "pass",
+      "detail": "sentinel terminal reward = 0; expected exactly 0.0"
+    },
+    {
+      "id": "holdout:no-hash",
+      "status": "pass",
+      "detail": "holdout no-hash gate"
+    },
+    {
+      "id": "holdout:wrong-hash",
+      "status": "pass",
+      "detail": "holdout wrong-hash gate"
+    },
+    {
+      "id": "holdout:exact-hash",
+      "status": "pass",
+      "detail": "holdout exact-hash gate"
+    }
+  ],
+  "passed": true
+}

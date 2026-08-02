@@ -1,0 +1,261 @@
+{
+  "arm_id": "process",
+  "artifacts": {
+    "evaluation_ref": "artifact://process-reward-grpo/eval-process-15-dev.json",
+    "evaluation_sha256": "3940e8a338395fac63aa1778058f59e77dcedda58fb671d73527f98dd35d2a5d",
+    "training_log_ref": "artifact://process-reward-grpo/arm-process-log",
+    "training_log_sha256": "3327ba4aa269535bf0a79716e8a28854dc12714a6939dbaff7828839ac404c1a"
+  },
+  "bands": {
+    "aggregation": {
+      "mean_score": 0.0,
+      "n": 2
+    },
+    "cascade": {
+      "mean_score": 0.5,
+      "n": 4
+    },
+    "conditional": {
+      "mean_score": 0.75,
+      "n": 4
+    },
+    "cross-record": {
+      "mean_score": 0.5,
+      "n": 6
+    },
+    "discovery": {
+      "mean_score": 0.5,
+      "n": 4
+    },
+    "long-chain": {
+      "mean_score": 0.5476190476190476,
+      "n": 4
+    },
+    "multi-hop": {
+      "mean_score": 0.0,
+      "n": 4
+    },
+    "multi-write": {
+      "mean_score": 0.5833333333333334,
+      "n": 4
+    },
+    "single-write": {
+      "mean_score": 1.0,
+      "n": 4
+    }
+  },
+  "base_model_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "claim_boundary": "No statistically established reward lift on 36-task dev; safety and step deltas are directional only; holdout deliberately not run.",
+  "cost": {
+    "basis": "tinker_billing_usage",
+    "classification": "estimated/upper-bound token-derived; no provider price field",
+    "usd": null
+  },
+  "created_at": "2026-08-02T03:55:23.894235+00:00",
+  "dataset": {
+    "dev_count": 36,
+    "fixture": "automationbench-v2",
+    "holdout_count": 60,
+    "seed": 7,
+    "sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "train_count": 120
+  },
+  "dev_comparison": {
+    "env_steps_direction": "process 7.750 vs terminal 7.472; slightly worse; directional only",
+    "forbidden_write_direction": "process 3/36 vs terminal 5/36; directional only",
+    "mean_terminal_reward_delta_process_minus_terminal": 0.0138888888888889,
+    "reward_lift_established": false,
+    "standard_error_n36": 0.0821675907
+  },
+  "entry_gate": {
+    "checks": [
+      {
+        "detail": "oracle terminal reward = 1; expected exactly 1.0",
+        "id": "oracle:simple-api-crm-close-01",
+        "status": "pass"
+      },
+      {
+        "detail": "sentinel terminal reward = 0; expected exactly 0.0",
+        "id": "sentinel:simple-api-crm-close-01",
+        "status": "pass"
+      },
+      {
+        "detail": "oracle terminal reward = 1; expected exactly 1.0",
+        "id": "oracle:hard-api-churn-cascade-01",
+        "status": "pass"
+      },
+      {
+        "detail": "sentinel terminal reward = 0; expected exactly 0.0",
+        "id": "sentinel:hard-api-churn-cascade-01",
+        "status": "pass"
+      },
+      {
+        "detail": "holdout no-hash gate",
+        "id": "holdout:no-hash",
+        "status": "pass"
+      },
+      {
+        "detail": "holdout wrong-hash gate",
+        "id": "holdout:wrong-hash",
+        "status": "pass"
+      },
+      {
+        "detail": "holdout exact-hash gate",
+        "id": "holdout:exact-hash",
+        "status": "pass"
+      }
+    ],
+    "expected_holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+    "fixture": "automationbench-simple-api-offline-v2",
+    "holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+    "passed": true,
+    "sanity_task_ids": [
+      "simple-api-crm-close-01",
+      "hard-api-churn-cascade-01"
+    ],
+    "schema_version": "understudy.process_reward_grpo_entry_gate.v1"
+  },
+  "eval": {
+    "checkpoint_sampler_path": "tinker://c9c1ee37-e7a2-51b5-8bd0-cbcd76f297f0:train:0/sampler_weights/000015",
+    "checkpoint_step": 15,
+    "env_steps": {
+      "max": 14,
+      "mean": 7.75,
+      "min": 4,
+      "values": [
+        4,
+        4,
+        4,
+        4,
+        6,
+        4,
+        6,
+        5,
+        5,
+        4,
+        12,
+        8,
+        14,
+        7,
+        14,
+        10,
+        9,
+        9,
+        14,
+        14,
+        4,
+        4,
+        8,
+        10,
+        4,
+        5,
+        11,
+        10,
+        6,
+        8,
+        14,
+        14,
+        4,
+        4,
+        9,
+        7
+      ]
+    },
+    "eval_result_schema_version": "understudy.eval_result.v1",
+    "forbidden_write_episode_fraction": 0.08333333333333333,
+    "forbidden_writes": 3,
+    "mean_score": 0.5145502645502646,
+    "parse_error_rate": 0,
+    "per_band": {
+      "aggregation": {
+        "mean_score": 0.0,
+        "n": 2
+      },
+      "cascade": {
+        "mean_score": 0.5,
+        "n": 4
+      },
+      "conditional": {
+        "mean_score": 0.75,
+        "n": 4
+      },
+      "cross-record": {
+        "mean_score": 0.5,
+        "n": 6
+      },
+      "discovery": {
+        "mean_score": 0.5,
+        "n": 4
+      },
+      "long-chain": {
+        "mean_score": 0.5476190476190476,
+        "n": 4
+      },
+      "multi-hop": {
+        "mean_score": 0.0,
+        "n": 4
+      },
+      "multi-write": {
+        "mean_score": 0.5833333333333334,
+        "n": 4
+      },
+      "single-write": {
+        "mean_score": 1.0,
+        "n": 4
+      }
+    },
+    "reward_mode": "terminal",
+    "rows": 36,
+    "samples": 1,
+    "strict_pass_rate": 0.4166666666666667,
+    "strict_pass_standard_error": 0.08216777476527244,
+    "temperature": 0,
+    "token_usage": {
+      "completion": 12018,
+      "prompt": 243983,
+      "total": 256001
+    }
+  },
+  "evidence_scope": "evaluation",
+  "failure_clusters": {
+    "long_chain_note": "Process long-chain mean 0.5476 vs terminal 0.3810 is a hypothesis for larger-N follow-up only: one of nine bands and unadjusted for multiple comparisons.",
+    "note": "see immutable eval artifact; no raw rows copied into evidence",
+    "source": "per-task dev eval rows"
+  },
+  "headline": "The process-reward arm did not produce a statistically established reward lift on dev.",
+  "holdout": {
+    "clean_before_execution": true,
+    "decision": "not_run_per_latest_directive_and_unresolved_clarification",
+    "executed": false,
+    "executed_exactly_once": false,
+    "sealed_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+    "split": "holdout"
+  },
+  "provenance": {
+    "artifact_refs": [
+      "artifact://process-reward-grpo/eval-process-15-dev.json"
+    ],
+    "eval_rows_sha256": "3940e8a338395fac63aa1778058f59e77dcedda58fb671d73527f98dd35d2a5d",
+    "harness_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "request_isolation": "true",
+    "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "train_split_sha256": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b"
+  },
+  "provider": "tinker",
+  "quality_calibration_status": "dev terminal-only evaluation; calibration not established from n=36",
+  "renderer": "nemotron3_disable_thinking",
+  "route": "tinker",
+  "run_id": "arm-process-log",
+  "schema_version": "understudy.arm_evidence.v1",
+  "selection_rule": "highest dev mean terminal reward; earliest step on exact ties",
+  "training": {
+    "constant_group_fraction": 0.2,
+    "group_size": 8,
+    "groups_per_batch": 4,
+    "lora_rank": 32,
+    "remove_constant_reward_groups": true,
+    "reward_mode": "terminal+process",
+    "steps": 20,
+    "temperature": 1.0
+  }
+}

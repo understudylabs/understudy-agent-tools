@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+
+# Raw traces, prompts, per-episode rows, and replay-heavy training output.
+artifacts/eval-*.json
+!artifacts/*.summary.json
+artifacts/*-log/
+artifacts/smoke-*-dev-curve.jsonl
+artifacts/*metrics.jsonl
+artifacts/*timing_spans.jsonl
+artifacts/*.log
+artifacts/*code.diff
+
+# Keep the small reporting surface; bulk raw outputs are reproducible.
+artifacts/**/rollouts/
+artifacts/**/raw/

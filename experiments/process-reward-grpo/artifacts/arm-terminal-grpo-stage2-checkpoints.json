@@ -1,0 +1,35 @@
+{
+  "log_path": "experiments/process-reward-grpo/artifacts/arm-terminal-log",
+  "records": [
+    {
+      "batch": 5,
+      "name": "000005",
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/000005",
+      "state_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/weights/000005"
+    },
+    {
+      "batch": 10,
+      "name": "000010",
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/000010",
+      "state_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/weights/000010"
+    },
+    {
+      "batch": 15,
+      "name": "000015",
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/000015",
+      "state_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/weights/000015"
+    },
+    {
+      "batch": 20,
+      "name": "000020",
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/000020",
+      "state_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/weights/000020"
+    },
+    {
+      "batch": 20,
+      "name": "final",
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/final",
+      "state_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/weights/final"
+    }
+  ]
+}

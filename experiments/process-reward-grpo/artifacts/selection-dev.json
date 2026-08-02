@@ -1,0 +1,35 @@
+{
+  "candidates": [
+    {
+      "arm_id": "terminal",
+      "eval_artifact_ref": "artifact://process-reward-grpo/eval-terminal-15-dev.json",
+      "eval_artifact_sha256": "2e0e7da653e244718d619a29b89be10ba447f2332e5145bfbdfaded0f15dcec9",
+      "mean_terminal_reward": 0.5006613756613757,
+      "sampler_path": "tinker://5c5ff77f-7307-5583-9494-96e4e2c7c0e5:train:0/sampler_weights/000015",
+      "step": 15
+    },
+    {
+      "arm_id": "process",
+      "eval_artifact_ref": "artifact://process-reward-grpo/eval-process-15-dev.json",
+      "eval_artifact_sha256": "3940e8a338395fac63aa1778058f59e77dcedda58fb671d73527f98dd35d2a5d",
+      "mean_terminal_reward": 0.5145502645502646,
+      "sampler_path": "tinker://c9c1ee37-e7a2-51b5-8bd0-cbcd76f297f0:train:0/sampler_weights/000015",
+      "step": 15
+    }
+  ],
+  "claim_boundary": "Dev-only comparison and directional safety signals; no holdout claim.",
+  "decision_summary": "No statistically established dev reward lift; process mean delta +0.0139 is inside the n=36 standard error.",
+  "holdout_accessed": false,
+  "holdout_clean_before_execution": true,
+  "holdout_decision": "not_run",
+  "holdout_executed": false,
+  "holdout_executed_exactly_once": false,
+  "locked_at": "2026-08-02T00:00:00Z",
+  "schema_version": "understudy.process_reward_grpo_selection.v1",
+  "selected": {
+    "process": "process",
+    "terminal": "terminal"
+  },
+  "selection_locked": true,
+  "selection_rule": "highest dev mean terminal reward; earliest step on exact ties"
+}

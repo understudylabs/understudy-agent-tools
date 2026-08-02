@@ -1,0 +1,38 @@
+{
+  "benchmark_id": "automationbench-simple-api-offline-v2",
+  "fixture": "automationbench-v2",
+  "groups": [],
+  "hashes": {
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135"
+  },
+  "label": "process-5",
+  "lora_rank": 32,
+  "mean_model_turns": 7.694,
+  "mean_reward": 0.505952381,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "tinker://c9c1ee37-e7a2-51b5-8bd0-cbcd76f297f0:train:0/sampler_weights/000005",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "aggregation": 0,
+    "cascade": 0.5,
+    "conditional": 0.75,
+    "cross-record": 0.5,
+    "discovery": 0.5,
+    "long-chain": 0.345238,
+    "multi-hop": 0,
+    "multi-write": 0.708333,
+    "single-write": 1
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "row_count": 36,
+  "samples_per_task": 1,
+  "schema_version": "understudy.eval_summary.v1",
+  "split": "dev",
+  "strict_pass_rate": 0.416666667,
+  "summary_source": "sanitized aggregate reconstructed from committed dev curve; raw per-task rows intentionally omitted",
+  "task_count": 36,
+  "temperature": 0,
+  "total_prompt_tokens": 245808,
+  "total_sampled_tokens": 12078
+}

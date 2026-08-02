@@ -1,0 +1,32 @@
+{
+  "schema_version": "understudy.executor-submit.v1",
+  "experiment_id": "process-reward-grpo-v2",
+  "candidate": {
+    "candidate_id": "terminal",
+    "executor": "fixture",
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "policy_ref": "artifact://process-reward-grpo/policy-terminal.json",
+    "policy_sha256": "a63934aadf1217326027f4d3abb17246ae548d80e43e50048f804bd9c982ceb4"
+  },
+  "attempt": 0,
+  "workload": {
+    "id": "automationbench-v2",
+    "dataset_manifest_ref": "artifact://process-reward-grpo/automationbench-v2-manifest",
+    "dataset_manifest_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "verifier_environment": "automationbench-v2",
+    "verifier_revision": "local-public-fixture"
+  },
+  "splits": {
+    "train_manifest_ref": "artifact://process-reward-grpo/automationbench-v2-train",
+    "train_manifest_sha256": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b",
+    "dev_manifest_ref": "artifact://process-reward-grpo/automationbench-v2-dev",
+    "dev_manifest_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135"
+  },
+  "limits": {
+    "budget_usd": 100,
+    "max_concurrent_candidates": 2,
+    "max_concurrent_requests_per_candidate": 1,
+    "max_rollouts": 640,
+    "max_runtime_seconds": 7200
+  }
+}

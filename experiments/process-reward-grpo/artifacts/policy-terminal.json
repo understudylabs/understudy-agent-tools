@@ -1,0 +1,15 @@
+{
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3_disable_thinking",
+  "dataset_seed": 7,
+  "lora_rank": 32,
+  "learning_rate": 0.00001,
+  "group_size": 8,
+  "groups_per_batch": 4,
+  "temperature": 1,
+  "remove_constant_reward_groups": true,
+  "steps": 20,
+  "fixture": "automationbench-v2",
+  "system_prompt": "You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.",
+  "reward_mode": "terminal"
+}
