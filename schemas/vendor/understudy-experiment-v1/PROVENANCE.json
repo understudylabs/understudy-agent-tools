@@ -1,0 +1,15 @@
+{
+  "source_repo": "understudylabs/understudy-platform",
+  "source_branch": "yolo/vercel-experiment-orchestrator",
+  "source_commit": "c299ca4",
+  "files": {
+    "experiment-event.json": "63f3b52377e13b59958b78f2ab050249cbd827d067756412d6bab3e7178b93b4",
+    "experiment-executor-cancellation-receipt.json": "21d5d8100017b3788a6b6907ca9089b32f95fce127659db59e4403771caac5a3",
+    "experiment-executor-job-ref.json": "56e791609f5038379bf72c62bee90e16296ae118307dec7ef9c7a9f21bf68a41",
+    "experiment-executor-job-status.json": "5bb05e0c9d03a95a530b4862fb204840e1897588bf3969eb19f1161901f968f6",
+    "experiment-executor-submit-request.json": "6ff8cfa383ff109d7dfe341e5ae2a4d330a8b298b0e8af51af0f1d3106f462c0",
+    "experiment-executor-usage-receipt.json": "ea81327efea7f2c7215aefa61d4b070e86316e4d20a02f91fa58a49d913b5d49",
+    "experiment-result.json": "b58840006bd6fee258639667f1fec83625a23c29e92f3f76d5a1e0de585d7f25",
+    "experiment-spec.json": "b425faa979998896c6ad28df2d02abefdcef2c926ef71288cc05d3bed85a4ba7"
+  }
+}

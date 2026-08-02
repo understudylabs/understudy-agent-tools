@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "understudy.experiment-spec.v1"
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "org_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "workload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "dataset_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "dataset_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "verifier_environment": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "verifier_revision": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        }
+      },
+      "required": [
+        "id",
+        "dataset_manifest_ref",
+        "dataset_manifest_sha256",
+        "verifier_environment",
+        "verifier_revision"
+      ],
+      "additionalProperties": false
+    },
+    "splits": {
+      "type": "object",
+      "properties": {
+        "train_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "train_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "dev_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "dev_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "holdout_manifest_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "holdout_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "holdout_sealed": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "train_manifest_ref",
+        "train_manifest_sha256",
+        "dev_manifest_ref",
+        "dev_manifest_sha256",
+        "holdout_manifest_ref",
+        "holdout_manifest_sha256",
+        "holdout_sealed"
+      ],
+      "additionalProperties": false
+    },
+    "candidates": {
+      "minItems": 1,
+      "maxItems": 128,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "executor": {
+            "type": "string",
+            "enum": [
+              "modal",
+              "wafer",
+              "fireworks",
+              "spark",
+              "fixture"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "model_revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "policy_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "policy_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "executor",
+          "model",
+          "policy_ref",
+          "policy_sha256"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "budget_usd": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "max_concurrent_candidates": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        },
+        "max_concurrent_requests_per_candidate": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "max_rollouts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "max_runtime_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800
+        }
+      },
+      "required": [
+        "budget_usd",
+        "max_concurrent_candidates",
+        "max_concurrent_requests_per_candidate",
+        "max_rollouts",
+        "max_runtime_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "stopping": {
+      "type": "object",
+      "properties": {
+        "target_candidate_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+        },
+        "required_metric_floors": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "no_improvement_candidate_limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 128
+        }
+      },
+      "required": [
+        "required_metric_floors",
+        "no_improvement_candidate_limit"
+      ],
+      "additionalProperties": false
+    },
+    "claim_boundary": {
+      "type": "object",
+      "properties": {
+        "holdout_approval_required": {
+          "type": "boolean",
+          "const": true
+        },
+        "replacement_claim_allowed_before_holdout": {
+          "type": "boolean",
+          "const": false
+        }
+      },
+      "required": [
+        "holdout_approval_required",
+        "replacement_claim_allowed_before_holdout"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "org_id",
+    "workload",
+    "splits",
+    "candidates",
+    "limits",
+    "stopping",
+    "claim_boundary"
+  ],
+  "additionalProperties": false,
+  "$id": "https://understudylabs.com/schemas/understudy-train-v1/experiment-spec.json"
+}
