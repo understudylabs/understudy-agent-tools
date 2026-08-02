@@ -8,6 +8,10 @@ import { afterEach, describe, it } from "node:test";
 
 import { evaluatePromotion } from "../dist/adapter-portfolio/gate.js";
 import {
+  evaluateAdapterPortfolioStep,
+  promotionEvents,
+} from "../dist/adapter-portfolio/step.js";
+import {
   addEvidence,
   emptyRegistry,
   registerAdapter,
@@ -158,5 +162,30 @@ describe("adapter portfolio", () => {
     assert.equal(decision.decision, "blocked");
     assert.equal(holdoutCheck.status, "fail");
     assert.match(holdoutCheck.detail, /required lift 0\.05/);
+  });
+
+  it("is byte-identical on Workflow retries and emits redacted gate events", () => {
+    const data = candidateFixture();
+    const registry = JSON.parse(readFileSync(data.registryPath));
+    const input = {
+      experiment_id: "experiment-1",
+      candidate_id: "adapter-a",
+      attempt: 2,
+      evaluated_at: "2026-01-01T00:00:00.000Z",
+      registry,
+    };
+    const first = evaluateAdapterPortfolioStep(input);
+    const second = evaluateAdapterPortfolioStep(input);
+    assert.equal(JSON.stringify(first), JSON.stringify(second));
+    assert.match(first.idempotency_key, /^[a-f0-9]{64}$/);
+    assert.equal(first.inputs.registry.uri, "inline:adapter-portfolio-registry");
+    assert.match(first.inputs.registry.sha256, /^[a-f0-9]{64}$/);
+
+    const events = promotionEvents(input, first);
+    assert.equal(events.length, first.checks.length + 1);
+    assert.equal(events.at(-1).type, "promotion_decision");
+    assert.equal(events.at(-1).phase, "terminal");
+    assert.ok(events.every((event) => !("detail" in event.details)));
+    assert.ok(events.every((event) => event.details.registry_sha256 === first.inputs.registry.sha256));
   });
 });

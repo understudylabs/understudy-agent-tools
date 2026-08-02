@@ -1,3 +1,8 @@
+/**
+ * Local append-only evidence artifact for developer/CLI workflows.
+ * This JSON file is not authoritative Workflow run state; Workflow steps
+ * receive a registry value and immutable artifact references directly.
+ */
 import { randomUUID } from "node:crypto";
 import {
   existsSync,

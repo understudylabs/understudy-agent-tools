@@ -3,7 +3,7 @@
   "$id": "https://understudylabs.com/schemas/understudy.adapter_promotion_decision.v1.schema.json",
   "title": "understudy.adapter_promotion_decision.v1",
   "type": "object",
-  "required": ["schema_version", "candidate", "evaluated_at", "policy", "checks", "decision"],
+  "required": ["schema_version", "candidate", "evaluated_at", "policy", "checks", "decision", "idempotency_key", "inputs"],
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": "understudy.adapter_promotion_decision.v1" },
@@ -24,5 +24,25 @@
       }
     },
     "decision": { "enum": ["promote", "blocked"] }
+    ,
+    "idempotency_key": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "inputs": {
+      "type": "object",
+      "required": ["registry", "candidate_holdout", "evidence_ids"],
+      "additionalProperties": false,
+      "properties": {
+        "registry": { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/artifact_ref" },
+        "candidate_holdout": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/candidate_holdout_artifact" }
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
   }
 }

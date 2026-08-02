@@ -39,7 +39,7 @@ export const EvidenceRowSchema = z.object({
   run_id: z.string().min(1).optional(),
   fixture_sha256: Sha256Schema.optional(),
   context: z.object({ loaded_adapters: z.array(z.string().min(1)) }),
-  notes: z.string().optional(),
+  notes: z.string().max(500).optional(),
 }).superRefine((row, ctx) => {
   if (row.subject === "adapter" && !row.adapter_name) {
     ctx.addIssue({ code: "custom", path: ["adapter_name"], message: "adapter_name is required for adapter evidence" });
@@ -92,6 +92,26 @@ export const AdapterPromotionDecisionSchema = z.object({
   decision: z.enum(["promote", "blocked"]),
 });
 
+export const ArtifactRefSchema = z.object({
+  uri: z.string().min(1),
+  sha256: Sha256Schema,
+});
+
+export const CandidateHoldoutArtifactSchema = ArtifactRefSchema.extend({
+  row_count: z.number().int().positive(),
+});
+
+export const PromotionDecisionInputsSchema = z.object({
+  registry: ArtifactRefSchema,
+  candidate_holdout: CandidateHoldoutArtifactSchema.nullable(),
+  evidence_ids: z.array(z.string().min(1)),
+});
+
+export const AdapterPromotionStepDecisionSchema = AdapterPromotionDecisionSchema.extend({
+  idempotency_key: z.string().regex(/^[a-f0-9]{64}$/),
+  inputs: PromotionDecisionInputsSchema,
+});
+
 export type AdapterMethod = z.infer<typeof AdapterMethodSchema>;
 export type AdapterStatus = z.infer<typeof AdapterStatusSchema>;
 export type EvidenceRow = z.infer<typeof EvidenceRowSchema>;
@@ -101,3 +121,7 @@ export type PromotionPolicy = z.infer<typeof PromotionPolicySchema>;
 export type AdapterPortfolioRegistry = z.infer<typeof AdapterPortfolioRegistrySchema>;
 export type PromotionCheck = z.infer<typeof PromotionCheckSchema>;
 export type AdapterPromotionDecision = z.infer<typeof AdapterPromotionDecisionSchema>;
+export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
+export type CandidateHoldoutArtifact = z.infer<typeof CandidateHoldoutArtifactSchema>;
+export type PromotionDecisionInputs = z.infer<typeof PromotionDecisionInputsSchema>;
+export type AdapterPromotionStepDecision = z.infer<typeof AdapterPromotionStepDecisionSchema>;

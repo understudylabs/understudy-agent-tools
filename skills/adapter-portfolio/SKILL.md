@@ -16,6 +16,10 @@ Use this skill to maintain a local portfolio of training adapters and make
 promotion decisions from measured evidence. The portfolio is a training and
 evaluation registry; it is not the serving placement registry.
 
+This deliverable is a verifier/contract for the unified Workflow runtime. Its
+step is pure and idempotent; it is not a controller, poller, queue, daemon, or
+second run-state database.
+
 ## Resolve CLI
 
 Build the CLI before using the local checkout:
@@ -58,6 +62,9 @@ row, not by editing or deleting an old row.
 - A transfer recheck must include the candidate in `loaded_adapters` and may
   not regress its reference beyond `max_regression`.
 - There is no force-promotion option.
+- Evidence `notes` must be a redacted summary only and is capped at 500
+  characters. Never include raw traces, prompts, labels, credentials, or
+  weights.
 
 See [`reference.md`](reference.md) for the evidence matching rules and a
-complete command recipe.
+complete command recipe and the Workflow step/artifact contract.

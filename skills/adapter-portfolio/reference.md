@@ -1,5 +1,31 @@
 # Adapter Portfolio Reference
 
+## Unified Workflow contract
+
+This module maps to the verifier/contract layer of the unified Workflow
+runtime. `evaluateAdapterPortfolioStep` accepts
+`experiment_id`, `candidate_id`, `attempt`, an explicit `evaluated_at`, and
+the registry value (or an artifact URI/SHA-256 paired with its already-loaded
+value). It performs no I/O, network access, polling, controller work, or
+filesystem writes. The CLI may load the local JSON artifact, but the Workflow
+step receives the value directly and treats the registry artifact reference as
+the authoritative identity.
+
+The output is an immutable `understudy.adapter_promotion_decision.v1` artifact
+with an idempotency key derived from `(experiment_id, candidate_id, attempt)`.
+Its `inputs` records the registry URI/hash, candidate sealed-holdout
+URI/hash/row count, and consumed evidence IDs. A retry with the same inputs is
+byte-identical. Workflow code can write the returned `promotionEvents(...)`
+array through its `getWritable()` stream: it uses the platform event shape
+(`schema_version`, sequence, `run_id`, phase, type, and bounded scalar
+details), with one redacted event per check and one terminal decision event.
+
+Only references, hashes, IDs, scores, and bounded scalar statuses cross this
+boundary. Raw traces, prompts, labels, credentials, and weights are forbidden.
+Evidence `notes` is limited to a redacted summary of at most 500 characters.
+This module performs no provider or paid work, so it has no
+submit/inspect/cancel/reconcileUsage surface.
+
 The base-model transfer set contains one base reference for each suite in the
 union of the candidate suite and every currently promoted adapter's suite.
 Each reference is a `subject: "base"` holdout row with no candidate in

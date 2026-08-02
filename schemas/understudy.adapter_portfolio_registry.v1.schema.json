@@ -13,6 +13,25 @@
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "artifact_ref": {
+      "type": "object",
+      "required": ["uri", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "candidate_holdout_artifact": {
+      "type": "object",
+      "required": ["uri", "sha256", "row_count"],
+      "additionalProperties": false,
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "row_count": { "type": "integer", "minimum": 1 }
+      }
+    },
     "policy": {
       "type": "object",
       "required": ["metric", "min_lift_vs_base", "max_regression"],
@@ -59,7 +78,7 @@
           "additionalProperties": false,
           "properties": { "loaded_adapters": { "type": "array", "items": { "type": "string", "minLength": 1 } } }
         },
-        "notes": { "type": "string" }
+        "notes": { "type": "string", "maxLength": 500 }
       }
     },
     "adapter": {
