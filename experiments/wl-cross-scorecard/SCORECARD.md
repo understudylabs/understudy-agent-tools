@@ -22,7 +22,7 @@ is **$62,683.08822989**.
 | 3 | WL-03 | — | 38048 | 1543989018 | 21036102 | 0.696463 | 4263.356460 | 0.072974 | 0.021552 | pending — awaiting per-workload repair memo |
 | 4 | WL-04 | — | 39296 | 1412872736 | 18400589 | 0.793038 | 3011.857223 | 0.051552 | 0.027687 | pending — awaiting per-workload repair memo |
 | 5 | WL-05 | WL-DI → [memo](../domain-identification-repair/REPAIR-MEMO.md) | 148936 | 675239846 | 9617187 | 0.664327 | 2447.093050 | 0.041886 | 0.000047 | DPO landed — dev +0.125, holdout +0.000; not promotable |
-| 6 | WL-06 | — | 13545 | 773815738 | 4882849 | 0.827637 | 1337.175123 | 0.022888 | 0.018900 | pending — awaiting per-workload repair memo |
+| 6 | WL-06 | WL-OEE → [memo](../on-event-execution/repair-memo.md) | 13545 | 773815738 | 4882849 | 0.827637 | 1337.175123 | 0.022888 | 0.018900 | DPO landed — dev +0.229; holdout clean and unexecuted |
 | 7 | WL-07 | — | 47872 | 158077276 | 8325019 | 0.007060 | 1002.539531 | 0.017160 | 0.234272 | pending — awaiting per-workload repair memo |
 | 8 | WL-08 | WL-OR → [memo](../workload-orchestrator/repair-memo.md) | 2474 | 141267215 | 689926 | 0.079853 | 810.364917 | 0.013871 | 0.000808 | DPO landed — dev +0.100, holdout +0.000; not promotable |
 | 9 | WL-09 | — | 7402 | 273138165 | 2917071 | 0.639952 | 791.761397 | 0.013552 | 0.042286 | pending — awaiting per-workload repair memo |
@@ -66,6 +66,10 @@ improves from 0.8030 to 0.8219 (+0.019), but the 95% interval is
 [-0.051, +0.090] with 11 wins and 11 losses. Its candidate was never scored on
 the holdout, so the base-only reference is not a holdout comparison; the result
 is a null/no-promotion outcome.
+WL-OEE has a passing 96-task gate fixture and a landed DPO result: dev improves
+from 0.425 to 0.654 (+0.229) across 16 tasks, with zero over-acting and
+forbidden writes in both arms. Its holdout is clean and unexecuted, so there is
+no unseen-split confirmation of the dev direction.
 
 ## Landed memo summaries
 
@@ -134,6 +138,19 @@ is a null/no-promotion outcome.
 - **Gate:** oracle 1.000, sentinel 0.000, leakage clean, unreachable literals absent, deterministic reset and frozen-holdout refusal pass.
 - **DPO:** 126 train-only pairs; sampled dev +0.019 with CI spanning zero; holdout candidate was never scored.
 
+### WL-OEE — suitable methodology target
+
+- **Arm:** [repair-memo.md](../on-event-execution/repair-memo.md); workload label WL-OEE.
+- **Volume/cost:** 13,912 requests over 30 active days; **$703.79**; **$0.0506/request**.
+- **Rank/share:** rank 6 by cost; 2.24% of aggregate project spend.
+- **Input:** 794.3M provider-equivalent tokens; p50 55,434, p95 89,237; 82.1% cache-read.
+- **Output:** p50 192, p95 1,099; 66.6% below 256 tokens; bounded majority with a variable tail.
+- **Reliability:** 98.2% success aggregate; 256 upstream non-success requests.
+- **Verdict:** suitable methodology target; context-bound economics make replacement quality the key question.
+- **Failing bands:** malformed tool calls dominate; requester→contact joins are difficult in the bounded band; variable tail remains unmeasured.
+- **Gate:** oracle 1.0, sentinel 0.0, leakage/reachability/determinism/integrity checks pass; frozen-holdout refusal passes.
+- **DPO:** 42 train-only pairs; dev +0.229 on 16 tasks; holdout clean and deliberately unexecuted.
+
 ## DPO lift (base → DPO, dev/holdout per band)
 
 WL-OR and WL-DI have complete base-to-DPO comparisons. WL-AOP has a DPO
@@ -141,7 +158,8 @@ attempt with dev results under two decode settings, but its sealed holdout was
 structurally absent from the submit payload and never executed. Values below
 come from the dev and sealed-holdout band reports; `n` is the task count per band.
 WL-AU has sampled dev band results, but no candidate holdout run; its base-only
-holdout reference is not a lift measurement. WL-chat DPO results remain pending.
+holdout reference is not a lift measurement. WL-OEE has a clean, unexecuted
+holdout and dev-only per-band results. WL-chat DPO results remain pending.
 
 | WL-OR band | n | Dev base | Dev DPO | Dev Δ | Holdout base | Holdout DPO | Holdout Δ |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -216,9 +234,26 @@ ties; the effect is not distinguishable from zero. Over-acting remained zero
 in both arms and forbidden effects fell from 5 to 3, but these small-count
 guardrail changes do not establish a quality win. The arm is **not promotable**.
 
+### WL-OEE DPO result
+
+The dev comparison used the same renderer and temperature-0 sampling for both
+arms. The holdout is clean and was never executed; no holdout base or candidate
+scores are reported.
+
+| WL-OEE band | Dev n | Base | DPO | Dev Δ | Holdout |
+|---|---:|---:|---:|---:|---|
+| bounded | 10 | 0.400 | 0.667 | **+0.267** | clean, not run |
+| extended | 4 | 0.500 | 0.750 | **+0.250** | clean, not run |
+| variable | 2 | 0.400 | 0.400 | 0.000 | clean, not run |
+| **overall** | **16** | **0.425** | **0.654** | **+0.229** | clean, not run |
+
+Over-acting and forbidden writes remained zero in both arms; malformed episodes
+fell from 16/16 to 15/16. The variable band did not move and has only two dev
+tasks, so the result is directional rather than a production or holdout claim.
+
 ## Does DPO lift correlate with volume/cost ranking?
 
-**Partial — four DPO arms are now available, but only two have clean sealed
+**Partial — five DPO arms are now available, but only two have clean sealed
 holdout results.** WL-OR (rank 8 by spend)
 shows +0.100 dev lift and +0.000 sealed-holdout lift; WL-DI (rank 5) shows
 +0.125 dev lift and +0.000 sealed-holdout lift. Both are behavioural cases and
@@ -228,7 +263,9 @@ promotable. WL-AU (rank 2) has +0.019 sampled dev lift with a 95% CI of
 [-0.051, +0.090], so its high-spend result is also consistent with no lift;
 its candidate holdout was never run. This strengthens the emerging read that
 DPO lift does **not** track spend rank, but it does not create a holdout result
-or a statistically established correlation. Pair coverage/data volume per
+or a statistically established correlation. WL-OEE (rank 6) adds +0.229 dev
+lift, but its clean holdout was deliberately unexecuted and its 16-task dev
+split is too small for a firm effect claim. Pair coverage/data volume per
 failing band remains the more plausible binding constraint. The evidence is
 also decode- and split-sensitive. A high-spend arm with genuine sealed-holdout
 lift would falsify this pattern; so would more arms with varied spend ranks,
