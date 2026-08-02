@@ -1,0 +1,178 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.350Z",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "model": "accounts/fireworks/models/gpt-oss-20b",
+  "split": "dev",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 36,
+    "scored": 36,
+    "mean": 0.5138888888888888,
+    "headroom": 0.48611111111111116
+  },
+  "bands": {
+    "aggregation": {
+      "tasks": 2,
+      "scored": 2,
+      "mean_score": 0.5,
+      "exact_1": 1,
+      "zero": 1,
+      "headroom": 0.5,
+      "ci": {
+        "lower": 0,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "cascade": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.125,
+      "exact_1": 0,
+      "zero": 3,
+      "headroom": 0.875,
+      "ci": {
+        "lower": 0,
+        "upper": 0.37
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "conditional": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.5,
+      "exact_1": 2,
+      "zero": 2,
+      "headroom": 0.5,
+      "ci": {
+        "lower": 0,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "cross-record": {
+      "tasks": 6,
+      "scored": 6,
+      "mean_score": 0.8333333333333334,
+      "exact_1": 5,
+      "zero": 1,
+      "headroom": 0.16666666666666663,
+      "ci": {
+        "lower": 0.5066666666666667,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "discovery": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.75,
+      "exact_1": 3,
+      "zero": 1,
+      "headroom": 0.25,
+      "ci": {
+        "lower": 0.26,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "long-chain": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0,
+      "exact_1": 0,
+      "zero": 4,
+      "headroom": 1,
+      "ci": {
+        "lower": 0,
+        "upper": 0
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "multi-hop": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.5,
+      "exact_1": 2,
+      "zero": 2,
+      "headroom": 0.5,
+      "ci": {
+        "lower": 0,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "multi-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.25,
+      "exact_1": 1,
+      "zero": 3,
+      "headroom": 0.75,
+      "ci": {
+        "lower": 0,
+        "upper": 0.74
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "single-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    }
+  },
+  "saturated_bands": [
+    "single-write"
+  ],
+  "measurable_bands": [],
+  "gate": {
+    "worth_investing": false,
+    "reason": "No measurable band has headroom; saturated bands block training: single-write."
+  }
+}

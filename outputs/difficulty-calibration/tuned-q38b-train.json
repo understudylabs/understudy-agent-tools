@@ -1,0 +1,78 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.600Z",
+  "fixture": "automationbench-simple-api-offline-v1",
+  "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+  "split": "train",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 48,
+    "scored": 48,
+    "mean": 0.4583333333333333,
+    "headroom": 0.5416666666666667
+  },
+  "bands": {
+    "discovery": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.375,
+      "exact_1": 6,
+      "zero": 10,
+      "headroom": 0.625,
+      "ci": {
+        "lower": 0.13,
+        "upper": 0.62
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    },
+    "multi-write": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.5,
+      "exact_1": 7,
+      "zero": 7,
+      "headroom": 0.5,
+      "ci": {
+        "lower": 0.26330751314557255,
+        "upper": 0.7366924868544275
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    },
+    "single-write": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.5,
+      "exact_1": 8,
+      "zero": 8,
+      "headroom": 0.5,
+      "ci": {
+        "lower": 0.2469650880477821,
+        "upper": 0.753034911952218
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    }
+  },
+  "saturated_bands": [],
+  "measurable_bands": [
+    "discovery",
+    "multi-write",
+    "single-write"
+  ],
+  "gate": {
+    "worth_investing": true,
+    "reason": "Investable headroom remains in: discovery, multi-write, single-write."
+  }
+}

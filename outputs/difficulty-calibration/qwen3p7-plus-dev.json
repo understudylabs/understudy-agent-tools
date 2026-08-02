@@ -1,0 +1,183 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.448Z",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "model": "accounts/fireworks/models/qwen3p7-plus",
+  "split": "dev",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 36,
+    "scored": 36,
+    "mean": 0.9074074074074076,
+    "headroom": 0.09259259259259245
+  },
+  "bands": {
+    "aggregation": {
+      "tasks": 2,
+      "scored": 2,
+      "mean_score": 1,
+      "exact_1": 2,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "cascade": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "conditional": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "cross-record": {
+      "tasks": 6,
+      "scored": 6,
+      "mean_score": 0.8333333333333334,
+      "exact_1": 5,
+      "zero": 1,
+      "headroom": 0.16666666666666663,
+      "ci": {
+        "lower": 0.5066666666666667,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "discovery": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.75,
+      "exact_1": 3,
+      "zero": 1,
+      "headroom": 0.25,
+      "ci": {
+        "lower": 0.26,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "long-chain": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.6666666666666666,
+      "exact_1": 2,
+      "zero": 1,
+      "headroom": 0.33333333333333337,
+      "ci": {
+        "lower": 0.2046902362914556,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "multi-hop": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "multi-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "single-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    }
+  },
+  "saturated_bands": [
+    "aggregation",
+    "cascade",
+    "conditional",
+    "multi-hop",
+    "multi-write",
+    "single-write"
+  ],
+  "measurable_bands": [],
+  "gate": {
+    "worth_investing": false,
+    "reason": "No measurable band has headroom; saturated bands block training: aggregation, cascade, conditional, multi-hop, multi-write, single-write."
+  }
+}

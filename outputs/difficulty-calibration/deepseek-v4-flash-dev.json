@@ -1,0 +1,186 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.300Z",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "model": "accounts/fireworks/models/deepseek-v4-flash",
+  "split": "dev",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 36,
+    "scored": 36,
+    "mean": 1,
+    "headroom": 0
+  },
+  "bands": {
+    "aggregation": {
+      "tasks": 2,
+      "scored": 2,
+      "mean_score": 1,
+      "exact_1": 2,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "cascade": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "conditional": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "cross-record": {
+      "tasks": 6,
+      "scored": 6,
+      "mean_score": 1,
+      "exact_1": 6,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "discovery": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "long-chain": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "multi-hop": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "multi-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    },
+    "single-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 1,
+      "exact_1": 4,
+      "zero": 0,
+      "headroom": 0,
+      "ci": {
+        "lower": 1,
+        "upper": 1
+      },
+      "saturated_lower_bound": true,
+      "low_sample": true,
+      "saturated": true,
+      "status": "saturated",
+      "verdict": "block_training"
+    }
+  },
+  "saturated_bands": [
+    "aggregation",
+    "cascade",
+    "conditional",
+    "cross-record",
+    "discovery",
+    "long-chain",
+    "multi-hop",
+    "multi-write",
+    "single-write"
+  ],
+  "measurable_bands": [],
+  "gate": {
+    "worth_investing": false,
+    "reason": "No measurable band has headroom; saturated bands block training: aggregation, cascade, conditional, cross-record, discovery, long-chain, multi-hop, multi-write, single-write."
+  }
+}

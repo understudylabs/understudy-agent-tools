@@ -1,0 +1,74 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.647Z",
+  "fixture": "automationbench-simple-api-offline-v1",
+  "model": "accounts/understudy-dev/models/qwen3-8b-abo-simpleapi-sft-r16e3#accounts/understudy-dev/deployments/abo-q38b-livemerge",
+  "split": "dev",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 12,
+    "scored": 12,
+    "mean": 0.5833333333333334,
+    "headroom": 0.41666666666666663
+  },
+  "bands": {
+    "discovery": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.75,
+      "exact_1": 3,
+      "zero": 1,
+      "headroom": 0.25,
+      "ci": {
+        "lower": 0.26,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "multi-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.25,
+      "exact_1": 1,
+      "zero": 3,
+      "headroom": 0.75,
+      "ci": {
+        "lower": 0,
+        "upper": 0.74
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "single-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.75,
+      "exact_1": 3,
+      "zero": 1,
+      "headroom": 0.25,
+      "ci": {
+        "lower": 0.26,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    }
+  },
+  "saturated_bands": [],
+  "measurable_bands": [],
+  "gate": {
+    "worth_investing": false,
+    "reason": "No band has enough scored rows to support a training investment decision."
+  }
+}

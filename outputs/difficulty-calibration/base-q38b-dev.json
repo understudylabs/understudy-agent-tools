@@ -1,0 +1,74 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.550Z",
+  "fixture": "automationbench-simple-api-offline-v1",
+  "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/abo-q38b-base",
+  "split": "dev",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 12,
+    "scored": 12,
+    "mean": 0.4583333333333333,
+    "headroom": 0.5416666666666667
+  },
+  "bands": {
+    "discovery": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.75,
+      "exact_1": 3,
+      "zero": 1,
+      "headroom": 0.25,
+      "ci": {
+        "lower": 0.26,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "multi-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.375,
+      "exact_1": 1,
+      "zero": 2,
+      "headroom": 0.625,
+      "ci": {
+        "lower": 0,
+        "upper": 0.8441392828006057
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    },
+    "single-write": {
+      "tasks": 4,
+      "scored": 4,
+      "mean_score": 0.25,
+      "exact_1": 1,
+      "zero": 3,
+      "headroom": 0.75,
+      "ci": {
+        "lower": 0,
+        "upper": 0.74
+      },
+      "saturated_lower_bound": false,
+      "low_sample": true,
+      "saturated": false,
+      "status": "insufficient_sample",
+      "verdict": "caution"
+    }
+  },
+  "saturated_bands": [],
+  "measurable_bands": [],
+  "gate": {
+    "worth_investing": false,
+    "reason": "No band has enough scored rows to support a training investment decision."
+  }
+}

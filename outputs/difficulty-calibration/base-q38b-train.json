@@ -1,0 +1,78 @@
+{
+  "schema_version": "understudy.difficulty_calibration.v1",
+  "generated_at": "2026-08-02T01:47:33.500Z",
+  "fixture": "automationbench-simple-api-offline-v1",
+  "model": "accounts/fireworks/models/qwen3-8b#accounts/understudy-dev/deployments/abo-q38b-base",
+  "split": "train",
+  "threshold": 0.95,
+  "min_sample": 10,
+  "overall": {
+    "tasks": 48,
+    "scored": 48,
+    "mean": 0.5625,
+    "headroom": 0.4375
+  },
+  "bands": {
+    "discovery": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.4375,
+      "exact_1": 7,
+      "zero": 9,
+      "headroom": 0.5625,
+      "ci": {
+        "lower": 0.18644970623398982,
+        "upper": 0.6885502937660102
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    },
+    "multi-write": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.3125,
+      "exact_1": 5,
+      "zero": 11,
+      "headroom": 0.6875,
+      "ci": {
+        "lower": 0.07793035859969716,
+        "upper": 0.5470696414003029
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    },
+    "single-write": {
+      "tasks": 16,
+      "scored": 16,
+      "mean_score": 0.9375,
+      "exact_1": 15,
+      "zero": 1,
+      "headroom": 0.0625,
+      "ci": {
+        "lower": 0.815,
+        "upper": 1
+      },
+      "saturated_lower_bound": false,
+      "low_sample": false,
+      "saturated": false,
+      "status": "measurable",
+      "verdict": "invest"
+    }
+  },
+  "saturated_bands": [],
+  "measurable_bands": [
+    "discovery",
+    "multi-write",
+    "single-write"
+  ],
+  "gate": {
+    "worth_investing": true,
+    "reason": "Investable headroom remains in: discovery, multi-write, single-write."
+  }
+}
