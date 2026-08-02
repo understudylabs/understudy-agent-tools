@@ -64,7 +64,15 @@ def main():
     check("failed receipt streams reason independently",
           live.states["b"]["status"] == "failed"
           and live.states["b"]["failure_category"] == "rate_limit")
-    print("ALL 14 ISLAND TESTS PASSED")
+    live.terminal = {}
+    live.publish = lambda: live.terminal
+    LiveManifest.stop(live, state="stopped_no_distinct_candidates",
+                      outcome="no_distinct_candidates", reason="deduplicated",
+                      distinct_prompt_count=1)
+    check("terminal no-distinct state is explicit",
+          live.terminal["state"] == "stopped_no_distinct_candidates"
+          and live.terminal["promotion_blocked"] is True)
+    print("ALL 15 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

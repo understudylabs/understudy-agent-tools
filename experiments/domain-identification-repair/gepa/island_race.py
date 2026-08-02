@@ -96,7 +96,19 @@ class LiveManifest:
         self.records = {}
         self.states = {}
         self.confirmations = {}
+        self.terminal = {}
         self._lock = threading.Lock()
+
+    def stop(self, *, state, outcome, reason, distinct_prompt_count):
+        with self._lock:
+            self.terminal = {
+                "state": state,
+                "outcome": outcome,
+                "stop_reason": reason,
+                "distinct_prompt_count": distinct_prompt_count,
+                "promotion_blocked": True,
+            }
+        return self.publish()
 
     def update(self, node_id, **values):
         with self._lock:
@@ -175,6 +187,7 @@ class LiveManifest:
         with self._lock:
             states = {k: dict(v) for k, v in self.states.items()}
             records = {k: dict(v) for k, v in self.records.items()}
+            terminal = dict(self.terminal)
         nodes = list(self.baseline_nodes)
         for node_id in sorted(states):
             nodes.append(self._node(node_id, states[node_id], records.get(node_id, {})))
@@ -184,14 +197,32 @@ class LiveManifest:
             if state.get("failure_reason"):
                 failures.append({"node_id": node_id, "category": state.get("failure_category"),
                                  "reason": state.get("failure_reason")})
-        latencies = sorted(float(rec["wall_clock_s"]) for rec in records.values()
-                           if isinstance(rec.get("wall_clock_s"), (int, float)))
+        island_walls = sorted(float(rec["wall_clock_s"]) for rec in records.values()
+                              if isinstance(rec.get("wall_clock_s"), (int, float)))
+        rollout_latencies = []
+        rollout_statuses = {}
+        for rec in records.values():
+            ledger = Path(rec.get("run_dir", "")) / "progress.jsonl"
+            if not ledger.is_file():
+                continue
+            for line in ledger.read_text().splitlines():
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if event.get("kind") != "episode":
+                    continue
+                if isinstance(event.get("latency_s"), (int, float)):
+                    rollout_latencies.append(float(event["latency_s"]))
+                status = str(event.get("status") or "unknown")
+                rollout_statuses[status] = rollout_statuses.get(status, 0) + 1
+        rollout_latencies.sort()
         def percentile(values, q):
             if not values:
                 return None
             return values[min(len(values) - 1, round((len(values) - 1) * q))]
         totals = {
-            "state": "completed" if states and all(s.get("status") in em.TERMINAL_STAGES for s in states.values()) else "running",
+            "state": terminal.get("state") or ("completed" if states and all(s.get("status") in em.TERMINAL_STAGES for s in states.values()) else "running"),
             "wall_clock_s": round(time.time() - self.started),
             "budget": snap,
             "episodes_completed": snap.get("stage_a_completed", 0),
@@ -202,13 +233,19 @@ class LiveManifest:
             "islands_succeeded": sum(s.get("status") in {"completed", "promoted"} for s in states.values()),
             "islands_failed": sum(s.get("status") == "failed" for s in states.values()),
             "failure_events": failures,
-            "latency_s": {"p50": percentile(latencies, .50),
-                          "p95": percentile(latencies, .95),
-                          "samples": len(latencies)},
+            "rollout_latency_s": {"p50": percentile(rollout_latencies, .50),
+                                  "p95": percentile(rollout_latencies, .95),
+                                  "max": max(rollout_latencies) if rollout_latencies else None,
+                                  "samples": len(rollout_latencies)},
+            "island_wall_s": {"p50": percentile(island_walls, .50),
+                              "p95": percentile(island_walls, .95),
+                              "samples": len(island_walls)},
+            "rollout_statuses": rollout_statuses,
             "cost_usd": None,
             "cost_coverage": "out_of_band_clickhouse",
             "holdout_executed": False,
         }
+        totals.update(terminal)
         manifest = em.build_manifest(
             experiment=self.experiment_id, dev_split_sha256=self.dev_sha,
             rank_protocol=self.rank_protocol, nodes=nodes,
@@ -337,7 +374,35 @@ def main():
                           live=live, phase="stage1", episode_cap=args.stage1_episodes)
     unique = unique_ranked(stage1.values())
     if len(unique) < 2:
-        raise FuseTripped(f"successive halving needs two distinct completed prompts; got {len(unique)}")
+        reason = f"successive halving needs two distinct completed prompts; got {len(unique)}"
+        snapshot = live.stop(state="stopped_no_distinct_candidates",
+                             outcome="no_distinct_candidates", reason=reason,
+                             distinct_prompt_count=len(unique))
+        receipt = {
+            "schema_version": "understudy.island_race_receipt.v1",
+            "experiment_id": experiment_id,
+            "state": "stopped_no_distinct_candidates",
+            "stop_reason": reason,
+            "dev_split_sha256": dev_sha,
+            "holdout_executed": False,
+            "islands": stage1,
+            "distinct_prompt_count": len(unique),
+            "stage2_executed": False,
+            "survivors": {},
+            "confirmations": [],
+            "selected_winner": None,
+            "promotion_blocked": True,
+            "budget": budget.snapshot(),
+            "manifest_path": str(manifest_path),
+            "manifest_digest": em.manifest_digest(json.loads(manifest_path.read_text())),
+            "publish_status": snapshot["ingest"],
+            "total_cost_usd": None,
+            "cost_coverage": "out_of_band_clickhouse",
+            "wall_clock_s": round(time.time() - started),
+        }
+        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        print(json.dumps(receipt, indent=2))
+        return
     survivors = unique[:2]
     survivor_hashes = {rec["winner_prompt_sha256"] for rec in survivors}
     for bid, rec in stage1.items():

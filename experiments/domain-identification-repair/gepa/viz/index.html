@@ -172,8 +172,10 @@
       document.getElementById("experiment").textContent = manifest.experiment || "GEPA experiment";
       document.getElementById("status").textContent = active.length
         ? `${active.length} island${active.length === 1 ? "" : "s"} active · ${active.map(node => node.branch_id || node.node_id).join(", ")}`
-        : manifest.totals?.outcome === "no_improvement_over_wave1"
-          ? "Complete · Wave 1 remains best"
+        : manifest.totals?.outcome === "no_distinct_candidates"
+          ? "Stopped · no distinct candidate; Wave 1 remains best"
+          : manifest.totals?.outcome === "no_improvement_over_wave1"
+            ? "Complete · Wave 1 remains best"
           : "Complete";
       document.getElementById("elapsed").textContent = duration(manifest.totals?.wall_clock_s);
       document.getElementById("budget").textContent = cap ? `${completed}/${cap} episodes` : `${completed} episodes`;
@@ -190,11 +192,13 @@
       const succeeded = Number(manifest.totals?.islands_succeeded ?? 0);
       const failed = Number(manifest.totals?.islands_failed ?? 0);
       const islandState = document.getElementById("island-state");
-      islandState.innerHTML = `<span class="ok">${succeeded} success</span> · ${active.length} running · <span class="bad">${failed} failed</span>`;
-      const latency = manifest.totals?.latency_s || {};
+      islandState.innerHTML = manifest.totals?.outcome === "no_distinct_candidates"
+        ? `<span class="ok">${succeeded} screened</span> · 0 distinct advances · <span class="bad">${failed} failed</span>`
+        : `<span class="ok">${succeeded} success</span> · ${active.length} running · <span class="bad">${failed} failed</span>`;
+      const latency = manifest.totals?.rollout_latency_s || {};
       document.getElementById("latency").textContent = latency.p50 == null
         ? "collecting"
-        : `p50 ${duration(latency.p50)} · p95 ${duration(latency.p95)}`;
+        : `rollout p50 ${duration(latency.p50)} · p95 ${duration(latency.p95)}`;
       const cost = manifest.totals?.cost_usd;
       document.getElementById("cost").textContent = cost == null
         ? (manifest.totals?.cost_coverage || "unmetered")
@@ -205,7 +209,10 @@
       failure.className = `failure${latestFailure ? " bad" : ""}`;
       failure.textContent = latestFailure
         ? `${latestFailure.node_id}: ${latestFailure.category} — ${latestFailure.reason}`
-        : active.length ? "no failures reported" : "run complete";
+        : active.length ? "no failures reported"
+          : manifest.totals?.outcome === "no_distinct_candidates"
+            ? "stopped: all islands deduplicated to the Wave-1 prompt"
+            : "run complete";
 
       const waveData = [
         ["baseline", "Baseline"],
@@ -220,7 +227,10 @@
         const isBest = waveBest && best && waveBest.node_id === best.node_id;
         const el = document.createElement("div");
         el.className = `wave${isBest ? " wave--best" : ""}${waveActive ? " wave--active" : ""}`;
-        const note = waveActive ? "running" : waveNodes.some(node => node.provenance?.outcome === "no_improvement_deduplicated") ? "no improvement" : "complete";
+        const note = waveActive ? "running"
+          : wave === "wave2" && manifest.totals?.outcome === "no_distinct_candidates" ? "no distinct candidate"
+          : waveNodes.some(node => node.provenance?.outcome === "no_improvement_deduplicated") ? "no improvement"
+          : "complete";
         el.innerHTML = `<div class="wave-top"><span>${label}</span><span class="wave-score">${pct(waveBest?.score)}</span></div><div class="wave-note">${note}</div>`;
         return el;
       }));
