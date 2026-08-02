@@ -36,6 +36,7 @@ export interface AdapterPortfolioWorkflowEvent {
   run_id: string;
   stream: "run" | "candidate" | "score" | "error";
   type: "promotion_check" | "promotion_decision";
+  occurred_at: string;
   phase: "evaluation" | "terminal";
   message: "Adapter portfolio gate check." | "Adapter portfolio decision.";
   details: Record<string, string | number | boolean>;
@@ -133,6 +134,7 @@ export function promotionEvents(
         ? "candidate" as const
         : item.status === "pass" ? "score" as const : "error" as const,
       type: "promotion_check" as const,
+      occurred_at: input.evaluated_at,
       phase: "evaluation" as const,
       message: "Adapter portfolio gate check." as const,
       details: {
@@ -150,6 +152,7 @@ export function promotionEvents(
       run_id: input.experiment_id,
       stream: "run",
       type: "promotion_decision",
+      occurred_at: input.evaluated_at,
       phase: "terminal",
       message: "Adapter portfolio decision.",
       details: {
