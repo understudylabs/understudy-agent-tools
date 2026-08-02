@@ -95,6 +95,21 @@ class ModalExecutorLogicTest(unittest.TestCase):
             digest = hashlib.sha256((ROOT / "schemas" / name).read_bytes()).hexdigest()
             self.assertEqual(digest, manifest["schemas"][name], name)
 
+    def test_platform_bundle_digest_matches_manifest(self):
+        manifest = json.loads(
+            (ROOT / "schemas" / "understudy-train-contract-manifest.json").read_text()
+        )
+        digest_input = "".join(
+            f"{name}:{digest}\n"
+            for name, digest in sorted(manifest["schemas"].items())
+        ).encode()
+        bundle_sha256 = hashlib.sha256(digest_input).hexdigest()
+        self.assertEqual(
+            bundle_sha256,
+            "ca87c54f45ae89fe210ee2e48da2618cdf860f23dcccce163f004302bcdf7241",
+        )
+        self.assertEqual(bundle_sha256, manifest["bundle_sha256"])
+
     def test_server_receipts_validate_against_vendored_schemas(self):
         job = {
             "executor": "modal",
