@@ -110,6 +110,35 @@ Run the reaper on a schedule (hourly is enough) with `--json` so the plan is
 machine-readable, and alert on `counts.review > 0` or a rising
 `totals.unscoredBurnUsdPerHr`.
 
+## Inside a durable workflow
+
+The scripts are thin callers of one idempotent step — there is no controller,
+poller, or second state store here. A workflow calls it directly:
+
+```ts
+const result = await runFleetReapStep({
+  controlPlane,                 // { listDeployments, scaleToZero, deleteDeployment }
+  experimentId, candidateId, attempt,   // idempotency key is derived from these
+  apply: true,
+});
+// result.idempotencyKey === `fleet-reap:${experimentId}:${candidateId}:${attempt}`
+```
+
+The step returns immediately — it only reads and mutates the control plane, and
+never waits on GPU work. Retrying the same `(experimentId, candidateId,
+attempt)` converges: scaling an already-zero deployment is a no-op and deleting
+an already-gone one is recorded as `already-absent`, so a retry never produces a
+second effect. Real control-plane failures propagate so the workflow, not this
+step, owns retries.
+
+It emits two immutable artifacts — `understudy.fleet_scoreboard.v1` and
+`understudy.fleet_reap_plan.v1` — plus small redacted `understudy.fleet_event.v1`
+events (`usage`, `scoreboard`, `reap_plan`, `reap_action`, `error`) carrying
+scalar cost/ownership facts only. Pass artifact **refs** (`uri` + `sha256`)
+through workflow state, never the bodies, and never traces, prompts, labels,
+credentials, or weights. `--artifact-dir` writes both artifacts and prints their
+refs.
+
 ## Deeper notes
 
 Policy tuning, the JSON shapes, the module API for building this into another

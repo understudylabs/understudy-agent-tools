@@ -16,6 +16,8 @@ after `npm run build` to reuse any of it inside another harness.
 | `buildScoreboard`, `formatScoreboard` | `scoreboard.ts` | join verifier scores onto costed rows |
 | `planReap`, `formatReapPlan` | `reaper.ts` | pure decision planner, no side effects |
 | `listDeployments`, `scaleDeploymentToZero`, `deleteDeployment` | `provider.ts` | the only code that talks to the control plane |
+| `runFleetReapStep`, `fleetReapIdempotencyKey` | `step.ts` | the idempotent workflow step both scripts call |
+| `toScoreboardArtifact`, `toReapPlanArtifact`, `artifactRef`, `canonicalJson`, `fleetEvent` | `artifacts.ts` | immutable artifact contracts and content hashing |
 
 `planReap` and `buildScoreboard` both accept an injected `now`, so policy
 behavior is testable without waiting for a TTL to elapse. `ProviderConfig`
@@ -61,9 +63,11 @@ Useful fields per row: `score`, `usdPerHr`, `scorePerUsdHr`, `owner`, `tagged`,
 `expiresAt`, `flags` (`burn-without-score`, `untagged`, `expired`,
 `scaled-to-zero`, `no-deployment`).
 
-`fleet-reaper.mjs --json` emits `{ account, mode, generatedAt, policy,
-decisions, savingsUsdPerHr, counts, applied }`. `mode` is `dry-run` unless both
-`--apply` and `--yes` were passed; `applied` lists what actually executed.
+`fleet-reaper.mjs --json` emits the step result: `{ idempotencyKey, mode,
+scoreboard, scoreboardSha256, plan, planSha256, events, refs }`, where `plan` is
+the `understudy.fleet_reap_plan.v1` artifact. `mode` is `dry-run` unless both
+`--apply` and `--yes` were passed; `plan.applied` lists what actually executed,
+and `refs` is populated only with `--artifact-dir`.
 
 Monitoring suggestions: page on `counts.review > 0` for longer than a shift,
 alert on `totals.unscoredBurnUsdPerHr` above a threshold you pick per sweep, and
@@ -94,6 +98,26 @@ A minimal record:
   }
 }
 ```
+
+## Artifact contracts
+
+Schemas live in `schemas/understudy.fleet_scoreboard.v1.schema.json` and
+`schemas/understudy.fleet_reap_plan.v1.schema.json`, both `additionalProperties:
+false` so a new field is a deliberate schema change rather than a silent leak.
+Bodies are hashed with `sha256Hex(canonicalJson(artifact))` — key order is
+normalized first, so the same facts always produce the same digest — and
+`artifactRef(artifact, uri)` returns `{ schema_version, uri, sha256, bytes }`.
+Put the ref in workflow state and leave the body at its uri.
+
+Consumers can treat both artifacts as append-only history: the reap plan records
+the policy, every decision with its reason, and what actually executed
+(`applied[].outcome` is `applied` or `already-absent`), keyed by
+`idempotency_key`, so replaying an attempt overwrites nothing.
+
+`understudy.fleet_event.v1` events carry `{ kind, experiment_id, candidate_id,
+attempt, fields }` where `fields` holds scalars only. They report progress
+directly rather than letting a consumer infer state from whether a deployment
+happens to be up.
 
 ## Provider calls
 

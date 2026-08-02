@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "understudy.fleet_scoreboard.v1",
+  "title": "Fleet scoreboard",
+  "description": "Verifier score joined against live dedicated-deployment burn for one experiment. Cost, ownership, and TTL facts only — never traces, prompts, labels, credentials, or weights.",
+  "type": "object",
+  "required": ["schema_version", "experiment_id", "generated_at", "totals", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.fleet_scoreboard.v1" },
+    "experiment_id": { "type": "string" },
+    "account": { "type": ["string", "null"] },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "totals": {
+      "type": "object",
+      "required": [
+        "arms",
+        "deployments",
+        "live",
+        "scaledToZero",
+        "estBurnUsdPerHr",
+        "untaggedBurnUsdPerHr",
+        "unscoredBurnUsdPerHr"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "arms": { "type": "integer" },
+        "deployments": { "type": "integer" },
+        "live": { "type": "integer" },
+        "scaledToZero": { "type": "integer" },
+        "estBurnUsdPerHr": { "type": "number" },
+        "untaggedBurnUsdPerHr": { "type": "number" },
+        "unscoredBurnUsdPerHr": { "type": "number" }
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["arm", "candidate_id", "deployment", "owner", "score", "usd_per_hr", "live", "tagged", "flags"],
+        "additionalProperties": false,
+        "properties": {
+          "arm": { "type": "string" },
+          "candidate_id": { "type": ["string", "null"] },
+          "deployment": { "type": ["string", "null"] },
+          "owner": { "type": ["string", "null"] },
+          "score": { "type": ["number", "null"] },
+          "split": { "type": ["string", "null"] },
+          "usd_per_hr": { "type": "number" },
+          "score_per_usd_hr": { "type": ["number", "null"] },
+          "live": { "type": "boolean" },
+          "tagged": { "type": "boolean" },
+          "expires_at": { "type": ["string", "null"] },
+          "flags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
 import { buildDeploymentTags, isReapable, parseDeploymentTags } from "../dist/fleet/tags.js";
@@ -160,13 +162,30 @@ describe("fleet scripts smoke", () => {
   it("plans a reap in dry-run mode and refuses --apply without --yes", () => {
     const dry = run("fleet-reaper.mjs", ["--json"]);
     assert.equal(dry.status, 0, dry.stderr);
-    const plan = JSON.parse(dry.stdout);
-    assert.equal(plan.mode, "dry-run");
-    assert.deepEqual(plan.applied, []);
-    assert.equal(plan.counts.review, 1);
+    const result = JSON.parse(dry.stdout);
+    assert.equal(result.mode, "dry-run");
+    assert.deepEqual(result.plan.applied, []);
+    assert.equal(result.plan.counts.review, 1);
+    assert.equal(result.plan.idempotency_key, "fleet-reap:local:all:0");
 
     const unsafe = run("fleet-reaper.mjs", ["--apply"]);
     assert.equal(unsafe.status, 2);
     assert.match(unsafe.stderr, /--apply also requires --yes/);
+  });
+
+  it("writes content-addressed artifacts whose hash matches the file body", () => {
+    const artifactDir = join(dir, "artifacts");
+    const result = run("fleet-reaper.mjs", ["--experiment-id", "exp-1", "--artifact-dir", artifactDir, "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const { refs } = JSON.parse(result.stdout);
+    assert.deepEqual(
+      refs.map((ref) => ref.schema_version),
+      ["understudy.fleet_scoreboard.v1", "understudy.fleet_reap_plan.v1"],
+    );
+    for (const ref of refs) {
+      const body = readFileSync(fileURLToPath(ref.uri), "utf8").trimEnd();
+      assert.equal(createHash("sha256").update(body).digest("hex"), ref.sha256);
+      assert.equal(Buffer.byteLength(body), ref.bytes);
+    }
   });
 });

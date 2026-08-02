@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "understudy.fleet_reap_plan.v1",
+  "title": "Fleet reap plan",
+  "description": "Immutable record of one reap step: what the owner/TTL tags implied, and what was executed. Dry-run unless mode is 'apply'. Carries an idempotency key deterministic on (experiment_id, candidate_id, attempt).",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "attempt",
+    "idempotency_key",
+    "generated_at",
+    "mode",
+    "policy",
+    "counts",
+    "savings_usd_per_hr",
+    "decisions",
+    "applied"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.fleet_reap_plan.v1" },
+    "experiment_id": { "type": "string" },
+    "candidate_id": { "type": ["string", "null"] },
+    "attempt": { "type": "integer", "minimum": 0 },
+    "idempotency_key": { "type": "string" },
+    "account": { "type": ["string", "null"] },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["dry-run", "apply"] },
+    "policy": {
+      "type": "object",
+      "required": ["graceHours", "deleteAfterHours", "protect"],
+      "additionalProperties": false,
+      "properties": {
+        "graceHours": { "type": "number", "minimum": 0 },
+        "deleteAfterHours": { "type": ["number", "null"] },
+        "protect": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": ["keep", "scale-to-zero", "delete", "review"],
+      "additionalProperties": false,
+      "properties": {
+        "keep": { "type": "integer" },
+        "scale-to-zero": { "type": "integer" },
+        "delete": { "type": "integer" },
+        "review": { "type": "integer" }
+      }
+    },
+    "savings_usd_per_hr": { "type": "number" },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "action", "reason", "owner", "usd_per_hr"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "action": { "enum": ["keep", "scale-to-zero", "delete", "review"] },
+          "reason": { "type": "string" },
+          "owner": { "type": ["string", "null"] },
+          "arm": { "type": ["string", "null"] },
+          "usd_per_hr": { "type": "number" },
+          "overdue_hours": { "type": ["number", "null"] }
+        }
+      }
+    },
+    "applied": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "action", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "action": { "enum": ["scale-to-zero", "delete"] },
+          "outcome": { "enum": ["applied", "already-absent"] }
+        }
+      }
+    }
+  }
+}
