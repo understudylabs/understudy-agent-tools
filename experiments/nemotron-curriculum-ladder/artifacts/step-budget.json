@@ -1,0 +1,593 @@
+{
+  "schema_version": "nemotron.curriculum_ladder.step_budget.v1",
+  "scope": "v2 hard train+dev",
+  "task_count": 96,
+  "oracle_steps": {
+    "min": 3,
+    "p50": 4,
+    "p90": 7,
+    "p95": 7,
+    "max": 7
+  },
+  "harness_max_model_turns": 12,
+  "limit_binding": false,
+  "decision": "Proceed unchanged: the 12-turn model limit exceeds the oracle maximum of 7; the prior zero scores are not caused by an insufficient competent-policy budget.",
+  "rows": [
+    {
+      "task_id": "hard-api-ticket-owner-route-01",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-02",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-03",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-04",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-05",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-06",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-07",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-owner-route-08",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-01",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-02",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-03",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-04",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-05",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-06",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-07",
+      "split": "dev",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-ticket-resolve-notify-08",
+      "split": "dev",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-01",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-02",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-03",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-04",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-05",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-06",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-07",
+      "split": "dev",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-churn-cascade-08",
+      "split": "dev",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-01",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-02",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-03",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-04",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-05",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-06",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-07",
+      "split": "dev",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-rep-departure-cascade-08",
+      "split": "dev",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-01",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-02",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-03",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-04",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-05",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-06",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-07",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-duplicate-merge-08",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-01",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-02",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-03",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-04",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-05",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-06",
+      "split": "train",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-07",
+      "split": "dev",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-reply-thread-close-08",
+      "split": "dev",
+      "steps": 5,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-01",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-02",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-03",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-04",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-05",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-06",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-07",
+      "split": "dev",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-priority-escalation-filter-08",
+      "split": "dev",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-01",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-02",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-03",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-04",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-05",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-06",
+      "split": "train",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-07",
+      "split": "dev",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-dual-close-cleanup-08",
+      "split": "dev",
+      "steps": 7,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-01",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-02",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-03",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-04",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-05",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-06",
+      "split": "train",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-07",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-conditional-route-08",
+      "split": "dev",
+      "steps": 4,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-01",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-02",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-03",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-04",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-05",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-06",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-07",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-load-balance-assign-08",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-01",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-02",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-03",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-04",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-05",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-06",
+      "split": "train",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-07",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-same-title-trap-08",
+      "split": "dev",
+      "steps": 3,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-01",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-02",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-03",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-04",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-05",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-06",
+      "split": "train",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-07",
+      "split": "dev",
+      "steps": 6,
+      "reward": 1
+    },
+    {
+      "task_id": "hard-api-derived-subject-close-08",
+      "split": "dev",
+      "steps": 6,
+      "reward": 1
+    }
+  ]
+}

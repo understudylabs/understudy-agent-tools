@@ -1,0 +1,327 @@
+{
+  "schema_version": "nemotron.curriculum_ladder.full_dev_matrix.v1",
+  "benchmark": "automationbench-simple-api-offline-v2",
+  "split": "dev",
+  "task_count": 36,
+  "cells": {
+    "ladder-full-dpo-v1": {
+      "summary_artifact": "ladder-full-dpo-v1.summary.json",
+      "mean_reward": 0.4920634920634921,
+      "strict_pass_rate": 0.4166666666666667,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.3469387755102041
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.2380952380952381
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 1.0
+        }
+      },
+      "encoding_counts": {
+        "json-text": 225
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 9
+      },
+      "prompt_tokens": 172137,
+      "sampled_tokens": 6059,
+      "total_tokens": 178196,
+      "wall_time_seconds": 554.589712387,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.07313184,
+        "discounted_inference_usd": 0.03656592
+      }
+    },
+    "ladder-full-r0-base-v1": {
+      "summary_artifact": "ladder-full-r0-base-v1.summary.json",
+      "mean_reward": 0.44312169312169314,
+      "strict_pass_rate": 0.3888888888888889,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.5
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.3554421768707483
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.24801587301587302
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 0.8333333333333334
+        }
+      },
+      "encoding_counts": {
+        "json-text": 271
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 10
+      },
+      "prompt_tokens": 249153,
+      "sampled_tokens": 10510,
+      "total_tokens": 259663,
+      "wall_time_seconds": 916.9592198399996,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.10757457000000001,
+        "discounted_inference_usd": 0.053787285000000004
+      }
+    },
+    "ladder-full-r1-base-gepa-v3": {
+      "summary_artifact": "ladder-full-r1-base-gepa-v3.summary.json",
+      "mean_reward": 0.0,
+      "strict_pass_rate": 0.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.0
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.0
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 0.0
+        }
+      },
+      "encoding_counts": {
+        "finish-wrapper": 2,
+        "json-text": 231,
+        "tool-call-wrapper": 1
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 34
+      },
+      "prompt_tokens": 555202,
+      "sampled_tokens": 10926,
+      "total_tokens": 566128,
+      "wall_time_seconds": 1139.897522873,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.22734552,
+        "discounted_inference_usd": 0.11367276
+      }
+    },
+    "ladder-full-r2-sft-gepa-v3": {
+      "summary_artifact": "ladder-full-r2-sft-gepa-v3.summary.json",
+      "mean_reward": 0.0,
+      "strict_pass_rate": 0.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.0
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.0
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 0.0
+        }
+      },
+      "encoding_counts": {
+        "finish-wrapper": 1,
+        "json-text": 399,
+        "tool-call-wrapper": 13
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 35
+      },
+      "prompt_tokens": 631413,
+      "sampled_tokens": 10286,
+      "total_tokens": 641699,
+      "wall_time_seconds": 1034.045390843,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.25643421,
+        "discounted_inference_usd": 0.128217105
+      }
+    },
+    "ladder-full-r3-dpo-gepa-v3": {
+      "summary_artifact": "ladder-full-r3-dpo-gepa-v3.summary.json",
+      "mean_reward": 0.0,
+      "strict_pass_rate": 0.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.0
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.0
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.0
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 0.0
+        }
+      },
+      "encoding_counts": {
+        "json-text": 427,
+        "tool-call-wrapper": 5
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 36
+      },
+      "prompt_tokens": 629379,
+      "sampled_tokens": 9104,
+      "total_tokens": 638483,
+      "wall_time_seconds": 1025.2841046170001,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.25447077,
+        "discounted_inference_usd": 0.127235385
+      }
+    },
+    "ladder-full-sft-v1": {
+      "summary_artifact": "ladder-full-sft-v1.summary.json",
+      "mean_reward": 0.44576719576719576,
+      "strict_pass_rate": 0.3611111111111111,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.8333333333333334
+        },
+        "single-write": {
+          "count": 28,
+          "mean_reward": 0.3112244897959183
+        }
+      },
+      "per_difficulty_tier": {
+        "hard": {
+          "count": 24,
+          "mean_reward": 0.19642857142857142
+        },
+        "v1-style": {
+          "count": 12,
+          "mean_reward": 0.9444444444444445
+        }
+      },
+      "encoding_counts": {
+        "json-text": 158
+      },
+      "termination_failures": {
+        "never_terminating": 0,
+        "no_parsed_call": 0,
+        "step_limit_exhaustion": 2
+      },
+      "prompt_tokens": 100103,
+      "sampled_tokens": 4103,
+      "total_tokens": 104206,
+      "wall_time_seconds": 389.3303752040001,
+      "cost": {
+        "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+        "prompt_usd_per_million": 0.39,
+        "sample_usd_per_million": 0.99,
+        "undiscounted_inference_usd": 0.04310214,
+        "discounted_inference_usd": 0.02155107
+      }
+    }
+  },
+  "uniform_protocol": {
+    "renderer": "nemotron3_disable_thinking",
+    "temperature": 0.0,
+    "samples_per_task": 1,
+    "max_model_turns": 12,
+    "parser": [
+      "bare JSON",
+      "<tool_call>JSON</tool_call>",
+      "<finish/>"
+    ]
+  },
+  "holdout_accessed": false,
+  "total_prompt_tokens": 2337387,
+  "total_sampled_tokens": 50988,
+  "total_tokens": 2388375,
+  "wall_time_seconds": 5060.106325764,
+  "cost": {
+    "undiscounted_inference_usd": 0.9620590499999999,
+    "discounted_inference_usd": 0.48102952499999996,
+    "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/"
+  },
+  "prompt_carry_decision": {
+    "sft_adapter": "nemotron-v1",
+    "dpo_adapter": "nemotron-v1",
+    "reason": "GEPA v3 scores 0.0 with both adapters, while v1 prompt cells score 0.4458 (SFT) and 0.4921 (DPO); retain nemotron-v1 for tuned adapters and do not carry GEPA prompt forward."
+  }
+}

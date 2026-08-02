@@ -1,0 +1,64 @@
+{
+  "encoding_counts": {
+    "finish-wrapper": 1,
+    "json-text": 22
+  },
+  "groups": [
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-07"
+    }
+  ],
+  "hashes": {
+    "benchmark_id": "automationbench-simple-api-offline-v2",
+    "counts": {
+      "dev": 36,
+      "holdout": 60,
+      "train": 120
+    },
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split_sha256": {
+      "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+      "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+      "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b"
+    }
+  },
+  "label": "ladder-fixed-r1-base-gepa-v3-probe",
+  "lora_rank": 32,
+  "mean_model_turns": 8.333333333333334,
+  "mean_reward": 0.0,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "base",
+  "parse_error_rate": 0.3333333333333333,
+  "per_band": {
+    "single-write": {
+      "count": 3,
+      "mean_reward": 0.0
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 3,
+  "samples_per_task": 1,
+  "split": "dev",
+  "strict_pass_rate": 0.0,
+  "task_count": 3,
+  "temperature": 0.0,
+  "total_prompt_tokens": 39069,
+  "total_sampled_tokens": 698,
+  "wall_time_seconds": 70.20391312900006
+}

@@ -1,0 +1,3988 @@
+{
+  "schema_version": "understudy.generalization_report.v1",
+  "generated_at": "2026-08-02T03:37:48.228Z",
+  "manifest": {
+    "schema_version": "understudy.generalization_manifest.v1",
+    "frozen_split_sha256": "sealed-holdout-not-read",
+    "eval_splits": [
+      "train",
+      "dev"
+    ],
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench Simple API",
+        "status": "planned",
+        "match": {
+          "benchmark_id": "automationbench-v2"
+        }
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer",
+        "status": "present",
+        "frozen_split_sha256": "unread-holdout-not-accessed",
+        "expected_task_counts": {
+          "train": 8,
+          "dev": 2,
+          "holdout": 2
+        },
+        "match": {
+          "benchmark_id": "event-categorizer-offline"
+        }
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic Workflow Shapes",
+        "status": "present",
+        "frozen_split_sha256": "unread-holdout-not-accessed",
+        "expected_task_counts": {
+          "train": 48,
+          "dev": 12,
+          "holdout": 12
+        },
+        "match": {
+          "benchmark_id": "synthetic-workflow-shapes-offline"
+        }
+      }
+    ],
+    "arms": [
+      {
+        "arm_id": "sft",
+        "train_groups": [
+          "automationbench-simple-api"
+        ],
+        "eval_splits": [
+          "train",
+          "dev"
+        ],
+        "baseline": {
+          "rows": "artifacts/transfer-rows/base-all.jsonl",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        "candidate": {
+          "rows": "artifacts/transfer-rows/sft-all.jsonl",
+          "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+          "receipt": "artifacts/transfer-receipts/sft-event.jsonl"
+        }
+      },
+      {
+        "arm_id": "grpo",
+        "train_groups": [
+          "automationbench-simple-api"
+        ],
+        "eval_splits": [
+          "train",
+          "dev"
+        ],
+        "baseline": {
+          "rows": "artifacts/transfer-rows/base-all.jsonl",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        "candidate": {
+          "rows": "artifacts/transfer-rows/grpo-all.jsonl",
+          "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+          "receipt": "artifacts/transfer-receipts/grpo-event.jsonl"
+        }
+      },
+      {
+        "arm_id": "dpo",
+        "train_groups": [
+          "automationbench-simple-api"
+        ],
+        "eval_splits": [
+          "train",
+          "dev"
+        ],
+        "baseline": {
+          "rows": "artifacts/transfer-rows/base-all.jsonl",
+          "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+        },
+        "candidate": {
+          "rows": "artifacts/transfer-rows/dpo-all.jsonl",
+          "model": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+          "receipt": "artifacts/transfer-receipts/dpo-event.jsonl"
+        }
+      }
+    ],
+    "require_content_hashes": true,
+    "require_all_groups_scored": true,
+    "regression_threshold": 0.05,
+    "provenance": {
+      "scope": "train+dev only; holdout sealed and not read",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "prompt_policy": "target-native prompt/protocol; no AutomationBench prompt transfer"
+    }
+  },
+  "arms": [
+    {
+      "arm_id": "sft",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "candidate_model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "receipt": "artifacts/transfer-receipts/sft-event.jsonl",
+      "task_deltas": [
+        {
+          "task_id": "evt-001",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-002",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-003",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-004",
+          "group_id": "event-categorizer",
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.7,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-005",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-006",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-007",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-008",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-009",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-010",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-action-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 0,
+          "delta": -1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-action-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.25,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.25,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-entity-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-entity-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-mail-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-mail-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-summary-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        }
+      ],
+      "matrix": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.2111111111111111,
+          "delta": 0.025,
+          "fixed": 9,
+          "regressed": 5,
+          "unchanged": 46,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.041666666666666664,
+            0.0972222222222222
+          ],
+          "status": "scored"
+        }
+      ],
+      "score": {
+        "in_domain_gain": null,
+        "transfer_gain": 0.02142857142857143,
+        "transfer_ratio": null,
+        "forgetting": 0,
+        "regressed_groups": [],
+        "generalization_score": null,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0
+      }
+    },
+    {
+      "arm_id": "grpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "candidate_model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "receipt": "artifacts/transfer-receipts/grpo-event.jsonl",
+      "task_deltas": [
+        {
+          "task_id": "evt-001",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-002",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-003",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-004",
+          "group_id": "event-categorizer",
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.7,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-005",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-006",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-007",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-008",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-009",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-010",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-action-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 0,
+          "delta": -1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-action-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-agent-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.25,
+          "delta": -0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-chain-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.3333333333333333,
+          "delta": 0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0,
+          "delta": -0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-document-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0,
+          "delta": -0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-entity-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-entity-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-mail-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-mail-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 0,
+          "delta": -1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-meeting-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-summary-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        }
+      ],
+      "matrix": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.1847222222222222,
+          "delta": -0.001388888888888884,
+          "fixed": 9,
+          "regressed": 9,
+          "unchanged": 42,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.0875,
+            0.08333333333333334
+          ],
+          "status": "scored"
+        }
+      ],
+      "score": {
+        "in_domain_gain": null,
+        "transfer_gain": -0.0011904761904761862,
+        "transfer_ratio": null,
+        "forgetting": -0.001388888888888884,
+        "regressed_groups": [],
+        "generalization_score": null,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0.02777777777777768
+      }
+    },
+    {
+      "arm_id": "dpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "candidate_model": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "receipt": "artifacts/transfer-receipts/dpo-event.jsonl",
+      "task_deltas": [
+        {
+          "task_id": "evt-001",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-002",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-003",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-004",
+          "group_id": "event-categorizer",
+          "baseline_mean": 0.7,
+          "candidate_mean": 0.7,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-005",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-006",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-007",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-008",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-009",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "evt-010",
+          "group_id": "event-categorizer",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-action-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 0,
+          "delta": -1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-action-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-action-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-agent-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-analysis-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.25,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-chain-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.25,
+          "delta": -0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-chain-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-chain-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.25,
+          "candidate_mean": 0.5,
+          "delta": 0.25,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-document-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-document-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0,
+          "delta": -0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-document-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.3333333333333333,
+          "candidate_mean": 0,
+          "delta": -0.3333333333333333,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-entity-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-entity-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0.5,
+          "delta": 0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-entity-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0.5,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-entity-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-mail-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 1,
+          "delta": 1,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "fixed"
+        },
+        {
+          "task_id": "workflow-mail-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-mail-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-meeting-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 1,
+          "candidate_mean": 1,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-observation-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-partial-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-partial-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-route-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-01",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-02",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-03",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0.5,
+          "candidate_mean": 0,
+          "delta": -0.5,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "regressed"
+        },
+        {
+          "task_id": "workflow-summary-04",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        },
+        {
+          "task_id": "workflow-summary-05",
+          "group_id": "synthetic-workflow-shapes",
+          "baseline_mean": 0,
+          "candidate_mean": 0,
+          "delta": 0,
+          "baseline_n_rollouts": 1,
+          "candidate_n_rollouts": 1,
+          "baseline_status_counts": {
+            "ok": 1
+          },
+          "candidate_status_counts": {
+            "ok": 1
+          },
+          "outcome": "unchanged"
+        }
+      ],
+      "matrix": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.18333333333333332,
+          "delta": -0.0027777777777777753,
+          "fixed": 7,
+          "regressed": 8,
+          "unchanged": 45,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.07083333333333333,
+            0.07083333333333333
+          ],
+          "status": "scored"
+        }
+      ],
+      "score": {
+        "in_domain_gain": null,
+        "transfer_gain": -0.002380952380952379,
+        "transfer_ratio": null,
+        "forgetting": -0.0027777777777777753,
+        "regressed_groups": [],
+        "generalization_score": null,
+        "weighting": "task-weighted",
+        "regression_threshold": 0.05,
+        "forgetting_penalty": 0.055555555555555504
+      }
+    }
+  ],
+  "matrix": [
+    {
+      "arm_id": "sft",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "cells": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.2111111111111111,
+          "delta": 0.025,
+          "fixed": 9,
+          "regressed": 5,
+          "unchanged": 46,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.041666666666666664,
+            0.0972222222222222
+          ],
+          "status": "scored"
+        }
+      ]
+    },
+    {
+      "arm_id": "grpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "cells": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.1847222222222222,
+          "delta": -0.001388888888888884,
+          "fixed": 9,
+          "regressed": 9,
+          "unchanged": 42,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.0875,
+            0.08333333333333334
+          ],
+          "status": "scored"
+        }
+      ]
+    },
+    {
+      "arm_id": "dpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "cells": [
+        {
+          "group_id": "automationbench-simple-api",
+          "in_domain": true,
+          "n_tasks": 0,
+          "baseline_mean": null,
+          "candidate_mean": null,
+          "delta": null,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 0,
+          "error_rate": null,
+          "baseline_error_rate": null,
+          "error_rate_by_split": {},
+          "paired_ci": null,
+          "status": "planned"
+        },
+        {
+          "group_id": "event-categorizer",
+          "in_domain": false,
+          "n_tasks": 10,
+          "baseline_mean": 0.97,
+          "candidate_mean": 0.97,
+          "delta": 0,
+          "fixed": 0,
+          "regressed": 0,
+          "unchanged": 10,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            0,
+            0
+          ],
+          "status": "scored"
+        },
+        {
+          "group_id": "synthetic-workflow-shapes",
+          "in_domain": false,
+          "n_tasks": 60,
+          "baseline_mean": 0.18611111111111114,
+          "candidate_mean": 0.18333333333333332,
+          "delta": -0.0027777777777777753,
+          "fixed": 7,
+          "regressed": 8,
+          "unchanged": 45,
+          "error_rate": 0,
+          "baseline_error_rate": 0,
+          "error_rate_by_split": {
+            "train": 0,
+            "dev": 0
+          },
+          "paired_ci": [
+            -0.07083333333333333,
+            0.07083333333333333
+          ],
+          "status": "scored"
+        }
+      ]
+    }
+  ],
+  "score": {
+    "in_domain_gain": null,
+    "transfer_gain": 0.005952380952380952,
+    "transfer_ratio": null,
+    "forgetting": -0.0027777777777777753,
+    "regressed_groups": [],
+    "generalization_score": null,
+    "weighting": "task-weighted",
+    "regression_threshold": 0.05,
+    "forgetting_penalty": 0.055555555555555504
+  },
+  "coverage": {
+    "groups": [
+      {
+        "group_id": "automationbench-simple-api",
+        "label": "AutomationBench Simple API",
+        "status": "planned",
+        "task_count": 0
+      },
+      {
+        "group_id": "event-categorizer",
+        "label": "Event Categorizer",
+        "status": "scored",
+        "task_count": 10
+      },
+      {
+        "group_id": "synthetic-workflow-shapes",
+        "label": "Synthetic Workflow Shapes",
+        "status": "scored",
+        "task_count": 60
+      }
+    ],
+    "unassigned_task_ids": []
+  },
+  "warnings": []
+}

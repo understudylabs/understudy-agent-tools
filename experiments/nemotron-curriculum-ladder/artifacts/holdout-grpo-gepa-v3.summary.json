@@ -1,0 +1,437 @@
+{
+  "cost": {
+    "discounted_inference_usd": 0.15813603,
+    "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+    "prompt_usd_per_million": 0.39,
+    "sample_usd_per_million": 0.99,
+    "undiscounted_inference_usd": 0.31627206
+  },
+  "encoding_counts": {
+    "finish-wrapper": 35,
+    "json-text": 491
+  },
+  "groups": [
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-09"
+    },
+    {
+      "reward_mean": 0.75,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-11"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-12"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-09"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-09"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-11"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-10"
+    },
+    {
+      "reward_mean": 0.8571428571428571,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-11"
+    },
+    {
+      "reward_mean": 0.42857142857142855,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-09"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-12"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-09"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-10"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-11"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-12"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-09"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-10"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-11"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-12"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-09"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-10"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-11"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-12"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-06"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-06"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-06"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-06"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-06"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-06"
+    }
+  ],
+  "hashes": {
+    "benchmark_id": "automationbench-simple-api-offline-v2",
+    "counts": {
+      "dev": 36,
+      "holdout": 60,
+      "train": 120
+    },
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split_sha256": {
+      "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+      "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+      "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b"
+    }
+  },
+  "label": "holdout-grpo-gepa-v3",
+  "lora_rank": 32,
+  "max_model_turns": 12,
+  "mean_model_turns": 8.8,
+  "mean_reward": 0.36726190476190473,
+  "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+  "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+  "parse_error_rate": 0.03333333333333333,
+  "per_band": {
+    "discovery": {
+      "count": 4,
+      "mean_reward": 0.5
+    },
+    "multi-write": {
+      "count": 4,
+      "mean_reward": 0.7083333333333334
+    },
+    "single-write": {
+      "count": 52,
+      "mean_reward": 0.3308150183150183
+    }
+  },
+  "per_difficulty_tier": {
+    "hard": {
+      "count": 48,
+      "mean_reward": 0.2750496031746032
+    },
+    "v1-style": {
+      "count": 12,
+      "mean_reward": 0.7361111111111112
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 60,
+  "samples_per_task": 1,
+  "split": "holdout",
+  "strict_pass_rate": 0.26666666666666666,
+  "task_count": 60,
+  "temperature": 0.0,
+  "termination_failures": {
+    "never_terminating": 0,
+    "no_parsed_call": 0,
+    "step_limit_exhaustion": 25
+  },
+  "total_prompt_tokens": 779010,
+  "total_sampled_tokens": 12584,
+  "wall_time_seconds": 1251.9305343570004
+}

@@ -1,0 +1,117 @@
+{
+  "schema_version": "understudy.generalization_manifest.v1",
+  "frozen_split_sha256": "sealed-holdout-not-read",
+  "eval_splits": [
+    "train",
+    "dev"
+  ],
+  "groups": [
+    {
+      "group_id": "automationbench-simple-api",
+      "label": "AutomationBench Simple API",
+      "status": "planned",
+      "match": {
+        "benchmark_id": "automationbench-v2"
+      }
+    },
+    {
+      "group_id": "event-categorizer",
+      "label": "Event Categorizer",
+      "status": "present",
+      "frozen_split_sha256": "unread-holdout-not-accessed",
+      "expected_task_counts": {
+        "train": 8,
+        "dev": 2,
+        "holdout": 2
+      },
+      "match": {
+        "benchmark_id": "event-categorizer-offline"
+      }
+    },
+    {
+      "group_id": "synthetic-workflow-shapes",
+      "label": "Synthetic Workflow Shapes",
+      "status": "present",
+      "frozen_split_sha256": "unread-holdout-not-accessed",
+      "expected_task_counts": {
+        "train": 48,
+        "dev": 12,
+        "holdout": 12
+      },
+      "match": {
+        "benchmark_id": "synthetic-workflow-shapes-offline"
+      }
+    }
+  ],
+  "arms": [
+    {
+      "arm_id": "sft",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline": {
+        "rows": "artifacts/transfer-rows/base-all.jsonl",
+        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      },
+      "candidate": {
+        "rows": "artifacts/transfer-rows/sft-all.jsonl",
+        "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+        "receipt": "artifacts/transfer-receipts/sft-event.jsonl"
+      }
+    },
+    {
+      "arm_id": "grpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline": {
+        "rows": "artifacts/transfer-rows/base-all.jsonl",
+        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      },
+      "candidate": {
+        "rows": "artifacts/transfer-rows/grpo-all.jsonl",
+        "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+        "receipt": "artifacts/transfer-receipts/grpo-event.jsonl"
+      }
+    },
+    {
+      "arm_id": "dpo",
+      "train_groups": [
+        "automationbench-simple-api"
+      ],
+      "eval_splits": [
+        "train",
+        "dev"
+      ],
+      "baseline": {
+        "rows": "artifacts/transfer-rows/base-all.jsonl",
+        "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+      },
+      "candidate": {
+        "rows": "artifacts/transfer-rows/dpo-all.jsonl",
+        "model": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+        "receipt": "artifacts/transfer-receipts/dpo-event.jsonl"
+      }
+    }
+  ],
+  "require_content_hashes": true,
+  "require_all_groups_scored": true,
+  "regression_threshold": 0.05,
+  "provenance": {
+    "scope": "train+dev only; holdout sealed and not read",
+    "renderer": "nemotron3_disable_thinking",
+    "temperature": 0.0,
+    "samples": 1,
+    "max_model_turns": 12,
+    "parser": "uniform tolerant action parser",
+    "prompt_policy": "target-native prompt/protocol; no AutomationBench prompt transfer"
+  }
+}

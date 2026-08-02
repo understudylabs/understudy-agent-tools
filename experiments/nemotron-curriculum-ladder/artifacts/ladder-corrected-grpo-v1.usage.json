@@ -1,0 +1,20 @@
+{
+  "after": {
+    "ending_before": "2026-08-02T03:00:00Z",
+    "response": {
+      "data": [],
+      "sessions": {}
+    },
+    "starting_on": "2026-08-02T01:00:00Z"
+  },
+  "before": {
+    "ending_before": "2026-08-02T03:00:00Z",
+    "response": {
+      "data": [],
+      "sessions": {}
+    },
+    "starting_on": "2026-08-02T01:00:00Z"
+  },
+  "delta": {},
+  "phase": "ladder-corrected-grpo-v1"
+}

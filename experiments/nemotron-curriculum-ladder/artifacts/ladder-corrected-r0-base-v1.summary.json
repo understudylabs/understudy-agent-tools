@@ -1,0 +1,292 @@
+{
+  "cost": {
+    "discounted_inference_usd": 0.046289205,
+    "pricing_source": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+    "prompt_usd_per_million": 0.39,
+    "sample_usd_per_million": 0.99,
+    "undiscounted_inference_usd": 0.09257841
+  },
+  "encoding_counts": {
+    "json-text": 244
+  },
+  "groups": [
+    {
+      "reward_mean": 0.75,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-churn-cascade-08"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-conditional-route-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-07"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-derived-subject-close-08"
+    },
+    {
+      "reward_mean": 0.42857142857142855,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-07"
+    },
+    {
+      "reward_mean": 0.42857142857142855,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-dual-close-cleanup-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-07"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-duplicate-merge-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-load-balance-assign-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-priority-escalation-filter-08"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-07"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-rep-departure-cascade-08"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-07"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-reply-thread-close-08"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-07"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-same-title-trap-08"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-07"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-owner-route-08"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-07"
+    },
+    {
+      "reward_mean": 0.5,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "hard-api-ticket-resolve-notify-08"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-bulk-owner-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-close-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-disambiguate-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-lost-05"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-mail-churn-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-owner-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-crm-rename-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-discard-05"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-draft-05"
+    },
+    {
+      "reward_mean": 1.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-revise-05"
+    },
+    {
+      "reward_mean": 0.0,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-05"
+    },
+    {
+      "reward_mean": 0.3333333333333333,
+      "reward_std": 0.0,
+      "samples": 1,
+      "task_id": "simple-api-mail-send-and-close-05"
+    }
+  ],
+  "hashes": {
+    "benchmark_id": "automationbench-simple-api-offline-v2",
+    "counts": {
+      "dev": 36,
+      "holdout": 60,
+      "train": 120
+    },
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split_sha256": {
+      "dev": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+      "holdout": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+      "train": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b"
+    }
+  },
+  "label": "ladder-corrected-r0-base-v1",
+  "lora_rank": 32,
+  "max_model_turns": 12,
+  "mean_model_turns": 6.777777777777778,
+  "mean_reward": 0.4798280423280424,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "model_path": "base",
+  "parse_error_rate": 0.0,
+  "per_band": {
+    "discovery": {
+      "count": 4,
+      "mean_reward": 0.5
+    },
+    "multi-write": {
+      "count": 4,
+      "mean_reward": 0.5833333333333334
+    },
+    "single-write": {
+      "count": 28,
+      "mean_reward": 0.46215986394557823
+    }
+  },
+  "per_difficulty_tier": {
+    "hard": {
+      "count": 24,
+      "mean_reward": 0.3725198412698412
+    },
+    "v1-style": {
+      "count": 12,
+      "mean_reward": 0.6944444444444445
+    }
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "renderer_deviation": "Uses nemotron3_disable_thinking instead of plain nemotron3 because the action protocol requires one canonical JSON object per turn; reasoning traces would make SFT targets non-canonical and increase token cost.",
+  "row_count": 36,
+  "samples_per_task": 1,
+  "split": "dev",
+  "strict_pass_rate": 0.3333333333333333,
+  "task_count": 36,
+  "temperature": 0.0,
+  "termination_failures": {
+    "never_terminating": 0,
+    "no_parsed_call": 0,
+    "step_limit_exhaustion": 3
+  },
+  "total_prompt_tokens": 212265,
+  "total_sampled_tokens": 9894,
+  "wall_time_seconds": 829.0604231090001
+}

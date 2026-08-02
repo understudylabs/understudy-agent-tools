@@ -1,0 +1,728 @@
+{
+  "schema_version": "understudy.nemotron_transfer_matrix.v1",
+  "scope": "train+dev only",
+  "holdout_accessed": false,
+  "protocol": {
+    "renderer": "nemotron3_disable_thinking",
+    "temperature": 0,
+    "samples": 1,
+    "max_model_turns": 12,
+    "parser": "uniform tolerant action parser",
+    "prompt_policy": "each verifier native prompt/protocol"
+  },
+  "verifiers": {
+    "event": {
+      "benchmark_id": "event-categorizer-offline",
+      "fixture_revision": "fa0acda1738905d24e8f5362e4937831fcae7b83ab14ec4cbdd2c7933c7c0a43",
+      "split_sha256": {
+        "train": "ae374fcab51b5ca0dbb4446edec5ba0f7f6efcc4f65c379b80275d28126fd0f1",
+        "dev": "56e22a1c06d5d5f4c0b1b67ccf894b8dfcb48d88ac73062166bc582b5b287fd7"
+      },
+      "task_counts": {
+        "train": 8,
+        "dev": 2
+      }
+    },
+    "synthetic": {
+      "benchmark_id": "synthetic-workflow-shapes-offline",
+      "fixture_revision": "c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412",
+      "split_sha256": {
+        "train": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5",
+        "dev": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3"
+      },
+      "task_counts": {
+        "train": 48,
+        "dev": 12
+      }
+    }
+  },
+  "cells": {
+    "event:base": {
+      "policy": "base",
+      "target": "event",
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "prompt_sha256": "32051c481f6f84ff264535a75b5c46a2e2c905272d4ca45c0d868afc7766ddd8",
+      "checkpoint_ref": null,
+      "verifier_revision": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 8,
+          "mean": 0.9625,
+          "strict_pass": 0.875,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 8
+          },
+          "per_class": {
+            "security": {
+              "task_count": 2,
+              "mean": 1
+            },
+            "billing": {
+              "task_count": 2,
+              "mean": 0.85
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "usage": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "support": {
+              "task_count": 2,
+              "mean": 1
+            }
+          },
+          "split_sha256": "ae374fcab51b5ca0dbb4446edec5ba0f7f6efcc4f65c379b80275d28126fd0f1"
+        },
+        "dev": {
+          "task_count": 2,
+          "mean": 1,
+          "strict_pass": 1,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 2
+          },
+          "per_class": {
+            "security": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            }
+          },
+          "split_sha256": "56e22a1c06d5d5f4c0b1b67ccf894b8dfcb48d88ac73062166bc582b5b287fd7"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 5520,
+        "completion_tokens": 335,
+        "total_tokens": 5855,
+        "measured_cost_usd": 0.00248445,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "event:sft": {
+      "policy": "sft",
+      "target": "event",
+      "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "prompt_sha256": "32051c481f6f84ff264535a75b5c46a2e2c905272d4ca45c0d868afc7766ddd8",
+      "checkpoint_ref": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "verifier_revision": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 8,
+          "mean": 0.9625,
+          "strict_pass": 0.875,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 8
+          },
+          "per_class": {
+            "security": {
+              "task_count": 2,
+              "mean": 1
+            },
+            "billing": {
+              "task_count": 2,
+              "mean": 0.85
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "usage": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "support": {
+              "task_count": 2,
+              "mean": 1
+            }
+          },
+          "split_sha256": "ae374fcab51b5ca0dbb4446edec5ba0f7f6efcc4f65c379b80275d28126fd0f1"
+        },
+        "dev": {
+          "task_count": 2,
+          "mean": 1,
+          "strict_pass": 1,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 2
+          },
+          "per_class": {
+            "security": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            }
+          },
+          "split_sha256": "56e22a1c06d5d5f4c0b1b67ccf894b8dfcb48d88ac73062166bc582b5b287fd7"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 5520,
+        "completion_tokens": 320,
+        "total_tokens": 5840,
+        "measured_cost_usd": 0.0024696,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "event:grpo": {
+      "policy": "grpo",
+      "target": "event",
+      "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "prompt_sha256": "32051c481f6f84ff264535a75b5c46a2e2c905272d4ca45c0d868afc7766ddd8",
+      "checkpoint_ref": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "verifier_revision": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 8,
+          "mean": 0.9625,
+          "strict_pass": 0.875,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 8
+          },
+          "per_class": {
+            "security": {
+              "task_count": 2,
+              "mean": 1
+            },
+            "billing": {
+              "task_count": 2,
+              "mean": 0.85
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "usage": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "support": {
+              "task_count": 2,
+              "mean": 1
+            }
+          },
+          "split_sha256": "ae374fcab51b5ca0dbb4446edec5ba0f7f6efcc4f65c379b80275d28126fd0f1"
+        },
+        "dev": {
+          "task_count": 2,
+          "mean": 1,
+          "strict_pass": 1,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 2
+          },
+          "per_class": {
+            "security": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            }
+          },
+          "split_sha256": "56e22a1c06d5d5f4c0b1b67ccf894b8dfcb48d88ac73062166bc582b5b287fd7"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 5520,
+        "completion_tokens": 318,
+        "total_tokens": 5838,
+        "measured_cost_usd": 0.0024676200000000002,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "event:dpo": {
+      "policy": "dpo",
+      "target": "event",
+      "model": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "prompt_sha256": "32051c481f6f84ff264535a75b5c46a2e2c905272d4ca45c0d868afc7766ddd8",
+      "checkpoint_ref": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "verifier_revision": "c8e613cd29a31364fda80030e56e2563bc979f564979d5f06a6d081dc9243f6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 8,
+          "mean": 0.9625,
+          "strict_pass": 0.875,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 8
+          },
+          "per_class": {
+            "security": {
+              "task_count": 2,
+              "mean": 1
+            },
+            "billing": {
+              "task_count": 2,
+              "mean": 0.85
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "usage": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "support": {
+              "task_count": 2,
+              "mean": 1
+            }
+          },
+          "split_sha256": "ae374fcab51b5ca0dbb4446edec5ba0f7f6efcc4f65c379b80275d28126fd0f1"
+        },
+        "dev": {
+          "task_count": 2,
+          "mean": 1,
+          "strict_pass": 1,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 2
+          },
+          "per_class": {
+            "security": {
+              "task_count": 1,
+              "mean": 1
+            },
+            "noise": {
+              "task_count": 1,
+              "mean": 1
+            }
+          },
+          "split_sha256": "56e22a1c06d5d5f4c0b1b67ccf894b8dfcb48d88ac73062166bc582b5b287fd7"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 5520,
+        "completion_tokens": 319,
+        "total_tokens": 5839,
+        "measured_cost_usd": 0.00246861,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "synthetic:base": {
+      "policy": "base",
+      "target": "synthetic",
+      "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "prompt_sha256": "f4383ae8c1fe2df33dbdd740fc43a2e0e0c44be40d28af393d4e47b89bedebfa",
+      "checkpoint_ref": null,
+      "verifier_revision": "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 48,
+          "mean": 0.18923611111111108,
+          "strict_pass": 0.10416666666666667,
+          "parse_failures": 2,
+          "termination_failures": {
+            "step_limit_exhaustion": 9,
+            "no_parsed_call": 2
+          },
+          "status_counts": {
+            "ok": 48
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 20,
+              "mean": 0.25
+            },
+            "single-write": {
+              "task_count": 12,
+              "mean": 0.08333333333333333
+            },
+            "multi-write": {
+              "task_count": 16,
+              "mean": 0.19270833333333331
+            }
+          },
+          "split_sha256": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+        },
+        "dev": {
+          "task_count": 12,
+          "mean": 0.17361111111111108,
+          "strict_pass": 0.08333333333333333,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 4,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 12
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 5,
+              "mean": 0.3
+            },
+            "single-write": {
+              "task_count": 3,
+              "mean": 0
+            },
+            "multi-write": {
+              "task_count": 4,
+              "mean": 0.14583333333333331
+            }
+          },
+          "split_sha256": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 319139,
+        "completion_tokens": 14398,
+        "total_tokens": 333537,
+        "measured_cost_usd": 0.1387182300000001,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "synthetic:sft": {
+      "policy": "sft",
+      "target": "synthetic",
+      "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "prompt_sha256": "f4383ae8c1fe2df33dbdd740fc43a2e0e0c44be40d28af393d4e47b89bedebfa",
+      "checkpoint_ref": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4",
+      "verifier_revision": "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 48,
+          "mean": 0.22569444444444442,
+          "strict_pass": 0.125,
+          "parse_failures": 1,
+          "termination_failures": {
+            "step_limit_exhaustion": 5,
+            "no_parsed_call": 1
+          },
+          "status_counts": {
+            "ok": 48
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 20,
+              "mean": 0.35
+            },
+            "single-write": {
+              "task_count": 12,
+              "mean": 0.08333333333333333
+            },
+            "multi-write": {
+              "task_count": 16,
+              "mean": 0.17708333333333331
+            }
+          },
+          "split_sha256": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+        },
+        "dev": {
+          "task_count": 12,
+          "mean": 0.15277777777777776,
+          "strict_pass": 0.08333333333333333,
+          "parse_failures": 2,
+          "termination_failures": {
+            "step_limit_exhaustion": 0,
+            "no_parsed_call": 1
+          },
+          "status_counts": {
+            "ok": 12
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 5,
+              "mean": 0.2
+            },
+            "single-write": {
+              "task_count": 3,
+              "mean": 0
+            },
+            "multi-write": {
+              "task_count": 4,
+              "mean": 0.20833333333333331
+            }
+          },
+          "split_sha256": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 226231,
+        "completion_tokens": 9308,
+        "total_tokens": 235539,
+        "measured_cost_usd": 0.09744501000000003,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "synthetic:grpo": {
+      "policy": "grpo",
+      "target": "synthetic",
+      "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "prompt_sha256": "f4383ae8c1fe2df33dbdd740fc43a2e0e0c44be40d28af393d4e47b89bedebfa",
+      "checkpoint_ref": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "verifier_revision": "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 48,
+          "mean": 0.17881944444444442,
+          "strict_pass": 0.10416666666666667,
+          "parse_failures": 1,
+          "termination_failures": {
+            "step_limit_exhaustion": 5,
+            "no_parsed_call": 1
+          },
+          "status_counts": {
+            "ok": 48
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 20,
+              "mean": 0.275
+            },
+            "single-write": {
+              "task_count": 12,
+              "mean": 0.08333333333333333
+            },
+            "multi-write": {
+              "task_count": 16,
+              "mean": 0.13020833333333331
+            }
+          },
+          "split_sha256": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+        },
+        "dev": {
+          "task_count": 12,
+          "mean": 0.20833333333333334,
+          "strict_pass": 0.16666666666666666,
+          "parse_failures": 0,
+          "termination_failures": {
+            "step_limit_exhaustion": 2,
+            "no_parsed_call": 0
+          },
+          "status_counts": {
+            "ok": 12
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 5,
+              "mean": 0.2
+            },
+            "single-write": {
+              "task_count": 3,
+              "mean": 0.3333333333333333
+            },
+            "multi-write": {
+              "task_count": 4,
+              "mean": 0.125
+            }
+          },
+          "split_sha256": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 244098,
+        "completion_tokens": 9811,
+        "total_tokens": 253909,
+        "measured_cost_usd": 0.10491111000000002,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    },
+    "synthetic:dpo": {
+      "policy": "dpo",
+      "target": "synthetic",
+      "model": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "prompt_sha256": "f4383ae8c1fe2df33dbdd740fc43a2e0e0c44be40d28af393d4e47b89bedebfa",
+      "checkpoint_ref": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2",
+      "verifier_revision": "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+      "renderer": "nemotron3_disable_thinking",
+      "temperature": 0,
+      "samples": 1,
+      "max_model_turns": 12,
+      "parser": "uniform tolerant action parser",
+      "splits": {
+        "train": {
+          "task_count": 48,
+          "mean": 0.19791666666666666,
+          "strict_pass": 0.125,
+          "parse_failures": 1,
+          "termination_failures": {
+            "step_limit_exhaustion": 9,
+            "no_parsed_call": 1
+          },
+          "status_counts": {
+            "ok": 48
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 20,
+              "mean": 0.35
+            },
+            "single-write": {
+              "task_count": 12,
+              "mean": 0.08333333333333333
+            },
+            "multi-write": {
+              "task_count": 16,
+              "mean": 0.09375
+            }
+          },
+          "split_sha256": "95e862ec87a66b6e75d3456c201dd1fdf22f72310ee61781322f1bc13acd28e5"
+        },
+        "dev": {
+          "task_count": 12,
+          "mean": 0.125,
+          "strict_pass": 0.08333333333333333,
+          "parse_failures": 1,
+          "termination_failures": {
+            "step_limit_exhaustion": 2,
+            "no_parsed_call": 1
+          },
+          "status_counts": {
+            "ok": 12
+          },
+          "per_class": {
+            "discovery": {
+              "task_count": 5,
+              "mean": 0.2
+            },
+            "single-write": {
+              "task_count": 3,
+              "mean": 0
+            },
+            "multi-write": {
+              "task_count": 4,
+              "mean": 0.125
+            }
+          },
+          "split_sha256": "e4a3d2c1e9f2064d4da7a49dd7da9d3ca0019f6826f523383af2d924b4165ca3"
+        }
+      },
+      "usage": {
+        "prompt_tokens": 280895,
+        "completion_tokens": 11559,
+        "total_tokens": 292454,
+        "measured_cost_usd": 0.1209924599999999,
+        "budget_usd": 100,
+        "cost_basis": "Tinker official input $0.39/M and output $0.99/M",
+        "evidence_scope": "train+dev only"
+      }
+    }
+  },
+  "deltas_tuned_minus_base": {
+    "event": {
+      "sft": {
+        "train": 0,
+        "dev": 0
+      },
+      "grpo": {
+        "train": 0,
+        "dev": 0
+      },
+      "dpo": {
+        "train": 0,
+        "dev": 0
+      }
+    },
+    "synthetic": {
+      "sft": {
+        "train": 0.03645833333333334,
+        "dev": -0.020833333333333315
+      },
+      "grpo": {
+        "train": -0.010416666666666657,
+        "dev": 0.034722222222222265
+      },
+      "dpo": {
+        "train": 0.00868055555555558,
+        "dev": -0.04861111111111108
+      }
+    }
+  },
+  "noise_caveat": "Event target has 10 train+dev tasks; synthetic target has 60 train+dev tasks. The prior sealed holdout evidence had only 2 and 2 tasks respectively and is not reread here."
+}

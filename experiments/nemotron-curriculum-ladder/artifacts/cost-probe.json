@@ -1,0 +1,259 @@
+{
+  "schema_version": "nemotron.curriculum_ladder.cost_probe.v1",
+  "benchmark": "automationbench-simple-api-offline-v2",
+  "split": "dev",
+  "task_ids": [
+    "hard-api-ticket-owner-route-07",
+    "hard-api-ticket-owner-route-08",
+    "hard-api-ticket-resolve-notify-07"
+  ],
+  "task_count_per_cell": 3,
+  "temperature": 0.0,
+  "samples_per_task": 1,
+  "renderer": "nemotron3_disable_thinking",
+  "holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "prompt_sha256": "54f80eb1f5e54ed1ec627a6c8eb3d0b2b5f87074b7ca05ad7278f932ca543a0c",
+  "service_v2_hashes": {
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "dev_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9"
+  },
+  "sanity_gate": {
+    "gepa_tool_call_wrapper": "renderer_parse_response_returns_malformed_but_preserves_wrapper; evaluator_parseAgentAction_extracts_inner_json_and_accepts_tool_call",
+    "gepa_finish_wrapper": "rejected_by_renderer_and_evaluator_parser",
+    "oracle_train_dev_tasks": 156,
+    "oracle_failures": 0,
+    "sentinel_failures": 0
+  },
+  "measured": {
+    "R0_base_nemotron-v1": {
+      "label": "ladder-fixed-r0-base-v1-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 154.87869207800009,
+      "mean_model_turns": 12.0,
+      "parse_error_rate": 0.0,
+      "encoding_counts": {
+        "json-text": 36
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 36733,
+      "sampled_tokens": 1342,
+      "total_tokens": 38075,
+      "prompt_tokens_per_task": 12244.333333333334,
+      "sampled_tokens_per_task": 447.3333333333333,
+      "total_tokens_per_task": 12691.666666666666,
+      "wall_seconds_per_task": 51.626230692666695,
+      "source_summary": "ladder-fixed-r0-base-v1-probe.summary.json"
+    },
+    "R1_base_gepa-v3": {
+      "label": "ladder-fixed-r1-base-gepa-v3-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 70.20391312900006,
+      "mean_model_turns": 8.333333333333334,
+      "parse_error_rate": 0.3333333333333333,
+      "encoding_counts": {
+        "finish-wrapper": 1,
+        "json-text": 22
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 39069,
+      "sampled_tokens": 698,
+      "total_tokens": 39767,
+      "prompt_tokens_per_task": 13023.0,
+      "sampled_tokens_per_task": 232.66666666666666,
+      "total_tokens_per_task": 13255.666666666666,
+      "wall_seconds_per_task": 23.401304376333353,
+      "source_summary": "ladder-fixed-r1-base-gepa-v3-probe.summary.json"
+    },
+    "R2_sft_gepa-v3": {
+      "label": "ladder-fixed-r2-sft-gepa-v3-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 111.57042458399997,
+      "mean_model_turns": 12.0,
+      "parse_error_rate": 0.3333333333333333,
+      "encoding_counts": {
+        "json-text": 24,
+        "tool-call-wrapper": 1
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 50500,
+      "sampled_tokens": 855,
+      "total_tokens": 51355,
+      "prompt_tokens_per_task": 16833.333333333332,
+      "sampled_tokens_per_task": 285.0,
+      "total_tokens_per_task": 17118.333333333332,
+      "wall_seconds_per_task": 37.19014152799999,
+      "source_summary": "ladder-fixed-r2-sft-gepa-v3-probe.summary.json"
+    },
+    "R3_dpo_gepa-v3": {
+      "label": "ladder-fixed-r3-dpo-gepa-v3-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 97.81258129899993,
+      "mean_model_turns": 12.0,
+      "parse_error_rate": 0.3333333333333333,
+      "encoding_counts": {
+        "json-text": 24,
+        "tool-call-wrapper": 1
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 52180,
+      "sampled_tokens": 867,
+      "total_tokens": 53047,
+      "prompt_tokens_per_task": 17393.333333333332,
+      "sampled_tokens_per_task": 289.0,
+      "total_tokens_per_task": 17682.333333333332,
+      "wall_seconds_per_task": 32.60419376633331,
+      "source_summary": "ladder-fixed-r3-dpo-gepa-v3-probe.summary.json"
+    },
+    "SFT_nemotron-v1_dev_only": {
+      "label": "ladder-fixed-sft-v1-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 52.86567554299995,
+      "mean_model_turns": 4.666666666666667,
+      "parse_error_rate": 0.0,
+      "encoding_counts": {
+        "json-text": 14
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 9153,
+      "sampled_tokens": 336,
+      "total_tokens": 9489,
+      "prompt_tokens_per_task": 3051.0,
+      "sampled_tokens_per_task": 112.0,
+      "total_tokens_per_task": 3163.0,
+      "wall_seconds_per_task": 17.62189184766665,
+      "source_summary": "ladder-fixed-sft-v1-probe.summary.json"
+    },
+    "DPO_nemotron-v1_dev_only": {
+      "label": "ladder-fixed-dpo-v1-probe",
+      "mean_reward": 0.0,
+      "wall_time_seconds": 83.50476719800008,
+      "mean_model_turns": 9.666666666666666,
+      "parse_error_rate": 0.0,
+      "encoding_counts": {
+        "json-text": 29
+      },
+      "probe_tasks": 3,
+      "prompt_tokens": 25387,
+      "sampled_tokens": 772,
+      "total_tokens": 26159,
+      "prompt_tokens_per_task": 8462.333333333334,
+      "sampled_tokens_per_task": 257.3333333333333,
+      "total_tokens_per_task": 8719.666666666666,
+      "wall_seconds_per_task": 27.83492239933336,
+      "source_summary": "ladder-fixed-dpo-v1-probe.summary.json"
+    }
+  },
+  "extrapolation": {
+    "full_dev_matrix_6_cells": {
+      "tasks_per_cell": 36,
+      "cells": {
+        "R0_base_nemotron-v1": {
+          "tasks": 36,
+          "prompt_tokens": 440796.0,
+          "sampled_tokens": 16104.0,
+          "total_tokens": 456900.0,
+          "wall_time_seconds": 1858.544304936001
+        },
+        "R1_base_gepa-v3": {
+          "tasks": 36,
+          "prompt_tokens": 468828.0,
+          "sampled_tokens": 8376.0,
+          "total_tokens": 477204.0,
+          "wall_time_seconds": 842.4469575480007
+        },
+        "R2_sft_gepa-v3": {
+          "tasks": 36,
+          "prompt_tokens": 606000.0,
+          "sampled_tokens": 10260.0,
+          "total_tokens": 616260.0,
+          "wall_time_seconds": 1338.8450950079996
+        },
+        "R3_dpo_gepa-v3": {
+          "tasks": 36,
+          "prompt_tokens": 626160.0,
+          "sampled_tokens": 10404.0,
+          "total_tokens": 636564.0,
+          "wall_time_seconds": 1173.7509755879992
+        },
+        "SFT_nemotron-v1_dev_only": {
+          "tasks": 36,
+          "prompt_tokens": 109836.0,
+          "sampled_tokens": 4032.0,
+          "total_tokens": 113868.0,
+          "wall_time_seconds": 634.3881065159994
+        },
+        "DPO_nemotron-v1_dev_only": {
+          "tasks": 36,
+          "prompt_tokens": 304644.0,
+          "sampled_tokens": 9264.0,
+          "total_tokens": 313908.0,
+          "wall_time_seconds": 1002.057206376001
+        }
+      },
+      "totals": {
+        "prompt_tokens": 2556264.0,
+        "sampled_tokens": 58440.0,
+        "total_tokens": 2614704.0,
+        "wall_time_seconds": 6850.032645972001
+      },
+      "inference_price_usd": 1.05479856,
+      "inference_price_usd_discounted": 0.52739928
+    },
+    "sealed_holdout_4_rungs": {
+      "tasks_per_rung": 60,
+      "cells": {
+        "R0_base_nemotron-v1": {
+          "tasks": 60,
+          "prompt_tokens": 734660.0,
+          "sampled_tokens": 26840.0,
+          "total_tokens": 761500.0,
+          "wall_time_seconds": 3097.5738415600017
+        },
+        "R1_base_gepa-v3": {
+          "tasks": 60,
+          "prompt_tokens": 781380.0,
+          "sampled_tokens": 13960.0,
+          "total_tokens": 795340.0,
+          "wall_time_seconds": 1404.0782625800011
+        },
+        "R2_sft_gepa-v3": {
+          "tasks": 60,
+          "prompt_tokens": 1009999.9999999999,
+          "sampled_tokens": 17100.0,
+          "total_tokens": 1027099.9999999999,
+          "wall_time_seconds": 2231.4084916799993
+        },
+        "R3_dpo_gepa-v3": {
+          "tasks": 60,
+          "prompt_tokens": 1043599.9999999999,
+          "sampled_tokens": 17340.0,
+          "total_tokens": 1060940.0,
+          "wall_time_seconds": 1956.2516259799986
+        }
+      },
+      "totals": {
+        "prompt_tokens": 3569640.0,
+        "sampled_tokens": 75240.0,
+        "total_tokens": 3644880.0,
+        "wall_time_seconds": 8689.3122218
+      },
+      "inference_price_usd": 1.4666472000000002,
+      "inference_price_usd_discounted": 0.7333236000000001
+    }
+  },
+  "cost_note": "Projection uses official Tinker undiscounted prefill/sample rates. Training rate is recorded for future training estimates; the requested projection covers inference tokens only. Tinker usage endpoint returned empty deltas; token counts and wall time are measured locally.",
+  "git_commit": "5e21c1c03214dd4dbe1db8f3ef7e2736861f375b",
+  "tinker_pricing": {
+    "prefill_usd_per_million": 0.39,
+    "sample_usd_per_million": 0.99,
+    "train_usd_per_million": 0.88,
+    "source_url": "https://tinker-docs.thinkingmachines.ai/tinker/models/",
+    "pricing_note": "Nemotron-3-Nano-30B-A3B row; prices are per million tokens; displayed limited-time 50% discount values are $0.195 prefill, $0.495 sample, $0.44 train, while undiscounted values are used here.",
+    "discounted_rates_per_million": {
+      "prefill": 0.195,
+      "sample": 0.495,
+      "train": 0.44
+    }
+  }
+}

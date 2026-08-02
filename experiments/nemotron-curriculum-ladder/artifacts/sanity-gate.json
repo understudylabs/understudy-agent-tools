@@ -1,0 +1,57 @@
+{
+  "schema_version": "nemotron.curriculum_ladder.sanity_gate.v1",
+  "renderer": "nemotron3_disable_thinking",
+  "tool_call_sample": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>",
+  "renderer_parse_response": {
+    "content": "<tool_call>{\"name\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}</tool_call>",
+    "termination": "malformed",
+    "interpretation": "wrapper is preserved by renderer"
+  },
+  "evaluator_parseAgentAction": {
+    "name": "api_fetch",
+    "arguments": {
+      "method": "GET",
+      "url": "/crm/contacts"
+    },
+    "accepted": true,
+    "interpretation": "balanced JSON extraction accepts inner object despite wrapper"
+  },
+  "finish_sample": "<finish/>",
+  "finish_result": {
+    "renderer_termination": "malformed",
+    "evaluator_parseAgentAction": {
+      "finish": true,
+      "encoding": "finish-wrapper"
+    },
+    "accepted": true
+  },
+  "finding": "The renderer still labels the wrapper malformed, but this is a scaffolding lane-parity issue: the uniform evaluator parser accepts tool-call JSON wrappers and explicit finish terminators. The GEPA prompt was not rewritten.",
+  "v2_oracle_sentinel": {
+    "split_scope": "train+dev",
+    "task_count": 156,
+    "oracle_failures": 0,
+    "sentinel_failures": 0
+  },
+  "v2_counts": {
+    "train": 120,
+    "dev": 36,
+    "holdout": 60
+  },
+  "v2_holdout_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "parser_contract": {
+    "applies_to": [
+      "R0_base_nemotron-v1",
+      "R1_base_gepa-v3",
+      "R2_sft_gepa-v3",
+      "R3_dpo_gepa-v3",
+      "SFT_nemotron-v1_dev_only",
+      "DPO_nemotron-v1_dev_only"
+    ],
+    "accepted_encodings": [
+      "bare JSON",
+      "<tool_call>JSON</tool_call>",
+      "<finish/>"
+    ],
+    "replay_invariance": "passed"
+  }
+}
