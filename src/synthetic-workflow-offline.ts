@@ -194,7 +194,7 @@ const TOOL_CATALOG: Observation["tools"] = [
   },
 ];
 
-const ENDPOINTS = [
+export const ENDPOINTS = [
   { url: "/conversations", methods: ["GET"], summary: "List workflow conversations." },
   { url: "/conversations/{id}", methods: ["GET"], summary: "Read one workflow conversation." },
   { url: "/documents", methods: ["GET"], summary: "List workflow documents." },

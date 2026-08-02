@@ -13,6 +13,7 @@ import {
   groupCAdapter,
 } from "../dist/generalization-group-adapters.js";
 import { getGeneralizationGroup } from "../dist/generalization-registry.js";
+import { claimHoldoutAccess } from "../dist/generalization-holdout-guard.js";
 import {
   GROUP_A_PROTOCOL_SYSTEM_PROMPT,
   GROUP_B_PROTOCOL_SYSTEM_PROMPT,
@@ -76,15 +77,8 @@ if (split === "holdout") {
   if (args.frozen_holdout_sha256 !== groupConfig.frozen_holdout_sha256) {
     throw new Error(`holdout requires frozen hash ${groupConfig.frozen_holdout_sha256}`);
   }
-  if (existsSync(holdoutMarker)) throw new Error(`holdout access marker already exists: ${holdoutMarker}`);
   mkdirSync(dirname(holdoutMarker), { recursive: true });
-  writeFileSync(holdoutMarker, `${JSON.stringify({
-    schema_version: "understudy.generalization_holdout_access.v1",
-    accessed_at: new Date().toISOString(),
-    group: groupId,
-    split,
-    arm,
-  }, null, 2)}\n`);
+  claimHoldoutAccess(holdoutMarker, arm, groupId);
 }
 
 const adapterFactories = {
@@ -139,15 +133,14 @@ const resolvedPromptHashes = adapter.taskIds({
   };
 });
 const promptParityArtifact = {
-  schema_version: "understudy.generalization_prompt_parity.v1",
+  schema_version: "understudy.generalization_prompt_parity.v2",
   group: groupId,
   split,
-  arms: { base: resolvedPromptHashes, tuned: resolvedPromptHashes.map((row) => ({ ...row })) },
-  byte_identical: JSON.stringify(resolvedPromptHashes) === JSON.stringify(resolvedPromptHashes.map((row) => ({ ...row }))),
+  arm,
+  tasks: resolvedPromptHashes,
 };
-const promptParityPath = resolve(outRoot, `${groupId}-${split}.prompt-parity.json`);
+const promptParityPath = resolve(outRoot, `${arm}-${groupId}-${split}.prompt-parity.json`);
 writeFileSync(promptParityPath, `${JSON.stringify(promptParityArtifact, null, 2)}\n`);
-if (!promptParityArtifact.byte_identical) throw new Error("resolved prompts differ between arms");
 
 const healthResponse = await fetch(`${samplerUrl.replace(/\/$/, "")}/health`);
 if (!healthResponse.ok) throw new Error(`sampler health failed: HTTP ${healthResponse.status}`);

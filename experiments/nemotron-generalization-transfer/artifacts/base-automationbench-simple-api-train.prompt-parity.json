@@ -1,0 +1,296 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity.v2",
+  "group": "automationbench-simple-api",
+  "split": "train",
+  "arm": "base",
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "12ee87abb989fb5063da970b511d2b282046c3ebb327464e5c4fb928d9d0758d",
+      "prompt_sha256": "7b917bf281762edaec007886a930039db1a2833b5a3df63e7efd4bfca8e5bc26"
+    },
+    {
+      "task_id": "simple-api-crm-close-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "2e3ef67a8f993dc37e95a1389cee39c9ccd9f0765907642a8f52420aa0749a04",
+      "prompt_sha256": "2d8b769e9d4499b83f52107083852454adb9d528ede55da4bafd353e504b33f9"
+    },
+    {
+      "task_id": "simple-api-crm-close-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "b636a8d5ffac4ba208b9a33e8711b1564e66f406b4ee5fa946e87e3e761f2cc7",
+      "prompt_sha256": "46f8df8e4543ce3f5eafb34cc18b82e3ac5d65d296c6c07b928f6ac88980249b"
+    },
+    {
+      "task_id": "simple-api-crm-close-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "27a92be766bf6175786ea44a191427eab688189403a6bc0db1ded033b5d4d218",
+      "prompt_sha256": "0267a5989b39bb4866a72751754aa50464933a685e4ce7daf74c809a5e584f33"
+    },
+    {
+      "task_id": "simple-api-crm-lost-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "280d6431802117c9183289d44791cfc9cc25d147daf5efa1c68ee66a9f7fdf21",
+      "prompt_sha256": "c7af50a0445a8e664ed838718f077bc199092ebf308119b001a452713756803b"
+    },
+    {
+      "task_id": "simple-api-crm-lost-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "29da9ca4e4ba583046d0275fce9dfde087cc6bd6a27d5dc231a3c415ce87713f",
+      "prompt_sha256": "abbc1fa0a03c775b90d2b50f43c7d2657df1ce1f25c1f7bcf3e030202169597b"
+    },
+    {
+      "task_id": "simple-api-crm-lost-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "7e676973b8e4d6dd5ef7064178a56475b6db710a9111382c8570c1202268a2b1",
+      "prompt_sha256": "680b29fe94a411a1e6d34ee1727ebfeb810f6ca083abdeaef154c874b555be58"
+    },
+    {
+      "task_id": "simple-api-crm-lost-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "004320c80be1e6be368cd848c6141915b0e2f9963503951c07d30def17fa1292",
+      "prompt_sha256": "666e93ec2edf5c5eff3617b16488d5fb9183fbece55636a0647c0176e34cf9a6"
+    },
+    {
+      "task_id": "simple-api-crm-owner-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "35f8e5dc6658503d64e622ec57449886c7aff96f6010613d6167cc9e7fa522a4",
+      "prompt_sha256": "bf2d3c5b92c91b0889edbef018dc4f9acb7ce67363eb291fcac4acc3b5aff872"
+    },
+    {
+      "task_id": "simple-api-crm-owner-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "fb1897ff183c65d40e1b3cdffe2c3857e0c3e3d34b50fa6f8b8380a86c57f545",
+      "prompt_sha256": "c8868f9b7f9f781e931b88744580e0ac6fa8a5645a72248b9e8a9afe6032b644"
+    },
+    {
+      "task_id": "simple-api-crm-owner-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "f575ca73e3b850db728bc3a017744e6e569d025b1780f7200037efa5af7a648e",
+      "prompt_sha256": "ecbdd1c55ee0da20638c6a36d7d2fe6d2e724ea6c93c1e5c632a5788ac05c588"
+    },
+    {
+      "task_id": "simple-api-crm-owner-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "7cebe0956b575b2b89183db1359c3958e0833b03f27e521ab1121755115337da",
+      "prompt_sha256": "2b40f14e806cb5e54febec5c1841edff5818e11610d38cf7b621a40a79206252"
+    },
+    {
+      "task_id": "simple-api-crm-rename-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "8cbc6b81b420df5fdf509c2af022e97f430dbf54de522cb7605d413e2c907597",
+      "prompt_sha256": "01a16e4bdfbbfd85e7714110f16f37ad3a623d62381dfb35b2c0034f2cae6a25"
+    },
+    {
+      "task_id": "simple-api-crm-rename-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "640b41824bc3dcb04808ac42f03449009b6cd4ccd4f4a98f4d297cfe37612659",
+      "prompt_sha256": "6d96c272eaa0921c961d9a9773dfa27e57a34302a5e8fdbc92ee64237fdaec7c"
+    },
+    {
+      "task_id": "simple-api-crm-rename-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "0f0b9196aed2a2ebc770450117c5fbfd698cb8d79dac5b3a989ed5e4135699fd",
+      "prompt_sha256": "cae447bad26a90a3a956dae75b483f726864f542c5b5b66f928f7f08208add49"
+    },
+    {
+      "task_id": "simple-api-crm-rename-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "d3bfc77a8355165cfcc6de3f60c7f6bf2e7fd3c7ccd9127102daccfac019d552",
+      "prompt_sha256": "57c5b0fb7f3c043b43c70e048f00ca10ded83990b462817b50a126ed6ef6bdba"
+    },
+    {
+      "task_id": "simple-api-mail-draft-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "088ed9fdb750a90efe00e346638e19ba69e6c1e27296adb61bcffd5f2b8631db",
+      "prompt_sha256": "481f8b4e6ae624f60a28a6b6544a7d03c6c923c2c9da9cac2d8096827c71a090"
+    },
+    {
+      "task_id": "simple-api-mail-draft-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "3ae530fe1bd59ccac8448dac3ca022f3c7845c6514fbfc0de0005da0acf84f45",
+      "prompt_sha256": "e6d0c8a39c0873021bbbb6a84c55d787d5ba41d06b50ad742a45be56e2026d3d"
+    },
+    {
+      "task_id": "simple-api-mail-draft-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "91eea0e94d631690cf621dfec0826d4a386a5e234bc1b3a446fded84778ab03c",
+      "prompt_sha256": "6a5c7357b551eb5cb9ac21b6daab43ac757b5d95a61acaf26e0f00b528f385de"
+    },
+    {
+      "task_id": "simple-api-mail-draft-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "f367ff3925dd19418f746a939dcec58800d7cfcef9a0ea804b2005af0fcc7f0e",
+      "prompt_sha256": "b9822b27e8e08895fc3bab6b5162b28e79deba2146e0a657db4a1e02428afdef"
+    },
+    {
+      "task_id": "simple-api-mail-revise-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "455152e4ddfbc28d317e305b83ec174b13143743810e5e6b7cb3b3d13c12edb4",
+      "prompt_sha256": "10ec170d03ea83c4cb52f07337be259b92bb522a130415ed99aca489f0b82006"
+    },
+    {
+      "task_id": "simple-api-mail-revise-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "4dd432d7bf8255259828b6465a3a2e74e8028f2daa7631fc8565d63b3145e227",
+      "prompt_sha256": "c8c616759cc25cbc39529be25634f6901cfb9cfcfc1ed2427f3bb748cfeadccc"
+    },
+    {
+      "task_id": "simple-api-mail-revise-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "d3bf19e314af5ce82edad0bfc246e2f04df48fe78cc19cce0cdf17a711e8f8fb",
+      "prompt_sha256": "4816092dd91216166804a4d32ea6e7239fa0fa611750da8527215871ef06f37c"
+    },
+    {
+      "task_id": "simple-api-mail-revise-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "2aee6b8e712ce87b35c5bbdcdf7abb3de751f8ac41c5bac3e71f0fd5e3ad35d5",
+      "prompt_sha256": "cadcfdaba1891cc3769602e1d000426a02c6de09e81feb3ab680b8c638721883"
+    },
+    {
+      "task_id": "simple-api-mail-discard-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "f70dbf42652077895ad2f4a73e159d3d8a1f429e2ddb85f51b118db70ce253c6",
+      "prompt_sha256": "c9643d7928b130db7058bf5dcdd5aab80b1dd036da2c202e44a7efd37188a7ba"
+    },
+    {
+      "task_id": "simple-api-mail-discard-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "7eaa06cb8de8a59514659ae7c03bb9702b47a46e665ca9a289d1347b2878bb64",
+      "prompt_sha256": "98785d1c3aeb4bb538d10c01618c752409c624949e96e0340b9fa0388ba46b48"
+    },
+    {
+      "task_id": "simple-api-mail-discard-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "cf15dbb4e9dcb052c0c5ff98bd9f22f5248be7bbaf08b6fc5728cce6a6199c69",
+      "prompt_sha256": "bfca83a29c4f948d3cd56958aad26895949d49013297591989ec6dfcc9ec78b3"
+    },
+    {
+      "task_id": "simple-api-mail-discard-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "794b46a1401e1d78fdfebb49f06fbb8f7e79d18c57ae69a83d929e88ead1efd7",
+      "prompt_sha256": "158b506213985ae40d2b7ee59a6ce5b51ac3ff8f456d0dfa67df3989365350ba"
+    },
+    {
+      "task_id": "simple-api-mail-send-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "c181f85b405553754e15be914cfc04107fcb98383ecf103f5b3ab009797d0393",
+      "prompt_sha256": "2899d9c5315f4fdd8778f2ad51567f600ef9c2e62a396bc63430fc729fbbb3a7"
+    },
+    {
+      "task_id": "simple-api-mail-send-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "b6ca9cf595a012c7fe21a40eb48aba90597d635703a6cb2825f172ef2af22b4a",
+      "prompt_sha256": "8cf63711e7688eb592e4d9ad18987ab5b537d184665a4cadf0b0f5f61decd216"
+    },
+    {
+      "task_id": "simple-api-mail-send-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "c6acaf43d7699c9a64effbb61f24a25ba6656d699b45c53bd334406b3e6bc86c",
+      "prompt_sha256": "885a63290706f3be358644fe7a063895011317ea3964c4dc6ed38c924243a7bc"
+    },
+    {
+      "task_id": "simple-api-mail-send-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "78ee70256786635b4a0e50dcde27afa3fda7ad10aeec3fd304e8e2ce9af68adf",
+      "prompt_sha256": "0cbd5f3d56116c359e898c182c1d16144ca2d083d9865404fbf53ada231da4e4"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "8b3f555ee0e43b3a9c54ef0fc9c8e62ce58a262a64ccedac425a3b6db7d72423",
+      "prompt_sha256": "abbac194348f75c9a301b382780322639717e7b0c32908d6eefa413736f9a27b"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "22a3282f9004b7fe792b84b7d08e757d48ad243b0540a97b76fff375855c9ec4",
+      "prompt_sha256": "323f2f3861a53e39c377b7a26c561154bf5e88787287254ca6ab945e3cad3b2e"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "b507bd16986d294331581ea796e240fcc2b232c91f1ea2c64c7f0cc57977f558",
+      "prompt_sha256": "55d952a219dc57ac6c1507b4d28e452801b718ab7f6433ffd66fee8b10b7dda6"
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "2d9f1377cab455ce6976092317a45e8a75623fe599b66882ace1ab4916e79e01",
+      "prompt_sha256": "56dddb84d2b82d174a0c149955c1f45d7a91685fff971da1890f61a8c26f53e0"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "7fa2110cd9e47225c6fbe0b1f908fad3663fe6850b59b7a255877af9ed341f16",
+      "prompt_sha256": "bd88fbb892435dd3d6e49f92e759d572ea12ab8cac5536dd59939458f15077fa"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "3bcee3c91340bf3433073deae1a92d02c9feb4aa9757b42b3069060006ac38aa",
+      "prompt_sha256": "ea8261233a6343583e7137bd071b38f11edfc34db372a3c59cef67337ce4133e"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "eb0ef77c8f3240d3778e424a56570c9ad1c94f99ccb1011f2c11d9d71e3a6885",
+      "prompt_sha256": "6afc459491565f72fe398a9e090b5b13dd59e950bd3c59deb7ac388c635ae756"
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "665f9b1e80c88baf2cae4b7675fa9a1cc1c83bda1a8a8554419e50c183ea5954",
+      "prompt_sha256": "bfbcfeb616310bf9dc9e48a092f5f1fa34f7d749fd77f3f930ac71db76ef0767"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "f60845393f01cae413c88f1daae272059609d2033231a1587f6040b208c8e28c",
+      "prompt_sha256": "1bedee4614fc38618b9ae2771608ed9b1092483240f002216f1480f10ccb2fe1"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "2fa47ee8760f63cea819fcd9dcf7dbecb836c5816e2da47103acee83f0e9fc4c",
+      "prompt_sha256": "2e4c47642c6d2d306a45c1ae78dc7977a85832720bbf7ca9a740d80501dc3021"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "0965088a377bd87d698000bbad0e0218382f7cebe1a2b4b329b12e30bf529a03",
+      "prompt_sha256": "ff4662e1ab512f572f56a771c9284013c34a87f9363da3b0d349008a8ace7b23"
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "06db3468c397c8924b5918979f3dfc447f97b7852c2550b8968d25fd7fecafde",
+      "prompt_sha256": "66ef1f5c33cc48f4aa16c8cd123c8c5e99016f693019c51b8518db4dc41d1208"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-01",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "352ee1ec97d453496a5cc63c953b55027c369089f048b7e440715992ee8dc9d0",
+      "prompt_sha256": "25d3be6912e292a3e5cca699f42b9d2e52b93d42789efb80dc63664f9cec233f"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-02",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "d38ec27b4dd9e55deb163d5f2548a627b32437fc3992f5586244e7b60e098732",
+      "prompt_sha256": "4f9ab65794d6fb89ecc8d0e670e7e62bdce0d959dc2a77b2dbeaad922e707658"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-03",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "f030afde782981a101cfb1253a0f3c703ff0f2baecfcf5c896721ec5cc2dba64",
+      "prompt_sha256": "b3f60bff7d10b3870cc83a7f9f373c217670a02ade4db87fefc4681a76d9a59e"
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-04",
+      "system_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "user_sha256": "a3a2c1ecdf43786b1f5e6ea599e7adb6545ea2a0cb61bc99b547c8efe78514ba",
+      "prompt_sha256": "1fe7739fda45bc960e34b6f59a532b4944680c9c9e87c143390ff8f71e5b624a"
+    }
+  ]
+}

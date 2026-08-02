@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { splitSha256 as automationHoldout } from "../dist/automationbench-offline.js";
 import { scoreCompletion, TASKS as eventTasks } from "../dist/event-categorizer-offline.js";
@@ -7,6 +10,7 @@ import { groupAAdapter } from "../dist/generalization-group-adapters.js";
 import { deriveGeneralizationReport } from "../dist/generalization.js";
 import { ACTION_PROTOCOL_SYSTEM_PROMPT } from "../dist/automationbench-rl-service.js";
 import { GROUP_A_PROTOCOL_SYSTEM_PROMPT } from "../dist/generalization-transfer-prompts.js";
+import { claimHoldoutAccess, holdoutAccessKey } from "../dist/generalization-holdout-guard.js";
 
 test("AutomationBench frozen holdout hash is pinned", () => {
   assert.equal(
@@ -119,6 +123,22 @@ test("Tinker transport uses the sampler contract and preserves tool observations
   assert.equal(rows[0].route, "tinker-sampling");
   assert.equal(requests[0].samplerUrl, "http://127.0.0.1:1234");
   assert.equal(requests[0].messages[0].content, ACTION_PROTOCOL_SYSTEM_PROMPT);
+});
+
+test("holdout access is allowed once per arm/group and rejects only repeats", () => {
+  const dir = mkdtempSync(join(tmpdir(), "understudy-holdout-"));
+  const marker = join(dir, "holdout-accessed.json");
+  try {
+    claimHoldoutAccess(marker, "base", "automationbench-simple-api");
+    claimHoldoutAccess(marker, "tuned", "automationbench-simple-api");
+    assert.throws(
+      () => claimHoldoutAccess(marker, "base", "automationbench-simple-api"),
+      /already claimed/,
+    );
+    assert.equal(holdoutAccessKey("tuned", "automationbench-simple-api"), "tuned:automationbench-simple-api:holdout");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("model action parser extracts embedded JSON and repairs only after a second failure", () => {

@@ -1,0 +1,80 @@
+{
+  "schema_version": "understudy.generalization_prompt_parity_check.v1",
+  "generated_at": "2026-08-02T00:13:43.201Z",
+  "checks": [
+    {
+      "group": "automationbench-simple-api",
+      "split": "train",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-automationbench-simple-api-train.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-automationbench-simple-api-train.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 48,
+      "tuned_task_count": 48,
+      "byte_identical": true
+    },
+    {
+      "group": "automationbench-simple-api",
+      "split": "dev",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-automationbench-simple-api-dev.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-automationbench-simple-api-dev.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 12,
+      "tuned_task_count": 12,
+      "byte_identical": true
+    },
+    {
+      "group": "event-categorizer",
+      "split": "train",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-event-categorizer-train.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-event-categorizer-train.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 8,
+      "tuned_task_count": 8,
+      "byte_identical": true
+    },
+    {
+      "group": "event-categorizer",
+      "split": "dev",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-event-categorizer-dev.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-event-categorizer-dev.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 2,
+      "tuned_task_count": 2,
+      "byte_identical": true
+    },
+    {
+      "group": "synthetic-workflow-shapes",
+      "split": "train",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-synthetic-workflow-shapes-train.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-synthetic-workflow-shapes-train.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 5,
+      "tuned_task_count": 5,
+      "byte_identical": true
+    },
+    {
+      "group": "synthetic-workflow-shapes",
+      "split": "dev",
+      "files": {
+        "base": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/base-synthetic-workflow-shapes-dev.prompt-parity.json",
+        "tuned": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-generalization-transfer/artifacts/tuned-synthetic-workflow-shapes-dev.prompt-parity.json"
+      },
+      "passed": true,
+      "base_task_count": 2,
+      "tuned_task_count": 2,
+      "byte_identical": true
+    }
+  ],
+  "passed": true,
+  "failures": []
+}
