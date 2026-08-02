@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { oraclePolicy, sentinelPolicy, splitCounts, taskPool } from "../../dist/automationbench-offline.js";
+import { sanitizeOutgoingMessages } from "./fireworks-client.mjs";
 import { runTask } from "./harness.mjs";
 import { parseJsonTextMessage } from "./json-text-tools.mjs";
 
@@ -45,6 +46,26 @@ async function main() {
     parseJsonTextMessage("thought\\n```json\n{\"tool\":\"api_search\",\"arguments\":{\"query\":\"Ada\"}}\n```\\nfinished").assistant.tool_calls?.[0]?.function.name === "api_search",
     parseJsonTextMessage("not valid tool output").malformed && !parseJsonTextMessage("not valid tool output").assistant.tool_calls,
   ];
+  const wireMessages = sanitizeOutgoingMessages([
+    { role: "system", content: "system", internal_step: 0 },
+    { role: "user", content: "task" },
+    {
+      role: "assistant",
+      content: "<|channel|>thought\nnot valid tool output",
+      malformed: true,
+      rejected: true,
+      step_index: 1,
+      reasoning_content: "internal reasoning",
+    },
+    { role: "tool", tool_call_id: "call-1", content: "result", internal_step: 2 },
+  ]);
+  const allowedWireKeys = new Set(["role", "content", "name", "tool_calls", "tool_call_id"]);
+  const wireAssertion = wireMessages.every((message) =>
+    Object.keys(message).every((key) => allowedWireKeys.has(key))
+  ) && !Object.hasOwn(wireMessages[2], "malformed")
+    && !Object.hasOwn(wireMessages[2], "reasoning_content")
+    && !Object.hasOwn(wireMessages[2], "rejected")
+    && !Object.hasOwn(wireMessages[2], "step_index");
   const split = "train";
   const oracle = await scorePolicy(split, (taskId) => oraclePolicy(taskId));
   const sentinel = await scorePolicy(split, () => sentinelPolicy());
@@ -56,6 +77,10 @@ async function main() {
     json_text_parser: {
       assertions: parserAssertions,
       passed: parserAssertions.every(Boolean),
+    },
+    wire_message_sanitizer: {
+      assertion: wireAssertion,
+      passed: wireAssertion,
     },
   }) + "\n");
 }
