@@ -372,8 +372,8 @@ The new results are measured on 48 train and 12 DEV tasks. Base averaged
 `10.08`/`10.33` model turns on train/DEV; SFT averaged `6.98`/`6.75`;
 `r32-none` averaged `7.48`/`6.33`; `r32-shaped` averaged `7.19`/`7.92`;
 and `r16-shaped` averaged `7.15`/`7.58`. Parse-error rates were zero for
-all five models. Base's forbidden-effect rates were `3.1%` train and
-`6.7%` DEV; all four trained policies were `0%` on both splits.
+all five models. Base's forbidden-effect rates were `4.2%` train and
+`8.3%` DEV; all four trained policies were `0%` on both splits.
 
 The base adapter gate scores `1.0` with zero forbidden effects on all 48
 synthetic train and 12 synthetic DEV oracle tasks. Do-nothing and out-of-scope
