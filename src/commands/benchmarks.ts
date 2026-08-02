@@ -224,7 +224,7 @@ export function registerBenchmarksCommand(program: Command): void {
     .description("Run one registered generalization group with one provider model")
     .requiredOption("--group <id>", "Registered group id")
     .requiredOption("--model <id>", "Provider model id")
-    .requiredOption("--provider <provider>", "anthropic or fireworks")
+    .requiredOption("--provider <provider>", "anthropic, fireworks, or tinker")
     .requiredOption("--splits <splits>", "Comma-separated train,dev,holdout")
     .requiredOption("--out <path>", "Rows JSONL output")
     .requiredOption("--receipts <path>", "Per-call receipts JSONL output")
@@ -233,9 +233,17 @@ export function registerBenchmarksCommand(program: Command): void {
     .requiredOption("--price-output <n>", "USD per one million output tokens")
     .option("--debug-transcripts <path>", "Write full episode transcripts as JSONL")
     .option("--run-id <id>", "Run id", `generalization-${Date.now()}`)
+    .option("--tinker-sampler-url <url>", "Existing Tinker sampler URL")
+    .option("--max-steps <n>", "Maximum model turns", "12")
+    .option("--max-tokens <n>", "Maximum completion tokens per turn", "192")
+    .option("--prompt-sha256 <sha256>", "Native prompt identity hash")
+    .option("--checkpoint-ref <ref>", "Tinker checkpoint reference")
+    .option("--verifier-revision <ref>", "Verifier revision or fixture pin")
     .action(async (options: {
       group: string; model: string; provider: string; splits: string; out: string; receipts: string;
       budgetUsd: string; priceInput: string; priceOutput: string; runId: string; debugTranscripts?: string;
+      tinkerSamplerUrl?: string; maxSteps: string; maxTokens: string; promptSha256?: string;
+      checkpointRef?: string; verifierRevision?: string;
     }) => {
       const { mkdirSync, appendFileSync, writeFileSync } = await import("node:fs");
       const path = await import("node:path");
@@ -250,7 +258,9 @@ export function registerBenchmarksCommand(program: Command): void {
       };
       const makeAdapter = adapters[options.group];
       if (!makeAdapter) throw new Error(`unknown generalization group ${options.group}`);
-      if (options.provider !== "anthropic" && options.provider !== "fireworks") throw new Error("--provider must be anthropic or fireworks");
+      if (options.provider !== "anthropic" && options.provider !== "fireworks" && options.provider !== "tinker") {
+        throw new Error("--provider must be anthropic, fireworks, or tinker");
+      }
       const budget = new BudgetLedger(Number(options.budgetUsd));
       const output = path.resolve(options.out);
       const receipts = path.resolve(options.receipts);
@@ -269,6 +279,14 @@ export function registerBenchmarksCommand(program: Command): void {
           provider: options.provider,
           price: { inputUsdPerMillion: Number(options.priceInput), outputUsdPerMillion: Number(options.priceOutput) },
           budget,
+          maxSteps: Number(options.maxSteps),
+          maxTokens: Number(options.maxTokens),
+          tinkerSamplerUrl: options.tinkerSamplerUrl,
+          policyIdentity: {
+            ...(options.promptSha256 ? { promptSha256: options.promptSha256 } : {}),
+            ...(options.checkpointRef ? { checkpointRef: options.checkpointRef } : {}),
+            ...(options.verifierRevision ? { verifierRevision: options.verifierRevision } : {}),
+          },
           receiptsPath: receipts,
           debugTranscriptsPath: options.debugTranscripts ? path.resolve(options.debugTranscripts) : undefined,
         });

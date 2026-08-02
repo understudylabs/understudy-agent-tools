@@ -30,6 +30,13 @@ import {
   taskBands as syntheticTaskBands,
   taskPool as syntheticTaskPool,
 } from "./synthetic-workflow-offline.js";
+import {
+  v2FixtureSha256,
+  v2SplitCounts,
+  v2SplitSha256,
+  v2TaskBands,
+  v2TaskPool,
+} from "./automationbench-v2.js";
 
 export const ACTION_PROTOCOL_SYSTEM_PROMPT = `You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.
 
@@ -52,7 +59,7 @@ api_search is read-only endpoint discovery. api_fetch applies one API call and i
 Each tool result is returned to you as JSON. Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
 
 export const MAX_MODEL_TURNS = 12;
-export type BenchmarkName = "automationbench" | "synthetic-workflow";
+export type BenchmarkName = "automationbench" | "automationbench-v2" | "synthetic-workflow";
 export type PromptVariant = "default" | "nemotron-v1";
 type Split = "train" | "dev" | "holdout";
 type Adapter = {
@@ -69,6 +76,20 @@ type Adapter = {
 };
 
 function adapter(benchmark: BenchmarkName): Adapter {
+  if (benchmark === "automationbench-v2") {
+    return {
+      fixtureSha256: v2FixtureSha256,
+      splitSha256: v2SplitSha256,
+      splitCounts: v2SplitCounts,
+      taskBands: v2TaskBands,
+      getTask: automationGetTask,
+      taskPool: v2TaskPool,
+      reset: automationReset,
+      step: automationStep,
+      finish: automationFinish,
+      partialCredit: automationPartialCredit,
+    };
+  }
   return benchmark === "synthetic-workflow"
     ? {
       fixtureSha256: syntheticFixtureSha256,
@@ -162,8 +183,8 @@ function checkHoldoutAccess(
 }
 
 export type ParsedAgentAction =
-  | { name: string; arguments: Record<string, unknown> }
-  | { finish: true }
+  | { name: string; arguments: Record<string, unknown>; encoding: "json-text" | "tool-call-wrapper" }
+  | { finish: true; encoding: "finish-wrapper" | "json-text" }
   | { error: string };
 
 export type OracleTrajectory = {
@@ -209,7 +230,9 @@ function extractFirstBalancedJsonObject(text: string): string | null {
 export function parseAgentAction(text: string): ParsedAgentAction {
   const source = String(text ?? "").trim();
   if (!source) return { error: "empty assistant message" };
-  const candidate = extractFirstBalancedJsonObject(source);
+  if (/<finish\s*\/>/i.test(source)) return { finish: true, encoding: "finish-wrapper" };
+  const wrapper = source.match(/<tool_call\b[^>]*>\s*([\s\S]*?)\s*<\/tool_call>/i);
+  const candidate = extractFirstBalancedJsonObject(wrapper?.[1] ?? source);
   if (!candidate) return { error: "assistant message does not contain a balanced JSON object" };
   let parsed: unknown;
   try {
@@ -221,7 +244,10 @@ export function parseAgentAction(text: string): ParsedAgentAction {
     return { error: "assistant action must be a JSON object" };
   }
   const record = parsed as Record<string, unknown>;
-  if (record.finish === true || record.tool === "finish" || record.name === "finish") return { finish: true };
+  const encoding = wrapper ? "tool-call-wrapper" : "json-text";
+  if (record.finish === true || record.tool === "finish" || record.name === "finish") {
+    return { finish: true, encoding: "json-text" };
+  }
   const name = typeof record.tool === "string" ? record.tool : typeof record.name === "string" ? record.name : "";
   if (!name) return { error: "assistant action missing tool/name" };
   let argumentsObject: unknown = record.arguments ?? {};
@@ -235,7 +261,7 @@ export function parseAgentAction(text: string): ParsedAgentAction {
   if (!argumentsObject || typeof argumentsObject !== "object" || Array.isArray(argumentsObject)) {
     return { error: "assistant action arguments must be a JSON object" };
   }
-  return { name, arguments: argumentsObject as Record<string, unknown> };
+  return { name, arguments: argumentsObject as Record<string, unknown>, encoding };
 }
 
 export function renderToolObservation(stepResult: StepResult): string {
@@ -248,10 +274,15 @@ function serializeAgentAction(action: ToolCall | { name: "finish"; arguments: Re
   return `{"tool":"${action.name}","arguments":${JSON.stringify(action.arguments)}}`;
 }
 
-export function replayOracleTrajectory(taskId: string, promptVariant: PromptVariant = "nemotron-v1"): OracleTrajectory {
+export function replayOracleTrajectory(
+  taskId: string,
+  promptVariant: PromptVariant = "nemotron-v1",
+  benchmark: BenchmarkName = "automationbench",
+): OracleTrajectory {
   const systemPrompt = promptForVariant(promptVariant);
-  const task = automationGetTask(taskId) as AutomationTask;
-  const { handle, obs: initialObservation } = automationReset(taskId);
+  const env = adapter(benchmark);
+  const task = env.getTask(taskId) as AutomationTask;
+  const { handle, obs: initialObservation } = env.reset(taskId);
   handle.messages[0] = { role: "system", content: systemPrompt };
   const messages: OracleTrajectory["messages"] = [
     { role: "system", content: systemPrompt },
@@ -264,18 +295,18 @@ export function replayOracleTrajectory(taskId: string, promptVariant: PromptVari
     const action = policy(obs);
     if (!action) break;
     messages.push({ role: "assistant", content: serializeAgentAction(action) });
-    const result = automationStep(handle, action);
+    const result = env.step(handle, action);
     obs = result.obs;
     messages.push({ role: "tool", content: renderToolObservation(result) });
   }
   messages.push({ role: "assistant", content: serializeAgentAction({ name: "finish", arguments: {} }) });
-  const terminal = handle.done ? { reward: automationPartialCredit(handle) } : automationFinish(handle);
+  const terminal = handle.done ? { reward: env.partialCredit(handle) } : env.finish(handle);
   const family = taskFamily(task);
   return {
     task_id: task.taskId,
     split: task.split,
     family,
-    band: automationTaskBands()[family] ?? "single-write",
+    band: env.taskBands()[family] ?? "single-write",
     reward: terminal.reward,
     forbidden_effects: [...handle.forbiddenEffects],
     messages,
@@ -310,6 +341,9 @@ async function route(
   }
   if (request.method === "GET" && url.pathname === "/hashes") {
     return jsonResponse({
+      ...(benchmark === "automationbench-v2"
+        ? { benchmark_id: "automationbench-simple-api-offline-v2" }
+        : {}),
       fixture_sha256: env.fixtureSha256(),
       split_sha256: {
         train: env.splitSha256("train"),
@@ -330,14 +364,16 @@ async function route(
     }
   }
   if (request.method === "GET" && (url.pathname.startsWith("/oracle/") || url.pathname.startsWith("/oracle-trajectory/"))) {
-    if (benchmark !== "automationbench") return jsonResponse({ error: "oracle trajectories are only available for automationbench" }, 404);
+    if (benchmark !== "automationbench" && benchmark !== "automationbench-v2") {
+      return jsonResponse({ error: "oracle trajectories are only available for automationbench" }, 404);
+    }
     const prefix = url.pathname.startsWith("/oracle-trajectory/") ? "/oracle-trajectory/" : "/oracle/";
     const taskId = decodeURIComponent(url.pathname.slice(prefix.length));
     try {
       const frozen = url.searchParams.get("frozen_holdout_sha256") ?? undefined;
       checkHoldoutAccess(env, taskId, frozen);
       const promptVariant = parsePromptVariant(requestedPromptVariant ?? configuredPromptVariant);
-      return jsonResponse(replayOracleTrajectory(taskId, promptVariant));
+      return jsonResponse(replayOracleTrajectory(taskId, promptVariant, benchmark));
     } catch (error) {
       return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
     }
@@ -350,12 +386,21 @@ async function route(
       const frozen = typeof body.frozen_holdout_sha256 === "string" ? body.frozen_holdout_sha256 : undefined;
       const task = checkHoldoutAccess(env, taskId, frozen);
       const promptVariant = parsePromptVariant(body.prompt_variant ?? configuredPromptVariant);
-      const { handle } = env.reset(taskId);
+      const { handle, obs } = env.reset(taskId);
       const systemPrompt = promptForVariant(promptVariant);
-      if (benchmark === "automationbench") handle.messages[0] = { role: "system", content: systemPrompt };
+      if (benchmark === "automationbench" || benchmark === "automationbench-v2") {
+        handle.messages[0] = { role: "system", content: systemPrompt };
+      }
       const episodeId = randomUUID();
       episodes.set(episodeId, { episodeId, taskId, handle, task, finished: false, benchmark, systemPrompt });
-      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: systemPrompt, prompt_variant: promptVariant });
+      return jsonResponse({
+        episode_id: episodeId,
+        task_id: taskId,
+        prompt: task.prompt,
+        system_prompt: systemPrompt,
+        tools: obs.tools,
+        prompt_variant: promptVariant,
+      });
     } catch (error) {
       return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
     }

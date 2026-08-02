@@ -90,6 +90,11 @@ export type ModelRunOptions = {
   instructionOverride?: string;
   tinkerSamplerUrl?: string;
   transport?: Transport;
+  policyIdentity?: {
+    promptSha256?: string;
+    checkpointRef?: string | null;
+    verifierRevision?: string;
+  };
 };
 
 function instruction(): string {
@@ -104,6 +109,13 @@ function instruction(): string {
 }
 
 export function parseAction(content: string): { tool: string; arguments: Record<string, unknown> } | null {
+  const normalized = content.trim();
+  if (/^<finish\s*\/?>$/i.test(normalized)) return { tool: "finish", arguments: {} };
+  const wrapped = /^<tool_call>\s*(.*?)\s*<\/tool_call>$/is.exec(normalized);
+  const candidate = wrapped?.[1]?.trim() ?? normalized
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
   const extract = (input: string): string | null => {
     const start = input.indexOf("{");
     if (start < 0) return null;
@@ -125,7 +137,7 @@ export function parseAction(content: string): { tool: string; arguments: Record<
     return null;
   };
   try {
-    const value = JSON.parse(extract(content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim()) ?? "") as unknown;
+    const value = JSON.parse(extract(candidate) ?? "") as unknown;
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
     const tool = typeof record.tool === "string" ? record.tool : null;
@@ -346,6 +358,7 @@ export async function runModelRows(options: ModelRunOptions): Promise<Record<str
         harness_sha256: options.adapter.harnessSha256 ?? null,
         split_sha256: options.adapter.splitSha256(episode.split),
         task_content_hashes: episode.contentHashes,
+        ...(options.policyIdentity ? { policy_identity: options.policyIdentity } : {}),
       },
     });
   }

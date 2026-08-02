@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,6 +63,10 @@ def parse_agent_action(text: str) -> dict[str, Any]:
     source = str(text or "").strip()
     if not source:
         return {"error": "empty assistant message"}
+    if re.search(r"<finish\s*/>", source, re.IGNORECASE):
+        return {"finish": True, "encoding": "finish-wrapper"}
+    wrapper = re.search(r"<tool_call\b[^>]*>\s*([\s\S]*?)\s*</tool_call>", source, re.IGNORECASE)
+    source = wrapper.group(1).strip() if wrapper else source
     candidate = _extract_balanced_json_object(source)
     if candidate is None:
         return {"error": "assistant message does not contain a balanced JSON object"}
@@ -72,7 +77,7 @@ def parse_agent_action(text: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         return {"error": "assistant action must be a JSON object"}
     if parsed.get("finish") is True or parsed.get("tool") == "finish" or parsed.get("name") == "finish":
-        return {"finish": True}
+        return {"finish": True, "encoding": "json-text"}
     name = parsed.get("tool") if isinstance(parsed.get("tool"), str) else parsed.get("name", "")
     if not name:
         return {"error": "assistant action missing tool/name"}
@@ -84,7 +89,11 @@ def parse_agent_action(text: str) -> dict[str, Any]:
             return {"error": f"assistant action arguments are not valid JSON: {error.msg}: line {error.lineno} column {error.colno} (char {error.pos})"}
     if not isinstance(raw_arguments, dict):
         return {"error": "assistant action arguments must be a JSON object"}
-    return {"name": name, "arguments": raw_arguments}
+    return {
+        "name": name,
+        "arguments": raw_arguments,
+        "encoding": "tool-call-wrapper" if wrapper else "json-text",
+    }
 
 
 def _prompt_token_count(model_input: tinker.ModelInput) -> int:
@@ -96,11 +105,19 @@ def _prompt_token_count(model_input: tinker.ModelInput) -> int:
     return total
 
 
+def _catalog_text(tools: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        f"- {tool['name']}: {tool['description']}"
+        for tool in tools
+    )
+
+
 @dataclass
 class RolloutConfig:
     temperature: float
     frozen_holdout_sha256: str | None = None
     max_model_turns: int = MAX_MODEL_TURNS
+    system_prompt: str | None = None
 
 
 def _sample_sync(
@@ -125,12 +142,16 @@ async def rollout_task(
     reset = service.reset(task["task_id"], config.frozen_holdout_sha256, PROMPT_VARIANT)
     episode_id = reset["episode_id"]
     messages: list[Message] = [
-        {"role": "system", "content": reset["system_prompt"]},
-        {"role": "user", "content": reset["prompt"]},
+        {"role": "system", "content": config.system_prompt or reset["system_prompt"]},
+        {
+            "role": "user",
+            "content": f"{reset['prompt']}\n\nAvailable tools:\n{_catalog_text(reset['tools'])}",
+        },
     ]
     parse_errors: list[str] = []
     sampled_token_counts: list[int] = []
     prompt_token_counts: list[int] = []
+    encoding_counts: dict[str, int] = {}
     env_steps = 0
     finished_explicitly = False
     terminal: dict[str, Any] | None = None
@@ -154,6 +175,9 @@ async def rollout_task(
             assistant_text = get_text_content(assistant_message)
             messages.append({"role": "assistant", "content": assistant_text})
             action = parse_agent_action(assistant_text)
+            encoding = action.get("encoding")
+            if isinstance(encoding, str):
+                encoding_counts[encoding] = encoding_counts.get(encoding, 0) + 1
             if "error" in action:
                 parse_errors.append(action["error"])
                 messages.append(
@@ -189,6 +213,7 @@ async def rollout_task(
             "messages": messages,
             "sampled_token_counts": sampled_token_counts,
             "prompt_token_counts": prompt_token_counts,
+            "encoding_counts": encoding_counts,
         }
     finally:
         service.delete_episode(episode_id)

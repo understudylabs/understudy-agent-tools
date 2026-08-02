@@ -1,13 +1,22 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, beforeEach, afterEach } from "node:test";
 
 import {
   auditObservationLeakage,
   getTask,
+  finish as offlineFinish,
   oraclePolicy,
+  partialCredit as offlinePartialCredit,
   reset as offlineReset,
+  step as offlineStep,
   splitSha256,
 } from "../dist/automationbench-offline.js";
+import {
+  v2SplitSha256,
+  v2TaskPool,
+} from "../dist/automationbench-v2.js";
 import {
   ACTION_PROTOCOL_SYSTEM_PROMPT,
   AUTOMATIONBENCH_ACTION_PROTOCOL_SYSTEM_PROMPT_NEMOTRON_V1,
@@ -47,13 +56,68 @@ describe("parseAgentAction", () => {
     assert.deepEqual(parseAgentAction('{"tool":"api_search","arguments":{"query":"x"}}'), {
       name: "api_search",
       arguments: { query: "x" },
+      encoding: "json-text",
     });
-    assert.deepEqual(parseAgentAction('```json\n{"tool":"finish","arguments":{}}\n```'), { finish: true });
+    assert.deepEqual(parseAgentAction('```json\n{"tool":"finish","arguments":{}}\n```'), {
+      finish: true,
+      encoding: "json-text",
+    });
     assert.deepEqual(parseAgentAction('Sure — {"tool":"api_fetch","arguments":{"method":"GET","url":"/crm/contacts"}} thanks'), {
       name: "api_fetch",
       arguments: { method: "GET", url: "/crm/contacts" },
+      encoding: "json-text",
     });
     assert.match(String(parseAgentAction("no json").error), /balanced JSON object/);
+  });
+
+  it("accepts the GEPA tool-call wrapper and explicit finish wrapper", () => {
+    assert.deepEqual(
+      parseAgentAction('<tool_call>{"name":"api_search","arguments":{"query":"crm"}}</tool_call>'),
+      {
+        name: "api_search",
+        arguments: { query: "crm" },
+        encoding: "tool-call-wrapper",
+      },
+    );
+    assert.deepEqual(parseAgentAction("<finish/>"), {
+      finish: true,
+      encoding: "finish-wrapper",
+    });
+    assert.deepEqual(parseAgentAction(" <FINISH /> "), {
+      finish: true,
+      encoding: "finish-wrapper",
+    });
+  });
+});
+
+function replayRecordedV1Row(row) {
+  const { handle } = offlineReset(row.task_id);
+  for (const message of row.messages.filter((entry) => entry.role === "assistant")) {
+    const action = parseAgentAction(message.content);
+    if ("error" in action) continue;
+    if ("finish" in action) break;
+    offlineStep(handle, { name: action.name, arguments: action.arguments });
+  }
+  return handle.done ? offlinePartialCredit(handle) : offlineFinish(handle).reward;
+}
+
+describe("recorded v1 parser replay", () => {
+  it("keeps SFT/GRPO and DPO per-task rewards byte-identical", () => {
+    const artifacts = [
+      "experiments/nemotron-tinker-grpo/artifacts/baseline-dev.jsonl",
+      "experiments/nemotron-tinker-grpo/artifacts/sft-selected-dev.jsonl",
+      "experiments/nemotron-tinker-dpo/artifacts/smoke-dev-3.jsonl",
+    ];
+    let rows = 0;
+    for (const relativePath of artifacts) {
+      const contents = readFileSync(resolve(relativePath), "utf8").trim();
+      for (const line of contents.split("\n")) {
+        const row = JSON.parse(line);
+        assert.equal(replayRecordedV1Row(row), row.score, `${relativePath}:${row.task_id}`);
+        rows += 1;
+      }
+    }
+    assert.ok(rows > 0);
   });
 });
 
@@ -90,6 +154,41 @@ Each tool result is returned to you as JSON. Look up any id you need before writ
     }
   });
 
+  it("supports the v2 AutomationBench adapter with a sealed 60-task holdout", async () => {
+    const v2 = await startEnvService({ port: 0, benchmark: "automationbench-v2" });
+    try {
+      const base = `http://127.0.0.1:${v2.port}`;
+      const hashes = await fetch(`${base}/hashes`).then((response) => response.json());
+      assert.deepEqual(hashes.counts, { train: 120, dev: 36, holdout: 60 });
+      const denied = await fetch(`${base}/tasks?split=holdout`);
+      assert.equal(denied.status, 400);
+      const allowed = await fetch(
+        `${base}/tasks?split=holdout&frozen_holdout_sha256=${v2SplitSha256("holdout")}`,
+      );
+      assert.equal(allowed.status, 200);
+      assert.equal((await allowed.json()).length, 60);
+      assert.equal(v2TaskPool({ split: "dev" }).length, 36);
+    } finally {
+      await new Promise((resolve) => v2.server.close(resolve));
+    }
+  });
+
+  it("runs a v2 hard-task oracle episode over HTTP", async () => {
+    const v2 = await startEnvService({ port: 0, benchmark: "automationbench-v2" });
+    try {
+      const base = `http://127.0.0.1:${v2.port}`;
+      const tasks = await fetch(`${base}/tasks?split=dev`).then((response) => response.json());
+      const hardTask = tasks.find((task) => task.task_id.startsWith("hard-api-"));
+      assert.ok(hardTask);
+      const oracle = await fetch(`${base}/oracle/${encodeURIComponent(hardTask.task_id)}`)
+        .then((response) => response.json());
+      assert.equal(oracle.reward, 1);
+      assert.deepEqual(oracle.forbidden_effects, []);
+    } finally {
+      await new Promise((resolve) => v2.server.close(resolve));
+    }
+  });
+
   it("refuses holdout listing without the frozen hash and allows it with the hash", async () => {
     const denied = await json("/tasks?split=holdout");
     assert.equal(denied.response.status, 400);
@@ -112,6 +211,11 @@ Each tool result is returned to you as JSON. Look up any id you need before writ
     });
     assert.equal(resetResponse.response.status, 200);
     assert.equal(resetResponse.body.system_prompt, ACTION_PROTOCOL_SYSTEM_PROMPT);
+    assert.ok(Array.isArray(resetResponse.body.tools));
+    assert.deepEqual(
+      resetResponse.body.tools.map(({ name, description }) => ({ name, description })),
+      offlineReset(task.task_id).obs.tools,
+    );
     assert.equal(replayOracleTrajectory(task.task_id).reward, 1);
     const policy = oraclePolicy(task.task_id);
     let obs = offlineReset(task.task_id).obs;

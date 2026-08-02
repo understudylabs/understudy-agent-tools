@@ -37,5 +37,12 @@ export const TINKER_PRICE_CATALOG = Object.freeze({
       train_usd_per_million: 0.396,
       preference: 3,
     },
+    {
+      model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      prefill_usd_per_million: 0.39,
+      sample_usd_per_million: 0.99,
+      train_usd_per_million: 0.88,
+      preference: 4,
+    },
   ]),
 } as const);

@@ -21,6 +21,7 @@ import {
   splitSha256 as syntheticSplitSha,
   fixtureSha256 as syntheticFixtureSha,
   taskPool as syntheticPool,
+  ENDPOINTS as syntheticEndpoints,
 } from "./synthetic-workflow-offline.js";
 import {
   EVENT_CATEGORIZER_SUBSET,
@@ -107,11 +108,19 @@ function syntheticAdapter(): ModelTaskAdapter {
       const task = SYNTHETIC_TASKS.find((candidate) => candidate.taskId === taskId)!;
       const reset = syntheticReset(taskId);
       const handle = reset.handle;
+      const syntheticProtocol = [
+        "Available tools: api_search searches the endpoint catalog with {query}; api_fetch applies one API call with {method,url,body}.",
+        "Use exact endpoint paths from this catalog; include body:{} for GET requests.",
+        ...syntheticEndpoints.map((endpoint) => `${endpoint.url}: ${endpoint.methods.join("|")} — ${endpoint.summary}`),
+        'Reply with exactly one JSON object per turn: {"tool":"api_search","arguments":{...}} or {"tool":"api_fetch","arguments":{"method":"GET|POST|PATCH","url":"...","body":{...}}}.',
+        'Finish with {"tool":"finish"}.',
+      ].join(" ");
       return {
         taskId,
         split: task.split,
         benchmarkId: SYNTHETIC_WORKFLOW_SUBSET.benchmark_id,
-        messages: messages(reset.obs.messages),
+        messages: messages(reset.obs.messages).map((message, index) =>
+          index === 0 ? { ...message, content: `${message.content}\n\n${syntheticProtocol}` } : message),
         applyToolCall: (tool, args) => {
           if (tool === "finish") return { result: {}, done: true };
           const result = syntheticStep(handle, { name: tool, arguments: args });

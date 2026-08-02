@@ -35,6 +35,7 @@ class EnvService:
 
     repo: str
     prompt_variant: str = "nemotron-v1"
+    benchmark: str = "automationbench"
     process: subprocess.Popen[str] | None = None
     port: int | None = None
 
@@ -46,7 +47,7 @@ class EnvService:
                 "node",
                 "scripts/automationbench-rl-service.mjs",
                 "--benchmark",
-                "automationbench",
+                self.benchmark,
                 "--prompt-variant",
                 self.prompt_variant,
             ],
@@ -142,12 +143,18 @@ class EnvService:
 _SERVICE: EnvService | None = None
 
 
-def get_service(repo: str) -> EnvService:
+def get_service(
+    repo: str,
+    benchmark: str = "automationbench",
+    prompt_variant: str = "nemotron-v1",
+) -> EnvService:
     """Return the process-wide service instance, starting it on first use."""
 
     global _SERVICE
     if _SERVICE is None:
-        _SERVICE = EnvService(repo).start()
+        _SERVICE = EnvService(repo, prompt_variant=prompt_variant, benchmark=benchmark).start()
+    elif _SERVICE.benchmark != benchmark or _SERVICE.prompt_variant != prompt_variant:
+        raise EnvServiceError("environment service already started with a different benchmark or prompt variant")
     return _SERVICE
 
 
