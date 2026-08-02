@@ -95,6 +95,8 @@ def serve() -> None:
         "--max-lora-rank",
         "64",
         "--enable-auto-tool-choice",
+        "--reasoning-parser",
+        "nemotron_v3",
         "--tool-call-parser",
         "qwen3_xml",
     ]

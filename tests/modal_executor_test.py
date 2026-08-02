@@ -54,6 +54,7 @@ class ModalExecutorLogicTest(unittest.TestCase):
         )[0]
         self.assertNotIn("--api-key", command_source)
         self.assertNotIn("VLLM_API_KEY", command_source)
+        self.assertIn('"--reasoning-parser",\n        "nemotron_v3"', command_source)
         self.assertIn("subprocess.Popen(command", command_source)
         self.assertNotIn("subprocess.run(command", command_source)
 
