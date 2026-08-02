@@ -21,7 +21,7 @@ is **$62,683.08822989**.
 | 2 | WL-02 | — | 83145 | 7638158651 | 61868504 | 0.793950 | 13877.288403 | 0.237531 | 0.010355 | pending — awaiting per-workload repair memo |
 | 3 | WL-03 | — | 38048 | 1543989018 | 21036102 | 0.696463 | 4263.356460 | 0.072974 | 0.021552 | pending — awaiting per-workload repair memo |
 | 4 | WL-04 | — | 39296 | 1412872736 | 18400589 | 0.793038 | 3011.857223 | 0.051552 | 0.027687 | pending — awaiting per-workload repair memo |
-| 5 | WL-05 | — | 148936 | 675239846 | 9617187 | 0.664327 | 2447.093050 | 0.041886 | 0.000047 | pending — awaiting per-workload repair memo |
+| 5 | WL-05 | WL-DI → [memo](../domain-identification-repair/REPAIR-MEMO.md) | 148936 | 675239846 | 9617187 | 0.664327 | 2447.093050 | 0.041886 | 0.000047 | memo landed — repair target; slice gates pass |
 | 6 | WL-06 | — | 13545 | 773815738 | 4882849 | 0.827637 | 1337.175123 | 0.022888 | 0.018900 | pending — awaiting per-workload repair memo |
 | 7 | WL-07 | — | 47872 | 158077276 | 8325019 | 0.007060 | 1002.539531 | 0.017160 | 0.234272 | pending — awaiting per-workload repair memo |
 | 8 | WL-08 | WL-OR → [memo](../workload-orchestrator/repair-memo.md) | 2474 | 141267215 | 689926 | 0.079853 | 810.364917 | 0.013871 | 0.000808 | memo landed — repairable, second-wave; slice gates green |
@@ -48,6 +48,10 @@ fail-closed holdout loading. Its DPO result remains pending. WL-OR has a landed
 memo and green slice gates (oracle, activity, free-credit, leakage,
 reachability, frozen-holdout refusal, and deterministic reset); it is
 repairable but second-wave because the case is behavioural, not economic.
+WL-DI has a landed memo and a passing gate-validation artifact: oracle 1.0 on
+all 48 tasks with zero forbidden writes, sentinel maximum 0, zero leakage
+findings, and frozen-holdout refusal/opening checks passing. Its DPO result
+remains pending.
 
 ## Landed memo summaries
 
@@ -62,6 +66,19 @@ repairable but second-wave because the case is behavioural, not economic.
 - **Verdict:** suitable repair target; uniform single-shot shape and bounded output.
 - **Failing bands:** >1,024-token long-context tail; ≤64-token refusal/fabrication band.
 - **Gate:** fixture frozen/sealed; DPO lift and regression results pending.
+
+### WL-DI — repair target
+
+- **Memo:** [REPAIR-MEMO.md](../domain-identification-repair/REPAIR-MEMO.md)
+- **Volume/cost:** 149,577 requests over 37 days; **$1,228.33**; **$0.00821/request**.
+- **Input:** 227.8M uncached + 449.9M cache-read tokens; cache-read share 66.39%.
+- **Output:** p50 74, p95 114, p99 130, max 2,555; 99.85% ≤150 tokens.
+- **Output bands:** <40: 39.43%; 40–79: 15.98%; 80–119: 42.14%; 120–159: 2.33%; ≥160: 0.11%.
+- **Reliability:** 100% success aggregate; 7 upstream errors and no fallbacks.
+- **Verdict:** repair; high-volume, repeatable, bounded output, and cost-effective in aggregate.
+- **Candidate gap:** open-model arm averaged 341 output tokens; only 20.2% stayed within ≤150.
+- **Failing bands:** short terse decisions and 80–119-token justifications both need preservation; ≥160 is the tail.
+- **Gate:** oracle/sentinel/leakage/frozen-holdout gates pass; DPO lift remains pending.
 
 ### WL-OR — repairable, second-wave
 
@@ -80,20 +97,20 @@ repairable but second-wave because the case is behavioural, not economic.
 Pending per-workload repair memos. Record base → DPO lift separately for each
 dev and holdout band, preserving the band definition and sample count:
 
-No DPO results have landed for WL-chat or WL-OR. The base receipt at
+No DPO results have landed for WL-chat, WL-OR, or WL-DI. The base receipt at
 `outputs/dpo/base-dev.json` is an offline fixture arm, not a DPO result:
 
-| Base receipt band | Base mean | n | WL-chat DPO | WL-OR DPO |
-|---|---:|---:|---|---|
-| aggregation | 1.000 | 2 | pending | pending |
-| cascade | 0.875 | 4 | pending | pending |
-| conditional | 1.000 | 4 | pending | pending |
-| cross-record | 0.833 | 6 | pending | pending |
-| discovery | 1.000 | 4 | pending | pending |
-| long-chain | 0.702 | 4 | pending | pending |
-| multi-hop | 0.500 | 4 | pending | pending |
-| multi-write | 0.750 | 4 | pending | pending |
-| single-write | 1.000 | 4 | pending | pending |
+| Base receipt band | Base mean | n | WL-chat DPO | WL-OR DPO | WL-DI DPO |
+|---|---:|---:|---|---|---|
+| aggregation | 1.000 | 2 | pending | pending | pending |
+| cascade | 0.875 | 4 | pending | pending | pending |
+| conditional | 1.000 | 4 | pending | pending | pending |
+| cross-record | 0.833 | 6 | pending | pending | pending |
+| discovery | 1.000 | 4 | pending | pending | pending |
+| long-chain | 0.702 | 4 | pending | pending | pending |
+| multi-hop | 0.500 | 4 | pending | pending | pending |
+| multi-write | 0.750 | 4 | pending | pending | pending |
+| single-write | 1.000 | 4 | pending | pending | pending |
 
 ## Does DPO lift correlate with volume/cost ranking?
 
