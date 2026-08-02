@@ -1,0 +1,100 @@
+{
+  "schema_version": "understudy.oee_usage_receipt.v1",
+  "measurement_status": "actual",
+  "evidence_scope": {
+    "source": "synthetic fixture, local Tinker receipts, and in-process offline verifier",
+    "production_data_used": false,
+    "raw_data_committed": false,
+    "provider_calls_in_tests": false,
+    "note": "Token counts and elapsed times are actual run measurements. No production request, raw trace, prompt, completion, or credential is represented."
+  },
+  "budget_vs_actual": {
+    "declared_budget_usd": 100,
+    "actual_cost_usd": null,
+    "actual_cost_status": "not_reported_by_training_receipt",
+    "note": "The declared budget is the arm limit; provider billing was not emitted by the local training receipt, so no cost value is inferred."
+  },
+  "split_refs": {
+    "fixture_manifest_ref": "outputs/oee/fixture-freeze.json",
+    "fixture_manifest_sha256": "02091a6b2dc5e7b0fbe39c9c773d5c1d83604f3116c6f3277db35ae42574c0c5",
+    "fixture_sha256": "8cfffb5500f40c03a8394d3f244b3277a20a4815faead4def326236a7e511190",
+    "train_manifest_ref": "outputs/oee/fixture-freeze.json#fixture.train_sha256",
+    "train_manifest_sha256": "9f14b02edf307ca215ecbc70d716786d55794bc2332727abe71d142ec5e764c7",
+    "dev_manifest_ref": "outputs/oee/fixture-freeze.json#fixture.dev_sha256",
+    "dev_manifest_sha256": "74a6cdbfe6a5ec504e82dc0ce550a91300a5a6f705ec7ce402b063382abf79f5"
+  },
+  "holdout": {
+    "status": "clean",
+    "executed": false
+  },
+  "steps": {
+    "base_dev": {
+      "status": "completed",
+      "sampled_tokens": 251184,
+      "trained_tokens": 0,
+      "elapsed_seconds": 431,
+      "rollouts": 16,
+      "artifact_refs": [
+        "outputs/oee/base-dev.json"
+      ]
+    },
+    "base_train_sweep": {
+      "status": "completed",
+      "sampled_tokens": 3787208,
+      "trained_tokens": 0,
+      "elapsed_seconds": 5608,
+      "rollouts": 224,
+      "artifact_refs": [
+        "outputs/oee/base-train-rollouts.json",
+        "outputs/oee/base-train-rollouts.transcripts.jsonl"
+      ]
+    },
+    "dpo_training": {
+      "status": "completed",
+      "sampled_tokens": 0,
+      "trained_tokens": 442621,
+      "elapsed_seconds": 201,
+      "pairs": 42,
+      "artifact_refs": [
+        "outputs/oee/dpo/train-receipt.json",
+        "outputs/oee/dpo/pairs.normalized.jsonl"
+      ]
+    },
+    "dpo_dev": {
+      "status": "completed",
+      "sampled_tokens": 273282,
+      "trained_tokens": 0,
+      "elapsed_seconds": 497,
+      "rollouts": 16,
+      "artifact_refs": [
+        "outputs/oee/dpo/dpo-dev.json",
+        "outputs/oee/dpo/band-report-dev.json"
+      ]
+    }
+  },
+  "artifact_refs": [
+    {
+      "ref": "experiments/on-event-execution/contracts/candidate-submit.json",
+      "sha256": "882fbcde4e3058f4d8c4c5efff76b90b0fe6f1bbaeefdbce554b9c8832a42e04"
+    },
+    {
+      "ref": "experiments/on-event-execution/contracts/dpo-policy.json",
+      "sha256": "f5a73614b723af11ae9897638cb5ef214f31a414637eb59ce2c7fe57b0d24d8f"
+    },
+    {
+      "ref": "outputs/oee/dpo/dpo_pairs.jsonl",
+      "sha256": "437e4fce9e5423dd5de734bdc3157d88b32071bcf9d6c6ca3f46af9f26df184a"
+    },
+    {
+      "ref": "outputs/oee/dpo/pairs.validation.json",
+      "sha256": "682f2ce4c6a4cb5e39447677fed089c07599c518637d9f0e87edbba57ed0a81d"
+    }
+  ],
+  "cancellation": {
+    "occurred": false,
+    "status": "not_cancelled",
+    "step": null,
+    "reason": null,
+    "recorded_at": null
+  }
+}

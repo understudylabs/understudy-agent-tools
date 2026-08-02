@@ -1,0 +1,21 @@
+{
+  "schema_version": "understudy.wl_au.split_manifest.v1",
+  "fixture_id": "automationbench-simple-api-offline-v2",
+  "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+  "split": "dev",
+  "tasks": 36,
+  "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+  "bands": {
+    "single-write": 4,
+    "discovery": 4,
+    "multi-write": 4,
+    "cross-record": 6,
+    "multi-hop": 4,
+    "cascade": 4,
+    "long-chain": 4,
+    "conditional": 4,
+    "aggregation": 2
+  },
+  "source": "index-generated synthetic records; no customer data",
+  "selection_rule": "dev is the only split read during candidate selection; the holdout is reached solely through a step that carries its frozen hash"
+}

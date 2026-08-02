@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.arm_evidence.v1.schema.json",
+  "title": "understudy.arm_evidence.v1",
+  "description": "One run-level evidence record for a training or evaluation arm. It records the reproducibility inputs, entry gate, frozen holdout pin, and aggregate evaluation evidence. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "arm_id",
+    "run_id",
+    "created_at",
+    "base_model_id",
+    "renderer",
+    "provider",
+    "dataset",
+    "holdout",
+    "entry_gate",
+    "bands"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.arm_evidence.v1"
+    },
+    "arm_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "renderer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route": {
+      "type": ["string", "null"]
+    },
+    "training": {
+      "type": ["object", "null"],
+      "properties": {
+        "lora_rank": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "steps": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["seed", "sha256"],
+      "properties": {
+        "seed": {
+          "type": ["integer", "null"]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "holdout": {
+      "type": "object",
+      "required": ["split", "sealed_sha256"],
+      "properties": {
+        "split": {
+          "enum": ["train", "dev", "holdout", "none", null]
+        },
+        "sealed_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": true
+    },
+    "cost": {
+      "type": ["object", "null"],
+      "properties": {
+        "usd": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "basis": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "bands": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/band"
+      }
+    },
+    "eval": {
+      "type": ["object", "null"],
+      "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mean_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "eval_result_schema_version": {
+          "const": "understudy.eval_result.v1"
+        }
+      },
+      "required": ["rows", "eval_result_schema_version"],
+      "additionalProperties": true
+    },
+    "entry_gate": {
+      "$ref": "#/$defs/entry_gate"
+    },
+    "provenance": {
+      "type": ["object", "null"],
+      "properties": {
+        "harness_sha256": {
+          "type": ["string", "null"]
+        },
+        "split_sha256": {
+          "type": ["string", "null"]
+        },
+        "eval_rows_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "band": {
+      "type": "object",
+      "required": ["n", "mean_score"],
+      "properties": {
+        "n": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mean_score": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "entry_gate": {
+      "type": "object",
+      "required": ["passed", "oracle_mean", "sentinel_max", "sanity_task_ids", "checks"],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "oracle_mean": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sentinel_max": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sanity_task_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "status", "detail"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "status": {
+                "enum": ["pass", "fail"]
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

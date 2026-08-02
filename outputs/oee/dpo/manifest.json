@@ -1,0 +1,19 @@
+{
+  "schema_version": "understudy.dpo_pairs_manifest.v1",
+  "source": "synthetic-fixture-derived-rollouts",
+  "split": "train",
+  "fixture_id": "on-event-execution-offline-v1",
+  "train_split_sha256": "9f14b02edf307ca215ecbc70d716786d55794bc2332727abe71d142ec5e764c7",
+  "pairs_sha256": "437e4fce9e5423dd5de734bdc3157d88b32071bcf9d6c6ca3f46af9f26df184a",
+  "pairs": 42,
+  "pairs_by_band": {
+    "bounded": 23,
+    "extended": 15,
+    "variable": 4
+  },
+  "inputs": {
+    "rollouts_json": "outputs/oee/base-train-rollouts.json",
+    "transcripts_jsonl": "outputs/oee/base-train-rollouts.transcripts.jsonl"
+  },
+  "max_pairs_per_task": 2
+}

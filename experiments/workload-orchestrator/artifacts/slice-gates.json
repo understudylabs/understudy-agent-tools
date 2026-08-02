@@ -1,0 +1,52 @@
+{
+  "schema_version": "understudy.workload_slice_gates.v1",
+  "slice": {
+    "slice_id": "wl-or-orchestrator-v1",
+    "workload_code": "WL-OR",
+    "fixture_id": "synthetic-workflow-shapes-offline-v2",
+    "benchmark_id": "synthetic-workflow-shapes-offline",
+    "families": [
+      "multi-step-orchestrator-chain",
+      "summary-orchestration",
+      "agent-state-synchronization",
+      "agent-state-partial-failure",
+      "document-preservation"
+    ]
+  },
+  "bands": {
+    "document-preservation": "multi-write",
+    "agent-state-synchronization": "single-write",
+    "agent-state-partial-failure": "multi-write",
+    "summary-orchestration": "multi-write",
+    "multi-step-orchestrator-chain": "multi-write"
+  },
+  "band_histogram": {
+    "multi-write": 24,
+    "single-write": 6
+  },
+  "tasks": 30,
+  "counts": {
+    "train": 20,
+    "dev": 5,
+    "holdout": 5
+  },
+  "slice_sha256": "49e2f5615bf1b2614ed9a7ce5dc8f43fe4134c8a941b3d233b0f2275f6b0ab6d",
+  "split_sha256": {
+    "train": "30448f43a2c6d4487b2bfd94e408d31823874b193aa37263db1885936b4cf51f",
+    "dev": "026b432843e809da47f96df3e593d058e4b3f1994a40d895486812a48607edae",
+    "holdout": "a5337d711cf29117c2b7b5d3075f823e17f214102825dfc874d26066808f760d"
+  },
+  "fixture_frozen_holdout_sha256": "6144b6277de574db819efe86b459409f4a262b266db650d3720729dac50f8144",
+  "holdout_tasks": 5,
+  "gates": {
+    "oracle_min_reward": 1,
+    "sentinel_max_reward": 0,
+    "free_credit": "clean",
+    "leakage": "clean",
+    "reachability": "clean",
+    "frozen_holdout_refusal": "enforced",
+    "determinism": "clean"
+  },
+  "failures": [],
+  "verdict": "pass"
+}
