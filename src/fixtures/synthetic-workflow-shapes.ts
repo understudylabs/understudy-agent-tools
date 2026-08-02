@@ -78,7 +78,7 @@ const eventRouting: SyntheticFamily = {
     const decoy = `conv_route_decoy_${instance + 1}`;
     const state = baseState({
       [id]: conversation(id, "inbound event", [
-        { type: "inbound", note: `event ${kind}; route to ${handler} on ${queue}` },
+        { type: "inbound", note: `event ${kind}; route to ${handler} on ${queue}; persist status routed with operation route_event` },
       ]),
       [decoy]: conversation(decoy, "unrelated event", [
         { type: "inbound", note: "event archive; route to handler-archive on queue-archive" },
@@ -109,7 +109,7 @@ const meetingData = [
 
 const meetingEvent: SyntheticFamily = {
   slug: "meeting-event-orchestration",
-  band: "multi-write",
+  band: "discovery",
   label: "discover meeting event details and schedule the correct attendee",
   instances: 6,
   build: (instance) => {
@@ -161,7 +161,7 @@ const entityIdentification: SyntheticFamily = {
     const conv = `conv_entity_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "identify the account", [
-        { type: "entity-request", note: `target name ${name}; update after inspection` },
+        { type: "entity-request", note: `target name ${name}; after inspection set stage ${stage} and observations ${observations.join(", ")}` },
       ]),
     }, {
       records: {
@@ -210,7 +210,7 @@ const actionSelection: SyntheticFamily = {
     const decoy = `rec_action_decoy_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "choose the next action", [
-        { type: "decision", note: `decision ${decision}; choose ${action}` },
+        { type: "decision", note: `decision ${decision}; choose ${action}; apply stage ${stage}` },
       ]),
     }, {
       records: {
@@ -259,7 +259,7 @@ const analysisPersist: SyntheticFamily = {
     const decoy = `rec_analysis_decoy_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "produce an account analysis", [
-        { type: "analysis-request", note: `inspect ${doc} and ${record}; category ${category}` },
+        { type: "analysis-request", note: `inspect ${doc} and ${record}; category ${category}; priority ${priority}; finding ${finding}` },
       ]),
     }, {
       documents: {
@@ -313,7 +313,7 @@ const documentPreservation: SyntheticFamily = {
     const content = `${original}\n${section}\n${risks}\n${next}`;
     const state = baseState({
       [conv]: conversation(conv, "organize the referenced document", [
-        { type: "document-request", note: `update ${doc}; preserve existing context` },
+        { type: "document-request", note: `update ${doc}; move to ${path}; preserve existing context; append ${section}, ${risks}, and ${next}; final content ${content}; finish with status complete, summary document organized, using operations move_document and write_document` },
       ]),
     }, {
       documents: {
@@ -379,7 +379,7 @@ const partialAgent: SyntheticFamily = {
     const doc = `doc_partial_${instance + 1}`;
     const state = baseState({
       [conv]: conversation(conv, "complete workflow with unavailable state", [
-        { type: "workflow-request", note: `update ${doc}; agent state unavailable` },
+        { type: "workflow-request", note: `update ${doc}; move to archive/partial-${instance + 1}.md; agent state unavailable; attempt reasoning synchronized; save status partial using operations move_document and update_agent_state` },
       ], false),
     }, {
       documents: {
@@ -417,7 +417,7 @@ const summaryOrchestration: SyntheticFamily = {
     const stage = ["closed", "approved", "active", "paused", "qualified", "renewed"][instance];
     const state = baseState({
       [conv]: conversation(conv, "complete the account workflow", [
-        { type: "summary-request", note: `update ${record} and summarize after reading` },
+        { type: "summary-request", note: `update ${record} to stage ${stage} with observation summary-${instance + 1} and summarize after reading; save status ok with summary updated ${record}, using operations update_record and read_record` },
       ]),
     }, {
       records: {
@@ -512,7 +512,7 @@ const multiStepChain: SyntheticFamily = {
     const original = `Chain context ${instance + 1}.`;
     const state = baseState({
       [conv]: conversation(conv, "run the complete orchestrator chain", [
-        { type: "chain-request", note: `entity ${record}; document ${doc}; marker ${marker}` },
+        { type: "chain-request", note: `entity ${record}; set stage ${stage}; document ${doc}; archive path ${path}; marker ${marker}; final content ${original}\n${marker}; save status complete with summary chain ${marker}, using operations update_record, archive_document, and write_document` },
       ]),
     }, {
       records: {

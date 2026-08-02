@@ -69,32 +69,64 @@ describe("subset pin", () => {
 });
 
 describe("reachability", () => {
-  it("makes oracle literals available in prompts or read-only endpoint responses", () => {
-      for (const task of TASKS) {
-      const readable = `${task.prompt} ${JSON.stringify(task.initialState)}`;
+  it("makes oracle write literals available through candidate-visible reads", () => {
+    const collectStrings = (value, output = []) => {
+      if (typeof value === "string" && value.length > 2) output.push(value);
+      else if (Array.isArray(value)) {
+        for (const item of value) collectStrings(item, output);
+      } else if (value && typeof value === "object") {
+        for (const item of Object.values(value)) collectStrings(item, output);
+      }
+      return output;
+    };
+
+    for (const task of TASKS) {
+      const { handle, obs } = reset(task.taskId);
+      const visible = [obs.messages.map((message) => message.content).join("\n")];
       for (const action of task.oracle) {
-        const args = action.arguments;
-        for (const [key, value] of Object.entries(args)) {
-          if (key === "body") continue;
-          if (typeof value === "string" && value.length > 2) {
-            assert.ok(
-              readable.includes(value) ||
-                ["api_search", "api_fetch"].includes(action.name),
-              `${task.taskId} cannot reach ${value}`,
-            );
-          }
-          if (value && typeof value === "object") {
-            for (const nested of Object.values(value)) {
-              if (typeof nested === "string" && nested.length > 2) {
-                assert.ok(
-                  readable.includes(nested),
-                  `${task.taskId} cannot reach ${nested}`,
-                );
-              }
-            }
-          }
+        const method = String(action.arguments.method ?? "").toUpperCase();
+        if (action.name === "api_search" || (action.name === "api_fetch" && method === "GET")) {
+          const result = step(handle, action);
+          visible.push(result.obs.messages.at(-1)?.content ?? "");
+          continue;
+        }
+        break;
+      }
+      const readable = visible.join("\n");
+      const isVisible = (literal) =>
+        readable.includes(literal) ||
+        readable.includes(JSON.stringify(literal).slice(1, -1));
+      for (const action of task.oracle) {
+        const method = String(action.arguments.method ?? "").toUpperCase();
+        if (action.name !== "api_fetch" || method === "GET") continue;
+        const bodyLiterals = collectStrings(action.arguments.body);
+        for (const literal of bodyLiterals) {
+          assert.ok(isVisible(literal), `${task.taskId} cannot reach write literal ${literal}`);
+        }
+        const urlParts = String(action.arguments.url ?? "").split("/").filter((part) => part.length > 2);
+        const resourceId = urlParts.length > 1 ? urlParts.at(-1) : undefined;
+        if (resourceId) {
+          assert.ok(isVisible(resourceId), `${task.taskId} cannot reach write target ${resourceId}`);
         }
       }
+    }
+  });
+});
+
+describe("band consistency", () => {
+  it("matches family labels to write cardinality and read-before-write behavior", () => {
+    for (const task of TASKS) {
+      const writes = task.oracle.filter((action) =>
+        action.name === "api_fetch" &&
+        String(action.arguments.method ?? "").toUpperCase() !== "GET");
+      const firstWrite = task.oracle.indexOf(writes[0]);
+      const firstRead = task.oracle.findIndex((action) =>
+        action.name === "api_search" ||
+        (action.name === "api_fetch" &&
+          String(action.arguments.method ?? "").toUpperCase() === "GET"));
+      if (task.band === "multi-write") assert.ok(writes.length >= 2, task.taskId);
+      if (task.band === "single-write") assert.equal(writes.length, 1, task.taskId);
+      if (task.band === "discovery") assert.ok(firstRead >= 0 && firstRead < firstWrite, task.taskId);
     }
   });
 });

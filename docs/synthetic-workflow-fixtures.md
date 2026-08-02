@@ -32,15 +32,15 @@ The report uses `fixtureSha256()` and `splitSha256()` from
 Fixture SHA-256:
 
 ```text
-1e85461ee2811e5d900c10f255ee2a95db870a3d93643115451910e5f0cc85ba
+c65255cb92c0cd40f4f11c5d56178f3da505b0e507e5c8c5d740b623535db412
 ```
 
 The split is family-stratified: each family contributes four train, one dev,
 and one holdout task. The band histogram is:
 
 ```text
-discovery:   24
-multi-write: 30
+discovery:   30
+multi-write: 24
 single-write:18
 ```
 
@@ -52,7 +52,7 @@ record that is never an allowed write target.
 | family | band | shape |
 |---|---|---|
 | `event-routing` | discovery | Route an inbound event to the handler and queue named by a read event payload. |
-| `meeting-event-orchestration` | multi-write | Read a meeting event and current calendar before scheduling the correct attendee. |
+| `meeting-event-orchestration` | discovery | Read a meeting event and current calendar before scheduling the correct attendee. |
 | `entity-identification` | discovery | Identify the target account among near-match records before updating it. |
 | `action-option-selection` | single-write | Resolve an action option from an event and apply it to the matching account. |
 | `analysis-then-persist` | discovery | Inspect a conversation, document, and account before persisting one analysis finding. |
