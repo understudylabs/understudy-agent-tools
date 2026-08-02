@@ -1,0 +1,108 @@
+{
+  "adapter_paths": {
+    "adapter_a": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+    "adapter_b": "tinker://241bbbca-80e4-57db-bcee-1213b6f04e8e:train:0/sampler_weights/adapter-b-epoch1"
+  },
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "client_creation": {
+    "adapter_a": {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "wall_clock_seconds": 0.20175869900003818
+    },
+    "adapter_b": {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "model_path": "tinker://241bbbca-80e4-57db-bcee-1213b6f04e8e:train:0/sampler_weights/adapter-b-epoch1",
+      "wall_clock_seconds": 0.18905730899996342
+    },
+    "base": {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "wall_clock_seconds": 0.6151943879999635
+    }
+  },
+  "conclusions": {
+    "adapter_a_all_strict_pass": true,
+    "adapter_a_band": "multi-write",
+    "adapter_b_all_strict_pass": true,
+    "adapter_b_band": "single-write",
+    "clients_open_concurrently": true,
+    "one_service_client": true,
+    "rounds": 3,
+    "teardown_between_swaps": false
+  },
+  "interleaved_sequence": [
+    {
+      "adapter": "adapter_a",
+      "band": "multi-write",
+      "env_steps": 3,
+      "model_turns": 4,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 1,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "wall_clock_seconds": 13.63687228699996
+    },
+    {
+      "adapter": "adapter_b",
+      "band": "single-write",
+      "env_steps": 6,
+      "model_turns": 7,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 1,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-close-01",
+      "wall_clock_seconds": 36.53666207900005
+    },
+    {
+      "adapter": "adapter_a",
+      "band": "multi-write",
+      "env_steps": 3,
+      "model_turns": 4,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 2,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-bulk-owner-02",
+      "wall_clock_seconds": 14.166790667999976
+    },
+    {
+      "adapter": "adapter_b",
+      "band": "single-write",
+      "env_steps": 2,
+      "model_turns": 3,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 2,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-close-02",
+      "wall_clock_seconds": 4.677971997999975
+    },
+    {
+      "adapter": "adapter_a",
+      "band": "multi-write",
+      "env_steps": 3,
+      "model_turns": 4,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 3,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-bulk-owner-03",
+      "wall_clock_seconds": 30.509029663999854
+    },
+    {
+      "adapter": "adapter_b",
+      "band": "single-write",
+      "env_steps": 2,
+      "model_turns": 3,
+      "parse_errors": [],
+      "reward": 1.0,
+      "round": 3,
+      "strict_pass": true,
+      "task_id": "simple-api-crm-close-03",
+      "wall_clock_seconds": 11.234887748999881
+    }
+  ],
+  "renderer": "nemotron3_disable_thinking"
+}

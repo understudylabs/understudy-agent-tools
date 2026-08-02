@@ -28,6 +28,12 @@ The harness in `scripts/train_adapter_b.py` filters oracle data to exactly the
 and selects only on the four-task dev single-write band. Epochs 1–4 tied at
 dev mean reward 1.0, so epoch 1 was selected by the earliest-tie rule.
 
+Important interpretation: the single-write target band was already saturated
+by the base model: base scored 1.0 on the single-write train, dev, and holdout
+rows. Adapter B therefore demonstrates the SFT method, a retained serving
+artifact, and the train-only data guard; it does not demonstrate a quality
+lift.
+
 The selection record was committed before holdout access. The base and
 selected adapter were each evaluated exactly once on the four-task
 single-write holdout with fixture hash
@@ -43,3 +49,34 @@ phase receipt therefore records provider-equivalent evaluator tokens
 (prompt + sampled) and training model-input tokens, with the empty billing
 response preserved in each `.usage.json` receipt. No API key is written to
 the repository.
+
+## Adapter C: weightless discovery prompt variant
+
+Adapter C is a prompt-only adapter over the same base model. Three
+deterministic mutations plus the default prompt were scored on the discovery
+train and dev bands. All candidates tied at dev mean reward 1.0; the
+`search-first` mutation was selected by the declared candidate-order
+tie-break. On the sealed discovery holdout, both the default and selected
+prompt scored mean reward 0.75, so the prompt variant did not lift quality.
+The frozen selection and holdout records are under
+`artifacts/adapter-c/selection.json` and `artifacts/adapter-c/holdout-seal.json`.
+
+The frozen fixture exposes 16 discovery train tasks (not 12 as stated in the
+brief), 4 discovery dev tasks, and 4 discovery holdout tasks; all 16 train
+tasks were used.
+
+## Tinker multi-adapter serving proof
+
+`scripts/multi_adapter_serving_demo.py` creates one Tinker `ServiceClient`
+against the single Nemotron base, then keeps base, Adapter A, and Adapter B
+sampling clients open concurrently. It interleaves three rounds of Adapter A
+on multi-write tasks and Adapter B on single-write tasks without teardown
+between swaps. All six requests scored strictly correct. Timings and paths
+are in `artifacts/multi-adapter-tinker/serving-demo.json`.
+
+## Other serving lane status
+
+The Fireworks-Nemotron multi-LoRA probe is confirmed negative and was not
+modified or deployed: `base+addon supportsLora=False`, `--enable-addons` was
+rejected, and grouped shape creation returned `PermissionDenied`. Self-host
+multi-adapter proof is deferred to a separate Modal/vLLM arm.
