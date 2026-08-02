@@ -1,0 +1,116 @@
+{
+  "dev": {
+    "base": {
+      "mean_reward": 0.8611111111111112,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 0.75
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.8333333333333334
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 0.8333333333333334
+    },
+    "grpo_step20": {
+      "mean_reward": 1.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 1.0
+    }
+  },
+  "holdout": {
+    "base": {
+      "mean_reward": 0.9444444444444445,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 0.8333333333333334
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 0.9166666666666666
+    },
+    "grpo_step20": {
+      "mean_reward": 1.0,
+      "per_band": {
+        "discovery": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        },
+        "single-write": {
+          "count": 4,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 1.0
+    }
+  },
+  "train": {
+    "base": {
+      "mean_reward": 0.8958333333333334,
+      "per_band": {
+        "discovery": {
+          "count": 16,
+          "mean_reward": 0.9375
+        },
+        "multi-write": {
+          "count": 16,
+          "mean_reward": 0.75
+        },
+        "single-write": {
+          "count": 16,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 0.875
+    },
+    "grpo_step20": {
+      "mean_reward": 0.9791666666666666,
+      "per_band": {
+        "discovery": {
+          "count": 16,
+          "mean_reward": 1.0
+        },
+        "multi-write": {
+          "count": 16,
+          "mean_reward": 0.9375
+        },
+        "single-write": {
+          "count": 16,
+          "mean_reward": 1.0
+        }
+      },
+      "strict_pass_rate": 0.9791666666666666
+    }
+  }
+}
