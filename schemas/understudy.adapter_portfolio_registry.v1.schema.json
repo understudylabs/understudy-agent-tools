@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.adapter_portfolio_registry.v1.schema.json",
+  "title": "understudy.adapter_portfolio_registry.v1",
+  "type": "object",
+  "required": ["schema_version", "policy", "adapters"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.adapter_portfolio_registry.v1" },
+    "base_models": { "type": "object", "additionalProperties": { "type": "string" } },
+    "policy": { "$ref": "#/$defs/policy" },
+    "adapters": { "type": "object", "additionalProperties": { "$ref": "#/$defs/adapter" } }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+    "policy": {
+      "type": "object",
+      "required": ["metric", "min_lift_vs_base", "max_regression"],
+      "additionalProperties": false,
+      "properties": {
+        "metric": { "type": "string", "minLength": 1 },
+        "min_dev_score": { "type": "number" },
+        "min_holdout_score": { "type": "number" },
+        "min_lift_vs_base": { "type": "number" },
+        "max_regression": { "type": "number", "minimum": 0 }
+      }
+    },
+    "holdout": {
+      "type": ["object", "null"],
+      "required": ["path", "sha256", "row_count"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "row_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["evidence_id", "recorded_at", "subject", "suite", "split", "dataset_sha256", "row_count", "metric", "score", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": { "type": "string", "minLength": 1 },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "subject": { "enum": ["base", "adapter"] },
+        "adapter_name": { "type": "string", "minLength": 1 },
+        "suite": { "type": "string", "minLength": 1 },
+        "split": { "enum": ["dev", "holdout"] },
+        "dataset_sha256": { "$ref": "#/$defs/sha256" },
+        "row_count": { "type": "integer", "minimum": 1 },
+        "metric": { "type": "string", "minLength": 1 },
+        "score": { "type": "number" },
+        "seed": { "type": "integer" },
+        "run_id": { "type": "string", "minLength": 1 },
+        "fixture_sha256": { "$ref": "#/$defs/sha256" },
+        "context": {
+          "type": "object",
+          "required": ["loaded_adapters"],
+          "additionalProperties": false,
+          "properties": { "loaded_adapters": { "type": "array", "items": { "type": "string", "minLength": 1 } } }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["name", "adapter_path", "base_model", "method", "status", "suite", "holdout", "evidence", "created_at", "updated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "adapter_path": { "type": "string", "minLength": 1 },
+        "base_model": { "type": "string", "minLength": 1 },
+        "method": { "enum": ["sft-lora", "rlvr-grpo", "prompt", "other"] },
+        "status": { "enum": ["draft", "candidate", "promoted", "retired"] },
+        "suite": { "type": "string", "minLength": 1 },
+        "holdout": { "$ref": "#/$defs/holdout" },
+        "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

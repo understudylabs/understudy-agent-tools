@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.adapter_promotion_decision.v1.schema.json",
+  "title": "understudy.adapter_promotion_decision.v1",
+  "type": "object",
+  "required": ["schema_version", "candidate", "evaluated_at", "policy", "checks", "decision"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.adapter_promotion_decision.v1" },
+    "candidate": { "type": "string", "minLength": 1 },
+    "evaluated_at": { "type": "string", "format": "date-time" },
+    "policy": { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/policy" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check", "status", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "check": { "enum": ["status", "dev_pass", "holdout_pass", "holdout_sealed", "no_forgetting"] },
+          "status": { "enum": ["pass", "fail", "missing_evidence"] },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "decision": { "enum": ["promote", "blocked"] }
+  }
+}

@@ -59,6 +59,7 @@ import { registerInstrumentCommand } from "./commands/instrument.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
+import { registerAdapterPortfolioCommand } from "./commands/adapter-portfolio.js";
 import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
@@ -871,6 +872,7 @@ export function buildProgram(): Command {
   registerRuntimeCommand(program);
   registerTrustCommand(program);
   registerTrainingCommand(program);
+  registerAdapterPortfolioCommand(program);
 
   const understand = program
     .command("capture-evidence")
