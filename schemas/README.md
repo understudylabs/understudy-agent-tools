@@ -234,8 +234,7 @@ partial evidence, never fabricated scores. Authoring guide:
 
 ## Executor contract bundle
 
-The five `experiment-executor-*.json` schemas and
-`experiment-executor-contract-manifest.json` are verbatim generated artifacts
+The five `experiment-executor-*.json` schemas and `manifest.json` are verbatim generated artifacts
 from source commit `804fa3f7`. Their per-file digests and bundle digest are
 checked by the executor contract tests. Do not edit these generated files by
 hand.

@@ -18,7 +18,7 @@ SCHEMA_DIR = SCRIPT.parents[1] / "schemas"
 class ModalExecutorLogicTest(unittest.TestCase):
     def test_canonical_manifest_and_jsonschema_validation(self):
         manifest = json.loads(
-            (SCHEMA_DIR / "experiment-executor-contract-manifest.json").read_text()
+            (SCHEMA_DIR / "manifest.json").read_text()
         )
         for filename, expected in manifest["schemas"].items():
             if filename.startswith("experiment-executor-"):

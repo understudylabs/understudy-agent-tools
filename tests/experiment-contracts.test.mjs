@@ -13,7 +13,7 @@ import {
 
 const schemaDir = path.resolve("schemas");
 const manifest = JSON.parse(
-  fs.readFileSync(path.join(schemaDir, "experiment-executor-contract-manifest.json"), "utf8"),
+  fs.readFileSync(path.join(schemaDir, "manifest.json"), "utf8"),
 );
 
 test("vendored executor schema digests match the canonical manifest", () => {
