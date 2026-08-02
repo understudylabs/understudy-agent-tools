@@ -50,7 +50,7 @@ test("the vendored submit contract is the sealed platform schema, unmodified", (
   assert.equal(
     createHash("sha256").update(bytes).digest("hex"),
     "6ff8cfa383ff109d7dfe341e5ae2a4d330a8b298b0e8af51af0f1d3106f462c0",
-    "vendored schema drifted from understudy-platform@c299ca4",
+    "vendored schema drifted from the pinned contract at c299ca4",
   );
   const schema = JSON.parse(bytes.toString());
   assert.equal(schema.properties.schema_version.const, "understudy.executor-submit.v1");

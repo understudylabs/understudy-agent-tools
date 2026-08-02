@@ -1,0 +1,28 @@
+{
+  "schema_version": "understudy.oee_dpo_policy.v1",
+  "method": "dpo",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "renderer": "nemotron3",
+  "hyperparameters": {
+    "beta": 0.1,
+    "epochs": 3,
+    "lora_rank": 32,
+    "learning_rate": 0.00001,
+    "batch_size": 8,
+    "max_length": 8192
+  },
+  "pairs": {
+    "sha256": "437e4fce9e5423dd5de734bdc3157d88b32071bcf9d6c6ca3f46af9f26df184a",
+    "count": 42,
+    "by_band": {
+      "bounded": 23,
+      "extended": 15,
+      "variable": 4
+    }
+  },
+  "mined_from": {
+    "fixture_id": "on-event-execution-offline-v1",
+    "fixture_sha256": "8cfffb5500f40c03a8394d3f244b3277a20a4815faead4def326236a7e511190",
+    "train_split_sha256": "9f14b02edf307ca215ecbc70d716786d55794bc2332727abe71d142ec5e764c7"
+  }
+}
