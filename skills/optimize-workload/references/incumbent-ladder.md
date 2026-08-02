@@ -28,6 +28,17 @@ candidate arms scored by different parser revisions. Report malformed rate,
 calls-emitted distribution, latency, input/output tokens, and cost status in
 addition to mean score and exact match.
 
+## Failure mode: terminal-call repetition
+
+Prompt-into-weights SFT on variable-length tool-call generation can learn the
+right tool identity without learning sequence-length control. A smaller-base
+study saw terminal-summary repetition to the call ceiling, single-call
+collapse, and very few correct-length sequences; this ladder reproduced the
+same signature on a 30B base at LoRA rank 32. A larger base alone is therefore
+not a sufficient fix. Treat full-sequence correctness as the gate, and
+consider more data, higher rank, constrained decoding, or an explicit
+length/structure reward before promoting such an arm.
+
 ## Submit and promotion artifacts
 
 Submit payloads carry references and SHA-256 hashes only. They must not carry
