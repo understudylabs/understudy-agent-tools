@@ -1,0 +1,22 @@
+{
+  "after": {
+    "ending_before": "2026-08-02T03:00:00Z",
+    "endpoint": "https://tinker.thinkingmachines.dev/services/tinker-prod/api/v1/get_billing_usage",
+    "response": {
+      "detail": "Not Found"
+    },
+    "starting_on": "2026-08-02T01:00:00Z",
+    "status_code": 404
+  },
+  "before": {
+    "ending_before": "2026-08-02T03:00:00Z",
+    "endpoint": "https://tinker.thinkingmachines.dev/services/tinker-prod/api/v1/get_billing_usage",
+    "response": {
+      "detail": "Not Found"
+    },
+    "starting_on": "2026-08-02T01:00:00Z",
+    "status_code": 404
+  },
+  "delta": {},
+  "phase": "grpo-step80-dev"
+}

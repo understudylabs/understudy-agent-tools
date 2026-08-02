@@ -1,0 +1,78 @@
+{
+  "holdout_touched": false,
+  "rows": [
+    {
+      "candidate": "base",
+      "mean_reward": 0.6944444444444445,
+      "parse_error_rate": 0.0,
+      "rank": 32,
+      "samples_per_task": 1,
+      "split": "dev",
+      "strict_pass_rate": 0.6666666666666666,
+      "temperature": 0.0,
+      "total_prompt_tokens": 37219,
+      "total_sampled_tokens": 2306
+    },
+    {
+      "candidate": "sft-rank16",
+      "mean_reward": 1.0,
+      "parse_error_rate": 0.08333333333333333,
+      "rank": 16,
+      "samples_per_task": 1,
+      "split": "dev",
+      "strict_pass_rate": 1.0,
+      "temperature": 0.0,
+      "total_prompt_tokens": 17322,
+      "total_sampled_tokens": 1028
+    },
+    {
+      "candidate": "sft-rank32",
+      "mean_reward": 0.9444444444444445,
+      "parse_error_rate": 0.08333333333333333,
+      "rank": 32,
+      "samples_per_task": 1,
+      "split": "dev",
+      "strict_pass_rate": 0.9166666666666666,
+      "temperature": 0.0,
+      "total_prompt_tokens": 16739,
+      "total_sampled_tokens": 1001
+    },
+    {
+      "candidate": "base",
+      "mean_reward": 0.8611111111111112,
+      "parse_error_rate": 0.0,
+      "rank": 32,
+      "samples_per_task": 1,
+      "split": "train",
+      "strict_pass_rate": 0.8333333333333334,
+      "temperature": 0.0,
+      "total_prompt_tokens": 147665,
+      "total_sampled_tokens": 9656
+    },
+    {
+      "candidate": "sft-rank16",
+      "mean_reward": 0.9548611111111112,
+      "parse_error_rate": 0.0625,
+      "rank": 16,
+      "samples_per_task": 1,
+      "split": "train",
+      "strict_pass_rate": 0.9375,
+      "temperature": 0.0,
+      "total_prompt_tokens": 68110,
+      "total_sampled_tokens": 4010
+    },
+    {
+      "candidate": "sft-rank32",
+      "mean_reward": 0.9444444444444445,
+      "parse_error_rate": 0.0625,
+      "rank": 32,
+      "samples_per_task": 1,
+      "split": "train",
+      "strict_pass_rate": 0.9166666666666666,
+      "temperature": 0.0,
+      "total_prompt_tokens": 67464,
+      "total_sampled_tokens": 3960
+    }
+  ],
+  "schema_version": "automationbench.reference_greedy_results.v1"
+}

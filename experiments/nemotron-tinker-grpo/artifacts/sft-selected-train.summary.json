@@ -1,7 +1,7 @@
 {
   "groups": [
     {
-      "reward_mean": 1.0,
+      "reward_mean": 0.5,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "simple-api-crm-bulk-owner-01"
@@ -304,11 +304,11 @@
   },
   "label": "sft-selected-train",
   "lora_rank": 32,
-  "mean_model_turns": 3.3541666666666665,
-  "mean_reward": 0.9548611111111112,
-  "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch3",
-  "model_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch3",
-  "parse_error_rate": 0.041666666666666664,
+  "mean_model_turns": 3.375,
+  "mean_reward": 0.9444444444444445,
+  "model": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch4",
+  "model_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch4",
+  "parse_error_rate": 0.0625,
   "per_band": {
     "discovery": {
       "count": 16,
@@ -316,7 +316,7 @@
     },
     "multi-write": {
       "count": 16,
-      "mean_reward": 0.8645833333333334
+      "mean_reward": 0.8333333333333334
     },
     "single-write": {
       "count": 16,
@@ -328,9 +328,9 @@
   "row_count": 48,
   "samples_per_task": 1,
   "split": "train",
-  "strict_pass_rate": 0.9375,
+  "strict_pass_rate": 0.9166666666666666,
   "task_count": 48,
   "temperature": 0.0,
-  "total_prompt_tokens": 66731,
-  "total_sampled_tokens": 3889
+  "total_prompt_tokens": 67464,
+  "total_sampled_tokens": 3960
 }

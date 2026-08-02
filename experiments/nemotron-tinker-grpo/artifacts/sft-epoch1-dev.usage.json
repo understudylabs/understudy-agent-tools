@@ -1,19 +1,21 @@
 {
   "after": {
-    "ending_before": "2026-08-01T23:00:00Z",
+    "ending_before": "2026-08-02T01:00:00Z",
+    "endpoint": "https://tinker.thinkingmachines.dev/services/tinker-prod/api/v1/get_billing_usage",
     "response": {
-      "data": [],
-      "sessions": {}
+      "detail": "Not Found"
     },
-    "starting_on": "2026-08-01T21:00:00Z"
+    "starting_on": "2026-08-01T23:00:00Z",
+    "status_code": 404
   },
   "before": {
-    "ending_before": "2026-08-01T23:00:00Z",
+    "ending_before": "2026-08-02T01:00:00Z",
+    "endpoint": "https://tinker.thinkingmachines.dev/services/tinker-prod/api/v1/get_billing_usage",
     "response": {
-      "data": [],
-      "sessions": {}
+      "detail": "Not Found"
     },
-    "starting_on": "2026-08-01T21:00:00Z"
+    "starting_on": "2026-08-01T23:00:00Z",
+    "status_code": 404
   },
   "delta": {},
   "phase": "sft-epoch1-dev"

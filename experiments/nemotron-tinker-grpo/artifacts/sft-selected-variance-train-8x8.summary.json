@@ -19,8 +19,8 @@
       "task_id": "simple-api-crm-close-03"
     },
     {
-      "reward_mean": 1.0,
-      "reward_std": 0.0,
+      "reward_mean": 0.75,
+      "reward_std": 0.4330127018922193,
       "samples": 8,
       "task_id": "simple-api-crm-close-04"
     },
@@ -31,8 +31,8 @@
       "task_id": "simple-api-crm-lost-01"
     },
     {
-      "reward_mean": 1.0,
-      "reward_std": 0.0,
+      "reward_mean": 0.875,
+      "reward_std": 0.33071891388307384,
       "samples": 8,
       "task_id": "simple-api-crm-lost-02"
     },
@@ -64,15 +64,15 @@
   },
   "label": "sft-selected-variance-train-8x8",
   "lora_rank": 32,
-  "mean_model_turns": 3.125,
-  "mean_reward": 0.953125,
-  "model": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch3",
-  "model_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch3",
+  "mean_model_turns": 3.515625,
+  "mean_reward": 0.90625,
+  "model": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch4",
+  "model_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/sampler_weights/sft-epoch4",
   "parse_error_rate": 0.03125,
   "per_band": {
     "single-write": {
       "count": 64,
-      "mean_reward": 0.953125
+      "mean_reward": 0.90625
     }
   },
   "renderer": "nemotron3_disable_thinking",
@@ -80,9 +80,9 @@
   "row_count": 64,
   "samples_per_task": 8,
   "split": "train",
-  "strict_pass_rate": 0.953125,
+  "strict_pass_rate": 0.90625,
   "task_count": 8,
   "temperature": 1.0,
-  "total_prompt_tokens": 82206,
-  "total_sampled_tokens": 4415
+  "total_prompt_tokens": 96449,
+  "total_sampled_tokens": 4782
 }

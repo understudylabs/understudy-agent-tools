@@ -1,0 +1,31 @@
+{
+  "billing_receipts": [
+    "grpo-stage2.usage.json",
+    "grpo-step10-dev.usage.json",
+    "grpo-step20-dev.usage.json",
+    "grpo-step30-dev.usage.json",
+    "grpo-step40-dev.usage.json",
+    "grpo-step60-dev.usage.json",
+    "grpo-step80-dev.usage.json"
+  ],
+  "dev_evaluation_tokens": {
+    "prompt_tokens": 100284,
+    "sampled_tokens": 5576
+  },
+  "holdout_touched": false,
+  "lora_rank": 16,
+  "phase": "grpo-rank16-stage2",
+  "schema_version": "automationbench.phase_receipt.v1",
+  "token_totals": {
+    "prompt_tokens": 2834983,
+    "sampled_tokens": 157451
+  },
+  "training_metric_rows": 80,
+  "training_tokens": {
+    "prompt_tokens": 2734699,
+    "sampled_tokens": 151875
+  },
+  "training_wall_clock_seconds": 3675.7362753019997,
+  "usd": null,
+  "usd_statement": "No USD figure is obtainable: the preserved Tinker billing endpoint receipts returned HTTP 404 Not Found."
+}

@@ -1,14 +1,7 @@
 {
-  "billing_note": "Billing endpoint returned no usage events or dollar amount; report measured token projections rather than an exact cost.",
-  "mean_prompt_tokens_per_step": 101009.0,
-  "mean_rollout_wall_clock_seconds_per_step": 27.11564909399999,
-  "mean_sampled_tokens_per_step": 5600.5,
-  "mean_total_tokens_per_step": 106609.5,
+  "mean_rollout_wall_clock_seconds_per_step": 32.95762342500029,
+  "mean_sampled_tokens_per_step": 5405.5,
   "measured_steps": 2,
-  "measured_total_wall_clock_seconds": 113.47591729900023,
-  "projected_40_step_prompt_tokens": 4040360.0,
-  "projected_40_step_rollout_wall_clock_seconds": 1084.6259637599996,
-  "projected_40_step_sampled_tokens": 224020.0,
-  "projected_40_step_total_tokens": 4264380.0,
-  "projected_40_step_total_wall_clock_seconds": 2269.5183459800046
+  "projected_40_step_rollout_wall_clock_seconds": 1318.3049370000117,
+  "projected_40_step_sampled_tokens": 216220.0
 }

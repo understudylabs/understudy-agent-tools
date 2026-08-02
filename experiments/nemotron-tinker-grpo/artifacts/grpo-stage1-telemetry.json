@@ -1,7 +1,13 @@
 {
-  "constant_group_fraction": 0.25,
+  "constant_group_fraction": 0.375,
   "constant_group_rationale": "Most groups are already saturated after SFT; removing constant reward groups saves budget and is standard GRPO practice.",
   "dataset_seed": 7,
+  "eval_steps": [
+    10,
+    20,
+    30,
+    40
+  ],
   "exemplar": {
     "messages": [
       {
@@ -9,23 +15,23 @@
         "role": "system"
       },
       {
-        "content": "The signed contract lists the legal name Anita E. Borg for the contact recorded as Anita Borg. Correct that CRM contact's name to the legal name exactly.",
+        "content": "The account for Vint Cerf moves to rep u-6. Update the CRM owner for that contact.",
         "role": "user"
       },
       {
-        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"GET\",\"url\":\"/crm/contacts\"}}",
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"url\":\"/crm/contacts\"}}",
         "role": "assistant"
       },
       {
-        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"tim.berners.lee@example.test\",\"name\":\"Tim Berners-Lee\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita Borg\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"leslie.lamport@example.test\",\"name\":\"Leslie Lamport\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"sophie.wilson@example.test\",\"name\":\"Sophie Wilson\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
+        "content": "{\"contacts\":{\"c-0\":{\"email\":\"margaret.hamilton@example.test\",\"name\":\"Margaret Hamilton\",\"owner\":\"u-9\",\"status\":\"reference\"},\"c-1\":{\"email\":\"frances.allen@example.test\",\"name\":\"Frances Allen\",\"owner\":\"u-1\",\"status\":\"open\"},\"c-2\":{\"email\":\"donald.knuth@example.test\",\"name\":\"Donald Knuth\",\"owner\":\"u-2\",\"status\":\"open\"},\"c-3\":{\"email\":\"radia.perlman@example.test\",\"name\":\"Radia Perlman\",\"owner\":\"u-3\",\"status\":\"open\"},\"c-4\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-1\",\"status\":\"open\"}},\"status\":200}",
         "role": "tool"
       },
       {
-        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-2\",\"body\":{\"name\":\"Anita E. Borg\"}}}",
+        "content": "{\"tool\":\"api_fetch\",\"arguments\":{\"method\":\"PATCH\",\"url\":\"/crm/contacts/c-4\",\"body\":{\"owner\":\"u-6\"}}}",
         "role": "assistant"
       },
       {
-        "content": "{\"contact\":{\"email\":\"anita.borg@example.test\",\"name\":\"Anita E. Borg\",\"owner\":\"u-2\",\"status\":\"open\"},\"status\":200}",
+        "content": "{\"contact\":{\"email\":\"vint.cerf@example.test\",\"name\":\"Vint Cerf\",\"owner\":\"u-6\",\"status\":\"open\"},\"status\":200}",
         "role": "tool"
       },
       {
@@ -35,11 +41,11 @@
     ],
     "reward": 1.0,
     "step": 0,
-    "task_id": "simple-api-crm-rename-04"
+    "task_id": "simple-api-crm-owner-04"
   },
   "group_size": 8,
   "groups_per_batch": 8,
-  "load_checkpoint_path": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/weights/sft-epoch4-state",
+  "load_checkpoint_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state",
   "lora_rank": 32,
   "max_steps": 2,
   "max_tokens": 192,
@@ -50,27 +56,27 @@
   "stage": "1",
   "steps": [
     {
-      "constant_group_fraction": 0.375,
-      "constant_groups": 3,
+      "constant_group_fraction": 0.5,
+      "constant_groups": 4,
       "groups": 8,
-      "mean_group_reward": 0.7708333333333334,
-      "prompt_tokens": 106074,
-      "sampled_tokens": 5419,
+      "mean_group_reward": 0.8697916666666666,
+      "prompt_tokens": 106935,
+      "sampled_tokens": 5361,
       "step": 0,
-      "wall_clock_seconds": 28.197138246000122
+      "wall_clock_seconds": 32.32330248800008
     },
     {
-      "constant_group_fraction": 0.125,
-      "constant_groups": 1,
+      "constant_group_fraction": 0.25,
+      "constant_groups": 2,
       "groups": 8,
-      "mean_group_reward": 0.8203125,
-      "prompt_tokens": 95944,
-      "sampled_tokens": 5782,
+      "mean_group_reward": 0.796875,
+      "prompt_tokens": 95395,
+      "sampled_tokens": 5450,
       "step": 1,
-      "wall_clock_seconds": 26.03415994199986
+      "wall_clock_seconds": 33.591944362000504
     }
   ],
-  "total_constant_groups": 4,
+  "total_constant_groups": 6,
   "total_groups": 16,
-  "wall_clock_seconds": 113.47591729900023
+  "wall_clock_seconds": 131.7158990100006
 }

@@ -1,0 +1,832 @@
+{
+  "cleanup_actions": "No always-on deployment or serving resource was found. Tinker training runs/checkpoints are retained as evidence; checkpoint deletion was intentionally not performed. No local RL service process was running. Tinker session API exposes listing/get but no delete/stop operation in the installed SDK/resource surface, and sessions are not deployments.",
+  "confirmation": {
+    "deployment_delete_confirmation": "not applicable; no deployment resource existed",
+    "holdout_note": "The sole authorized sealed holdout evaluation completed before cleanup.",
+    "holdout_touched": true,
+    "requery_checkpoints": "successful; all retained checkpoints remain discoverable",
+    "requery_local_processes": [],
+    "requery_training_runs": "successful for all six experiment run IDs"
+  },
+  "created_tinker_resources": [
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 8,
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch1",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch1-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch2",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch2-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch3",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch3-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch4",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch4-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        }
+      ],
+      "label": "sft-rank16",
+      "last_request_time": "2026-08-02T00:04:43.074926Z",
+      "lora_rank": 16,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "a545059e-0e23-5938-b1f6-9501e2e58419:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [],
+        "training_run_ids": [
+          "a545059e-0e23-5938-b1f6-9501e2e58419:train:0"
+        ]
+      },
+      "session_id": "a545059e-0e23-5938-b1f6-9501e2e58419"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 8,
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch1",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch1-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch2",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch2-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch3",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch3-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/sft-epoch4",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/sft-epoch4-state",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        }
+      ],
+      "label": "sft-rank32",
+      "last_request_time": "2026-08-02T00:13:34.373927Z",
+      "lora_rank": 32,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [],
+        "training_run_ids": [
+          "79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0"
+        ]
+      },
+      "session_id": "79c8c5c5-0201-51fa-ad00-fc0e4e610265"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 2,
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        }
+      ],
+      "label": "grpo-rank16-smoke",
+      "last_request_time": "2026-08-02T00:33:01.235618Z",
+      "lora_rank": 16,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "a82c021a-6cf3-5b91-968d-8ffc28143f0b:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [
+          "a82c021a-6cf3-5b91-968d-8ffc28143f0b:sample:0",
+          "a82c021a-6cf3-5b91-968d-8ffc28143f0b:sample:1",
+          "a82c021a-6cf3-5b91-968d-8ffc28143f0b:sample:2"
+        ],
+        "training_run_ids": [
+          "a82c021a-6cf3-5b91-968d-8ffc28143f0b:train:0"
+        ]
+      },
+      "session_id": "a82c021a-6cf3-5b91-968d-8ffc28143f0b"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 2,
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        }
+      ],
+      "label": "grpo-rank32-smoke",
+      "last_request_time": "2026-08-02T01:41:47.236360Z",
+      "lora_rank": 32,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "a5346260-7d3e-586c-b325-6670bc8faaef:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [
+          "a5346260-7d3e-586c-b325-6670bc8faaef:sample:0",
+          "a5346260-7d3e-586c-b325-6670bc8faaef:sample:1",
+          "a5346260-7d3e-586c-b325-6670bc8faaef:sample:2"
+        ],
+        "training_run_ids": [
+          "a5346260-7d3e-586c-b325-6670bc8faaef:train:0"
+        ]
+      },
+      "session_id": "a5346260-7d3e-586c-b325-6670bc8faaef"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 34,
+      "checkpoints": [
+        {
+          "checkpoint_id": "sampler_weights/000005",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:37:50.980571Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000005",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:37:58.816273Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000010",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:42:42.203947Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000010",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:42:42.373351Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "weights/000015",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:46:06.883496Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000015",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:46:06.993937Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000020",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:50:27.824796Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000020",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:50:27.916928Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "sampler_weights/000025",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:54:36.128186Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000025",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:54:36.275628Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000030",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T00:58:50.626131Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000030",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T00:58:50.738050Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000035",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:02:36.946922Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000035",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:02:37.032631Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000040",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:07:02.724642Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000040",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:07:02.817239Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "weights/000045",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:10:18.324067Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000045",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:10:18.425123Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000050",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:13:40.746848Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000050",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:13:41.059777Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "sampler_weights/000055",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:17:16.619124Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000055",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:17:16.750378Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000060",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:20:41.160098Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000060",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:20:41.263321Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "weights/000065",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:23:21.026822Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000065",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:23:21.147056Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000070",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:27:40.127065Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000070",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:27:40.222196Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "sampler_weights/000075",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:31:13.200167Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000075",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:31:13.351883Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/000080",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:34:19.500879Z",
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/000080",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:34:19.786294Z",
+          "size_bytes": 2316580337
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 772314494
+        },
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 2316580337
+        }
+      ],
+      "label": "grpo-rank16-stage2",
+      "last_request_time": "2026-08-02T01:34:22.108901Z",
+      "lora_rank": 16,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "475d25a7-ba82-5da4-bc67-722f2a47a83e:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:0",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:1",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:10",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:11",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:12",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:13",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:14",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:15",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:16",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:17",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:18",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:19",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:2",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:20",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:21",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:22",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:23",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:24",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:25",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:26",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:27",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:28",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:29",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:3",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:30",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:31",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:32",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:33",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:34",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:35",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:36",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:37",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:38",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:39",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:4",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:40",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:41",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:42",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:43",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:44",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:45",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:46",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:47",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:48",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:49",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:5",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:50",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:51",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:52",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:53",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:54",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:55",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:56",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:57",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:58",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:59",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:6",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:60",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:61",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:62",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:63",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:64",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:65",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:66",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:67",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:68",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:69",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:7",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:70",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:71",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:72",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:73",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:74",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:75",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:76",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:77",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:78",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:79",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:8",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:80",
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:sample:9"
+        ],
+        "training_run_ids": [
+          "475d25a7-ba82-5da4-bc67-722f2a47a83e:train:0"
+        ]
+      },
+      "session_id": "475d25a7-ba82-5da4-bc67-722f2a47a83e"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "checkpoint_count": 34,
+      "checkpoints": [
+        {
+          "checkpoint_id": "weights/000005",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:46:47.483370Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000005",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:46:47.617408Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/000010",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:50:57.669064Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000010",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:50:57.946812Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000015",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:55:31.296420Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000015",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:55:31.424979Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000020",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T01:59:50.191438Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000020",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T01:59:50.301454Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "weights/000025",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:03:27.852918Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000025",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:03:29.728268Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/000030",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:07:28.107814Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000030",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:07:28.340285Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "weights/000035",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:11:11.475555Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000035",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:11:11.573126Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000040",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:14:55.132159Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000040",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:14:55.273557Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/000045",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:18:40.883051Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000045",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:18:41.348337Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "weights/000050",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:22:08.757072Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000050",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:22:08.855055Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/000055",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:26:34.519212Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000055",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:26:34.613232Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000060",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:29:19.033065Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000060",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:29:19.130953Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "weights/000065",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:32:32.619217Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000065",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:32:36.018271Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000070",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:35:15.740320Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000070",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:35:15.874300Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/000075",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:38:41.212208Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/000075",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:38:41.319356Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "weights/000080",
+          "checkpoint_type": "training",
+          "expires_at": "2026-08-09T02:41:46.128428Z",
+          "size_bytes": 4633015793
+        },
+        {
+          "checkpoint_id": "sampler_weights/000080",
+          "checkpoint_type": "sampler",
+          "expires_at": "2026-08-09T02:41:47.212293Z",
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "sampler_weights/final",
+          "checkpoint_type": "sampler",
+          "expires_at": null,
+          "size_bytes": 1544459656
+        },
+        {
+          "checkpoint_id": "weights/final",
+          "checkpoint_type": "training",
+          "expires_at": null,
+          "size_bytes": 4633015793
+        }
+      ],
+      "label": "grpo-rank32-stage2",
+      "last_request_time": "2026-08-02T02:41:49.453184Z",
+      "lora_rank": 32,
+      "retention": "retained as experiment evidence; no deployment/serving resource",
+      "run_id": "84889cea-2544-58ff-89c7-c178a3cf8727:train:0",
+      "session": {
+        "project_id": "tml:organization:07c7aa6d-a0a0-4b8e-87b8-748a41473335:default",
+        "sampler_ids": [
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:0",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:1",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:10",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:11",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:12",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:13",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:14",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:15",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:16",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:17",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:18",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:19",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:2",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:20",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:21",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:22",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:23",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:24",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:25",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:26",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:27",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:28",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:29",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:3",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:30",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:31",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:32",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:33",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:34",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:35",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:36",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:37",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:38",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:39",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:4",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:40",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:41",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:42",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:43",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:44",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:45",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:46",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:47",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:48",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:49",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:5",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:50",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:51",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:52",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:53",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:54",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:55",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:56",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:57",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:58",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:59",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:6",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:60",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:61",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:62",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:63",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:64",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:65",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:66",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:67",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:68",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:69",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:7",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:70",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:71",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:72",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:73",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:74",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:75",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:76",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:77",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:78",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:79",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:8",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:80",
+          "84889cea-2544-58ff-89c7-c178a3cf8727:sample:9"
+        ],
+        "training_run_ids": [
+          "84889cea-2544-58ff-89c7-c178a3cf8727:train:0"
+        ]
+      },
+      "session_id": "84889cea-2544-58ff-89c7-c178a3cf8727"
+    }
+  ],
+  "deleted_resources": [],
+  "experiment": "grpo-sweep-rank-steps",
+  "local_processes_before_cleanup": [],
+  "schema_version": "automationbench.cleanup_report.v1",
+  "stopped_local_processes": []
+}

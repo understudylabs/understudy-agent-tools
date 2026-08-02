@@ -67,7 +67,7 @@
       "task_id": "simple-api-mail-send-05"
     },
     {
-      "reward_mean": 0.3333333333333333,
+      "reward_mean": 1.0,
       "reward_std": 0.0,
       "samples": 1,
       "task_id": "simple-api-mail-send-and-close-05"
@@ -89,9 +89,9 @@
   "label": "grpo-step10-dev",
   "lora_rank": 32,
   "mean_model_turns": 3.4166666666666665,
-  "mean_reward": 0.9444444444444445,
-  "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000010",
-  "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000010",
+  "mean_reward": 1.0,
+  "model": "tinker://84889cea-2544-58ff-89c7-c178a3cf8727:train:0/sampler_weights/000010",
+  "model_path": "tinker://84889cea-2544-58ff-89c7-c178a3cf8727:train:0/sampler_weights/000010",
   "parse_error_rate": 0.08333333333333333,
   "per_band": {
     "discovery": {
@@ -100,7 +100,7 @@
     },
     "multi-write": {
       "count": 4,
-      "mean_reward": 0.8333333333333334
+      "mean_reward": 1.0
     },
     "single-write": {
       "count": 4,
@@ -112,9 +112,9 @@
   "row_count": 12,
   "samples_per_task": 1,
   "split": "dev",
-  "strict_pass_rate": 0.9166666666666666,
+  "strict_pass_rate": 1.0,
   "task_count": 12,
   "temperature": 0.0,
-  "total_prompt_tokens": 17660,
-  "total_sampled_tokens": 1094
+  "total_prompt_tokens": 17298,
+  "total_sampled_tokens": 1012
 }

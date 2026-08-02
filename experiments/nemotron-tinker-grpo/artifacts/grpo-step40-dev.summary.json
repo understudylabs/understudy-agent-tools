@@ -88,10 +88,10 @@
   },
   "label": "grpo-step40-dev",
   "lora_rank": 32,
-  "mean_model_turns": 3.3333333333333335,
+  "mean_model_turns": 3.5,
   "mean_reward": 1.0,
-  "model": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/final",
-  "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/final",
+  "model": "tinker://84889cea-2544-58ff-89c7-c178a3cf8727:train:0/sampler_weights/000040",
+  "model_path": "tinker://84889cea-2544-58ff-89c7-c178a3cf8727:train:0/sampler_weights/000040",
   "parse_error_rate": 0.0,
   "per_band": {
     "discovery": {
@@ -115,6 +115,6 @@
   "strict_pass_rate": 1.0,
   "task_count": 12,
   "temperature": 0.0,
-  "total_prompt_tokens": 16503,
-  "total_sampled_tokens": 904
+  "total_prompt_tokens": 18144,
+  "total_sampled_tokens": 966
 }

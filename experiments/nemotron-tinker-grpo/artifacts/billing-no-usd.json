@@ -1,0 +1,32 @@
+{
+  "endpoint": "https://tinker.thinkingmachines.dev/services/tinker-prod/api/v1/get_billing_usage",
+  "raw_receipt_refs": [
+    "sft-preflight-billing.json",
+    "sft-data.usage.json",
+    "sft-training.usage.json",
+    "grpo-stage1.usage.json",
+    "grpo-stage2.usage.json",
+    "grpo-step10-dev.usage.json",
+    "grpo-step20-dev.usage.json",
+    "grpo-step30-dev.usage.json",
+    "grpo-step40-dev.usage.json",
+    "grpo-step60-dev.usage.json",
+    "grpo-step80-dev.usage.json",
+    "grpo-rank16-step10-dev-stress.usage.json",
+    "grpo-rank16-step20-dev-stress.usage.json",
+    "grpo-rank16-step30-dev-stress.usage.json",
+    "grpo-rank16-step40-dev-stress.usage.json",
+    "grpo-rank16-step60-dev-stress.usage.json",
+    "grpo-rank16-step80-dev-stress.usage.json",
+    "grpo-rank32-step10-dev-stress.usage.json",
+    "grpo-rank32-step20-dev-stress.usage.json",
+    "grpo-rank32-step30-dev-stress.usage.json",
+    "grpo-rank32-step40-dev-stress.usage.json",
+    "grpo-rank32-step60-dev-stress.usage.json",
+    "grpo-rank32-step80-dev-stress.usage.json",
+    "grpo-rank32-phase-receipt.json"
+  ],
+  "schema_version": "automationbench.billing_receipt.v1",
+  "statement": "No authoritative USD figure is obtainable for this experiment. The preserved Tinker billing endpoint receipts returned HTTP 404 Not Found; token counts and wall-clock measurements are the available cost receipts.",
+  "usd_available": false
+}

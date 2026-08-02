@@ -1,0 +1,24 @@
+{
+  "forbidden_effects_not_aggregated_in_summary": "See row-level JSONL; this run was greedy one sample/task.",
+  "frozen_holdout_sha256": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+  "holdout_evaluation_count_for_this_experiment": 1,
+  "influenced_selection": false,
+  "mean_reward": 1.0,
+  "row_artifact": "sealed-holdout-rank16-step60.jsonl",
+  "run_after_selection": true,
+  "samples_per_task": 1,
+  "schema_version": "automationbench.sealed_holdout_record.v1",
+  "selected_config": {
+    "grpo_step": 60,
+    "lora_rank": 16,
+    "sampler_path": "tinker://475d25a7-ba82-5da4-bc67-722f2a47a83e:train:0/sampler_weights/000060"
+  },
+  "selection_artifact": "selection-result.json",
+  "split": "holdout",
+  "statement": "This is the sole holdout evaluation, run only after dev selection was sealed; it did not influence any choice.",
+  "status": "sealed_complete",
+  "strict_pass_rate": 1.0,
+  "summary_artifact": "sealed-holdout-rank16-step60.summary.json",
+  "temperature": 0.0,
+  "usage_artifact": "sealed-holdout-rank16-step60.usage.json"
+}

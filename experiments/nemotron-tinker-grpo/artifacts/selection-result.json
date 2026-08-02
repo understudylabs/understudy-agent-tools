@@ -1,0 +1,117 @@
+{
+  "holdout_touched": false,
+  "preregistration": "selection-preregistration.json",
+  "rows": [
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.8888888888888888,
+      "dev_stress_strict_pass_rate": 0.8333333333333334,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 10,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.8993055555555555,
+      "dev_stress_strict_pass_rate": 0.875,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 20,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9513888888888888,
+      "dev_stress_strict_pass_rate": 0.9166666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 30,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9270833333333334,
+      "dev_stress_strict_pass_rate": 0.9166666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 40,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 1.0,
+      "dev_stress_strict_pass_rate": 1.0,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 60,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9791666666666666,
+      "dev_stress_strict_pass_rate": 0.9791666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 80,
+      "rank": 16
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.8888888888888888,
+      "dev_stress_strict_pass_rate": 0.8541666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 10,
+      "rank": 32
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9583333333333334,
+      "dev_stress_strict_pass_rate": 0.9375,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 20,
+      "rank": 32
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9340277777777778,
+      "dev_stress_strict_pass_rate": 0.9166666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 30,
+      "rank": 32
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9791666666666666,
+      "dev_stress_strict_pass_rate": 0.9791666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 40,
+      "rank": 32
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9513888888888888,
+      "dev_stress_strict_pass_rate": 0.9375,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 60,
+      "rank": 32
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_stress_mean_reward": 0.9791666666666666,
+      "dev_stress_strict_pass_rate": 0.9791666666666666,
+      "dev_strict_pass_rate": 1.0,
+      "grpo_step": 80,
+      "rank": 32
+    }
+  ],
+  "rule_order": [
+    "dev_mean_reward",
+    "dev_stress_mean_reward",
+    "fewer_grpo_steps",
+    "lower_lora_rank"
+  ],
+  "schema_version": "automationbench.selection_result.v1",
+  "selected": {
+    "dev_mean_reward": 1.0,
+    "dev_stress_mean_reward": 1.0,
+    "dev_stress_strict_pass_rate": 1.0,
+    "dev_strict_pass_rate": 1.0,
+    "grpo_step": 60,
+    "rank": 16
+  }
+}

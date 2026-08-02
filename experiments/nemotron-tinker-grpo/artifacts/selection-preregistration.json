@@ -1,0 +1,31 @@
+{
+  "schema_version": "automationbench.selection_preregistration.v1",
+  "registered_at": "2026-08-02T01:39:35Z",
+  "git_sha": "7c7f2763ac4a96fa61d96019eabaf050f3186a6c",
+  "selection_rule": {
+    "primary": "dev mean reward, greedy (temperature 0, 1 sample), authoritative offline evaluator",
+    "tie_break_1": "dev stress mean reward — temperature 1.0, 4 samples per task, fixed seed, same authoritative offline evaluator, dev only",
+    "tie_break_2": "fewer GRPO steps (cheaper and less overfit)",
+    "tie_break_3": "lower LoRA rank"
+  },
+  "holdout_policy": "Holdout is not consulted for selection and will be run exactly once at the end with frozen split SHA256 a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701.",
+  "warm_start_policy": "SFT warm starts are rank-matched: a rank-16 state loads as a rank-16 client regardless of Config.lora_rank.",
+  "sft_warm_starts": {
+    "rank16": {
+      "run_id": "a545059e-0e23-5938-b1f6-9501e2e58419:train:0",
+      "selected_epoch": 3,
+      "state_path": "tinker://a545059e-0e23-5938-b1f6-9501e2e58419:train:0/weights/sft-epoch3-state"
+    },
+    "rank32": {
+      "run_id": "79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0",
+      "selected_epoch": 4,
+      "state_path": "tinker://79c8c5c5-0201-51fa-ad00-fc0e4e610265:train:0/weights/sft-epoch4-state"
+    }
+  },
+  "constraints": [
+    "Training uses train-only oracle trajectories.",
+    "Dev is used for selection and stress evaluation only.",
+    "Malformed tool calls are rejected and counted, not silently repaired.",
+    "No authoritative USD billing figure is available; preserve raw 404 receipts and record tokens and wall clock."
+  ]
+}

@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+artifacts/*-log/iteration_*/
+artifacts/*-log/timing_spans.jsonl
+artifacts/*-log/logs.log
