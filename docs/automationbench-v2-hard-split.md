@@ -107,8 +107,30 @@ through `scripts/tinker-openai-shim.py` (sampling + `nemotron3` renderer, since
 Tinker's `tools=` raises `NotImplementedError`); Fireworks bases are serverless.
 No dedicated deployment was created.
 
-Partial results land in `outputs/zeroshot-<model>-dev.json`; the table in the
-accompanying PR carries the sealed numbers.
+Dev split (36 tasks), temperature 0, greedy, one attempt per task. Raw
+per-task rows are in `outputs/zeroshot-<model>-dev.json`.
+
+| Base | Provider | dev mean | v1-tier | hard-tier | exact-1 | zero | forbidden writes |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | Tinker (sampling, `nemotron3`) | **0.843** | 0.889 | **0.820** | 0.694 | 0.056 | 0 |
+| `gpt-oss-20b` | Fireworks serverless | **0.514** | 0.667 | **0.438** | 0.500 | 0.472 | 0 |
+| `qwen3p7-plus` | Fireworks serverless | 0.907 | 0.917 | 0.903 | 0.889 | 0.083 | 0 |
+| `deepseek-v4-flash` | Fireworks serverless | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0 |
+
+The bases the RL arms actually train — Nemotron-3-Nano and the 20B class — sit
+well below ceiling with real headroom concentrated in the hard tier, which is
+what v2 was built for. Frontier-class bases (`deepseek-v4-flash`) still
+saturate: no amount of record-joining defeats them, so use v2 to rank small
+bases and post-training methods, not frontier models.
+
+Where the small bases actually lose (weakest families, Nemotron then gpt-oss):
+`crm-disambiguate` 0.00 / 0.00, `dual-close-cleanup` 0.43 / 0.00,
+`duplicate-merge` 0.50, `derived-subject-close` 0.67 / 0.00,
+`conditional-route` 1.00 / 0.00. The failure mode is almost never an illegal
+write (0 forbidden effects across all four bases) — it is dropping a leg of a
+chain, or never emitting a parseable call at all (gpt-oss burns its budget on
+reasoning: 86% of its episodes contained a rejected emission, vs 33% for
+Nemotron and 0% for the frontier bases).
 
 ## Reproducing
 
