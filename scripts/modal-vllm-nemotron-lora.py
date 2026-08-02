@@ -71,15 +71,13 @@ image = (
     },
     secrets=[
         modal.Secret.from_name(HF_SECRET),
-        modal.Secret.from_name(AUTH_SECRET),
     ],
     scaledown_window=300,
     timeout=90 * 60,
     max_containers=1,
 )
-@modal.web_server(PORT, startup_timeout=30 * 60)
+@modal.web_server(PORT, startup_timeout=30 * 60, requires_proxy_auth=True)
 def serve() -> None:
-    api_key = (os.environ.get("VLLM_API_KEY") or "").strip()
     command = [
         "vllm",
         "serve",
@@ -100,16 +98,12 @@ def serve() -> None:
         "--tool-call-parser",
         "qwen3_xml",
     ]
-    if api_key:
-        command.append(f"--api-key={api_key}")
-    try:
-        subprocess.run(command, env=os.environ.copy(), check=True)
-    except subprocess.CalledProcessError as error:
-        safe_command = [
-            "<redacted-api-key>" if item.startswith("--api-key=") else item
-            for item in command
-        ]
-        raise RuntimeError(f"vLLM exited with {error.returncode}: {safe_command}") from None
+    # vLLM receives no application credential. Modal's web proxy authenticates
+    # requests before forwarding them to this unauthenticated loopback server,
+    # keeping secrets out of vLLM argv, environment parsing, and startup logs.
+    # Modal's web_server launcher must return after spawning the server so the
+    # proxy can complete readiness registration and begin forwarding requests.
+    subprocess.Popen(command, env=os.environ.copy())
 
 
 def executor_idempotency_key(

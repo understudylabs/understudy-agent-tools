@@ -44,6 +44,19 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ModalExecutorLogicTest(unittest.TestCase):
+    def test_vllm_serving_uses_modal_proxy_auth_without_application_secret(self):
+        source = SCRIPT.read_text()
+        serving_source = source.split("def serve()", 1)[0]
+        self.assertIn("requires_proxy_auth=True", serving_source)
+        self.assertNotIn("modal.Secret.from_name(AUTH_SECRET)", serving_source)
+        command_source = source.split("def serve()", 1)[1].split(
+            "def executor_idempotency_key", 1
+        )[0]
+        self.assertNotIn("--api-key", command_source)
+        self.assertNotIn("VLLM_API_KEY", command_source)
+        self.assertIn("subprocess.Popen(command", command_source)
+        self.assertNotIn("subprocess.run(command", command_source)
+
     def test_authorization_rejects_missing_malformed_and_wrong_credentials(self):
         self.assertFalse(MODULE.authorization_valid(None, "secret"))
         self.assertFalse(MODULE.authorization_valid("Basic secret", "secret"))
