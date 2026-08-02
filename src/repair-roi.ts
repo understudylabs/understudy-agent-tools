@@ -537,6 +537,8 @@ export function renderRepairReport(queue: RepairQueue): string {
     "",
     `Generated ${queue.generated_at}; ${queue.window.days}-day requested window; candidate model \`${queue.candidate_model}\`.`,
     `Population quantities are projected from a ${(100 / queue.sampling.population_scale).toFixed(3)}% uniform sample (population scale ${queue.sampling.population_scale.toFixed(3)}); share-based factors remain sample statistics.`,
+    `Sampling method: ${queue.sampling.sampling_method}; ${queue.sampling.sampled_captures.toLocaleString()} sampled captures, implied population ${Math.round(queue.sampling.sampled_captures * queue.sampling.population_scale).toLocaleString()} captures.`,
+    `Effective observed window: ${queue.parameters.observed_from ?? "none"} to ${queue.parameters.observed_to ?? "none"} (${queue.parameters.observed_days.toFixed(3)} days).`,
     `Rate card provenance: evidence-derived observed upstream billing; checked ${queue.rate_card.checked_at.join(", ") || "date unavailable"}.`,
     "",
     "## How to read this",
