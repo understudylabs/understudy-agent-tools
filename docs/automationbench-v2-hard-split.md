@@ -145,5 +145,5 @@ node scripts/automationbench-v2-zeroshot.mjs \
 Holdout is read exactly once, at the end of an arm, with
 `--frozen-holdout 2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9`.
 
-All records are synthetic and index-generated. No Cedar or customer data is
+All records are synthetic and index-generated. No private or customer data is
 present in this fixture.
