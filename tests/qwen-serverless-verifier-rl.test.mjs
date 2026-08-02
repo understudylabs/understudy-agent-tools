@@ -11,9 +11,9 @@ import {
   ExecutorCancellationReceiptSchema,
   ExecutorJobRefSchema,
   ExecutorJobStatusSchema,
-  ExecutorSubmitRequestSchema,
   ExecutorUsageReceiptSchema,
-} from "../dist/executor-contract.js";
+} from "../dist/spark-experiment-executor.js";
+import { ExperimentSubmitRequestSchema } from "../dist/experiment-executor.js";
 
 const root = process.cwd();
 
@@ -181,9 +181,13 @@ args = SimpleNamespace(
 )
 print(json.dumps(module.submit_request(args)))
 `;
-  const payload = JSON.parse(execFileSync("python3", ["-c", python], { cwd: root, encoding: "utf8" }));
-  assert.doesNotThrow(() => ExecutorSubmitRequestSchema.parse(payload));
+  const payload = JSON.parse(execFileSync("python3", ["-c", python], {
+    cwd: root,
+    encoding: "utf8",
+  }));
+  assert.deepEqual(ExperimentSubmitRequestSchema.parse(payload), payload);
   assert.equal(JSON.stringify(payload).toLowerCase().includes("holdout"), false);
+  assert.throws(() => ExperimentSubmitRequestSchema.parse({ ...payload, idempotency_key: "extra" }));
 });
 
 test("executor cancellation and usage receipts are adapter-scoped without provider calls", (t) => {
@@ -210,7 +214,7 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
   }));
   try {
     const persisted = JSON.parse(readFileSync(mappingPath, "utf8"));
-    assert.doesNotThrow(() => ExecutorJobRefSchema.parse(persisted.job));
+    assert.deepEqual(ExecutorJobRefSchema.parse(persisted.job), persisted.job);
     const cancel = execFileSync("python3", [
       "experiments/qwen-serverless-verifier-rl/verifier_rl.py",
       "--operation", "cancel",
@@ -219,7 +223,7 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       "--attempt", attempt,
     ], { cwd: root, encoding: "utf8" });
     const cancelled = JSON.parse(cancel);
-    assert.doesNotThrow(() => ExecutorCancellationReceiptSchema.parse(cancelled));
+    assert.deepEqual(ExecutorCancellationReceiptSchema.parse(cancelled), cancelled);
     assert.equal(cancelled.disposition, "already_terminal");
     const cancellationMapping = JSON.parse(readFileSync(mappingPath, "utf8"));
     assert.equal(cancellationMapping.cancellation_adapter.adapter, "fireworks");
@@ -231,7 +235,8 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       "--candidate-id", candidateId,
       "--attempt", attempt,
     ], { cwd: root, encoding: "utf8" });
-    assert.doesNotThrow(() => ExecutorJobStatusSchema.parse(JSON.parse(inspected)));
+    const status = JSON.parse(inspected);
+    assert.deepEqual(ExecutorJobStatusSchema.parse(status), status);
     const usage = execFileSync("python3", [
       "experiments/qwen-serverless-verifier-rl/verifier_rl.py",
       "--operation", "reconcileUsage",
@@ -240,7 +245,7 @@ test("executor cancellation and usage receipts are adapter-scoped without provid
       "--attempt", attempt,
     ], { cwd: root, encoding: "utf8" });
     const usageReceipt = JSON.parse(usage);
-    assert.doesNotThrow(() => ExecutorUsageReceiptSchema.parse(usageReceipt));
+    assert.deepEqual(ExecutorUsageReceiptSchema.parse(usageReceipt), usageReceipt);
     assert.equal(usageReceipt.evidence_scope, "run_exclusive");
     assert.equal(usageReceipt.actual_usd, null);
     assert.equal(usageReceipt.estimated_usd, null);
