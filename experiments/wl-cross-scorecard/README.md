@@ -16,6 +16,15 @@ counts statuses at or above 400.
 The repair-target ranking uses combined customer and upstream USD over the
 30-day window. An all-time combined total is included for context.
 
+## Orchestration contract
+
+This deliverable is an **immutable artifact contract / UI artifact** for the
+unified durable-workflow orchestrator — not a controller, poller, queue, or
+state database. It is regenerated idempotently from (a) aggregate telemetry
+queries and (b) the sibling arms' committed memo and DPO artifacts, referenced
+by repository path. Only aggregate numbers and artifact references flow
+through it; no raw traces, prompts, labels, credentials, or weights.
+
 ## Privacy boundary
 
 Committed files contain aggregate counts, token totals, percentages, USD
