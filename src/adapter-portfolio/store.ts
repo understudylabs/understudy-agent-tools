@@ -109,6 +109,7 @@ export function registerAdapter(
     suite: input.suite,
     ...(input.workload ? { workload: input.workload } : {}),
     ...(input.splits ? { splits: input.splits } : {}),
+    ...(input.holdout ? { holdout_executed: false, holdout_clean: true } : {}),
     holdout: input.holdout ?? null,
     evidence: [],
     created_at: timestamp,

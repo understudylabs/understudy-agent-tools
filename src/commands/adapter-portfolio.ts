@@ -111,13 +111,15 @@ export function registerAdapterPortfolioCommand(program: Command): void {
     .option("--seed <n>", "Evaluation seed.")
     .option("--run-id <id>", "Evaluation run id.")
     .option("--fixture-sha256 <sha256>", "Fixture SHA-256.")
+    .option("--evidence-scope <scope>", "run_exclusive | account_window | unknown.")
     .option("--loaded-adapters <names>", "Comma-separated serving adapter names active during measurement.")
     .option("--notes <text>", "Evidence notes.")
     .option("--registry-path <path>", "Registry JSON path.")
     .action(function (this: Command, options: {
       adapter?: string; base?: boolean; for?: string; suite: string; split: "dev" | "holdout"; score: string;
       metric: string; datasetSha256: string; rows: string; seed?: string; runId?: string;
-      fixtureSha256?: string; loadedAdapters?: string; notes?: string; registryPath?: string;
+      fixtureSha256?: string; evidenceScope?: "run_exclusive" | "account_window" | "unknown";
+      loadedAdapters?: string; notes?: string; registryPath?: string;
     }) {
       run(this, () => {
         if ((options.adapter ? 1 : 0) + (options.base ? 1 : 0) !== 1) throw new Error("Choose exactly one subject with --adapter or --base.");
@@ -135,6 +137,7 @@ export function registerAdapterPortfolioCommand(program: Command): void {
           ...(options.seed === undefined ? {} : { seed: Number(options.seed) }),
           ...(options.runId ? { run_id: options.runId } : {}),
           ...(options.fixtureSha256 ? { fixture_sha256: options.fixtureSha256 } : {}),
+          ...(options.evidenceScope ? { evidence_scope: options.evidenceScope } : {}),
           context: { loaded_adapters: options.loadedAdapters ? options.loadedAdapters.split(",").filter(Boolean) : [] },
           ...(options.notes ? { notes: options.notes } : {}),
         }, pathOptions(options));

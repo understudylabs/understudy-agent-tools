@@ -37,7 +37,8 @@ Its required submit fields are:
 - `workload`: `id`, `dataset_manifest_ref`,
   `dataset_manifest_sha256`, `verifier_environment`, and
   `verifier_revision`;
-- `splits`: `train_manifest_ref` and `dev_manifest_ref`;
+- `splits`: `train_manifest_ref`, `train_manifest_sha256`,
+  `dev_manifest_ref`, and `dev_manifest_sha256`;
 - `limits`: `budget_usd`, `max_concurrent_candidates`,
   `max_concurrent_requests_per_candidate`, `max_rollouts`, and
   `max_runtime_seconds`.
@@ -54,6 +55,22 @@ The portfolio's sealed `holdout`, holdout evidence rows, hashes, row counts,
 and scores are structurally absent from that identity projection and must
 never cross into a submit request. Holdout refs remain exclusively in the
 promotion decision artifact and verifier gate.
+
+New adapter records initialize `holdout_executed: false` and
+`holdout_clean: true`. The gate refuses promotion when the holdout is marked
+executed or its cleanliness is not explicitly confirmed. Evidence rows may
+carry the executor-reported `evidence_scope` (`run_exclusive`,
+`account_window`, or `unknown`); the portfolio preserves it and does not
+reinterpret it. The no-forgetting context is also the portfolio's
+request-isolation evidence: baseline rows exclude the candidate from
+`loaded_adapters`, and rechecks include it.
+
+The decision artifact optionally records canonical quality/calibration status,
+calibration artifact refs, failure clusters, artifact refs, a claim boundary,
+and whether request isolation was proven. These are verifier-owned evidence
+summaries, not raw content. Budget and actual/estimated/upper-bound usage
+remain executor-owned because this module performs no provider work and does
+not reconcile usage.
 
 Executor adapters, not this verifier/contract module, own `submit`, `inspect`,
 and `cancel`. Cancellation must reach the adapter and produce a

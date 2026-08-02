@@ -155,7 +155,9 @@ describe("adapter portfolio", () => {
     };
     registry.adapters["adapter-a"].splits = {
       train_manifest_ref: "artifact://train-a",
+      train_manifest_sha256: sha("train-manifest"),
       dev_manifest_ref: "artifact://dev-a",
+      dev_manifest_sha256: sha("dev-manifest"),
     };
     saveRegistry(registry, { registryPath: data.registryPath });
     const adapter = JSON.parse(readFileSync(data.registryPath)).adapters["adapter-a"];
@@ -165,6 +167,30 @@ describe("adapter portfolio", () => {
     assert.doesNotMatch(serialized, /holdout|score|row_count/i);
     assert.equal(projection.workload.dataset_manifest_ref, "artifact://workload-a");
     assert.equal(projection.splits.dev_manifest_ref, "artifact://dev-a");
+    assert.equal(projection.splits.dev_manifest_sha256, sha("dev-manifest"));
+  });
+
+  it("blocks promotion when the sealed holdout is marked executed", () => {
+    const data = candidateFixture();
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a", split: "dev",
+      score: 0.9, metric: "band_mean_score", dataset_sha256: sha("dev"), row_count: 2,
+      recorded_at: "2026-01-01T00:00:00.000Z", context: { loaded_adapters: [] },
+    });
+    add(data.registryPath, "adapter-a", {
+      subject: "adapter", adapter_name: "adapter-a", suite: "workload-band-a", split: "holdout",
+      score: 0.9, metric: "band_mean_score", dataset_sha256: holdoutSha, row_count: 2,
+      recorded_at: "2026-01-01T00:01:00.000Z", context: { loaded_adapters: [] },
+    });
+    const registry = JSON.parse(readFileSync(data.registryPath));
+    registry.adapters["adapter-a"].holdout_executed = true;
+    registry.adapters["adapter-a"].holdout_clean = false;
+    saveRegistry(registry, { registryPath: data.registryPath });
+    const decision = evaluatePromotion(JSON.parse(readFileSync(data.registryPath)), "adapter-a");
+    const sealed = decision.checks.find((item) => item.check === "holdout_sealed");
+    assert.equal(decision.decision, "blocked");
+    assert.equal(sealed.status, "fail");
+    assert.match(sealed.detail, /executed|dirtied/i);
   });
 
   it("scores the worst holdout rerun instead of rescuing a failing candidate", () => {

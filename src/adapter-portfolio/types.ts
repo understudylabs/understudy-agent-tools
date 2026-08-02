@@ -34,7 +34,9 @@ export const WorkloadIdentitySchema = z.object({
 
 export const SplitManifestRefsSchema = z.object({
   train_manifest_ref: z.string().min(1),
+  train_manifest_sha256: Sha256Schema,
   dev_manifest_ref: z.string().min(1),
+  dev_manifest_sha256: Sha256Schema,
 });
 
 export const EvidenceRowSchema = z.object({
@@ -52,6 +54,7 @@ export const EvidenceRowSchema = z.object({
   run_id: z.string().min(1).optional(),
   fixture_sha256: Sha256Schema.optional(),
   context: z.object({ loaded_adapters: z.array(z.string().min(1)) }),
+  evidence_scope: z.enum(["run_exclusive", "account_window", "unknown"]).optional(),
   notes: z.string().max(500).optional(),
 }).superRefine((row, ctx) => {
   if (row.subject === "adapter" && !row.adapter_name) {
@@ -71,6 +74,8 @@ export const AdapterRecordSchema = z.object({
   suite: z.string().min(1),
   workload: WorkloadIdentitySchema.optional(),
   splits: SplitManifestRefsSchema.optional(),
+  holdout_executed: z.boolean().optional(),
+  holdout_clean: z.boolean().nullable().optional(),
   holdout: HoldoutSchema.nullable(),
   evidence: z.array(EvidenceRowSchema),
   created_at: TimestampSchema,
@@ -98,15 +103,6 @@ export const PromotionCheckSchema = z.object({
   detail: z.string().min(1),
 });
 
-export const AdapterPromotionDecisionSchema = z.object({
-  schema_version: z.literal(ADAPTER_PROMOTION_DECISION_SCHEMA),
-  candidate: z.string().min(1),
-  evaluated_at: TimestampSchema,
-  policy: PromotionPolicySchema,
-  checks: z.array(PromotionCheckSchema),
-  decision: z.enum(["promote", "blocked"]),
-});
-
 export const ArtifactRefSchema = z.object({
   uri: z.string().min(1),
   sha256: Sha256Schema,
@@ -114,6 +110,41 @@ export const ArtifactRefSchema = z.object({
 
 export const CandidateHoldoutArtifactSchema = ArtifactRefSchema.extend({
   row_count: z.number().int().positive(),
+});
+
+export const QualityEvidenceSchema = z.object({
+  status: z.enum([
+    "not_measured",
+    "measured",
+    "invalidated_pending_calibration",
+    "invalidated_quarantined",
+    "calibrated",
+  ]),
+  reason: z.string().max(1000).nullable(),
+  required_calibration: z.string().max(500).nullable(),
+  calibration_artifact_refs: z.array(ArtifactRefSchema).max(32),
+});
+
+export const FailureClusterSchema = z.object({
+  cluster: z.string().min(1).max(240),
+  count: z.number().int().nonnegative(),
+  artifact_refs: z.array(ArtifactRefSchema).max(32),
+});
+
+export const AdapterPromotionDecisionSchema = z.object({
+  schema_version: z.literal(ADAPTER_PROMOTION_DECISION_SCHEMA),
+  candidate: z.string().min(1),
+  evaluated_at: TimestampSchema,
+  policy: PromotionPolicySchema,
+  checks: z.array(PromotionCheckSchema),
+  decision: z.enum(["promote", "blocked"]),
+  holdout_executed: z.boolean().optional(),
+  holdout_clean: z.boolean().nullable().optional(),
+  request_isolation_proven: z.boolean().optional(),
+  quality_evidence: QualityEvidenceSchema.optional(),
+  failure_clusters: z.array(FailureClusterSchema).max(256).optional(),
+  artifact_refs: z.array(ArtifactRefSchema).max(512).optional(),
+  claim_boundary: z.string().min(1).max(2000).optional(),
 });
 
 export const PromotionDecisionInputsSchema = z.object({
@@ -140,5 +171,7 @@ export type PromotionCheck = z.infer<typeof PromotionCheckSchema>;
 export type AdapterPromotionDecision = z.infer<typeof AdapterPromotionDecisionSchema>;
 export type ArtifactRef = z.infer<typeof ArtifactRefSchema>;
 export type CandidateHoldoutArtifact = z.infer<typeof CandidateHoldoutArtifactSchema>;
+export type QualityEvidence = z.infer<typeof QualityEvidenceSchema>;
+export type FailureCluster = z.infer<typeof FailureClusterSchema>;
 export type PromotionDecisionInputs = z.infer<typeof PromotionDecisionInputsSchema>;
 export type AdapterPromotionStepDecision = z.infer<typeof AdapterPromotionStepDecisionSchema>;

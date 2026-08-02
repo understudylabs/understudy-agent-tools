@@ -95,6 +95,10 @@ export function evaluatePromotion(
     holdout.row_count !== candidate.holdout.row_count
   ) {
     checks.push(check("holdout_sealed", "fail", "Holdout evidence does not match the recorded sealed holdout identity."));
+  } else if (candidate.holdout_executed === true) {
+    checks.push(check("holdout_sealed", "fail", "The sealed holdout has been executed or dirtied and cannot support promotion."));
+  } else if (candidate.holdout_clean !== true) {
+    checks.push(check("holdout_sealed", "fail", "The sealed holdout cleanliness is not confirmed; promotion is blocked."));
   } else if (dev.recorded_at >= holdout.recorded_at) {
     checks.push(check("holdout_sealed", "fail", "Holdout evidence must be recorded strictly after dev evidence."));
   } else {
@@ -145,5 +149,17 @@ export function evaluatePromotion(
     policy,
     checks,
     decision: checks.every((item) => item.status === "pass") ? "promote" : "blocked",
+    holdout_executed: candidate.holdout_executed,
+    holdout_clean: candidate.holdout_clean,
+    request_isolation_proven: checks.some((item) => item.check === "no_forgetting" && item.status === "pass"),
+    quality_evidence: {
+      status: "measured",
+      reason: null,
+      required_calibration: null,
+      calibration_artifact_refs: [],
+    },
+    failure_clusters: [],
+    artifact_refs: [],
+    claim_boundary: "Promotion decision covers recorded adapter evidence and transfer checks only; it is not an executor usage or model-quality guarantee.",
   };
 }

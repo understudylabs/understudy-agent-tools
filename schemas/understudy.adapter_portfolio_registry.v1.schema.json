@@ -68,11 +68,13 @@
     },
     "splits": {
       "type": "object",
-      "required": ["train_manifest_ref", "dev_manifest_ref"],
+      "required": ["train_manifest_ref", "train_manifest_sha256", "dev_manifest_ref", "dev_manifest_sha256"],
       "additionalProperties": false,
       "properties": {
         "train_manifest_ref": { "type": "string", "minLength": 1 },
-        "dev_manifest_ref": { "type": "string", "minLength": 1 }
+        "train_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "dev_manifest_ref": { "type": "string", "minLength": 1 },
+        "dev_manifest_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "evidence": {
@@ -99,6 +101,7 @@
           "additionalProperties": false,
           "properties": { "loaded_adapters": { "type": "array", "items": { "type": "string", "minLength": 1 } } }
         },
+        "evidence_scope": { "enum": ["run_exclusive", "account_window", "unknown"] },
         "notes": { "type": "string", "maxLength": 500 }
       }
     },
@@ -115,6 +118,8 @@
         "suite": { "type": "string", "minLength": 1 },
         "workload": { "$ref": "#/$defs/workload" },
         "splits": { "$ref": "#/$defs/splits" },
+        "holdout_executed": { "type": "boolean" },
+        "holdout_clean": { "type": ["boolean", "null"] },
         "holdout": { "$ref": "#/$defs/holdout" },
         "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
         "created_at": { "type": "string", "format": "date-time" },

@@ -23,7 +23,22 @@
         }
       }
     },
-    "decision": { "enum": ["promote", "blocked"] }
+    "decision": { "enum": ["promote", "blocked"] },
+    "holdout_executed": { "type": "boolean" },
+    "holdout_clean": { "type": ["boolean", "null"] },
+    "request_isolation_proven": { "type": "boolean" },
+    "quality_evidence": { "$ref": "#/$defs/quality_evidence" },
+    "failure_clusters": {
+      "type": "array",
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/failure_cluster" }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "maxItems": 512,
+      "items": { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/artifact_ref" }
+    },
+    "claim_boundary": { "type": "string", "minLength": 1, "maxLength": 2000 }
     ,
     "idempotency_key": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "inputs": {
@@ -41,6 +56,43 @@
         "evidence_ids": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "quality_evidence": {
+      "type": "object",
+      "required": ["status", "reason", "required_calibration", "calibration_artifact_refs"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "not_measured",
+            "measured",
+            "invalidated_pending_calibration",
+            "invalidated_quarantined",
+            "calibrated"
+          ]
+        },
+        "reason": { "type": ["string", "null"], "maxLength": 1000 },
+        "required_calibration": { "type": ["string", "null"], "maxLength": 500 },
+        "calibration_artifact_refs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/artifact_ref" }
+        }
+      }
+    },
+    "failure_cluster": {
+      "type": "object",
+      "required": ["cluster", "count", "artifact_refs"],
+      "additionalProperties": false,
+      "properties": {
+        "cluster": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "count": { "type": "integer", "minimum": 0 },
+        "artifact_refs": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "understudy.adapter_portfolio_registry.v1.schema.json#/$defs/artifact_ref" }
         }
       }
     }
