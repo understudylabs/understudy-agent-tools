@@ -5,6 +5,13 @@ It is an aggregate-only planning artifact: workload labels are neutral codes,
 and no prompts, raw events, request identifiers, or private identifiers are
 included.
 
+## Status
+
+Six repair arms have landed: WL-chat has a memo and frozen fixture with DPO
+pending; WL-OR, WL-DI, WL-AOP, WL-AU, and WL-OEE have landed DPO results.
+Remaining workloads are unassigned or pending a repair artifact. This
+scorecard is regenerated idempotently as further sanitized artifacts land.
+
 ## Ranked repair targets
 
 Targets are ranked by 30-day combined customer and upstream USD. Provider-equivalent
@@ -26,7 +33,7 @@ is **$62,683.08822989**.
 | 7 | WL-07 | — | 47872 | 158077276 | 8325019 | 0.007060 | 1002.539531 | 0.017160 | 0.234272 | pending — awaiting per-workload repair memo |
 | 8 | WL-08 | WL-OR → [memo](../workload-orchestrator/repair-memo.md) | 2474 | 141267215 | 689926 | 0.079853 | 810.364917 | 0.013871 | 0.000808 | DPO landed — dev +0.100, holdout +0.000; not promotable |
 | 9 | WL-09 | — | 7402 | 273138165 | 2917071 | 0.639952 | 791.761397 | 0.013552 | 0.042286 | pending — awaiting per-workload repair memo |
-| 10 | WL-10 | WL-chat → [memo](../wl-chat-repair/repair-target-memo.md) | 2845 | 196153814 | 1007765 | 0.519242 | 659.769974 | 0.011293 | 0.004569 | memo landed — suitable repair target; fixture frozen/sealed |
+| 10 | WL-10 | WL-chat → [memo](../wl-chat-repair/repair-target-memo.md) | 2845 | 196153814 | 1007765 | 0.519242 | 659.769974 | 0.011293 | 0.004569 | memo landed — suitable repair target; fixture frozen; DPO pending |
 | 11 | WL-11 | WL-AOP → [README](../aop-selection-repair/README.md) | 14026 | 72162489 | 2905154 | 0.179329 | 386.563525 | 0.006617 | 0.000000 | DPO attempt landed — dev mixed by decode; holdout not run; do not promote |
 | 12 | WL-12 | — | 15430 | 70990333 | 4921790 | 0.000000 | 382.397132 | 0.006545 | 0.000000 | pending — awaiting per-workload repair memo |
 | 13 | WL-13 | — | 6188 | 70583743 | 4897776 | 0.000000 | 380.289973 | 0.006509 | 0.165966 | pending — awaiting per-workload repair memo |
@@ -253,20 +260,18 @@ tasks, so the result is directional rather than a production or holdout claim.
 
 ## Does DPO lift correlate with volume/cost ranking?
 
-**Partial — five DPO arms are now available, but only two have clean sealed
-holdout results.** WL-OR (rank 8 by spend)
-shows +0.100 dev lift and +0.000 sealed-holdout lift; WL-DI (rank 5) shows
-+0.125 dev lift and +0.000 sealed-holdout lift. Both are behavioural cases and
-both are **not promotable**. WL-AOP (rank 11) has no sealed-holdout result:
-greedy dev is -0.250, while sampled dev is +0.042 and is explicitly not
-promotable. WL-AU (rank 2) has +0.019 sampled dev lift with a 95% CI of
-[-0.051, +0.090], so its high-spend result is also consistent with no lift;
-its candidate holdout was never run. This strengthens the emerging read that
-DPO lift does **not** track spend rank, but it does not create a holdout result
-or a statistically established correlation. WL-OEE (rank 6) adds +0.229 dev
-lift, but its clean holdout was deliberately unexecuted and its 16-task dev
-split is too small for a firm effect claim. Pair coverage/data volume per
-failing band remains the more plausible binding constraint. The evidence is
-also decode- and split-sensitive. A high-spend arm with genuine sealed-holdout
-lift would falsify this pattern; so would more arms with varied spend ranks,
-adequate per-band coverage, and replicated holdout outcomes.
+**Final read — five DPO arms span spend ranks 2–11, and dev lift does not track
+spend rank.** WL-AU (rank 2) is +0.019 with a 95% CI of [-0.051, +0.090];
+WL-DI (rank 5) is +0.125; WL-OEE (rank 6) is +0.229; WL-OR (rank 8) is
++0.100; and WL-AOP (rank 11) is +0.042 under sampled decoding but -0.250
+under greedy decoding. The only two sealed-holdout measurements, WL-OR and
+WL-DI, both show **+0.000**, and all DPO arms remain not promotable or
+holdout-incomplete. The binding constraint therefore looks like per-band pair
+coverage and data volume, not workload spend. Custom-model effort should
+weight **(a)** spend rank for payoff size and **(b)** demonstrated fixable
+failure bands with enough minable pair volume. WL-01 represents 49% of spend
+and is the top unexplored target because it has no arm yet; WL-02 is the
+highest-spend measured arm and has shown null lift so far. This is an honest
+planning read, not a statistically established correlation; decode and split
+sensitivity remain material. A genuine sealed-holdout lift on a high-spend
+arm, plus more adequately covered replicated arms, would falsify or refine it.
