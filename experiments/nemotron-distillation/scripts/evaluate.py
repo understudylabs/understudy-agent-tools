@@ -5,28 +5,25 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import statistics
 from pathlib import Path
 from typing import Any
 
 import tinker
 from env_client import close_service, get_service
-from models import get_model_spec
+from models import MODEL_SPECS, get_model_spec
 from receipts import snapshot_usage_async, write_receipt
 from rollout import RolloutConfig, rollout_task
 from tinker_cookbook import renderers
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 DEFAULT_SERVICE_REPO = "/home/ubuntu/wt-402"
-ARTIFACT_DIR = Path(__file__).resolve().parents[1] / "artifacts"
-HOLDOUT_LOCK = ARTIFACT_DIR / "holdout-lock.json"
 
 
 def _args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=("train", "dev", "holdout"), required=True)
-    parser.add_argument("--model", required=True, choices=("teacher", "teacher-base", "student-base", "student-sft"))
+    parser.add_argument("--model", required=True, choices=tuple(MODEL_SPECS))
     parser.add_argument("--adapter-path", help="override the model registry adapter path")
     parser.add_argument("--service-repo", default=DEFAULT_SERVICE_REPO)
     parser.add_argument("--label", default="eval")
@@ -72,24 +69,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("--samples must be positive")
     if args.concurrency < 1:
         raise SystemExit("--concurrency must be positive")
-    if args.split == "holdout" and not args.frozen_holdout_sha256:
-        raise SystemExit("--frozen-holdout-sha256 is required for --split holdout")
     if args.split == "holdout":
-        ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-        try:
-            descriptor = {
-                "arm": "P3-nemotron-distillation",
-                "split": "holdout",
-                "holdout_sha256": args.frozen_holdout_sha256,
-                "run_id": args.label,
-                "model": args.model,
-            }
-            fd = os.open(HOLDOUT_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(descriptor, handle, indent=2, sort_keys=True)
-                handle.write("\n")
-        except FileExistsError as error:
-            raise SystemExit(f"holdout is single-use and already locked: {HOLDOUT_LOCK}") from error
+        raise SystemExit(
+            "evaluate.py refuses --split holdout; use sealed_holdout.py for one paired pass"
+        )
 
     spec = get_model_spec(args.model, args.adapter_path)
     service = get_service(args.service_repo)
@@ -195,7 +178,10 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "renderer": spec.renderer_name,
         "prompt_variant": spec.prompt_variant,
         "lora_rank": spec.lora_rank,
-        "serving_contract": spec.serving_contract(temperature=args.temperature),
+        "serving_contract": spec.serving_contract(
+            temperature=args.temperature,
+            stop_sequences=list(renderer.get_stop_sequences()),
+        ),
         "temperature": args.temperature,
         "samples_per_task": args.samples,
         "task_count": len(tasks),

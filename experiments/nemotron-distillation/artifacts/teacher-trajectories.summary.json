@@ -1,0 +1,780 @@
+{
+  "accept_rate": 0.275,
+  "candidate_count": 240,
+  "candidates_per_task": 5,
+  "cap_per_task": 4,
+  "holdout_accessed": false,
+  "kept_count": 66,
+  "per_band": {
+    "discovery": {
+      "accept_rate": 0.2625,
+      "accepted_count": 21,
+      "candidate_count": 80,
+      "task_count": 16,
+      "zero_accepted_tasks": []
+    },
+    "multi-write": {
+      "accept_rate": 0.3125,
+      "accepted_count": 25,
+      "candidate_count": 80,
+      "task_count": 16,
+      "zero_accepted_tasks": []
+    },
+    "single-write": {
+      "accept_rate": 0.25,
+      "accepted_count": 20,
+      "candidate_count": 80,
+      "task_count": 16,
+      "zero_accepted_tasks": []
+    }
+  },
+  "per_task": [
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-close-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-close-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-close-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-close-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-lost-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-lost-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-lost-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-lost-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-owner-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-owner-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-owner-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-owner-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-rename-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-rename-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-rename-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "single-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-rename-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-draft-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-draft-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-draft-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-draft-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-revise-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-revise-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-revise-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-revise-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-discard-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-discard-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-discard-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-discard-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "discovery",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-bulk-owner-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-bulk-owner-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.4,
+      "accepted_count": 2,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-bulk-owner-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-bulk-owner-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-disambiguate-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-disambiguate-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-disambiguate-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-disambiguate-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        0.5,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-mail-churn-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-mail-churn-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        0.5,
+        0.5,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-mail-churn-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-crm-mail-churn-04",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.6,
+      "accepted_count": 3,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        0.6666666666666666,
+        1.0,
+        1.0,
+        0.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-and-close-01",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.8,
+      "accepted_count": 4,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        1.0,
+        1.0,
+        0.6666666666666666,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-and-close-02",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.6,
+      "accepted_count": 3,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        0.3333333333333333,
+        1.0,
+        0.3333333333333333,
+        1.0,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-and-close-03",
+      "zero_accepted": false
+    },
+    {
+      "accept_rate": 0.2,
+      "accepted_count": 1,
+      "band": "multi-write",
+      "candidate_count": 5,
+      "candidate_rewards": [
+        1.0,
+        0.0,
+        0.3333333333333333,
+        0.3333333333333333,
+        1.0
+      ],
+      "task_id": "simple-api-mail-send-and-close-04",
+      "zero_accepted": false
+    }
+  ],
+  "receipt": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/teacher-trajectories.usage.json",
+  "schema_version": "understudy.distillation_trajectory_summary.v1",
+  "serving_contract": {
+    "action_parser_id": "automationbench.parse_agent_action.v1",
+    "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+    "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "lora_rank": 32,
+    "model_spec": "teacher",
+    "prompt_variant": "nemotron-v1",
+    "renderer_name": "nemotron3_disable_thinking",
+    "sampling_params": {
+      "max_tokens": 192,
+      "num_samples": 1,
+      "temperature": 1.0,
+      "top_p": 1.0
+    },
+    "stop_sequences": [
+      11
+    ]
+  },
+  "source_split": "train",
+  "task_count": 48,
+  "tasks_with_zero_accepted": [],
+  "total_prompt_tokens": 113045,
+  "total_sampled_tokens": 6066,
+  "total_sampling_latency_seconds": 591.3293940389992,
+  "wall_clock_seconds": 250.30164085700017
+}

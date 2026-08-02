@@ -1,0 +1,10 @@
+{
+  "dataset_hash": "teacher-trajectories.jsonl",
+  "lora_rank": 32,
+  "max_length": 4096,
+  "renderer": "qwen3_5_disable_thinking",
+  "row_count": 66,
+  "source": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-distillation/artifacts/teacher-trajectories.jsonl",
+  "split": "train",
+  "total_model_input_tokens": 37470
+}

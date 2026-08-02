@@ -1,0 +1,60 @@
+{
+  "base_model": "Qwen/Qwen3.5-9B",
+  "batch_size": 4,
+  "checkpoints": [
+    {
+      "epoch": 1,
+      "sampler": {
+        "checkpoint_id": "sampler_weights/student-sft-epoch1",
+        "checkpoint_type": "sampler",
+        "expires_at": null,
+        "path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+        "training_run_id": "4346702b-80ed-54e0-9a39-647990764752:train:0"
+      }
+    },
+    {
+      "epoch": 2,
+      "sampler": {
+        "checkpoint_id": "sampler_weights/student-sft-epoch2",
+        "checkpoint_type": "sampler",
+        "expires_at": null,
+        "path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch2",
+        "training_run_id": "4346702b-80ed-54e0-9a39-647990764752:train:0"
+      }
+    },
+    {
+      "epoch": 3,
+      "sampler": {
+        "checkpoint_id": "sampler_weights/student-sft-epoch3",
+        "checkpoint_type": "sampler",
+        "expires_at": null,
+        "path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch3",
+        "training_run_id": "4346702b-80ed-54e0-9a39-647990764752:train:0"
+      }
+    },
+    {
+      "epoch": 4,
+      "sampler": {
+        "checkpoint_id": "sampler_weights/student-sft-epoch4",
+        "checkpoint_type": "sampler",
+        "expires_at": null,
+        "path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch4",
+        "training_run_id": "4346702b-80ed-54e0-9a39-647990764752:train:0"
+      }
+    }
+  ],
+  "created_at": "2026-08-02T02:15:34.854731+00:00",
+  "epochs": 4,
+  "final_state": {
+    "checkpoint_id": "weights/student-sft-final-state",
+    "checkpoint_type": "training",
+    "expires_at": null,
+    "path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/weights/student-sft-final-state",
+    "training_run_id": "4346702b-80ed-54e0-9a39-647990764752:train:0"
+  },
+  "learning_rate": 0.0001,
+  "lora_rank": 32,
+  "max_length": 4096,
+  "renderer": "qwen3_5_disable_thinking",
+  "schema_version": "understudy.training_checkpoints.v1"
+}

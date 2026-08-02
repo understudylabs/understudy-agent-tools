@@ -25,6 +25,7 @@ class ModelSpec:
         self,
         adapter_path: str | None = None,
         temperature: float | None = None,
+        stop_sequences: list[str] | None = None,
     ) -> dict[str, Any]:
         path = adapter_path if adapter_path is not None else self.model_path
         effective_temperature = self.temperature if temperature is None else temperature
@@ -34,7 +35,7 @@ class ModelSpec:
             "adapter_path": path,
             "renderer_name": self.renderer_name,
             "prompt_variant": self.prompt_variant,
-            "stop_sequences": "renderer.get_stop_sequences()",
+            "stop_sequences": stop_sequences if stop_sequences is not None else [],
             "sampling_params": {
                 "temperature": effective_temperature,
                 "top_p": self.top_p,
@@ -71,6 +72,18 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     "student-sft": ModelSpec(
         name="student-sft",
         base_model="Qwen/Qwen3.5-9B",
+        model_path=None,
+        renderer_name="qwen3_5_disable_thinking",
+    ),
+    "student-base-4b": ModelSpec(
+        name="student-base-4b",
+        base_model="Qwen/Qwen3.5-4B",
+        model_path=None,
+        renderer_name="qwen3_5_disable_thinking",
+    ),
+    "student-sft-4b": ModelSpec(
+        name="student-sft-4b",
+        base_model="Qwen/Qwen3.5-4B",
         model_path=None,
         renderer_name="qwen3_5_disable_thinking",
     ),

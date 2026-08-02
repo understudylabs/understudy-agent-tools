@@ -1,0 +1,148 @@
+{
+  "comparison": {
+    "mean_model_turns": {
+      "student": 3.3333333333333335,
+      "teacher": 3.3333333333333335
+    },
+    "mean_per_task_sampling_latency_seconds": {
+      "student": 10.35953392983339,
+      "teacher": 12.490433803416673
+    },
+    "mean_per_turn_sampling_latency_seconds": {
+      "student": 3.107860178950017,
+      "teacher": 3.747130141025002
+    },
+    "mean_prompt_plus_sampled_tokens": {
+      "student": 1404.8333333333333,
+      "teacher": 1459.1666666666667
+    },
+    "p50_per_turn_sampling_latency_seconds": {
+      "student": 2.394379056499929,
+      "teacher": 3.444125508999946
+    },
+    "parse_error_rate": {
+      "student": 0.0,
+      "teacher": 0.0
+    }
+  },
+  "cost": {
+    "note": "Billing receipts contained no dollar-valued events; no prices were synthesized.",
+    "student": {
+      "basis": "tinker_billing_usage",
+      "usd": null
+    },
+    "teacher": {
+      "basis": "tinker_billing_usage",
+      "usd": null
+    }
+  },
+  "model_size_caveat": "Teacher is a 30B-A3B MoE with approximately 3B active parameters; student is a dense 9B. A latency or cost win is not automatic.",
+  "receipts": {
+    "student": "artifacts/student-sft-epoch1-dev.usage.json",
+    "teacher": "artifacts/teacher-dev.usage.json"
+  },
+  "schema_version": "understudy.latency_cost_delta.v1",
+  "selected_student": {
+    "base_model": "Qwen/Qwen3.5-9B",
+    "label": "student-sft-epoch1",
+    "mean_model_turns": 3.3333333333333335,
+    "mean_per_task_sampling_latency_seconds": 10.35953392983339,
+    "mean_per_turn_sampling_latency_seconds": 3.107860178950017,
+    "mean_prompt_plus_sampled_tokens": 1404.8333333333333,
+    "mean_reward": 1.0,
+    "model": "student-sft",
+    "model_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+    "p50_per_turn_sampling_latency_seconds": 2.394379056499929,
+    "parse_error_rate": 0.0,
+    "per_band": {
+      "discovery": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "multi-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "single-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      }
+    },
+    "receipt_path": "artifacts/student-sft-epoch1-dev.usage.json",
+    "renderer": "qwen3_5_disable_thinking",
+    "serving_contract": {
+      "action_parser_id": "automationbench.parse_agent_action.v1",
+      "adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+      "base_model": "Qwen/Qwen3.5-9B",
+      "lora_rank": 32,
+      "model_spec": "student-sft",
+      "prompt_variant": "nemotron-v1",
+      "renderer_name": "qwen3_5_disable_thinking",
+      "sampling_params": {
+        "max_tokens": 192,
+        "num_samples": 1,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "stop_sequences": [
+        248046
+      ]
+    },
+    "strict_pass_rate": 1.0,
+    "summary_path": "artifacts/student-sft-epoch1-dev.summary.json",
+    "total_prompt_tokens": 16019,
+    "total_sampled_tokens": 839
+  },
+  "split": "dev",
+  "teacher": {
+    "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "label": "teacher",
+    "mean_model_turns": 3.3333333333333335,
+    "mean_per_task_sampling_latency_seconds": 12.490433803416673,
+    "mean_per_turn_sampling_latency_seconds": 3.747130141025002,
+    "mean_prompt_plus_sampled_tokens": 1459.1666666666667,
+    "mean_reward": 1.0,
+    "model": "teacher",
+    "model_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+    "p50_per_turn_sampling_latency_seconds": 3.444125508999946,
+    "parse_error_rate": 0.0,
+    "per_band": {
+      "discovery": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "multi-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      },
+      "single-write": {
+        "count": 4,
+        "mean_reward": 1.0
+      }
+    },
+    "receipt_path": "artifacts/teacher-dev.usage.json",
+    "renderer": "nemotron3_disable_thinking",
+    "serving_contract": {
+      "action_parser_id": "automationbench.parse_agent_action.v1",
+      "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "lora_rank": 32,
+      "model_spec": "teacher",
+      "prompt_variant": "nemotron-v1",
+      "renderer_name": "nemotron3_disable_thinking",
+      "sampling_params": {
+        "max_tokens": 192,
+        "num_samples": 1,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "stop_sequences": [
+        11
+      ]
+    },
+    "strict_pass_rate": 1.0,
+    "summary_path": "artifacts/teacher-dev.summary.json",
+    "total_prompt_tokens": 16606,
+    "total_sampled_tokens": 904
+  }
+}

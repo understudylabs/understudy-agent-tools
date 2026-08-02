@@ -1,0 +1,7 @@
+{
+  "schema_version": "understudy.holdout_tolerance.v1",
+  "reward_epsilon": 0.0,
+  "strict_pass_reward": 1.0,
+  "latency_comparison": "descriptive_only",
+  "notes": "Predeclared before the paired sealed holdout run."
+}

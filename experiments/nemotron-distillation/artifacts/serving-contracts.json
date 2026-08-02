@@ -8,7 +8,9 @@
       "adapter_path": "tinker://efb1352d-3e88-572f-8578-ab50ba51d0c6:train:0/sampler_weights/000020",
       "renderer_name": "nemotron3_disable_thinking",
       "prompt_variant": "nemotron-v1",
-      "stop_sequences": "renderer.get_stop_sequences()",
+      "stop_sequences": [
+        11
+      ],
       "sampling_params": {
         "temperature": 0.0,
         "top_p": 1.0,
@@ -23,7 +25,9 @@
       "adapter_path": null,
       "renderer_name": "nemotron3_disable_thinking",
       "prompt_variant": "nemotron-v1",
-      "stop_sequences": "renderer.get_stop_sequences()",
+      "stop_sequences": [
+        11
+      ],
       "sampling_params": {
         "temperature": 0.0,
         "top_p": 1.0,
@@ -38,7 +42,9 @@
       "adapter_path": null,
       "renderer_name": "qwen3_5_disable_thinking",
       "prompt_variant": "nemotron-v1",
-      "stop_sequences": "renderer.get_stop_sequences()",
+      "stop_sequences": [
+        248046
+      ],
       "sampling_params": {
         "temperature": 0.0,
         "top_p": 1.0,
@@ -53,7 +59,9 @@
       "adapter_path": null,
       "renderer_name": "qwen3_5_disable_thinking",
       "prompt_variant": "nemotron-v1",
-      "stop_sequences": "renderer.get_stop_sequences()",
+      "stop_sequences": [
+        248046
+      ],
       "sampling_params": {
         "temperature": 0.0,
         "top_p": 1.0,

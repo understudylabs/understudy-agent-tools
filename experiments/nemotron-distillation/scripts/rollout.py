@@ -187,7 +187,10 @@ async def rollout_task(
             "prompt_token_counts": prompt_token_counts,
             "sampling_latencies_seconds": sampling_latencies,
             "sampling_latency_seconds_total": sum(sampling_latencies),
-            "serving_contract": spec.serving_contract(temperature=config.temperature),
+            "serving_contract": spec.serving_contract(
+                temperature=config.temperature,
+                stop_sequences=list(renderer.get_stop_sequences()),
+            ),
             "action_parser_id": "automationbench.parse_agent_action.v1",
         }
     finally:

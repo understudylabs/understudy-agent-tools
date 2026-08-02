@@ -62,7 +62,7 @@ def main() -> None:
         ]
         oracle_rows = []
         for task in sanity_tasks:
-            trajectory = service._json(f"/oracle/{task['task_id']}")
+            trajectory = service.oracle_trajectory(task["task_id"])
             oracle_rows.append({
                 "task_id": trajectory["task_id"],
                 "split": trajectory["split"],

@@ -113,6 +113,16 @@ class EnvService:
             query += f"&frozen_holdout_sha256={frozen_holdout_sha256}"
         return self._json(f"/tasks{query}")
 
+    def oracle_trajectory(
+        self,
+        task_id: str,
+        frozen_holdout_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        query = ""
+        if frozen_holdout_sha256:
+            query = f"?frozen_holdout_sha256={frozen_holdout_sha256}"
+        return self._json(f"/oracle/{task_id}{query}")
+
     def reset(
         self,
         task_id: str,

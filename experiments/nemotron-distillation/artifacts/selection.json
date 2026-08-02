@@ -1,0 +1,14 @@
+{
+  "dev_table": "artifacts/dev-table.json",
+  "holdout_accessed": false,
+  "lift_over_student_base": 0.0,
+  "schema_version": "understudy.model_selection.v1",
+  "selected_adapter_path": "tinker://4346702b-80ed-54e0-9a39-647990764752:train:0/sampler_weights/student-sft-epoch1",
+  "selected_epoch": 1,
+  "selected_mean_reward": 1.0,
+  "selected_model": "student-sft-epoch1",
+  "selection_rule": "highest DEV mean reward; earliest epoch tie-break",
+  "split": "dev",
+  "student_base_mean_reward": 1.0,
+  "teacher_mean_reward": 1.0
+}
