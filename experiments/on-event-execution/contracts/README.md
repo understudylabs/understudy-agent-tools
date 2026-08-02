@@ -7,8 +7,8 @@ synthetic candidate-method arm.
 
 - Schema id: `understudy.executor-submit.v1`
 - Provenance: experiment-orchestrator contract, pinned at commit `c299ca4`
-- Vendored file: `understudy.executor-submit.v1.schema.json`
-- The vendored bytes are copied byte-for-byte from the pinned source artifact.
+- Shared file: `schemas/understudy.executor-submit.v1.schema.json`
+- The shared bytes are copied byte-for-byte from the pinned source artifact.
 
 The submit payload is intentionally limited to refs and hashes. It contains no
 weights, raw preference pairs, prompts, completions, traces, or provider

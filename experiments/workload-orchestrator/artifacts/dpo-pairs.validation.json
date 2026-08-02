@@ -1,0 +1,24 @@
+{
+  "schema_version": "understudy.dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T02:06:47.166Z",
+  "slice_id": "wl-or-orchestrator-v1",
+  "workload_code": "WL-OR",
+  "pairs_path": "experiments/workload-orchestrator/artifacts/dpo-pairs.jsonl",
+  "manifest_path": "experiments/workload-orchestrator/artifacts/dpo-pairs.manifest.json",
+  "pairs_sha256": "61f5e9d7c49a1b09fd9183167a388e1f22c1ed6d8b7c66f4fb8921bc6e5d55ec",
+  "manifest_declared_sha256": "61f5e9d7c49a1b09fd9183167a388e1f22c1ed6d8b7c66f4fb8921bc6e5d55ec",
+  "lines": 160,
+  "accepted": 160,
+  "rejected": 0,
+  "split_counts": {
+    "train": 160
+  },
+  "band_counts": {
+    "single-write": 32,
+    "multi-write": 128
+  },
+  "train_split_sha256": "30448f43a2c6d4487b2bfd94e408d31823874b193aa37263db1885936b4cf51f",
+  "holdout_split_sha256": "a5337d711cf29117c2b7b5d3075f823e17f214102825dfc874d26066808f760d",
+  "failures": [],
+  "verdict": "pass"
+}

@@ -3,11 +3,14 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { validateAgainstSchema } from "./oee-submit-schema-validator.mjs";
+
 const FIXTURE_RECEIPT_REF = "outputs/oee/fixture-freeze.json";
 const POLICY_REF = "experiments/on-event-execution/contracts/dpo-policy.json";
 const TRAIN_RECEIPT_REF = "outputs/oee/dpo/train-receipt.json";
 const PAYLOAD_REF = "experiments/on-event-execution/contracts/candidate-submit.json";
 const IDEMPOTENCY_REF = "experiments/on-event-execution/contracts/idempotency-receipt.json";
+const SCHEMA_REF = "schemas/understudy.executor-submit.v1.schema.json";
 const EXPERIMENT_ID = "on-event-execution-repair";
 const CANDIDATE_ID = "oee-dpo-nemotron3-nano-b010-e3-r32";
 
@@ -44,6 +47,7 @@ if (!Number.isInteger(attempt) || attempt < 0 || attempt > 1000) throw new Error
 const fixtureReceipt = readJson(FIXTURE_RECEIPT_REF);
 const policy = readJson(POLICY_REF);
 const trainReceipt = readJson(TRAIN_RECEIPT_REF);
+const schema = readJson(SCHEMA_REF);
 const fixture = fixtureReceipt.fixture;
 if (!fixture || typeof fixture !== "object") throw new Error("fixture receipt has no fixture object");
 if (policy.method !== "dpo") throw new Error("policy descriptor is not a DPO policy");
@@ -104,6 +108,7 @@ const idempotencyReceipt = {
   payload_ref: PAYLOAD_REF,
 };
 
+validateAgainstSchema(payload, schema);
 writeFileSync(PAYLOAD_REF, `${JSON.stringify(payload, null, 2)}\n`);
 writeFileSync(IDEMPOTENCY_REF, `${JSON.stringify(idempotencyReceipt, null, 2)}\n`);
 console.log(JSON.stringify({

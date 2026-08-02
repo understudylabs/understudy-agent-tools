@@ -126,6 +126,10 @@ HF_HUB_OFFLINE=0 huggingface-cli download "$MODEL" \
   --local-dir "$CACHE_DIR/hub/models--nvidia--NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4/snapshots/$REVISION"
 
 # Grant a runtime identity permission to execute the approved container path.
+# Note for the administrator: docker group membership is root-equivalent on
+# this host and would widen the constrained `devin` account well beyond the
+# serving lane. A rootless container runtime, or a systemd unit owned by an
+# existing privileged account that the lane triggers, is the safer grant.
 sudo setfacl -Rm u:devin:rX "$CACHE_DIR"
 sudo usermod -aG docker devin
 
@@ -142,3 +146,7 @@ LORA_MODULES='adapter-a=/approved/adapters/adapter-a,adapter-b=/approved/adapter
 - The canonical lane files now provide the shared Spark/Modal registry and
   bootstrap path. No endpoint registration was performed because the runtime
   remained paused.
+- The serve variant publishes the container port with `-p "$PORT:$PORT"`,
+  which binds every host interface rather than only the tailnet address. The
+  ACL constrains tailnet reachability but not any other host interface, so
+  the publish address should be narrowed before the lane is launched.

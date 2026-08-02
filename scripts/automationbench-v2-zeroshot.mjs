@@ -34,28 +34,6 @@ function argValue(name, fallback = null) {
 const model = argValue("--model");
 if (!model) throw new Error("--model is required");
 const fixture = argValue("--fixture", "v2");
-if (fixture !== "v2" && fixture !== "on-event-execution") throw new Error("--fixture must be v2 or on-event-execution");
-const split = argValue("--split", "dev");
-const limit = Number(argValue("--limit", "0")) || 0;
-const stride = Number(argValue("--stride", "1")) || 1;
-const concurrency = Number(argValue("--concurrency", "6"));
-const maxTurns = Number(argValue("--max-turns", "14"));
-const temperature = Number(argValue("--temperature", "0"));
-const rollouts = Number(argValue("--rollouts", argValue("--samples", "1")));
-if (!Number.isInteger(rollouts) || rollouts < 1) throw new Error("--rollouts must be a positive integer");
-// A malformed emission is always rejected (never executed); this only bounds how
-// many consecutive rejections an episode survives before it is abandoned.
-const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
-const maxTokens = Number(argValue("--max-tokens", "512"));
-const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
-const outPath = argValue("--out");
-const frozenHoldout = argValue("--frozen-holdout");
-// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
-// which authenticates to Tinker itself and ignores the bearer token.
-const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
-const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
-if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
-
 const fixtureConfig =
   fixture === "v2"
     ? {
@@ -66,14 +44,43 @@ const fixtureConfig =
         splitHash: v2SplitSha256,
         pool: v2TaskPool,
       }
-    : {
-        fixtureId: WORKLOAD_OEE.fixture_id,
-        tasks: OEE_TASKS,
-        bands: oeeTaskBands(),
-        fixtureSha: oeeFixtureSha256,
-        splitHash: oeeSplitSha256,
-        pool: oeeTaskPool,
-      };
+    : fixture === "on-event-execution"
+      ? {
+          fixtureId: WORKLOAD_OEE.fixture_id,
+          tasks: OEE_TASKS,
+          bands: oeeTaskBands(),
+          fixtureSha: oeeFixtureSha256,
+          splitHash: oeeSplitSha256,
+          pool: oeeTaskPool,
+        }
+      : null;
+if (!fixtureConfig) throw new Error(`unknown --fixture ${fixture}; expected v2 or on-event-execution`);
+const split = argValue("--split", "dev");
+const limit = Number(argValue("--limit", "0")) || 0;
+const stride = Number(argValue("--stride", "1")) || 1;
+const concurrency = Number(argValue("--concurrency", "6"));
+const maxTurns = Number(argValue("--max-turns", "14"));
+const temperature = Number(argValue("--temperature", "0"));
+const rolloutsArg = argValue("--rollouts", null);
+const samplesArg = argValue("--samples", null);
+const rollouts = Number(rolloutsArg ?? samplesArg ?? "1");
+if (!Number.isInteger(rollouts) || rollouts < 1) throw new Error("--rollouts/--samples must be a positive integer");
+// A malformed emission is always rejected (never executed); this only bounds how
+// many consecutive rejections an episode survives before it is abandoned.
+const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
+const keepTranscripts = process.argv.includes("--transcripts");
+const samplesMode = samplesArg !== null || keepTranscripts;
+const preserveV2Default = fixture === "v2" && rolloutsArg === null && samplesArg === null && !keepTranscripts;
+const maxTokens = Number(argValue("--max-tokens", "512"));
+const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
+const outPath = argValue("--out");
+const frozenHoldout = argValue("--frozen-holdout");
+// The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
+// which authenticates to Tinker itself and ignores the bearer token.
+const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
+const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
+if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
+
 const pool = fixtureConfig.pool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 // Reporting-only difficulty band per family; scoring never reads it.
 const BANDS = fixtureConfig.bands;
@@ -161,14 +168,18 @@ async function runTask(task, rolloutIndex = 0) {
   let consecutiveMalformed = 0;
   let ended = "budget";
   let error = null;
+  /** Per-turn record: the prefix the model saw, what it emitted, whether it was rejected. */
+  const transcript = [];
 
   try {
     for (let turn = 0; turn < maxTurns && !handle.done; turn += 1) {
+      const prefix = keepTranscripts ? messages.map((message) => ({ ...message })) : null;
       const reply = await chat(messages);
       promptTokens += reply.promptTokens;
       completionTokens += reply.completionTokens;
       messages.push({ role: "assistant", content: reply.text || "(empty)" });
       const parsed = parseAction(reply.text);
+      if (keepTranscripts) transcript.push({ turn, prefix, emission: reply.text ?? "", rejected: Boolean(parsed.error) });
       if (parsed.finish) {
         ended = "finish";
         break;
@@ -200,6 +211,8 @@ async function runTask(task, rolloutIndex = 0) {
       : task.taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
   const row = {
     task_id: task.taskId,
+    ...(preserveV2Default || samplesMode ? { sample: rolloutIndex } : {}),
+    ...(rollouts > 1 ? { rollout_index: rolloutIndex } : {}),
     family,
     band: BANDS[family] ?? "unknown",
     tier: fixture === "on-event-execution" ? "oee" : task.taskId.startsWith("hard-") ? "hard" : "v1",
@@ -212,9 +225,9 @@ async function runTask(task, rolloutIndex = 0) {
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
     error,
+    ...(keepTranscripts ? { transcript } : {}),
   };
-  if (rollouts > 1) row.rollout_index = rolloutIndex;
-  return { row, transcript: rollouts > 1 ? { task_id: task.taskId, rollout_index: rolloutIndex, split: task.split, messages } : null };
+  return { row, transcript: { task_id: task.taskId, rollout_index: rolloutIndex, split: task.split, messages } };
 }
 
 async function main() {
@@ -222,16 +235,14 @@ async function main() {
   const rows = [];
   const transcripts = [];
   let cursor = 0;
-  const work = Array.from({ length: rollouts }, (_, rolloutIndex) => ({ rolloutIndex, tasks }));
-  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, async () => {
-    while (cursor < work.length * tasks.length) {
-      const position = cursor++;
-      const rolloutIndex = Math.floor(position / tasks.length);
-      const task = tasks[position % tasks.length];
+  const episodes = tasks.flatMap((task) => Array.from({ length: rollouts }, (_unused, rolloutIndex) => ({ task, rolloutIndex })));
+  const workers = Array.from({ length: Math.min(concurrency, episodes.length) }, async () => {
+    while (cursor < episodes.length) {
+      const { task, rolloutIndex } = episodes[cursor++];
       const result = await runTask(task, rolloutIndex);
       rows.push(result.row);
-      if (result.transcript) transcripts.push(result.transcript);
-      process.stderr.write(`\r${rows.length}/${work.length * tasks.length} done`);
+      if (rollouts > 1) transcripts.push(result.transcript);
+      process.stderr.write(`\r${rows.length}/${episodes.length} done`);
     }
   });
   await Promise.all(workers);
@@ -250,12 +261,25 @@ async function main() {
   const report = {
     model,
     split,
-    fixture,
-    fixture_id: fixtureConfig.fixtureId,
-    fixture_sha256: fixtureConfig.fixtureSha(),
-    split_sha256: fixtureConfig.splitHash(split),
-    pool_size: fixtureConfig.tasks.filter((task) => task.split === split).length,
-    sampled: tasks.length * rollouts,
+    ...(preserveV2Default
+      ? {
+          fixture: fixtureConfig.fixtureId,
+          split_sha256: fixtureConfig.splitHash(split),
+          pool_size: fixtureConfig.tasks.filter((task) => task.split === split).length,
+          sampled: tasks.length,
+          samples_per_task: rollouts,
+          temperature,
+          max_tokens: maxTokens,
+        }
+      : {
+          fixture,
+          fixture_id: fixtureConfig.fixtureId,
+          fixture_sha256: fixtureConfig.fixtureSha(),
+          split_sha256: fixtureConfig.splitHash(split),
+          pool_size: fixtureConfig.tasks.filter((task) => task.split === split).length,
+          sampled: tasks.length * rollouts,
+          ...(samplesMode || rollouts > 1 ? { samples_per_task: rollouts, temperature, max_tokens: maxTokens } : {}),
+        }),
     scored: scored.length,
     errors: rows.length - scored.length,
     mean_score: mean(scored.map((row) => row.score)),
@@ -273,7 +297,7 @@ async function main() {
     prompt_tokens: rows.reduce((sum, row) => sum + row.prompt_tokens, 0),
     completion_tokens: rows.reduce((sum, row) => sum + row.completion_tokens, 0),
     wall_clock_s: Math.round((Date.now() - started) / 1000),
-    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id) || (a.rollout_index ?? 0) - (b.rollout_index ?? 0)),
+    rows: rows.sort((a, b) => a.task_id.localeCompare(b.task_id) || (a.rollout_index ?? a.sample ?? 0) - (b.rollout_index ?? b.sample ?? 0)),
   };
   if (outPath) {
     mkdirSync(dirname(outPath), { recursive: true });

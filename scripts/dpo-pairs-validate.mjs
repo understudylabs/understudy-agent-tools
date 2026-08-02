@@ -2,26 +2,18 @@
 /**
  * Fail-closed gate for a DPO preference-pair file before any training spend.
  *
- * The data-foundry arm emits near-hit preference pairs (`dpo_pairs.jsonl` plus a
- * manifest). Training on them is only safe if three things hold, and this script
- * refuses rather than repairs when any of them does not:
+ * The data-foundry arms emit near-hit preference pairs (`dpo_pairs.jsonl` plus
+ * a manifest). Training on them is only safe if three things hold, and this
+ * script refuses rather than repairs when any of them does not:
  *
- *   1. INTEGRITY — the manifest's `pairs_sha256` matches the file on disk, so the
- *      receipts name the bytes that were actually trained on.
- *   2. NO LEAKAGE — every referenced task id exists in the v2 fixture and sits in
- *      the TRAIN split. A single dev or holdout id fails the whole file; the
- *      holdout is sealed and dev must stay an honest selection surface.
- *   3. SYNTHETIC ONLY — the pairs must declare a synthetic/public source and must
- *      not carry provider or tenant identifiers.
+ *   1. INTEGRITY — the manifest's `pairs_sha256` matches the file on disk.
+ *   2. NO LEAKAGE — every referenced task id exists in the selected fixture
+ *      and sits in the TRAIN split.
+ *   3. SYNTHETIC ONLY — the pairs must declare a synthetic/public source and
+ *      must not carry provider or tenant identifiers.
  *
- * Output is a normalized JSONL (prompt/chosen/rejected as message lists) that the
- * Tinker trainer consumes, so the trainer never has to guess at the input shape.
- *
- * Usage:
- *   node scripts/dpo-pairs-validate.mjs \
- *     --pairs data/dpo_pairs.jsonl --manifest data/dpo_pairs.manifest.json \
- *     --out outputs/dpo/pairs.normalized.jsonl \
- *     --report outputs/dpo/pairs.validation.json
+ * Output is normalized JSONL (prompt/chosen/rejected as message lists) that
+ * the trainer consumes, so the trainer never guesses at the input shape.
  */
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,6 +21,8 @@ import { dirname } from "node:path";
 
 import { V2_TASKS, v2SplitSha256, v2TaskBands } from "../dist/automationbench-v2.js";
 import { OEE_TASKS, oeeSplitSha256, oeeTaskBands, WORKLOAD_OEE } from "../dist/workload-on-event-execution.js";
+import { TASKS as CHAT_TASKS, splitSha256 as chatSplitSha256 } from "../dist/grounded-chat-offline.js";
+import { AOP_TASKS, aopSplitSha256 } from "../dist/aop-selection-offline.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -40,20 +34,60 @@ function argValue(name, fallback = null) {
 
 const pairsPath = argValue("--pairs");
 const manifestPath = argValue("--manifest");
-const fixture = argValue("--fixture", "v2");
-if (fixture !== "v2" && fixture !== "on-event-execution") throw new Error("--fixture must be v2 or on-event-execution");
 if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
+const fixture = argValue("--fixture", "automationbench-v2");
 
-const fixtureConfig =
-  fixture === "v2"
-    ? { fixtureId: "automationbench-simple-api-offline-v2", tasks: V2_TASKS, bands: v2TaskBands(), splitHash: v2SplitSha256 }
-    : { fixtureId: WORKLOAD_OEE.fixture_id, tasks: OEE_TASKS, bands: oeeTaskBands(), splitHash: oeeSplitSha256 };
-const BANDS = fixtureConfig.bands;
+const isGroundedChat = fixture === "grounded-chat-offline-v1" || fixture === "grounded-chat";
+const isAopSelection = fixture === "aop-selection-offline-v1" || fixture === "aop-selection";
+const isOee = fixture === "on-event-execution";
+const isV2 = fixture === "v2" || fixture === "automationbench-v2";
+if (!isGroundedChat && !isAopSelection && !isOee && !isV2) {
+  throw new Error(
+    `unknown --fixture ${fixture}; expected v2, on-event-execution, grounded-chat-offline-v1, or aop-selection-offline-v1`,
+  );
+}
+
+const fixtureConfig = isGroundedChat
+  ? {
+      fixtureId: "grounded-chat-offline-v1",
+      tasks: CHAT_TASKS,
+      splitHash: chatSplitSha256,
+      familyForTask: (taskId) => taskId.replace(/^chat-/, "").replace(/-\d{3}$/, ""),
+      bandForTask: (taskId) => new Map(CHAT_TASKS.map((task) => [task.taskId, task.band])).get(taskId) ?? "unknown",
+      label: "grounded-chat fixture",
+    }
+  : isAopSelection
+    ? {
+        fixtureId: "aop-selection-offline-v1",
+        tasks: AOP_TASKS,
+        splitHash: aopSplitSha256,
+        familyForTask: (taskId) => new Map(AOP_TASKS.map((task) => [task.taskId, task.family])).get(taskId) ?? "unknown",
+        bandForTask: (taskId) => new Map(AOP_TASKS.map((task) => [task.taskId, task.band])).get(taskId) ?? "unknown",
+        label: "aop-selection fixture",
+      }
+    : isOee
+      ? {
+          fixtureId: WORKLOAD_OEE.fixture_id,
+          tasks: OEE_TASKS,
+          splitHash: oeeSplitSha256,
+          familyForTask: (taskId) => taskId.replace(/^oee-/, "").replace(/-\d{2}$/, ""),
+          bandForTask: (taskId) => oeeTaskBands()[taskId.replace(/^oee-/, "").replace(/-\d{2}$/, "")] ?? "unknown",
+          label: "on-event-execution fixture",
+        }
+      : {
+          fixtureId: "automationbench-simple-api-offline-v2",
+          tasks: V2_TASKS,
+          splitHash: v2SplitSha256,
+          familyForTask: (taskId) => taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, ""),
+          bandForTask: (taskId) => v2TaskBands()[taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "")] ?? "unknown",
+          label: "v2 fixture",
+        };
+
 const SPLIT_BY_TASK = new Map(fixtureConfig.tasks.map((task) => [task.taskId, task.split]));
-const fixtureLabel = fixture === "v2" ? "v2 fixture" : "on-event-execution fixture";
+const TRAIN_SPLIT_SHA256 = fixtureConfig.splitHash("train");
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -79,8 +113,10 @@ if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.fixture_id && manifest.fixture_id !== fixtureConfig.fixtureId) fail(0, `manifest fixture_id ${manifest.fixture_id} does not match ${fixtureConfig.fixtureId}`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== fixtureConfig.splitHash("train")) {
+if (manifest.fixture_id && manifest.fixture_id !== fixtureConfig.fixtureId) {
+  fail(0, `manifest fixture_id ${manifest.fixture_id} does not match ${fixtureConfig.fixtureId}`);
+}
+if (manifest.train_split_sha256 && manifest.train_split_sha256 !== TRAIN_SPLIT_SHA256) {
   fail(0, "manifest train_split_sha256 does not match this fixture's frozen train split");
 }
 
@@ -125,7 +161,7 @@ lines.forEach((line, index) => {
   }
   const split = SPLIT_BY_TASK.get(taskId);
   if (!split) {
-    fail(lineNumber, `task_id ${taskId} is not in the ${fixtureLabel}`);
+    fail(lineNumber, `task_id ${taskId} is not in the ${fixtureConfig.label}`);
     return;
   }
   splitCounts[split] = (splitCounts[split] ?? 0) + 1;
@@ -149,11 +185,8 @@ lines.forEach((line, index) => {
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
   seen.add(key);
 
-  const family =
-    fixture === "on-event-execution"
-      ? taskId.replace(/^oee-/, "").replace(/-\d{2}$/, "")
-      : taskId.replace(/^(?:simple|hard)-api-/, "").replace(/-\d{2}$/, "");
-  const band = BANDS[family] ?? "unknown";
+  const family = fixtureConfig.familyForTask(taskId);
+  const band = fixtureConfig.bandForTask(taskId);
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
   normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
 });
@@ -162,11 +195,12 @@ if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" 
 
 const report = {
   schema_version: "understudy.dpo_pairs_validation.v1",
-  fixture: fixtureConfig.fixtureId,
   generated_at: new Date().toISOString(),
   pairs_path: pairsPath,
   manifest_path: manifestPath,
   pairs_sha256: pairsSha256,
+  fixture_id: fixtureConfig.fixtureId,
+  fixture,
   manifest_declared_sha256: manifest.pairs_sha256 ?? null,
   lines: lines.length,
   accepted: normalized.length,
@@ -174,7 +208,7 @@ const report = {
   split_counts: splitCounts,
   band_counts: bandCounts,
   holdout_split_sha256: fixtureConfig.splitHash("holdout"),
-  train_split_sha256: fixtureConfig.splitHash("train"),
+  train_split_sha256: TRAIN_SPLIT_SHA256,
   failures: failures.slice(0, 50),
   verdict: failures.length === 0 ? "pass" : "fail",
 };

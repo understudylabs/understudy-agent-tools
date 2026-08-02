@@ -1,0 +1,96 @@
+{
+  "schema_version": "understudy.wl_au.dev_sampled_summary.v1",
+  "protocol": {
+    "split": "dev",
+    "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+    "tasks": 36,
+    "samples_per_task": 4,
+    "temperature": 0.7,
+    "max_tokens": 1024
+  },
+  "base": {
+    "episodes": 144,
+    "mean_score": 0.803,
+    "exact_1_rate": 0.7153,
+    "zero_rate": 0.125,
+    "malformed_rate": 0.4444,
+    "forbidden_effects": 5,
+    "over_acting_episodes": 0
+  },
+  "dpo": {
+    "episodes": 144,
+    "mean_score": 0.8219,
+    "exact_1_rate": 0.7292,
+    "zero_rate": 0.1042,
+    "malformed_rate": 0.4792,
+    "forbidden_effects": 3,
+    "over_acting_episodes": 0
+  },
+  "paired": {
+    "mean_delta": 0.0189,
+    "ci95": [
+      -0.0514,
+      0.0898
+    ],
+    "wins": 11,
+    "losses": 11,
+    "ties": 14,
+    "significant": false
+  },
+  "by_band": {
+    "aggregation": {
+      "tasks": 2,
+      "base": 1,
+      "dpo": 0.75,
+      "delta": -0.25
+    },
+    "cascade": {
+      "tasks": 4,
+      "base": 0.9531,
+      "dpo": 0.8125,
+      "delta": -0.1406
+    },
+    "conditional": {
+      "tasks": 4,
+      "base": 0.9375,
+      "dpo": 0.9688,
+      "delta": 0.0312
+    },
+    "cross-record": {
+      "tasks": 6,
+      "base": 0.875,
+      "dpo": 0.8958,
+      "delta": 0.0208
+    },
+    "discovery": {
+      "tasks": 4,
+      "base": 0.875,
+      "dpo": 0.875,
+      "delta": 0.0
+    },
+    "long-chain": {
+      "tasks": 4,
+      "base": 0.5655,
+      "dpo": 0.6786,
+      "delta": 0.1131
+    },
+    "multi-hop": {
+      "tasks": 4,
+      "base": 0.5312,
+      "dpo": 0.625,
+      "delta": 0.0938
+    },
+    "multi-write": {
+      "tasks": 4,
+      "base": 0.8021,
+      "dpo": 0.7188,
+      "delta": -0.0833
+    },
+    "single-write": {
+      "tasks": 4,
+      "base": 0.75,
+      "dpo": 1,
+      "delta": 0.25
+    }
+  }
+}

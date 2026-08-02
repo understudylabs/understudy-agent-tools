@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 import { V2_TASKS, v2SplitSha256 } from "../dist/automationbench-v2.js";
+import { TASKS as CHAT_TASKS, splitSha256 as chatSplitSha256 } from "../dist/grounded-chat-offline.js";
 
 const SCRIPT = resolve("scripts/dpo-pairs-validate.mjs");
 const trainTasks = V2_TASKS.filter((task) => task.split === "train");
@@ -22,7 +23,7 @@ function pair(taskId, chosen, rejected) {
 }
 
 /** Write a pairs file plus a manifest whose hash matches it, then run the gate. */
-function runGate(rows, manifestOverrides = {}) {
+function runGate(rows, manifestOverrides = {}, fixture = "automationbench-v2") {
   const dir = mkdtempSync(join(tmpdir(), "dpo-pairs-"));
   const pairsPath = join(dir, "dpo_pairs.jsonl");
   const manifestPath = join(dir, "manifest.json");
@@ -35,11 +36,14 @@ function runGate(rows, manifestOverrides = {}) {
       source: "synthetic-offline-fixture",
       split: "train",
       pairs_sha256: createHash("sha256").update(body).digest("hex"),
-      train_split_sha256: v2SplitSha256("train"),
+      train_split_sha256: fixture === "grounded-chat-offline-v1" ? chatSplitSha256("train") : v2SplitSha256("train"),
       ...manifestOverrides,
     }),
   );
-  const result = spawnSync(process.execPath, [SCRIPT, "--pairs", pairsPath, "--manifest", manifestPath, "--out", outPath], {
+  const result = spawnSync(process.execPath, [
+    SCRIPT, "--pairs", pairsPath, "--manifest", manifestPath, "--out", outPath,
+    ...(fixture === "automationbench-v2" ? [] : ["--fixture", fixture]),
+  ], {
     encoding: "utf8",
   });
   return { result, outPath, report: JSON.parse(result.stdout) };
@@ -100,5 +104,21 @@ describe("dpo pairs validation gate", () => {
     const { result, report } = runGate([pair("simple-api-not-a-real-task-99", "chosen", "rejected")]);
     assert.equal(result.status, 1);
     assert.match(JSON.stringify(report.failures), /not in the v2 fixture/);
+  });
+
+  it("accepts grounded-chat train-split pairs through the fixture flag", () => {
+    const task = CHAT_TASKS.find((candidate) => candidate.split === "train");
+    const { result, report } = runGate([
+      {
+        task_id: task.taskId,
+        prompt: [{ role: "user", content: `${task.context}\n\n${task.question}` }],
+        chosen: "role: navigator",
+        rejected: "role: archivist",
+      },
+    ], { fixture_id: "grounded-chat-offline-v1" }, "grounded-chat-offline-v1");
+    assert.equal(result.status, 0);
+    assert.equal(report.verdict, "pass");
+    assert.equal(report.fixture_id, "grounded-chat-offline-v1");
+    assert.equal(report.accepted, 1);
   });
 });

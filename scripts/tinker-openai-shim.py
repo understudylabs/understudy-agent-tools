@@ -18,7 +18,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # pyqwest (the Rust HTTP backend tinker prefers) carries its own root store and
@@ -40,7 +44,21 @@ parser.add_argument("--renderer", required=True)
 parser.add_argument("--model-path", default=None, help="tinker:// checkpoint to serve over the base weights")
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
+parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
 args = parser.parse_args()
+request_timeout = 300
+log_path = os.environ.get("TINKER_SHIM_LOG", "/tmp/tinker-openai-shim.log")
+log_lock = threading.Lock()
+active_lock = threading.Lock()
+active_requests = 0
+
+
+def log_event(event, **fields):
+    record = {"ts": time.time(), "event": event, **fields}
+    with log_lock:
+        with open(log_path, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record) + "\n")
+
 
 service = tinker.ServiceClient()
 sampler = (
@@ -49,7 +67,7 @@ sampler = (
     else service.create_sampling_client(base_model=args.base_model)
 )
 renderer = get_renderer(args.renderer, get_tokenizer(args.base_model))
-pool = ThreadPoolExecutor(max_workers=16)
+pool = ThreadPoolExecutor(max_workers=args.max_workers)
 
 
 def sample(messages, temperature, max_tokens):
@@ -75,28 +93,53 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def do_POST(self):  # noqa: N802 - required by BaseHTTPRequestHandler
+        global active_requests
+        request_id = self.headers.get("x-request-id") or str(uuid.uuid4())
+        started = time.monotonic()
+        with active_lock:
+            active_requests += 1
+            in_flight = active_requests
+        log_event("start", request_id=request_id, in_flight=in_flight)
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         try:
-            content, prompt_tokens, completion_tokens = pool.submit(
-                sample,
-                body["messages"],
-                float(body.get("temperature", 0.0)),
-                int(body.get("max_tokens", args.max_tokens)),
-            ).result()
+            for attempt in range(2):
+                try:
+                    content, prompt_tokens, completion_tokens = pool.submit(
+                        sample,
+                        body["messages"],
+                        float(body.get("temperature", 0.0)),
+                        int(body.get("max_tokens", args.max_tokens)),
+                    ).result(timeout=request_timeout)
+                    break
+                except FutureTimeoutError:
+                    log_event("timeout", request_id=request_id, attempt=attempt + 1, seconds=request_timeout)
+                    if attempt == 1:
+                        raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
+                    log_event("retry", request_id=request_id, attempt=attempt + 2)
             payload = {
                 "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
             }
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
+            log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])
             payload = {"error": f"{type(error).__name__}: {error}"}
             status = 500
+        finally:
+            elapsed = time.monotonic() - started
+            with active_lock:
+                active_requests -= 1
+                in_flight = active_requests
+            log_event("done", request_id=request_id, elapsed_seconds=round(elapsed, 3), in_flight=in_flight)
         encoded = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.wfile.write(encoded)
+        except BrokenPipeError:
+            pass
 
 
 print(f"tinker shim on :{args.port} for {args.base_model} ({args.renderer})", flush=True)

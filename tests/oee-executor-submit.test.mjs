@@ -12,7 +12,7 @@ const payloadPath = resolve("experiments/on-event-execution/contracts/candidate-
 const idempotencyPath = resolve("experiments/on-event-execution/contracts/idempotency-receipt.json");
 const policyPath = resolve("experiments/on-event-execution/contracts/dpo-policy.json");
 const freezePath = resolve("outputs/oee/fixture-freeze.json");
-const schemaPath = resolve("experiments/on-event-execution/contracts/understudy.executor-submit.v1.schema.json");
+const schemaPath = resolve("schemas/understudy.executor-submit.v1.schema.json");
 const holdoutSha256 = "ff1438e7c257bb39a8880220b8d2c1787f360d01010f7b1d39f960fa58aed868";
 
 function canonicalJson(value) {

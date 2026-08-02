@@ -68,7 +68,8 @@ TINKER_API_KEY=… python scripts/tinker-openai-shim.py \
   --port 8099 &
 
 node scripts/automationbench-v2-zeroshot.mjs --model nemotron-3-nano-dpo \
-  --base-url http://localhost:8099/v1 --split dev --out outputs/dpo/dpo-dev.json
+  --base-url http://localhost:8099/v1 --split dev --max-tokens 2048 \
+  --out outputs/dpo/dpo-dev.json
 
 # 4. Holdout — once, with the frozen hash, after dev has settled.
 node scripts/automationbench-v2-zeroshot.mjs --model nemotron-3-nano-dpo \
@@ -84,6 +85,42 @@ node scripts/automationbench-v2-band-report.mjs \
 
 Kill the shim when the runs finish. Tinker sampler weights expire on their own,
 but nothing should be left holding them.
+
+## Sampling budget is load-bearing
+
+Both arms must run at the **same** `--max-tokens`, and it has to be large enough
+for this base to finish reasoning before it emits. The same base weights on the
+same dev split:
+
+| `--max-tokens` | dev mean | malformed episodes |
+| --- | --- | --- |
+| 2048 | 0.842 | 8% |
+| 512 | 0.581 | 81% |
+
+Nothing about the policy changed between those rows — the 512 run simply gets
+cut off mid-reasoning and the emission is rejected unparsed. A DPO arm scored
+at 512 against a base scored at 2048 (or the reverse) measures the budget, not
+the tuning.
+
+## Where this fits in the orchestrator
+
+This lane is a **verifier/contract plus a candidate-method**, not a controller.
+It owns no queue, no poller, and no state of its own; every stage is a pure
+function from artifact refs to a hashed artifact:
+
+| Stage | Interface | Emits |
+| --- | --- | --- |
+| pairs gate | `validate(pairs_ref, manifest_ref) -> normalized_ref` | `understudy.dpo_pairs_validation.v1` |
+| candidate-method | `submit(pairs_ref, base_model, hyperparams) -> checkpoint_ref` | `understudy.tinker_dpo.receipt.v1` |
+| verifier | `score(checkpoint_ref, split, split_sha256) -> run_ref` | the run artifact |
+| contract | `report(base_ref, candidate_ref) -> report_ref` | `understudy.automationbench_band_report.v1` |
+
+Everything crossing a stage boundary is a ref plus a sha256 — never raw pairs,
+prompts, or weights. The training receipt carries `pairs_sha256` and a
+`tinker://` checkpoint ref for exactly this reason, so a durable run controller
+can wrap `tinker-dpo-train.py` in a submit/inspect step keyed on
+`(experimentId, candidateId, attempt)` and have a retry return the existing
+Tinker run rather than pay for a second one.
 
 ## The regression this guards against
 
