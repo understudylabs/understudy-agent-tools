@@ -26,6 +26,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
+import { loadSystemPrompt } from "./prompt-loader.mjs";
 import {
   DOMAIN_ID_TASKS,
   domainIdSplitSha256,
@@ -55,6 +56,7 @@ const baseUrl = argValue("--base-url", "http://localhost:8099/v1");
 const outPath = argValue("--out");
 const transcriptPath = argValue("--transcripts");
 const frozenHoldout = argValue("--frozen-holdout");
+const systemFile = argValue("--system-file");
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
 const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
 if (!apiKey) throw new Error("FIREWORKS_API_KEY is required for a remote endpoint (never hard-code it)");
@@ -63,7 +65,7 @@ const pool = domainIdTaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? und
 const BANDS = domainIdTaskBands();
 const tasks = limit > 0 ? pool.slice(0, limit) : pool;
 
-const SYSTEM = [
+const DEFAULT_SYSTEM = [
   "You operate business apps through two tools.",
   'api_search — read-only endpoint discovery. arguments: {"query": string}',
   'api_fetch  — apply ONE API call. arguments: {"method": string, "url": string, "body": object}',
@@ -76,6 +78,7 @@ const SYSTEM = [
   "Read before you write: list the relevant collections first, then make the smallest set of writes that satisfies the request.",
   "Writing to a record the request did not ask you to change scores zero for the whole task.",
 ].join("\n");
+const SYSTEM = systemFile ? loadSystemPrompt(systemFile) : DEFAULT_SYSTEM;
 
 /** Strict parse: one JSON object naming a known tool. No repair, no salvage of prose. */
 function parseAction(text) {

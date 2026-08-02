@@ -38,6 +38,8 @@ import tinker
 from tinker_cookbook.renderers import get_renderer
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
+from tinker_openai_compat import build_chat_completion, normalize_finish_reason
+
 parser = argparse.ArgumentParser()
 model_group = parser.add_mutually_exclusive_group(required=True)
 model_group.add_argument("--base-model")
@@ -83,12 +85,19 @@ def sample(messages, temperature, max_tokens):
         stop=renderer.get_stop_sequences(),
     )
     result = sampler.sample(prompt=prompt, sampling_params=params, num_samples=1).result()
-    tokens = result.sequences[0].tokens
-    message, _termination = renderer.parse_response(tokens)
+    sequence = result.sequences[0]
+    tokens = sequence.tokens
+    message, termination = renderer.parse_response(tokens)
     content = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
     if isinstance(content, list):
         content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    return content or "", prompt.length, len(tokens)
+    finish_reason = normalize_finish_reason(
+        stop_reason=sequence.stop_reason,
+        termination=getattr(termination, "value", termination),
+        completion_tokens=len(tokens),
+        max_tokens=max_tokens,
+    )
+    return content or "", prompt.length, len(tokens), finish_reason
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -109,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             for attempt in range(2):
                 try:
-                    content, prompt_tokens, completion_tokens = pool.submit(
+                    content, prompt_tokens, completion_tokens, finish_reason = pool.submit(
                         sample,
                         body["messages"],
                         float(body.get("temperature", 0.0)),
@@ -121,10 +130,7 @@ class Handler(BaseHTTPRequestHandler):
                     if attempt == 1:
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
-            payload = {
-                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": finish_reason}],
-                "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
-            }
+            payload = build_chat_completion(content, prompt_tokens, completion_tokens, finish_reason)
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
             log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])
