@@ -40,6 +40,7 @@ def _args() -> argparse.Namespace:
     parser.add_argument("--frozen-holdout-sha256")
     parser.add_argument("--concurrency", type=int, default=8)
     parser.add_argument("--band", choices=("single-write", "discovery", "multi-write"))
+    parser.add_argument("--system-prompt-file")
     return parser.parse_args()
 
 
@@ -88,6 +89,11 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
 
     tokenizer = get_tokenizer(MODEL_NAME)
     renderer = renderers.get_renderer(RENDERER_NAME, tokenizer, model_name=MODEL_NAME)
+    system_prompt_override = (
+        Path(args.system_prompt_file).read_text()
+        if args.system_prompt_file
+        else None
+    )
     service_client = tinker.ServiceClient()
     rest_client = service_client.create_rest_client()
     receipt_path = Path(args.out).with_suffix(".usage.json")
@@ -109,6 +115,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
                 RolloutConfig(
                     temperature=args.temperature,
                     frozen_holdout_sha256=args.frozen_holdout_sha256,
+                    system_prompt_override=system_prompt_override,
                 ),
             )
             result["sample_index"] = sample_index

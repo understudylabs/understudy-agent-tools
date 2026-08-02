@@ -100,6 +100,7 @@ class RolloutConfig:
     temperature: float
     frozen_holdout_sha256: str | None = None
     max_model_turns: int = MAX_MODEL_TURNS
+    system_prompt_override: str | None = None
 
 
 def _sample_sync(
@@ -124,7 +125,10 @@ async def rollout_task(
     reset = service.reset(task["task_id"], config.frozen_holdout_sha256)
     episode_id = reset["episode_id"]
     messages: list[Message] = [
-        {"role": "system", "content": reset["system_prompt"]},
+        {
+            "role": "system",
+            "content": config.system_prompt_override or reset["system_prompt"],
+        },
         {"role": "user", "content": reset["prompt"]},
     ]
     parse_errors: list[str] = []

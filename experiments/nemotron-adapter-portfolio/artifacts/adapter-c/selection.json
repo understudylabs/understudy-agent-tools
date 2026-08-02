@@ -1,0 +1,67 @@
+{
+  "actual_band_counts": {
+    "dev_discovery": 4,
+    "holdout_discovery": 4,
+    "train_discovery": 16
+  },
+  "adapter": "C",
+  "candidate_count": 4,
+  "candidates": [
+    {
+      "dev_mean_reward": 1.0,
+      "dev_strict_pass_rate": 1.0,
+      "dev_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/default-dev.summary.json",
+      "name": "default",
+      "prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/default.txt",
+      "prompt_sha256": "85081e25aac6553fdca197f1f6db69519daa4c262de9649f2bc1d1afa985b738",
+      "train_mean_reward": 0.9375,
+      "train_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/default-train.summary.json"
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_strict_pass_rate": 1.0,
+      "dev_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/search-first-dev.summary.json",
+      "name": "search-first",
+      "prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/search-first.txt",
+      "prompt_sha256": "30fdc724b7e76b99bab57341c54a0fe37ad81582f929a74b454d758a887b0af4",
+      "train_mean_reward": 0.8125,
+      "train_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/search-first-train.summary.json"
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_strict_pass_rate": 1.0,
+      "dev_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/verify-before-write-dev.summary.json",
+      "name": "verify-before-write",
+      "prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/verify-before-write.txt",
+      "prompt_sha256": "532b5c80a78a807225954b10bea71c370b1ee34334c396097941b85ddc92bd97",
+      "train_mean_reward": 0.875,
+      "train_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/verify-before-write-train.summary.json"
+    },
+    {
+      "dev_mean_reward": 1.0,
+      "dev_strict_pass_rate": 1.0,
+      "dev_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/discovery-checklist-dev.summary.json",
+      "name": "discovery-checklist",
+      "prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/discovery-checklist.txt",
+      "prompt_sha256": "462c9b62a7a46f01526fb1c022c3de25c1dce3886b375187f204fbb392037fd5",
+      "train_mean_reward": 0.875,
+      "train_summary_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/discovery-checklist-train.summary.json"
+    }
+  ],
+  "fixture_sha256": "0341d79c3f12723c689e85ab08648671f884a5dbefbd3fa8a811603b17c4217f",
+  "holdout_accessed": false,
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-A3B-BF16",
+  "renderer": "nemotron3_disable_thinking",
+  "requested_train_count_note": "User brief said 12 discovery train tasks; frozen fixture exposes 16 discovery train tasks, and all 16 were evaluated.",
+  "selected_candidate": "search-first",
+  "selected_prompt_path": "experiments/nemotron-adapter-portfolio/artifacts/adapter-c/prompts/search-first.txt",
+  "selected_prompt_sha256": "30fdc724b7e76b99bab57341c54a0fe37ad81582f929a74b454d758a887b0af4",
+  "selection_recorded_at_unix": 1785629935.0971487,
+  "selection_rule": "highest discovery-band DEV mean reward; tie-break candidate order; search-first selected as first mutated candidate tied at 1.0",
+  "split_sha256": {
+    "dev": "5b8788501da98c52312de75472e89e545eeed146696e3612d3a023dd0cbfaedc",
+    "holdout": "a22a8e989ba9b081a73afae2c86e215b3bf56e4886676726e34d8693f5a62701",
+    "train": "783dc3c1ccc25c6e6165a2f144cbdd27dd16c2bcb75626d47bc7a4ab9a5fdb89"
+  },
+  "use_case": "discovery"
+}
