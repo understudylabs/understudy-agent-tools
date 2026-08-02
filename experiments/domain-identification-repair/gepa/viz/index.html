@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GEPA experiment</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #070708; }
+    .graph { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #070708; }
+    .overlay { position: fixed; z-index: 2; top: 18px; left: 50%; transform: translateX(-50%); width: min(920px, calc(100vw - 36px)); pointer-events: none; }
+    .card { pointer-events: auto; background: rgba(12, 12, 14, .91); border: 1px solid rgba(255, 255, 255, .12); border-radius: 14px; box-shadow: 0 18px 60px rgba(0, 0, 0, .35); backdrop-filter: blur(18px); padding: 14px 16px 13px; }
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .eyebrow { color: #71717a; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    .status { margin-top: 3px; color: #f4f4f5; font-size: 13px; font-weight: 600; }
+    .meta { display: flex; align-items: center; gap: 12px; color: #a1a1aa; font-size: 11px; white-space: nowrap; }
+    .holdout { color: #4ade80; }
+    .details { display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border: 1px solid #3f3f46; border-radius: 7px; color: #d4d4d8; text-decoration: none; font-size: 11px; font-weight: 650; }
+    .details:hover, .details:focus-visible { border-color: #71717a; color: #fff; outline: none; }
+    .metrics { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 14px; margin-top: 13px; }
+    .metric { min-width: 0; }
+    .metric--current { text-align: center; }
+    .metric--progress { text-align: right; }
+    .metric-label { color: #71717a; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .metric-value { margin-top: 2px; color: #f4f4f5; font-size: 24px; line-height: 1; font-weight: 720; letter-spacing: -.025em; font-variant-numeric: tabular-nums; }
+    .metric-sub { margin-top: 5px; color: #a1a1aa; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .delta { color: #4ade80; }
+    .separator { width: 1px; height: 42px; background: #27272a; }
+    .waves { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 13px; }
+    .wave { min-width: 0; padding: 8px 9px; border-radius: 8px; background: rgba(39, 39, 42, .58); border: 1px solid transparent; }
+    .wave--best { border-color: rgba(74, 222, 128, .45); background: rgba(20, 83, 45, .22); }
+    .wave--active { border-color: rgba(255, 255, 255, .55); animation: pulse 1s ease-in-out infinite; }
+    .wave-top { display: flex; justify-content: space-between; gap: 8px; color: #d4d4d8; font-size: 10px; font-weight: 700; }
+    .wave-score { color: #f4f4f5; font-variant-numeric: tabular-nums; }
+    .wave-note { margin-top: 3px; color: #71717a; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .progress { height: 3px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: #27272a; }
+    .progress-fill { height: 100%; width: 0; border-radius: inherit; background: #e4e4e7; transition: width .35s ease; }
+    @keyframes pulse { 0%, 100% { background: rgba(255, 255, 255, .08); } 50% { background: rgba(255, 255, 255, .24); } }
+    @media (max-width: 680px) {
+      .overlay { top: 10px; width: calc(100vw - 20px); }
+      .card { padding: 12px; }
+      .meta span:not(.holdout) { display: none; }
+      .metrics { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .separator { display: none; }
+      .metric-value { font-size: 19px; }
+      .waves { gap: 5px; }
+    }
+  </style>
+</head>
+<body>
+  <iframe class="graph" src="../../" title="Live GEPA graph"></iframe>
+  <div class="overlay">
+    <section class="card" aria-label="Experiment overview">
+      <div class="top">
+        <div>
+          <div class="eyebrow" id="experiment">GEPA experiment</div>
+          <div class="status" id="status">Loading experiment…</div>
+        </div>
+        <div class="meta">
+          <span id="elapsed">—</span>
+          <span id="budget">—</span>
+          <span class="holdout" id="holdout">holdout —</span>
+          <a class="details" href="./combined-experiment.html">Details</a>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Started</div>
+          <div class="metric-value" id="started">—</div>
+          <div class="metric-sub">canonical baseline</div>
+        </div>
+        <div class="separator"></div>
+        <div class="metric metric--current">
+          <div class="metric-label">Current best</div>
+          <div class="metric-value" id="current">—</div>
+          <div class="metric-sub"><span class="delta" id="delta">—</span> · <span id="best-node">—</span></div>
+        </div>
+        <div class="separator"></div>
+        <div class="metric metric--progress">
+          <div class="metric-label">Experiment</div>
+          <div class="metric-value" id="episode-count">—</div>
+          <div class="metric-sub" id="reflection-count">—</div>
+        </div>
+      </div>
+
+      <div class="waves" id="waves"></div>
+      <div class="progress" aria-label="Episode budget progress"><div class="progress-fill" id="progress-fill"></div></div>
+    </section>
+  </div>
+
+  <script type="module">
+    const ACTIVE = new Set(["started", "running", "screening", "reflecting", "evaluating", "confirming"]);
+    const pct = value => value == null ? "—" : `${(Number(value) * 100).toFixed(1)}%`;
+    const duration = value => {
+      const seconds = Math.max(0, Math.round(Number(value) || 0));
+      const minutes = Math.floor(seconds / 60);
+      return minutes ? `${minutes}m ${seconds % 60}s` : `${seconds}s`;
+    };
+    const scoreFor = (nodes, wave) => nodes
+      .filter(node => node.wave === wave && node.rank_eligible && node.score != null)
+      .reduce((best, node) => !best || node.score > best.score ? node : best, null);
+
+    function render(manifest) {
+      const nodes = Array.isArray(manifest.nodes) ? manifest.nodes : [];
+      const budget = manifest.totals?.budget || {};
+      const baseline = scoreFor(nodes, "baseline");
+      const best = nodes.filter(node => node.rank_eligible && node.score != null)
+        .reduce((winner, node) => !winner || node.score > winner.score ? node : winner, null);
+      const active = nodes.filter(node => ACTIVE.has(String(node.stage || node.status || "").toLowerCase()));
+      const completed = Number(budget.stage_a_completed ?? 0);
+      const cap = Number(budget.max_total_episodes ?? 0);
+      const reflections = Number(budget.total_reflections ?? 0);
+      const reflectionCap = Number(budget.max_total_reflections ?? 0);
+      const delta = baseline && best ? (best.score - baseline.score) * 100 : null;
+
+      document.getElementById("experiment").textContent = manifest.experiment || "GEPA experiment";
+      document.getElementById("status").textContent = active.length
+        ? `${active.length} island${active.length === 1 ? "" : "s"} active · ${active.map(node => node.branch_id || node.node_id).join(", ")}`
+        : manifest.totals?.outcome === "no_improvement_over_wave1"
+          ? "Complete · Wave 1 remains best"
+          : "Complete";
+      document.getElementById("elapsed").textContent = duration(manifest.totals?.wall_clock_s);
+      document.getElementById("budget").textContent = cap ? `${completed}/${cap} episodes` : `${completed} episodes`;
+      const holdout = document.getElementById("holdout");
+      holdout.textContent = manifest.holdout_untouched === true ? "holdout untouched" : "holdout unverified";
+      holdout.style.color = manifest.holdout_untouched === true ? "#4ade80" : "#f87171";
+      document.getElementById("started").textContent = pct(baseline?.score);
+      document.getElementById("current").textContent = pct(best?.score);
+      document.getElementById("delta").textContent = delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} pp`;
+      document.getElementById("best-node").textContent = best?.label || best?.node_id || "—";
+      document.getElementById("episode-count").textContent = cap ? `${completed}/${cap}` : String(completed || "—");
+      document.getElementById("reflection-count").textContent = reflectionCap ? `${reflections}/${reflectionCap} reflections` : `${reflections} reflections`;
+      document.getElementById("progress-fill").style.width = cap ? `${Math.min(100, completed / cap * 100)}%` : "0%";
+
+      const waveData = [
+        ["baseline", "Baseline"],
+        ["wave1", "Wave 1"],
+        ["wave2", "Wave 2"],
+      ];
+      const waveRoot = document.getElementById("waves");
+      waveRoot.replaceChildren(...waveData.map(([wave, label]) => {
+        const waveNodes = nodes.filter(node => node.wave === wave);
+        const waveBest = scoreFor(nodes, wave);
+        const waveActive = waveNodes.some(node => ACTIVE.has(String(node.stage || node.status || "").toLowerCase()));
+        const isBest = waveBest && best && waveBest.node_id === best.node_id;
+        const el = document.createElement("div");
+        el.className = `wave${isBest ? " wave--best" : ""}${waveActive ? " wave--active" : ""}`;
+        const note = waveActive ? "running" : waveNodes.some(node => node.provenance?.outcome === "no_improvement_deduplicated") ? "no improvement" : "complete";
+        el.innerHTML = `<div class="wave-top"><span>${label}</span><span class="wave-score">${pct(waveBest?.score)}</span></div><div class="wave-note">${note}</div>`;
+        return el;
+      }));
+    }
+
+    async function poll() {
+      try {
+        const response = await fetch("./experiment-manifest.json", { cache: "no-store" });
+        if (response.ok) render(await response.json());
+      } catch (_) { /* keep the last good frame */ }
+      setTimeout(poll, 2000);
+    }
+    poll();
+  </script>
+</body>
+</html>
