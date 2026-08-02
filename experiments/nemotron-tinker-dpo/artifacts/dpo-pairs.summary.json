@@ -1,0 +1,51 @@
+{
+  "configured_min_pairs": 12,
+  "degenerate_task_count": 17,
+  "degenerate_task_ids": [
+    "simple-api-crm-bulk-owner-04",
+    "simple-api-crm-close-04",
+    "simple-api-crm-disambiguate-02",
+    "simple-api-crm-disambiguate-03",
+    "simple-api-crm-disambiguate-04",
+    "simple-api-crm-lost-01",
+    "simple-api-crm-lost-02",
+    "simple-api-crm-mail-churn-02",
+    "simple-api-crm-owner-02",
+    "simple-api-crm-owner-03",
+    "simple-api-crm-owner-04",
+    "simple-api-crm-rename-01",
+    "simple-api-crm-rename-03",
+    "simple-api-crm-rename-04",
+    "simple-api-mail-discard-01",
+    "simple-api-mail-revise-01",
+    "simple-api-mail-revise-04"
+  ],
+  "fallback_used": false,
+  "model_name": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "pair_band_counts": {
+    "discovery": 13,
+    "multi-write": 11,
+    "single-write": 7
+  },
+  "pair_count": 31,
+  "pair_source_counts": {
+    "sft->sft": 31
+  },
+  "renderer": "nemotron3_disable_thinking",
+  "reward_gap": {
+    "max": 1.0,
+    "mean": 0.9408602150537635,
+    "median": 1.0,
+    "min": 0.5
+  },
+  "samples_per_task": 8,
+  "source_model_paths": {
+    "base": "base",
+    "sft": "tinker://e3e3d392-c8f0-5889-9f91-423a28a12163:train:0/sampler_weights/sft-epoch4"
+  },
+  "sources": [
+    "sft"
+  ],
+  "split": "train",
+  "task_count": 48
+}

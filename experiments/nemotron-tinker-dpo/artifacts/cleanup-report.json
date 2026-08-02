@@ -1,0 +1,56 @@
+{
+  "checkpoint_deletion": "not performed; retained for comparison and expiry metadata",
+  "checkpoints": [
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 1,
+      "expires_at": null,
+      "kind": "sampler",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch1"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 1,
+      "expires_at": null,
+      "kind": "training",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/weights/dpo-epoch1-state"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 2,
+      "expires_at": null,
+      "kind": "sampler",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch2"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 2,
+      "expires_at": null,
+      "kind": "training",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/weights/dpo-epoch2-state"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 3,
+      "expires_at": null,
+      "kind": "sampler",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/sampler_weights/dpo-epoch3"
+    },
+    {
+      "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+      "epoch": 3,
+      "expires_at": null,
+      "kind": "training",
+      "lora_rank": 32,
+      "path": "tinker://4cd4a253-74e7-5d42-ba70-b081baffbbb1:train:0/weights/dpo-epoch3-state"
+    }
+  ],
+  "deployment_cleanup": "not_applicable; no deployment created",
+  "deployments_created": [],
+  "sampling_clients": "ephemeral; no persistent deployment"
+}

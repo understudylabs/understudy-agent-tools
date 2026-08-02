@@ -1,0 +1,20 @@
+{
+  "after": {
+    "ending_before": null,
+    "response": {
+      "data": []
+    },
+    "starting_on": null,
+    "unavailable_reason": "tinker 0.23.1 RestClient has no billing-usage endpoint"
+  },
+  "before": {
+    "ending_before": null,
+    "response": {
+      "data": []
+    },
+    "starting_on": null,
+    "unavailable_reason": "tinker 0.23.1 RestClient has no billing-usage endpoint"
+  },
+  "delta": {},
+  "phase": "dpo-epoch1"
+}

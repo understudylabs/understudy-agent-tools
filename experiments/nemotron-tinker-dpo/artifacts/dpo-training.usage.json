@@ -1,0 +1,9 @@
+{
+  "billing_usage": "unavailable in installed tinker 0.23.1 RestClient; no billing endpoint exposed",
+  "dpo_beta": 0.1,
+  "epochs": 3,
+  "learning_rate": 1e-05,
+  "optimization_steps": 24,
+  "pair_count": 31,
+  "phase": "dpo-training"
+}

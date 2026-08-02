@@ -1,0 +1,66 @@
+{
+  "billing_usage": "unavailable in installed tinker 0.23.1 RestClient; evaluator usage files record this explicitly",
+  "dpo_training_tokens": null,
+  "dpo_training_tokens_note": "Training-client responses and dpo-training-metrics.json expose no training-token counter, so only evaluator prompt/sample tokens are measured.",
+  "phases": [
+    {
+      "artifact": "dev-dpo-epoch1.summary.json",
+      "phase": "dpo-epoch1",
+      "prompt_tokens": 16739,
+      "rows": 12,
+      "sampled_tokens": 1001,
+      "split": "dev"
+    },
+    {
+      "artifact": "dev-dpo-epoch2.summary.json",
+      "phase": "dpo-epoch2",
+      "prompt_tokens": 17425,
+      "rows": 12,
+      "sampled_tokens": 1028,
+      "split": "dev"
+    },
+    {
+      "artifact": "dev-dpo-epoch3.summary.json",
+      "phase": "dpo-epoch3",
+      "prompt_tokens": 18257,
+      "rows": 12,
+      "sampled_tokens": 1059,
+      "split": "dev"
+    },
+    {
+      "artifact": "dpo-rollouts-sft.summary.json",
+      "phase": "dpo-pairs-sft",
+      "prompt_tokens": 595177,
+      "rows": 384,
+      "sampled_tokens": 34122,
+      "split": "train"
+    },
+    {
+      "artifact": "holdout-dpo-selected.summary.json",
+      "phase": "dpo-selected-holdout",
+      "prompt_tokens": 16429,
+      "rows": 12,
+      "sampled_tokens": 897,
+      "split": "holdout"
+    },
+    {
+      "artifact": "train-dpo-selected.summary.json",
+      "phase": "dpo-selected-train",
+      "prompt_tokens": 67972,
+      "rows": 48,
+      "sampled_tokens": 3944,
+      "split": "train"
+    },
+    {
+      "artifact": "smoke-dev-3.summary.json",
+      "phase": "smoke-dev-3",
+      "prompt_tokens": 3592,
+      "rows": 3,
+      "sampled_tokens": 191,
+      "split": "dev"
+    }
+  ],
+  "total_prompt_tokens": 735591,
+  "total_sampled_tokens": 42242,
+  "total_tokens": 777833
+}
