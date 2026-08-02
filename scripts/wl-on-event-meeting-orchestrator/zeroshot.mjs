@@ -34,6 +34,16 @@ function argValue(name, fallback = null) {
   if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
   return value;
 }
+function argValues(name) {
+  const values = [];
+  for (let index = 0; index < process.argv.length; index += 1) {
+    if (process.argv[index] !== name) continue;
+    const value = process.argv[index + 1];
+    if (!value || value.startsWith("--")) throw new Error(`${name} requires a value`);
+    values.push(value);
+  }
+  return values;
+}
 
 const model = argValue("--model");
 if (!model) throw new Error("--model is required");
@@ -48,7 +58,8 @@ const temperature = Number(argValue("--temperature", "0"));
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "512"));
 const requestTimeoutMs = 180_000;
-const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
+const baseUrls = argValues("--base-url");
+if (baseUrls.length === 0) baseUrls.push("https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
 const samples = Math.max(1, Number(argValue("--samples", "1")) || 1);
@@ -56,7 +67,7 @@ const seed = Number(argValue("--seed", "7"));
 const recordTrajectories = process.argv.includes("--record-trajectories");
 // The Tinker lane is scored through the local shim (`scripts/tinker-openai-shim.py`),
 // which authenticates to Tinker itself and ignores the bearer token.
-const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
+const isLocalShim = baseUrls.every((url) => /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(url));
 const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
 if (!apiKey) throw new Error("FIREWORKS_API_KEY is required (never hard-code it)");
 
@@ -112,8 +123,10 @@ function parseAction(text) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let requestCounter = 0;
 
 async function chat(messages, attempt = 0) {
+  const baseUrl = baseUrls[requestCounter++ % baseUrls.length];
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
