@@ -40,7 +40,7 @@
     },
     "claim_boundary": { "type": "string", "minLength": 1, "maxLength": 2000 }
     ,
-    "idempotency_key": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "idempotency_key": { "type": "string", "minLength": 1, "maxLength": 500 },
     "inputs": {
       "type": "object",
       "required": ["registry", "candidate_holdout", "evidence_ids"],

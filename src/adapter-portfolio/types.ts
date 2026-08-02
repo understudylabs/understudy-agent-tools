@@ -154,7 +154,7 @@ export const PromotionDecisionInputsSchema = z.object({
 });
 
 export const AdapterPromotionStepDecisionSchema = AdapterPromotionDecisionSchema.extend({
-  idempotency_key: z.string().regex(/^[a-f0-9]{64}$/),
+  idempotency_key: z.string().min(1).max(500),
   inputs: PromotionDecisionInputsSchema,
 });
 

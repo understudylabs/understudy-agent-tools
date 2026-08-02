@@ -99,7 +99,7 @@ export function evaluateAdapterPortfolioStep(
   input: AdapterPortfolioStepInput,
 ): AdapterPromotionStepDecision {
   const { registry, ref } = registryValue(input.registry);
-  const idempotency_key = refSha256(`${input.experiment_id}\n${input.candidate_id}\n${input.attempt}`);
+  const idempotency_key = `${input.experiment_id}:${input.candidate_id}:${input.attempt}`;
   const decision = evaluatePromotion(
     registry,
     input.candidate_id,

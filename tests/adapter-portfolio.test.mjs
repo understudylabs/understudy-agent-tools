@@ -272,7 +272,7 @@ describe("adapter portfolio", () => {
     const first = evaluateAdapterPortfolioStep(input);
     const second = evaluateAdapterPortfolioStep(input);
     assert.equal(JSON.stringify(first), JSON.stringify(second));
-    assert.match(first.idempotency_key, /^[a-f0-9]{64}$/);
+    assert.equal(first.idempotency_key, "experiment-1:adapter-a:2");
     assert.equal(first.inputs.registry.uri, "inline:adapter-portfolio-registry");
     assert.match(first.inputs.registry.sha256, /^[a-f0-9]{64}$/);
 

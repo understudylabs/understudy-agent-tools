@@ -12,7 +12,9 @@ step receives the value directly and treats the registry artifact reference as
 the authoritative identity.
 
 The output is an immutable `understudy.adapter_promotion_decision.v1` artifact
-with an idempotency key derived from `(experiment_id, candidate_id, attempt)`.
+with the canonical idempotency key
+`<experiment_id>:<candidate_id>:<attempt>`, matching the executor boundary's
+retry convention. It is derived from `(experiment_id, candidate_id, attempt)`.
 Its `inputs` records the registry URI/hash, candidate sealed-holdout
 URI/hash/row count, and consumed evidence IDs. A retry with the same inputs is
 byte-identical. Workflow code can write the returned `promotionEvents(...)`
