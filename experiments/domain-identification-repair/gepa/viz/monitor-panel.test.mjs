@@ -142,9 +142,14 @@ test("finished deduplicated race is complete without preview", () => {
     A: { stage: "completed", confirm_consumed: 0, confirm_released: 24 },
     B: { stage: "completed", confirm_consumed: 0, confirm_released: 24 },
   };
+  finished.totals.selected_winner = {
+    reuses: "wave1-winner",
+    new_model_lift: false,
+  };
   const summary = summarizeManifest(finished);
   assert.equal(summary.evidenceState, "complete_no_improvement");
   assert.equal(summary.isPreview, false);
+  assert.equal(summary.winner, "wave1-winner");
   const html = renderSummaryHTML(summary);
   assert.match(html, /COMPLETE — no new candidate; Wave-1 remains incumbent/);
   assert.doesNotMatch(html, /PREVIEW — not yet backed by canonical confirm receipts/);

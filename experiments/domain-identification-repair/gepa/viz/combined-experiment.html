@@ -148,7 +148,10 @@ function upsertNode(node) {
     nodeEls.set(node.node_id, rec);
   }
   // Only the background class encodes status (the surgical convention).
-  rec.dot.className = `dot ${backgroundClassOf(visualStateOf(node))}`;
+  const visualState = (node.rank_eligible === false && node.score == null && node.stage === "completed")
+    ? "idle"
+    : visualStateOf(node);
+  rec.dot.className = `dot ${backgroundClassOf(visualState)}`;
   rec.lbl.textContent = node.label || node.node_id;
   const ep = node.episode_progress || {};
   const parts = [];
@@ -159,7 +162,7 @@ function upsertNode(node) {
   // In-progress nodes show no score (never 0/none-as-final).
   if (node.score === null || node.score === undefined) {
     rec.score.className = "score score--none";
-    rec.score.textContent = "in progress";
+    rec.score.textContent = visualState === "active" ? "in progress" : "—";
   } else {
     rec.score.className = "score";
     rec.score.textContent = fmtPct(node.score);
@@ -177,7 +180,10 @@ function render(m) {
     `${(b.stage_a_completed ?? 0)} / ${b.max_total_episodes ?? "—"}`;
   document.getElementById("t-refl").textContent =
     `${(b.total_reflections ?? 0)} / ${b.max_total_reflections ?? "—"}`;
-  document.getElementById("t-win").textContent = t.selected_winner || "—";
+  const winner = t.selected_winner;
+  document.getElementById("t-win").textContent = winner && typeof winner === "object"
+    ? (winner.reuses || winner.node_id || winner.label || "—")
+    : (winner || "—");
   document.getElementById("devsha").textContent = (m.dev_split_sha256 || "").slice(0, 16) + "…";
   document.getElementById("proto").textContent =
     `rank protocol ${m.rank_protocol.method} k=${m.rank_protocol.samples_per_task}`;

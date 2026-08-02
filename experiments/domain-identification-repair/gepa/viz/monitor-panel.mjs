@@ -96,7 +96,10 @@ export function summarizeManifest(manifest) {
     rank_comparable: false,
     note: `${referenceLine.note ? `${referenceLine.note}; ` : ""}k=1; not rank-comparable`,
   } : null;
-  const winner = firstDefined(totals.selected_winner, manifest?.selected_winner, null);
+  const rawWinner = firstDefined(totals.selected_winner, manifest?.selected_winner, null);
+  const winner = rawWinner && typeof rawWinner === "object"
+    ? firstDefined(rawWinner.reuses, rawWinner.node_id, rawWinner.label, null)
+    : rawWinner;
 
   const evidenceState = evidenceStateOf(manifest, nodes, rankProtocol);
   return {
