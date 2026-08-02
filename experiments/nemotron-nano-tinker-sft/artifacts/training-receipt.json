@@ -1,0 +1,327 @@
+{
+  "schema_version": "understudy.nemotron_nano_tinker_sft.v1",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "lora_rank": 16,
+  "epochs": 3,
+  "steps": 36,
+  "batch_size": 4,
+  "learning_rate": 5e-05,
+  "learning_rate_schedule": "linear_decay_to_zero",
+  "train_examples": 48,
+  "train_tokens_per_epoch": 38914,
+  "train_tokens": 116742,
+  "loss_first": 0.31834301352500916,
+  "loss_last": 0.10447266697883606,
+  "loss_min": 0.005226814188063145,
+  "loss_decreased": true,
+  "loss_curve": [
+    {
+      "step": 1,
+      "epoch": 1,
+      "loss": 0.31834301352500916,
+      "learning_rate": 5e-05,
+      "batch_size": 4,
+      "tokens": 3562
+    },
+    {
+      "step": 2,
+      "epoch": 1,
+      "loss": 0.3417400121688843,
+      "learning_rate": 4.8571428571428576e-05,
+      "batch_size": 4,
+      "tokens": 3158
+    },
+    {
+      "step": 3,
+      "epoch": 1,
+      "loss": 0.3193240463733673,
+      "learning_rate": 4.714285714285714e-05,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 4,
+      "epoch": 1,
+      "loss": 0.2775629162788391,
+      "learning_rate": 4.5714285714285716e-05,
+      "batch_size": 4,
+      "tokens": 3231
+    },
+    {
+      "step": 5,
+      "epoch": 1,
+      "loss": 0.42685598134994507,
+      "learning_rate": 4.428571428571428e-05,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 6,
+      "epoch": 1,
+      "loss": 0.3617556095123291,
+      "learning_rate": 4.285714285714286e-05,
+      "batch_size": 4,
+      "tokens": 2799
+    },
+    {
+      "step": 7,
+      "epoch": 1,
+      "loss": 0.3418663740158081,
+      "learning_rate": 4.142857142857143e-05,
+      "batch_size": 4,
+      "tokens": 2749
+    },
+    {
+      "step": 8,
+      "epoch": 1,
+      "loss": 0.3816312551498413,
+      "learning_rate": 4e-05,
+      "batch_size": 4,
+      "tokens": 2654
+    },
+    {
+      "step": 9,
+      "epoch": 1,
+      "loss": 0.07733821123838425,
+      "learning_rate": 3.857142857142858e-05,
+      "batch_size": 4,
+      "tokens": 3637
+    },
+    {
+      "step": 10,
+      "epoch": 1,
+      "loss": 0.12406384944915771,
+      "learning_rate": 3.7142857142857143e-05,
+      "batch_size": 4,
+      "tokens": 3190
+    },
+    {
+      "step": 11,
+      "epoch": 1,
+      "loss": 0.16004417836666107,
+      "learning_rate": 3.571428571428572e-05,
+      "batch_size": 4,
+      "tokens": 3632
+    },
+    {
+      "step": 12,
+      "epoch": 1,
+      "loss": 0.19053034484386444,
+      "learning_rate": 3.428571428571429e-05,
+      "batch_size": 4,
+      "tokens": 3994
+    },
+    {
+      "step": 13,
+      "epoch": 2,
+      "loss": 0.10867829620838165,
+      "learning_rate": 3.285714285714286e-05,
+      "batch_size": 4,
+      "tokens": 3562
+    },
+    {
+      "step": 14,
+      "epoch": 2,
+      "loss": 0.05322454869747162,
+      "learning_rate": 3.142857142857143e-05,
+      "batch_size": 4,
+      "tokens": 3158
+    },
+    {
+      "step": 15,
+      "epoch": 2,
+      "loss": 0.05409730598330498,
+      "learning_rate": 3e-05,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 16,
+      "epoch": 2,
+      "loss": 0.0380856990814209,
+      "learning_rate": 2.857142857142857e-05,
+      "batch_size": 4,
+      "tokens": 3231
+    },
+    {
+      "step": 17,
+      "epoch": 2,
+      "loss": 0.10823309421539307,
+      "learning_rate": 2.7142857142857148e-05,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 18,
+      "epoch": 2,
+      "loss": 0.14740225672721863,
+      "learning_rate": 2.5714285714285714e-05,
+      "batch_size": 4,
+      "tokens": 2799
+    },
+    {
+      "step": 19,
+      "epoch": 2,
+      "loss": 0.11400970071554184,
+      "learning_rate": 2.4285714285714288e-05,
+      "batch_size": 4,
+      "tokens": 2749
+    },
+    {
+      "step": 20,
+      "epoch": 2,
+      "loss": 0.1780441254377365,
+      "learning_rate": 2.285714285714286e-05,
+      "batch_size": 4,
+      "tokens": 2654
+    },
+    {
+      "step": 21,
+      "epoch": 2,
+      "loss": 0.010331783443689346,
+      "learning_rate": 2.142857142857143e-05,
+      "batch_size": 4,
+      "tokens": 3637
+    },
+    {
+      "step": 22,
+      "epoch": 2,
+      "loss": 0.03753306344151497,
+      "learning_rate": 2e-05,
+      "batch_size": 4,
+      "tokens": 3190
+    },
+    {
+      "step": 23,
+      "epoch": 2,
+      "loss": 0.07564960420131683,
+      "learning_rate": 1.8571428571428572e-05,
+      "batch_size": 4,
+      "tokens": 3632
+    },
+    {
+      "step": 24,
+      "epoch": 2,
+      "loss": 0.12639907002449036,
+      "learning_rate": 1.7142857142857145e-05,
+      "batch_size": 4,
+      "tokens": 3994
+    },
+    {
+      "step": 25,
+      "epoch": 3,
+      "loss": 0.06884066015481949,
+      "learning_rate": 1.5714285714285715e-05,
+      "batch_size": 4,
+      "tokens": 3562
+    },
+    {
+      "step": 26,
+      "epoch": 3,
+      "loss": 0.016783125698566437,
+      "learning_rate": 1.4285714285714285e-05,
+      "batch_size": 4,
+      "tokens": 3158
+    },
+    {
+      "step": 27,
+      "epoch": 3,
+      "loss": 0.014281339012086391,
+      "learning_rate": 1.2857142857142857e-05,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 28,
+      "epoch": 3,
+      "loss": 0.00948596652597189,
+      "learning_rate": 1.1428571428571427e-05,
+      "batch_size": 4,
+      "tokens": 3231
+    },
+    {
+      "step": 29,
+      "epoch": 3,
+      "loss": 0.04022093862295151,
+      "learning_rate": 9.999999999999997e-06,
+      "batch_size": 4,
+      "tokens": 3154
+    },
+    {
+      "step": 30,
+      "epoch": 3,
+      "loss": 0.10163845121860504,
+      "learning_rate": 8.57142857142857e-06,
+      "batch_size": 4,
+      "tokens": 2799
+    },
+    {
+      "step": 31,
+      "epoch": 3,
+      "loss": 0.06844411790370941,
+      "learning_rate": 7.142857142857145e-06,
+      "batch_size": 4,
+      "tokens": 2749
+    },
+    {
+      "step": 32,
+      "epoch": 3,
+      "loss": 0.12313435226678848,
+      "learning_rate": 5.714285714285716e-06,
+      "batch_size": 4,
+      "tokens": 2654
+    },
+    {
+      "step": 33,
+      "epoch": 3,
+      "loss": 0.005226814188063145,
+      "learning_rate": 4.285714285714287e-06,
+      "batch_size": 4,
+      "tokens": 3637
+    },
+    {
+      "step": 34,
+      "epoch": 3,
+      "loss": 0.02347809448838234,
+      "learning_rate": 2.857142857142858e-06,
+      "batch_size": 4,
+      "tokens": 3190
+    },
+    {
+      "step": 35,
+      "epoch": 3,
+      "loss": 0.05310947820544243,
+      "learning_rate": 1.428571428571429e-06,
+      "batch_size": 4,
+      "tokens": 3632
+    },
+    {
+      "step": 36,
+      "epoch": 3,
+      "loss": 0.10447266697883606,
+      "learning_rate": 0.0,
+      "batch_size": 4,
+      "tokens": 3994
+    }
+  ],
+  "checkpoints": [
+    {
+      "epoch": 1,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-1",
+      "wall_seconds": 57.854
+    },
+    {
+      "epoch": 2,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-2",
+      "wall_seconds": 36.638
+    },
+    {
+      "epoch": 3,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-3",
+      "wall_seconds": 36.596
+    }
+  ],
+  "wall_seconds": 136.159,
+  "holdout_accessed": false,
+  "dev_accessed": false
+}

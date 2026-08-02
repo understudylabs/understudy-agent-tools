@@ -1,0 +1,855 @@
+{
+  "model": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-3",
+  "split": "dev",
+  "max_tokens": 4096,
+  "tasks": [
+    {
+      "task_id": "simple-api-crm-close-05",
+      "reward": 1,
+      "steps": 7,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 994,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 995,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 676,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 1372,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 170,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 1771,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 916,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 8,
+          "completion_tokens": 330,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 33064,
+      "tokens_out": 7224,
+      "latency_seconds": 138.678
+    },
+    {
+      "task_id": "simple-api-crm-lost-05",
+      "reward": 1,
+      "steps": 6,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 773,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 159,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 333,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 576,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 97,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 537,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 214,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 14410,
+      "tokens_out": 2689,
+      "latency_seconds": 151.515
+    },
+    {
+      "task_id": "simple-api-crm-owner-05",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 224,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 387,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 259,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 226,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 4172,
+      "tokens_out": 1096,
+      "latency_seconds": 77.213
+    },
+    {
+      "task_id": "simple-api-crm-rename-05",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 237,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 193,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 165,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 129,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 3779,
+      "tokens_out": 724,
+      "latency_seconds": 43.035
+    },
+    {
+      "task_id": "simple-api-mail-draft-05",
+      "reward": 1,
+      "steps": 3,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 308,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 208,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 534,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 264,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 4677,
+      "tokens_out": 1314,
+      "latency_seconds": 63.179
+    },
+    {
+      "task_id": "simple-api-mail-revise-05",
+      "reward": 1,
+      "steps": 6,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 185,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 185,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 69,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 127,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 120,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 314,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 95,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 8145,
+      "tokens_out": 1095,
+      "latency_seconds": 78.371
+    },
+    {
+      "task_id": "simple-api-mail-discard-05",
+      "reward": 1,
+      "steps": 6,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 382,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 460,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 153,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 204,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 234,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 294,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 321,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 11453,
+      "tokens_out": 2048,
+      "latency_seconds": 95.34
+    },
+    {
+      "task_id": "simple-api-mail-send-05",
+      "reward": 1,
+      "steps": 4,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 748,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 1176,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 333,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 875,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 386,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 11425,
+      "tokens_out": 3518,
+      "latency_seconds": 155.013
+    },
+    {
+      "task_id": "simple-api-crm-bulk-owner-05",
+      "reward": 1,
+      "steps": 9,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 391,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 167,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 78,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 187,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 67,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 332,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 91,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 8,
+          "completion_tokens": 534,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 9,
+          "completion_tokens": 88,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 10,
+          "completion_tokens": 258,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 17818,
+      "tokens_out": 2193,
+      "latency_seconds": 129.269
+    },
+    {
+      "task_id": "simple-api-crm-disambiguate-05",
+      "reward": 0,
+      "steps": 12,
+      "forbiddenEffects": [],
+      "termination": "max_steps",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 839,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 108,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 77,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 115,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 216,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 295,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 314,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 8,
+          "completion_tokens": 95,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 9,
+          "completion_tokens": 173,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 10,
+          "completion_tokens": 162,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 11,
+          "completion_tokens": 322,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 12,
+          "completion_tokens": 52,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        }
+      ],
+      "tokens_in": 33526,
+      "tokens_out": 2768,
+      "latency_seconds": 187.119
+    },
+    {
+      "task_id": "simple-api-crm-mail-churn-05",
+      "reward": 1,
+      "steps": 7,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 460,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 226,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 53,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 91,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 754,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 613,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 136,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 8,
+          "completion_tokens": 410,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 16732,
+      "tokens_out": 2743,
+      "latency_seconds": 192.823
+    },
+    {
+      "task_id": "simple-api-mail-send-and-close-05",
+      "reward": 0.6666666666666666,
+      "steps": 6,
+      "forbiddenEffects": [],
+      "termination": "plain_text_finish",
+      "failure_modes": [],
+      "malformed_call_count": 0,
+      "turns": [
+        {
+          "turn": 1,
+          "completion_tokens": 3184,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 2,
+          "completion_tokens": 1209,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_search"
+        },
+        {
+          "turn": 3,
+          "completion_tokens": 937,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 4,
+          "completion_tokens": 579,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 5,
+          "completion_tokens": 259,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 6,
+          "completion_tokens": 2177,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": true,
+          "tool_name": "api_fetch"
+        },
+        {
+          "turn": 7,
+          "completion_tokens": 339,
+          "termination": "stop_sequence",
+          "terminated_on_stop_sequence": true,
+          "tool_call_parsed": false,
+          "tool_name": null
+        }
+      ],
+      "tokens_in": 38491,
+      "tokens_out": 8684,
+      "latency_seconds": 335.002
+    }
+  ],
+  "summary": {
+    "examples": 12,
+    "mean_reward": 0.8888888888888888,
+    "failure_modes": {
+      "truncated": 0,
+      "malformed": 0,
+      "no-tool-call": 0,
+      "forbidden-effect": 0,
+      "step-limit": 1
+    },
+    "total_tokens_in": 197692,
+    "total_tokens_out": 36096,
+    "total_tokens": 233788,
+    "wall_seconds": 1646.557,
+    "mean_latency_seconds": 137.213
+  }
+}

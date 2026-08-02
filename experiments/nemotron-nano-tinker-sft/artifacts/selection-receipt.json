@@ -1,0 +1,148 @@
+{
+  "schema_version": "understudy.nemotron_nano_tinker_sft.selection.v1",
+  "base_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "lora_rank": 16,
+  "epochs": 3,
+  "selection_split": "dev",
+  "selection_rule": "highest dev mean reward; tie-break fewer failure modes; then fewer output tokens",
+  "winner": {
+    "epoch": 3,
+    "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-3",
+    "examples": 12,
+    "mean_reward": 0.8888888888888888,
+    "failure_modes": {
+      "truncated": 0,
+      "malformed": 0,
+      "no-tool-call": 0,
+      "forbidden-effect": 0,
+      "step-limit": 1
+    },
+    "total_tokens_in": 197692,
+    "total_tokens_out": 36096,
+    "total_tokens": 233788,
+    "wall_seconds": 1646.557,
+    "mean_latency_seconds": 137.213
+  },
+  "checkpoint_table": [
+    {
+      "epoch": 1,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-1",
+      "examples": 12,
+      "mean_reward": 0.8055555555555555,
+      "failure_modes": {
+        "truncated": 2,
+        "malformed": 0,
+        "no-tool-call": 0,
+        "forbidden-effect": 0,
+        "step-limit": 1
+      },
+      "total_tokens_in": 176097,
+      "total_tokens_out": 43435,
+      "total_tokens": 219532,
+      "wall_seconds": 1839.021,
+      "mean_latency_seconds": 153.252
+    },
+    {
+      "epoch": 2,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-2",
+      "examples": 12,
+      "mean_reward": 0.7916666666666666,
+      "failure_modes": {
+        "truncated": 0,
+        "malformed": 0,
+        "no-tool-call": 0,
+        "forbidden-effect": 0,
+        "step-limit": 4
+      },
+      "total_tokens_in": 229397,
+      "total_tokens_out": 37580,
+      "total_tokens": 266977,
+      "wall_seconds": 1763.335,
+      "mean_latency_seconds": 146.945
+    },
+    {
+      "epoch": 3,
+      "checkpoint_id": "tinker://14b6d378-24d1-5061-9116-1ec78c1ca7a3:train:0/sampler_weights/nemotron-nano-sft-epoch-3",
+      "examples": 12,
+      "mean_reward": 0.8888888888888888,
+      "failure_modes": {
+        "truncated": 0,
+        "malformed": 0,
+        "no-tool-call": 0,
+        "forbidden-effect": 0,
+        "step-limit": 1
+      },
+      "total_tokens_in": 197692,
+      "total_tokens_out": 36096,
+      "total_tokens": 233788,
+      "wall_seconds": 1646.557,
+      "mean_latency_seconds": 137.213
+    }
+  ],
+  "tuned_train": {
+    "examples": 48,
+    "mean_reward": 0.8993055555555555,
+    "failure_modes": {
+      "truncated": 1,
+      "malformed": 1,
+      "no-tool-call": 0,
+      "forbidden-effect": 0,
+      "step-limit": 4
+    },
+    "total_tokens_in": 746989,
+    "total_tokens_out": 132303,
+    "total_tokens": 879292,
+    "wall_seconds": 4726.38,
+    "mean_latency_seconds": 98.466
+  },
+  "baseline": {
+    "train": {
+      "examples": 48,
+      "mean_reward": 0.8020833333333334,
+      "failure_modes": {
+        "truncated": 5,
+        "malformed": 0,
+        "no-tool-call": 0,
+        "forbidden-effect": 0,
+        "step-limit": 4
+      },
+      "total_tokens_in": 920240,
+      "total_tokens_out": 212061,
+      "total_tokens": 1132301,
+      "wall_seconds": 6520.14,
+      "mean_latency_seconds": 135.836
+    },
+    "dev": {
+      "examples": 12,
+      "mean_reward": 0.9166666666666666,
+      "failure_modes": {
+        "truncated": 0,
+        "malformed": 0,
+        "no-tool-call": 0,
+        "forbidden-effect": 0,
+        "step-limit": 1
+      },
+      "total_tokens_in": 339012,
+      "total_tokens_out": 62298,
+      "total_tokens": 401310,
+      "wall_seconds": 2152.416,
+      "mean_latency_seconds": 179.368
+    }
+  },
+  "mean_output_tokens_per_task": {
+    "baseline_train": 4417.9375,
+    "tuned_train": 2756.3125,
+    "baseline_dev": 5191.5,
+    "winner_dev": 3008.0
+  },
+  "mean_latency_seconds_per_task": {
+    "baseline_train": 135.836,
+    "tuned_train": 98.466,
+    "baseline_dev": 179.368,
+    "winner_dev": 137.213
+  },
+  "handoff_tokens_known": 1775329,
+  "handoff_wall_seconds_known": 10111.452,
+  "deployment_id": null,
+  "holdout_accessed": false
+}

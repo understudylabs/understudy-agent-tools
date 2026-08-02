@@ -1,0 +1,70 @@
+<|im_start|>system
+You operate business apps through api_search and api_fetch. Make the smallest change that satisfies the request.
+
+# Tools
+
+You have access to the following functions:
+
+<tools>
+<function>
+<name>api_search</name>
+<description>Read-only endpoint discovery. Args: {query: string, top_k?: number}.</description>
+<parameters>
+<parameter>
+<name>query</name>
+<type>string</type>
+</parameter>
+<parameter>
+<name>top_k</name>
+<type>integer</type>
+</parameter>
+<required>["query"]</required>
+</parameters>
+</function>
+<function>
+<name>api_fetch</name>
+<description>Apply one API call. Args: {method: string, url: string, body?: object}.</description>
+<parameters>
+<parameter>
+<name>method</name>
+<type>string</type>
+</parameter>
+<parameter>
+<name>url</name>
+<type>string</type>
+</parameter>
+<parameter>
+<name>body</name>
+<type>object</type>
+</parameter>
+<required>["method", "url"]</required>
+</parameters>
+</function>
+</tools>
+
+If you choose to call a function ONLY reply in the following format with NO suffix:
+
+<tool_call>
+<function=example_function_name>
+<parameter=example_parameter_1>
+value_1
+</parameter>
+<parameter=example_parameter_2>
+This is the value for the second parameter
+that can span
+multiple lines
+</parameter>
+</function>
+</tool_call>
+
+<IMPORTANT>
+Reminder:
+- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags
+- Required parameters MUST be specified
+- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after
+- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls
+</IMPORTANT><|im_end|>
+<|im_start|>user
+Ada Lovelace signed the contract. Record the deal as won on that CRM contact.<|im_end|>
+<|im_start|>assistant
+<think>

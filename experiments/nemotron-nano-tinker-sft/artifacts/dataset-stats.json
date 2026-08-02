@@ -1,0 +1,7 @@
+{
+  "examples": 48,
+  "total_train_tokens": 38962,
+  "raw_jsonl": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-nano-tinker-sft/artifacts/oracle-train.jsonl",
+  "tinker_datums_jsonl": "/home/ubuntu/repos/understudy-agent-tools/experiments/nemotron-nano-tinker-sft/artifacts/oracle-train-datums.jsonl",
+  "holdout_accessed": false
+}
