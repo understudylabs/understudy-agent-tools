@@ -26,6 +26,43 @@ Evidence `notes` is limited to a redacted summary of at most 500 characters.
 This module performs no provider or paid work, so it has no
 submit/inspect/cancel/reconcileUsage surface.
 
+## Canonical executor boundary
+
+The canonical executor submit contract is `understudy.executor-submit.v1`.
+Its required submit fields are:
+
+- `experiment_id` and non-negative `attempt`;
+- `candidate`: `candidate_id`, executor kind, model, `policy_ref`, and
+  `policy_sha256` (with optional `model_revision`);
+- `workload`: `id`, `dataset_manifest_ref`,
+  `dataset_manifest_sha256`, `verifier_environment`, and
+  `verifier_revision`;
+- `splits`: `train_manifest_ref` and `dev_manifest_ref`;
+- `limits`: `budget_usd`, `max_concurrent_candidates`,
+  `max_concurrent_requests_per_candidate`, `max_rollouts`, and
+  `max_runtime_seconds`.
+
+The optional adapter-record `workload` and `splits` fields mirror those
+canonical names and semantics exactly. `workload.id` is the natural
+identity carrier alongside this registry's `suite`; the verifier identity
+and revision live in `verifier_environment` and `verifier_revision`.
+`workflowIdentityRefs(...)` exposes only these workload and train/dev
+manifest references for boundary integration. It does not construct or emit
+a submit payload.
+
+The portfolio's sealed `holdout`, holdout evidence rows, hashes, row counts,
+and scores are structurally absent from that identity projection and must
+never cross into a submit request. Holdout refs remain exclusively in the
+promotion decision artifact and verifier gate.
+
+Executor adapters, not this verifier/contract module, own `submit`, `inspect`,
+and `cancel`. Cancellation must reach the adapter and produce a
+`ExecutorCancellationReceipt` (recorded in the run's
+`cancellation_receipts`) with the job identity, disposition, and observation
+time. Usage reconciliation also belongs to the adapter and reports an
+explicit `evidence_scope` (`run_exclusive`, `account_window`, or `unknown`);
+this module does not infer, hardcode, or reconcile usage.
+
 The base-model transfer set contains one base reference for each suite in the
 union of the candidate suite and every currently promoted adapter's suite.
 Each reference is a `subject: "base"` holdout row with no candidate in

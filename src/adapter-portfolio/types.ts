@@ -24,6 +24,19 @@ export const HoldoutSchema = z.object({
   row_count: z.number().int().positive(),
 });
 
+export const WorkloadIdentitySchema = z.object({
+  id: z.string().min(1),
+  dataset_manifest_ref: z.string().min(1),
+  dataset_manifest_sha256: Sha256Schema,
+  verifier_environment: z.string().min(1),
+  verifier_revision: z.string().min(1),
+});
+
+export const SplitManifestRefsSchema = z.object({
+  train_manifest_ref: z.string().min(1),
+  dev_manifest_ref: z.string().min(1),
+});
+
 export const EvidenceRowSchema = z.object({
   evidence_id: z.string().min(1),
   recorded_at: TimestampSchema,
@@ -56,6 +69,8 @@ export const AdapterRecordSchema = z.object({
   method: AdapterMethodSchema,
   status: AdapterStatusSchema,
   suite: z.string().min(1),
+  workload: WorkloadIdentitySchema.optional(),
+  splits: SplitManifestRefsSchema.optional(),
   holdout: HoldoutSchema.nullable(),
   evidence: z.array(EvidenceRowSchema),
   created_at: TimestampSchema,
@@ -116,6 +131,8 @@ export type AdapterMethod = z.infer<typeof AdapterMethodSchema>;
 export type AdapterStatus = z.infer<typeof AdapterStatusSchema>;
 export type EvidenceRow = z.infer<typeof EvidenceRowSchema>;
 export type Holdout = z.infer<typeof HoldoutSchema>;
+export type WorkloadIdentity = z.infer<typeof WorkloadIdentitySchema>;
+export type SplitManifestRefs = z.infer<typeof SplitManifestRefsSchema>;
 export type AdapterRecord = z.infer<typeof AdapterRecordSchema>;
 export type PromotionPolicy = z.infer<typeof PromotionPolicySchema>;
 export type AdapterPortfolioRegistry = z.infer<typeof AdapterPortfolioRegistrySchema>;

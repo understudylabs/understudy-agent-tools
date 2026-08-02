@@ -24,6 +24,8 @@ import {
   type EvidenceRow,
   type Holdout,
   type PromotionPolicy,
+  type SplitManifestRefs,
+  type WorkloadIdentity,
 } from "./types.js";
 
 export const DEFAULT_ADAPTER_PORTFOLIO_PATH = join(
@@ -86,6 +88,8 @@ export type RegisterAdapterInput = {
   baseModel: string;
   suite: string;
   method?: AdapterMethod;
+  workload?: WorkloadIdentity;
+  splits?: SplitManifestRefs;
   holdout?: Holdout | null;
 };
 
@@ -103,6 +107,8 @@ export function registerAdapter(
     method: input.method ?? "other",
     status: "draft",
     suite: input.suite,
+    ...(input.workload ? { workload: input.workload } : {}),
+    ...(input.splits ? { splits: input.splits } : {}),
     holdout: input.holdout ?? null,
     evidence: [],
     created_at: timestamp,

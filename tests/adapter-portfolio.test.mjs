@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import { evaluatePromotion } from "../dist/adapter-portfolio/gate.js";
+import { workflowIdentityRefs } from "../dist/adapter-portfolio/contract.js";
 import {
   evaluateAdapterPortfolioStep,
   promotionEvents,
@@ -140,6 +141,30 @@ describe("adapter portfolio", () => {
     const promote = run("promote", "adapter-docs", "--dry-run");
     assert.equal(promote.status, 1);
     assert.equal(JSON.parse(promote.stdout).decision.decision, "blocked");
+  });
+
+  it("keeps canonical executor identity projections structurally holdout-free", () => {
+    const data = candidateFixture();
+    const registry = JSON.parse(readFileSync(data.registryPath));
+    registry.adapters["adapter-a"].workload = {
+      id: "workload-a",
+      dataset_manifest_ref: "artifact://workload-a",
+      dataset_manifest_sha256: sha("workload-manifest"),
+      verifier_environment: "verifier-a",
+      verifier_revision: "rev-1",
+    };
+    registry.adapters["adapter-a"].splits = {
+      train_manifest_ref: "artifact://train-a",
+      dev_manifest_ref: "artifact://dev-a",
+    };
+    saveRegistry(registry, { registryPath: data.registryPath });
+    const adapter = JSON.parse(readFileSync(data.registryPath)).adapters["adapter-a"];
+    const projection = workflowIdentityRefs(adapter);
+    const serialized = JSON.stringify(projection);
+    assert.deepEqual(Object.keys(projection).sort(), ["splits", "workload"]);
+    assert.doesNotMatch(serialized, /holdout|score|row_count/i);
+    assert.equal(projection.workload.dataset_manifest_ref, "artifact://workload-a");
+    assert.equal(projection.splits.dev_manifest_ref, "artifact://dev-a");
   });
 
   it("scores the worst holdout rerun instead of rescuing a failing candidate", () => {

@@ -54,6 +54,27 @@
         "row_count": { "type": "integer", "minimum": 1 }
       }
     },
+    "workload": {
+      "type": "object",
+      "required": ["id", "dataset_manifest_ref", "dataset_manifest_sha256", "verifier_environment", "verifier_revision"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "dataset_manifest_ref": { "type": "string", "minLength": 1 },
+        "dataset_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "verifier_environment": { "type": "string", "minLength": 1 },
+        "verifier_revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "splits": {
+      "type": "object",
+      "required": ["train_manifest_ref", "dev_manifest_ref"],
+      "additionalProperties": false,
+      "properties": {
+        "train_manifest_ref": { "type": "string", "minLength": 1 },
+        "dev_manifest_ref": { "type": "string", "minLength": 1 }
+      }
+    },
     "evidence": {
       "type": "object",
       "required": ["evidence_id", "recorded_at", "subject", "suite", "split", "dataset_sha256", "row_count", "metric", "score", "context"],
@@ -92,6 +113,8 @@
         "method": { "enum": ["sft-lora", "rlvr-grpo", "prompt", "other"] },
         "status": { "enum": ["draft", "candidate", "promoted", "retired"] },
         "suite": { "type": "string", "minLength": 1 },
+        "workload": { "$ref": "#/$defs/workload" },
+        "splits": { "$ref": "#/$defs/splits" },
         "holdout": { "$ref": "#/$defs/holdout" },
         "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidence" } },
         "created_at": { "type": "string", "format": "date-time" },

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   AdapterPortfolioRegistrySchema,
   type AdapterPortfolioRegistry,
+  type AdapterRecord,
 } from "./types.js";
 
 function canonicalize(value: unknown): unknown {
@@ -27,4 +28,15 @@ export function refSha256(value: unknown): string {
 
 export function registrySha256(registry: AdapterPortfolioRegistry): string {
   return refSha256(AdapterPortfolioRegistrySchema.parse(registry));
+}
+
+/**
+ * Canonical executor-boundary identity refs only. This deliberately excludes
+ * the portfolio's sealed holdout, evidence rows, and promotion scores.
+ */
+export function workflowIdentityRefs(adapter: AdapterRecord): Pick<AdapterRecord, "workload" | "splits"> {
+  return {
+    ...(adapter.workload ? { workload: adapter.workload } : {}),
+    ...(adapter.splits ? { splits: adapter.splits } : {}),
+  };
 }
