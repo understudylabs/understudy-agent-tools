@@ -169,7 +169,8 @@ for (const episode of episodes) {
 }
 
 const pairs = [];
-const skipped = { no_winner: 0, no_candidate_decision: 0, replay_unusable: 0, not_outcome_changing: 0 };
+const emittedKeys = new Set();
+const skipped = { no_winner: 0, no_candidate_decision: 0, replay_unusable: 0, not_outcome_changing: 0, duplicate: 0 };
 
 for (const [taskId, entries] of [...byTask.entries()].sort()) {
   const winners = entries.filter((entry) => entry.score === 1 && entry.forbidden_effects === 0);
@@ -201,6 +202,20 @@ for (const [taskId, entries] of [...byTask.entries()].sort()) {
         skipped.not_outcome_changing += 1;
         continue;
       }
+      // Sampled siblings often land on the same wording; the same triple twice
+      // is one preference, not two.
+      const key = createHash("sha256")
+        .update(JSON.stringify([
+          winner.prefix.map((message) => message.content),
+          winner.transcript[winner.decisionIndex].content,
+          loser.transcript[loser.decisionIndex].content,
+        ]))
+        .digest("hex");
+      if (emittedKeys.has(key)) {
+        skipped.duplicate += 1;
+        continue;
+      }
+      emittedKeys.add(key);
       const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
       pairs.push({
         task_id: taskId,
