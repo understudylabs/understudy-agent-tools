@@ -266,3 +266,26 @@ contract scorer. Tier-1 boundary: rollouts whose tool effects are not
 observable are recorded with the `app_replay_unobserved` anomaly — honest
 partial evidence, never fabricated scores. Authoring guide:
 [`docs/app-harness.md`](../docs/app-harness.md).
+
+## `understudy.executor-submit.v1` and the executor receipts
+
+[`understudy.executor-submit.v1.schema.json`](understudy.executor-submit.v1.schema.json)
+is the payload a durable experiment Workflow hands to an execution backend
+(`modal`, `wafer`, `fireworks`, `spark`, `fixture`): hashed candidate policy,
+workload/verifier identity and revision, hash-bound train and dev manifest
+refs, and the run limits. It is refs-and-hashes only — raw prompts, traces,
+labels, credentials and weights cannot be expressed in it, and **holdout is
+structurally absent**, so an executor cannot be handed a sealed split even by
+mistake.
+
+The companion receipts
+[`understudy.executor-job-ref.v1`](understudy.executor-job-ref.v1.schema.json),
+[`understudy.executor-job-status.v1`](understudy.executor-job-status.v1.schema.json),
+[`understudy.executor-cancellation-receipt.v1`](understudy.executor-cancellation-receipt.v1.schema.json)
+and
+[`understudy.executor-usage-receipt.v1`](understudy.executor-usage-receipt.v1.schema.json)
+carry the job identity (including its deterministic idempotency key), observed
+state, the disposition of a cancellation, and usage reconciled with an explicit
+`evidence_scope` that keeps budget, estimate, upper bound and actual charge
+distinguishable. The Spark implementation of this boundary is
+[`docs/spark-executor-contract.md`](../docs/spark-executor-contract.md).

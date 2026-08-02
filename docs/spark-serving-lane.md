@@ -1,9 +1,12 @@
 # Spark serving lane
 
-This is the paused, ready-to-run recipe for the self-hosted NVIDIA DGX Spark
-lane. Enrollment is intentionally not performed by this repository today:
-the operator must provide `TAILSCALE_AUTH_KEY` as an organization secret before
+This is the container recipe for the self-hosted NVIDIA DGX Spark lane. The
+operator must provide `TAILSCALE_AUTH_KEY` as an organization secret before
 running the bootstrap command.
+
+It assumes Docker with GPU access. An unprivileged automation account does not
+have that, and does not need it: the verified no-sudo, no-Docker path is
+[`spark-userspace-vllm.md`](spark-userspace-vllm.md).
 
 ## Ground truth and prerequisites
 
@@ -68,8 +71,7 @@ ssh -i ~/.ssh/id_ed25519_devin_spark devin@100.100.181.10 true
 
 ## Enroll this box and smoke-test
 
-Enrollment remains paused until the organization secret exists. Once it does,
-run one command from this repository:
+With the organization secret present, run one command from this repository:
 
 ```bash
 export TAILSCALE_AUTH_KEY='provided-by-the-organization-secret-store'
@@ -184,10 +186,15 @@ cannot attach adapters, use BF16 as the fallback with a higher
 `--gpu-memory-utilization` only after measuring available memory and with a
 reduced `--max-model-len` (for example 32768) and fewer concurrent sequences.
 
-It is also **UNVERIFIED — verify on hardware** whether the requested adapter
-targets are supported: vLLM LoRA generally does not cover MoE expert weights,
-so adapters should target attention/dense projections such as `q_proj`,
-`k_proj`, `v_proj`, `o_proj`, and supported MLP projections.
+Adapter target support is no longer an open question, and the answer is
+narrower than it looks. vLLM 0.26.0 does ship fused-MoE LoRA and
+`NemotronHForCausalLM` does declare `SupportsLoRA`, but an adapter trained with
+`target_modules: "all-linear"` on this base model still cannot be served: the
+Mamba2 `gate_proj`/`x_proj` factors and the stacked routed-expert tensors have
+no representation in vLLM's module surface. Constrain adapters to `q_proj`,
+`k_proj`, `v_proj`, `o_proj`, `up_proj`, and `down_proj` **at training time**.
+The evidence is in
+[`nemotron-h-lora-vllm-compatibility.md`](nemotron-h-lora-vllm-compatibility.md).
 
 No Nemotron-3-Nano GB10 tokens-per-second measurement was found in the checked
 Spark lab result files or baseline documents. Therefore no measured serving
