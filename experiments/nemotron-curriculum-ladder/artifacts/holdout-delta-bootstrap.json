@@ -1,0 +1,39 @@
+{
+  "schema_version": "nemotron.curriculum_ladder.holdout_delta_bootstrap.v1",
+  "split": "holdout",
+  "task_count": 60,
+  "bootstrap_replicates": 20000,
+  "seed": 20260722,
+  "baseline": "holdout-base-v1.jsonl",
+  "deltas": {
+    "sft-v1": {
+      "mean": -0.128175,
+      "paired_se": 0.054941,
+      "ci_95": [
+        -0.235516,
+        -0.022619
+      ],
+      "resolvable_from_zero": true
+    },
+    "grpo-v1": {
+      "mean": -0.114286,
+      "paired_se": 0.053806,
+      "ci_95": [
+        -0.219246,
+        -0.010317
+      ],
+      "resolvable_from_zero": true
+    },
+    "dpo-v1": {
+      "mean": -0.115675,
+      "paired_se": 0.053956,
+      "ci_95": [
+        -0.22123,
+        -0.011508
+      ],
+      "resolvable_from_zero": true
+    }
+  },
+  "method": "paired bootstrap over per-task score differences; percentile interval",
+  "claim_boundary": "Single-seed fixture estimate; uncertainty describes these 60 tasks and does not establish production behavior."
+}

@@ -24,17 +24,30 @@ policies, while the hard tier falls from `0.363` to approximately
 `0.18–0.20`. This became visible only after the saturated v1 fixture was
 replaced by the harder v2 split.
 
-Relative to base + `nemotron-v1`, the marginal overall changes are:
+Relative to base + `nemotron-v1`, the marginal overall changes and paired
+95% bootstrap intervals are:
 
-| Transition | Overall delta |
-|---|---:|
-| SFT + v1 | -0.1281 |
-| GRPO + v1 | -0.1143 |
-| DPO + v1 | -0.1156 |
-| Base + GEPA | -0.3025 |
-| SFT + GEPA | -0.1327 |
-| GRPO + GEPA | -0.0783 |
-| DPO + GEPA | -0.1327 |
+| Transition | Overall delta | Paired 95% interval | Resolvable from zero |
+|---|---:|---:|---|
+| SFT + v1 | -0.1282 | [-0.2355, -0.0226] | Yes |
+| GRPO + v1 | -0.1143 | [-0.2192, -0.0103] | Yes |
+| DPO + v1 | -0.1157 | [-0.2212, -0.0115] | Yes |
+| Base + GEPA | -0.3025 | not bootstrapped | not estimated |
+| SFT + GEPA | -0.1327 | not bootstrapped | not estimated |
+| GRPO + GEPA | -0.0783 | not bootstrapped | not estimated |
+| DPO + GEPA | -0.1327 | not bootstrapped | not estimated |
+
+The intervals are paired bootstrap percentile intervals over the 60
+per-task score differences, with 20,000 replicates and seed `20260722`.
+The machine-readable calculation is
+`artifacts/holdout-delta-bootstrap.json`. The three v1-prompt tuned-versus-
+base deltas remain negative at this task-level resolution. This is still a
+single-seed fixture estimate, not a claim about all future tasks.
+
+The mechanism is also important: the adapters were trained on the v1 train
+split. The v2 hard tier is out-of-distribution for those adapters, so
+in-distribution polish on v1-style tasks does not imply preservation of
+generalization to the harder v2 workflows.
 
 The GEPA prompt is a lane-dependent transfer result, not a statement that
 the prompt is intrinsically bad. It was a clear win on the Fireworks lane,
@@ -173,10 +186,13 @@ carry `evidence_scope`. The evaluator usage endpoint returned empty deltas
 for the local ladder receipts, so token-derived costs are marked as measured
 local token accounting rather than provider-account billing.
 
-The arm created no on-demand deployment. Its Tinker sampler processes were
-ephemeral local services and have been stopped. No Fireworks deployment or
-other provider deployment was created by this arm, so there is nothing to
-tear down.
+The local process and artifact audit found no lingering sampler or shim
+processes, no listening sampler ports, and no deployment-creation command in
+this arm's scripts or receipts. The arm's sampling clients were ephemeral
+local services and have been stopped. Provider-account inventory was not
+available to this local contract-only build, so the scoped claim is: no
+on-demand deployment was created by this arm, and there is nothing identified
+by this arm to tear down.
 
 ## Limitations and claim boundary
 
@@ -210,7 +226,7 @@ hardcoding it.
 
 The canonical schema's `executor` enum does not contain `tinker`; this adapter
 therefore registers as `fixture` and does not smuggle `tinker` into another
-field. The enum gap is explicitly left for PR #545 to resolve.
+field. The enum gap is left for the orchestration contract owner to resolve.
 
 ## Artifacts
 

@@ -4,6 +4,29 @@ import { fileURLToPath } from "node:url";
 
 export type JsonSchema = Record<string, unknown>;
 export type ValidationResult = { valid: true } | { valid: false; errors: string[] };
+export const SUPPORTED_SCHEMA_KEYWORDS = new Set([
+  "$schema",
+  "$id",
+  "type",
+  "const",
+  "enum",
+  "anyOf",
+  "oneOf",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "format",
+  "minimum",
+  "maximum",
+  "minItems",
+  "maxItems",
+  "items",
+  "properties",
+  "propertyNames",
+  "required",
+  "additionalProperties",
+  "default",
+]);
 
 const CONTRACT_DIR = fileURLToPath(
   new URL("../schemas/vendor/understudy-experiment-v1/", import.meta.url),
@@ -76,16 +99,26 @@ function validateNode(value: unknown, schema: JsonSchema, path: string, errors: 
       value.forEach((item, index) => validateNode(item, schema.items as JsonSchema, `${path}[${index}]`, errors));
     }
   }
-  if (value !== null && typeof value === "object" && !Array.isArray(value) && schema.properties) {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (schema.properties || schema.propertyNames || schema.additionalProperties !== undefined)
+  ) {
     const object = value as Record<string, unknown>;
     const required = Array.isArray(schema.required) ? schema.required as string[] : [];
     for (const key of required) if (!(key in object)) errors.push(`${path}.${key} is required`);
-    const properties = schema.properties as Record<string, JsonSchema>;
+    const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(object)) if (!(key in properties)) errors.push(`${path}.${key} is not allowed`);
     }
     for (const [key, child] of Object.entries(properties)) {
       if (key in object) validateNode(object[key], child, `${path}.${key}`, errors);
+    }
+    if (schema.propertyNames && typeof schema.propertyNames === "object") {
+      for (const key of Object.keys(object)) {
+        validateNode(key, schema.propertyNames as JsonSchema, `${path} property name ${key}`, errors);
+      }
     }
   }
 }
@@ -96,13 +129,32 @@ export function validateWorkflowContract(value: unknown, schema: JsonSchema): Va
   return errors.length === 0 ? { valid: true } : { valid: false, errors };
 }
 
+export function findUnsupportedSchemaKeywords(schema: JsonSchema): string[] {
+  const unsupported = new Set<string>();
+  const visit = (value: unknown, context: "schema" | "properties" | "other"): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, "schema"));
+      return;
+    }
+    if (value === null || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (context === "schema" && !SUPPORTED_SCHEMA_KEYWORDS.has(key)) unsupported.add(key);
+      visit(child, key === "properties" ? "properties" : "schema");
+    }
+  };
+  visit(schema, "schema");
+  return [...unsupported].sort();
+}
+
 export interface LadderCell {
   experimentId: string;
   candidateId: string;
   attempt: number;
   model: string;
+  modelRevision: string;
   checkpointRef: string;
   promptSha256: string;
+  renderer: string;
   workloadId: string;
   datasetManifestRef: string;
   datasetManifestSha256: string;
@@ -129,9 +181,9 @@ export function cellToSubmitPayload(cell: LadderCell): Record<string, unknown> {
       candidate_id: cell.candidateId,
       executor: "fixture",
       model: cell.model,
-      model_revision: "nemotron3_disable_thinking",
+      model_revision: cell.modelRevision,
       policy_ref: cell.checkpointRef,
-      policy_sha256: cell.promptSha256,
+      policy_sha256: policySha256(cell),
     },
     attempt: cell.attempt,
     workload: {
@@ -202,6 +254,7 @@ export interface TerminalResultInput {
   cancellationReceipts: Record<string, unknown>[];
   artifactRefs: string[];
   claimBoundary: string;
+  requestIsolationProven: boolean;
 }
 
 export function buildTerminalResult(input: TerminalResultInput): Record<string, unknown> {
@@ -227,7 +280,7 @@ export function buildTerminalResult(input: TerminalResultInput): Record<string, 
     holdout_clean: input.holdoutClean,
     budget_usd: input.budgetUsd,
     usage: input.usage,
-    request_isolation_proven: true,
+    request_isolation_proven: input.requestIsolationProven,
     quality_evidence: {
       status: input.qualityStatus,
       reason: input.qualityReason,
@@ -257,9 +310,32 @@ function stableIdempotencyKey(cell: LadderCell): string {
   return createHash("sha256").update(binding).digest("hex");
 }
 
+function policySha256(cell: LadderCell): string {
+  const descriptor = JSON.stringify({
+    checkpoint_ref: cell.checkpointRef,
+    prompt_sha256: cell.promptSha256,
+    renderer: cell.renderer,
+  });
+  return createHash("sha256").update(descriptor).digest("hex");
+}
+
 export class FixtureExperimentExecutor {
-  private readonly jobs = new Map<string, { ref: JobRef; state: "queued" | "running" | "succeeded" | "failed" | "cancelled"; usage?: UsageReceipt }>();
+  private readonly jobs = new Map<string, {
+    ref: JobRef;
+    state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+    payloadSha256: string;
+    usage?: UsageReceipt;
+  }>();
   private readonly emittedEvents: Record<string, unknown>[] = [];
+  private readonly now: () => number;
+
+  constructor(now: () => number = Date.now) {
+    this.now = now;
+  }
+
+  private timestamp(): string {
+    return new Date(this.now()).toISOString();
+  }
 
   submit(cell: LadderCell): JobRef {
     const payload = cellToSubmitPayload(cell);
@@ -270,19 +346,22 @@ export class FixtureExperimentExecutor {
       executor: "fixture",
       job_id: `fixture-${idempotencyKey.slice(0, 24)}`,
       idempotency_key: idempotencyKey,
-      submitted_at: new Date(0).toISOString(),
+      submitted_at: this.timestamp(),
     };
     const validation = validateWorkflowContract(ref, loadWorkflowSchema("jobRef"));
     if (!validation.valid) throw new Error(`invalid job ref: ${validation.errors.join("; ")}`);
-    this.jobs.set(idempotencyKey, { ref, state: "queued" });
-    void payload;
+    this.jobs.set(idempotencyKey, {
+      ref,
+      state: "queued",
+      payloadSha256: createHash("sha256").update(JSON.stringify(payload)).digest("hex"),
+    });
     return ref;
   }
 
   inspect(job: JobRef): Record<string, unknown> {
     const entry = [...this.jobs.values()].find((candidate) => candidate.ref.job_id === job.job_id);
     if (!entry) throw new Error(`unknown job ${job.job_id}`);
-    const status = { state: entry.state, observed_at: new Date(0).toISOString() };
+    const status = { state: entry.state, observed_at: this.timestamp() };
     const validation = validateWorkflowContract(status, loadWorkflowSchema("jobStatus"));
     if (!validation.valid) throw new Error(`invalid job status: ${validation.errors.join("; ")}`);
     return status;
@@ -293,7 +372,7 @@ export class FixtureExperimentExecutor {
     const receipt = {
       job,
       disposition: entry ? (entry.state === "cancelled" ? "already_terminal" : "cancelled") : "not_found",
-      observed_at: new Date(0).toISOString(),
+      observed_at: this.timestamp(),
     };
     if (entry && entry.state !== "cancelled") entry.state = "cancelled";
     const validation = validateWorkflowContract(receipt, loadWorkflowSchema("cancellation"));
@@ -311,11 +390,17 @@ export class FixtureExperimentExecutor {
   }
 
   emitEvent(event: Record<string, unknown>): Record<string, unknown> {
-    const serialized = JSON.stringify(event).toLowerCase();
-    if (/(prompt|transcript|task_content|credential|secret|weight)/.test(serialized)) {
-      throw new Error("event contains redaction-sensitive content");
+    const eventSchema = loadWorkflowSchema("event");
+    const allowedKeys = new Set(
+      (eventSchema.oneOf as JsonSchema[]).flatMap((branch) =>
+        Object.keys((branch.properties ?? {}) as Record<string, unknown>),
+      ),
+    );
+    const unknownKeys = Object.keys(event).filter((key) => !allowedKeys.has(key));
+    if (unknownKeys.length > 0) {
+      throw new Error(`event contains unapproved fields: ${unknownKeys.join(", ")}`);
     }
-    const validation = validateWorkflowContract(event, loadWorkflowSchema("event"));
+    const validation = validateWorkflowContract(event, eventSchema);
     if (!validation.valid) throw new Error(`invalid experiment event: ${validation.errors.join("; ")}`);
     this.emittedEvents.push(structuredClone(event));
     return event;
@@ -326,12 +411,17 @@ export class FixtureExperimentExecutor {
   }
 }
 
-export function eventBase(experimentId: string, sequence: number, type: string): Record<string, unknown> {
+export function eventBase(
+  experimentId: string,
+  sequence: number,
+  type: string,
+  now: () => number = Date.now,
+): Record<string, unknown> {
   return {
     schema_version: "understudy.experiment-event.v1",
     experiment_id: experimentId,
     sequence,
-    occurred_at: new Date(0).toISOString(),
+    occurred_at: new Date(now()).toISOString(),
     type,
   };
 }

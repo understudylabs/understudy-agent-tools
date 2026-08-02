@@ -8,6 +8,7 @@ const {
   buildTerminalResult,
   cellToSubmitPayload,
   eventBase,
+  findUnsupportedSchemaKeywords,
   loadWorkflowSchema,
   validateWorkflowContract,
 } = await import("../dist/workflow-executor.js");
@@ -29,8 +30,10 @@ const cell = {
   candidateId: "sft-epoch4",
   attempt: 0,
   model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  modelRevision: "model-revision-1",
   checkpointRef: "tinker://example/checkpoint",
   promptSha256: "a".repeat(64),
+  renderer: "nemotron3_disable_thinking",
   workloadId: "synthetic-workflow-shapes",
   datasetManifestRef: "fixture://synthetic-workflow-shapes",
   datasetManifestSha256: "b".repeat(64),
@@ -54,12 +57,25 @@ test("vendored schemas match their provenance hashes", async () => {
   }
 });
 
+test("vendored schemas use only validator-supported keywords", async () => {
+  for (const file of files) {
+    const schema = JSON.parse(await readFile(new URL(file, contractDir), "utf8"));
+    assert.deepEqual(findUnsupportedSchemaKeywords(schema), [], file);
+  }
+});
+
 test("cell payload validates against the canonical submit schema and omits holdout", () => {
   const payload = cellToSubmitPayload(cell);
   assert.equal(validateWorkflowContract(payload, loadWorkflowSchema("submit")).valid, true);
   assert.equal("holdout" in payload.splits, false);
   assert.equal(payload.candidate.executor, "fixture");
   assert.notEqual(payload.candidate.executor, "tinker");
+  assert.equal(payload.candidate.model_revision, cell.modelRevision);
+  assert.notEqual(payload.candidate.policy_sha256, cell.promptSha256);
+  assert.notEqual(
+    payload.candidate.policy_sha256,
+    cellToSubmitPayload({ ...cell, checkpointRef: "tinker://example/other" }).candidate.policy_sha256,
+  );
 });
 
 test("holdout-bearing cells are rejected before submission", () => {
@@ -67,17 +83,18 @@ test("holdout-bearing cells are rejected before submission", () => {
 });
 
 test("submit is idempotent and binds split, prompt, and checkpoint identity", () => {
-  const executor = new FixtureExperimentExecutor();
+  const executor = new FixtureExperimentExecutor(() => 0);
   const first = executor.submit(cell);
   const retry = executor.submit(cell);
   assert.deepEqual(retry, first);
+  assert.equal(first.submitted_at, new Date(0).toISOString());
   assert.notEqual(executor.submit({ ...cell, attempt: 1 }).job_id, first.job_id);
   assert.notEqual(executor.submit({ ...cell, promptSha256: "f".repeat(64) }).job_id, first.job_id);
   assert.notEqual(executor.submit({ ...cell, checkpointRef: "tinker://example/other" }).job_id, first.job_id);
 });
 
 test("cancel and usage reconciliation return canonical receipts", () => {
-  const executor = new FixtureExperimentExecutor();
+  const executor = new FixtureExperimentExecutor(() => 0);
   const job = executor.submit(cell);
   const cancellation = executor.cancel(job);
   assert.equal(validateWorkflowContract(cancellation, loadWorkflowSchema("cancellation")).valid, true);
@@ -96,7 +113,7 @@ test("cancel and usage reconciliation return canonical receipts", () => {
 });
 
 test("redacted lifecycle events validate and reject sensitive content", () => {
-  const executor = new FixtureExperimentExecutor();
+  const executor = new FixtureExperimentExecutor(() => 0);
   const base = eventBase("nemotron-transfer", 0, "experiment.accepted");
   executor.emitEvent({ ...base, budget_usd: 1, holdout_sealed: true });
   executor.emitEvent({ ...eventBase("nemotron-transfer", 1, "experiment.phase_changed"), phase: "evaluating" });
@@ -107,13 +124,27 @@ test("redacted lifecycle events validate and reject sensitive content", () => {
     state: "succeeded",
   });
   executor.emitEvent({
+    ...eventBase("nemotron-transfer", 4, "candidate.state_changed"),
+    candidate_id: "sft-epoch4",
+    state: "running",
+    job: {
+      executor: "fixture",
+      job_id: "tinker://example/sampler_weights/000020",
+      idempotency_key: "prompt_sha256-aaaaaaaa",
+      submitted_at: new Date(0).toISOString(),
+    },
+  });
+  executor.emitEvent({
     ...eventBase("nemotron-transfer", 3, "score.snapshot"),
     candidate_id: "sft-epoch4",
     metrics: { mean: 0.5 },
     frontier: false,
   });
-  assert.equal(executor.events().length, 4);
-  assert.throws(() => executor.emitEvent({ ...base, budget_usd: 1, holdout_sealed: true, prompt: "redact" }), /redaction/);
+  assert.equal(executor.events().length, 5);
+  assert.throws(
+    () => executor.emitEvent({ ...base, budget_usd: 1, holdout_sealed: true, transcript: "redact" }),
+    /unapproved fields/,
+  );
 });
 
 test("terminal result preserves holdout and usage evidence semantics", () => {
@@ -150,8 +181,10 @@ test("terminal result preserves holdout and usage evidence semantics", () => {
     cancellationReceipts: [],
     artifactRefs: ["artifact://summary"],
     claimBoundary: "train+dev only; holdout sealed",
+    requestIsolationProven: false,
   });
   assert.equal(result.state, "holdout_locked");
   assert.equal(result.holdout_executed, false);
+  assert.equal(result.request_isolation_proven, false);
   assert.equal(result.usage.evidence_scope, "account_window");
 });

@@ -1,7 +1,8 @@
 {
-  "source_repo": "understudylabs/understudy\u002dplatform",
+  "source_repo": "internal experiment-orchestration contract source",
   "source_branch": "yolo/vercel-experiment-orchestrator",
   "source_commit": "c299ca4",
+  "validator_note": "The local validator implements the keyword set covered by the vendored schemas; tests fail if a new schema keyword is introduced.",
   "files": {
     "experiment-event.json": "63f3b52377e13b59958b78f2ab050249cbd827d067756412d6bab3e7178b93b4",
     "experiment-executor-cancellation-receipt.json": "21d5d8100017b3788a6b6907ca9089b32f95fce127659db59e4403771caac5a3",
