@@ -161,8 +161,10 @@ integrity rules that keep infrastructure failures out of the ranking.
    an in-process fuse.
 6. **No fresh holdout**: dev-only run. The original holdout is
    **observed/contaminated** (incumbent 0.906 / student 0.313 already seen), so it is
-   not sealed promotion evidence. `holdout_executed=true` overall,
-   `gepa_holdout_executed=false`. A final meet/beat claim needs a newly hash-bound
+   not sealed promotion evidence. This run touches **train/dev only**, so the
+   receipt records `holdout_executed=false` and `gepa_holdout_executed=false`
+   (no historical holdout provenance is asserted here). A final meet/beat claim
+   needs a newly hash-bound
    untouched holdout (see `FRESH-HOLDOUT-PLAN.md`) — **not built or scored here**.
 
 ---

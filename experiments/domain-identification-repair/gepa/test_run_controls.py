@@ -25,6 +25,7 @@ from optimize import (  # noqa: E402
     ProgressLedger,
     RunFuse,
     assert_split_allowed,
+    build_receipt,
     classify_error,
     prepare_run_dir,
     summarize_samples,
@@ -300,6 +301,29 @@ def test_cost_coverage_labels_and_no_total_claim():
     check("reflection_spent_usd null when unmetered", s2["reflection_spent_usd"] is None)
 
 
+# --- receipt construction: this is a train/dev-only run ---------------------
+def test_receipt_holdout_flags_are_false():
+    fuse = RunFuse(230, 15, 9000, max_reflection_cost_usd=None,
+                   allow_unmetered_student=True, spend_authorization_usd=1000.0).preflight()
+    controller = ConcurrencyController(start=24)
+    r = build_receipt(
+        run_id="synthetic-run", run_dir="/tmp/synthetic-run", seed=178561,
+        dspy_version="0.0.0", metric_budget=72, samples_per_eval=3,
+        candidates_tried=1, best_dev_score_gepa_observed=0.5,
+        train_tasks=24, dev_tasks=8,
+        train_split_sha256="synthetic-train", dev_split_sha256="synthetic-dev",
+        wall_clock_s=1, reflection_key_source="UNDERSTUDY_API_KEY",
+        fuse=fuse, controller=controller, spend_authorization_usd=1000.0)
+    check("holdout_executed is False for this train/dev-only run", r["holdout_executed"] is False)
+    check("gepa_holdout_executed is False", r["gepa_holdout_executed"] is False)
+    check("no free-floating historical holdout provenance key",
+          not any("historical" in k or "holdout_observed" in k for k in r))
+    check("receipt emits no total-cost claim", r["total_cost_usd"] is None)
+    check("cost_coverage is out_of_band_clickhouse", r["cost_coverage"] == "out_of_band_clickhouse")
+    check("in_process_dollar_fuse False", r["in_process_dollar_fuse"] is False)
+    check("spend_authorization_usd recorded", r["spend_authorization_usd"] == 1000.0)
+
+
 # --- service pressure: failures NEVER enter scores/reflection --------------
 def test_classify_error_mapping():
     check("429 -> 429", classify_error(err_429()) == "429")
@@ -480,6 +504,7 @@ def main():
         test_cost_telemetry_unreadable_fails_closed,
         test_unmetered_student_requires_explicit_ack,
         test_cost_coverage_labels_and_no_total_claim,
+        test_receipt_holdout_flags_are_false,
         test_classify_error_mapping,
         test_concurrency_starts_and_caps_at_24,
         test_stepdown_on_error_pressure_without_baseline,

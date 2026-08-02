@@ -733,6 +733,54 @@ class ContractAdapter:
         return {"system_prompt": records[:8]}
 
 
+def build_receipt(*, run_id, run_dir, seed, dspy_version, metric_budget,
+                  samples_per_eval, candidates_tried, best_dev_score_gepa_observed,
+                  train_tasks, dev_tasks, train_split_sha256, dev_split_sha256,
+                  wall_clock_s, reflection_key_source, fuse, controller,
+                  spend_authorization_usd):
+    """Pure receipt builder (no I/O, no providers) so the invariants below are
+    unit-testable. This is a TRAIN/DEV-ONLY GEPA run: it never touches a holdout,
+    so both holdout flags are False. No historical holdout provenance is asserted
+    here (that would require a hash-bound prior receipt reference)."""
+    fuses = fuse.snapshot()
+    return {
+        "schema_version": "understudy.gepa_receipt.v1",
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+        "seed": seed,
+        "dspy_version": dspy_version,
+        "gepa_version": "0.0.27",
+        "student_model": "openai/nemotron-3-nano-base",
+        "reflection_model": "openai/kimi-k3",
+        "metric_budget": metric_budget,
+        "samples_per_eval": samples_per_eval,
+        "candidates_tried": candidates_tried,
+        "best_dev_score_gepa_observed": best_dev_score_gepa_observed,
+        "train_tasks": train_tasks,
+        "dev_tasks": dev_tasks,
+        "train_split_sha256": train_split_sha256,
+        "dev_split_sha256": dev_split_sha256,
+        # This run only ever evaluates train/dev; no holdout is executed.
+        "holdout_executed": False,
+        "gepa_holdout_executed": False,
+        "fixture": "domain-identification-offline-v1",
+        "wall_clock_s": wall_clock_s,
+        "reflection_key_source": reflection_key_source,
+        # Cost model: no synchronous in-process $ fuse in the planned run.
+        # Reflection $ is observed out-of-band in ClickHouse (5-min lag);
+        # student (Tinker) compute is unmetered. total_cost_usd stays null until
+        # final out-of-band reconciliation.
+        "cost_coverage": fuse.cost_coverage,
+        "in_process_dollar_fuse": fuse.in_process_dollar_fuse,
+        "total_cost_usd": None,
+        "student_compute_cost_usd": None,
+        "reflection_cost_usd": fuses["reflection_spent_usd"],
+        "spend_authorization_usd": spend_authorization_usd,
+        "fuses": fuses,
+        "concurrency": controller.snapshot(),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sidecar", default="http://127.0.0.1:8787")
@@ -848,41 +896,25 @@ def main():
     result = gepa.optimize(**optimizer_kwargs)
     prompt = result.best_candidate["system_prompt"]
     (run_dir / "optimized-system-prompt.txt").write_text(prompt.rstrip() + "\n")
-    receipt = {
-        "schema_version": "understudy.gepa_receipt.v1",
-        "run_id": run_id,
-        "run_dir": str(run_dir),
-        "seed": args.seed,
-        "dspy_version": dspy.__version__,
-        "gepa_version": "0.0.27",
-        "student_model": "openai/nemotron-3-nano-base",
-        "reflection_model": "openai/kimi-k3",
-        "metric_budget": args.max_metric_calls,
-        "samples_per_eval": args.samples_per_eval,
-        "candidates_tried": len(result.candidates),
-        "best_dev_score_gepa_observed": max(result.val_aggregate_scores),
-        "train_tasks": len(train),
-        "dev_tasks": len(dev),
-        "train_split_sha256": call_json(args.sidecar, "/pool?split=train")["split_sha256"],
-        "dev_split_sha256": call_json(args.sidecar, "/pool?split=dev")["split_sha256"],
-        "holdout_executed": True,
-        "gepa_holdout_executed": False,
-        "fixture": "domain-identification-offline-v1",
-        "wall_clock_s": round(time.time() - started),
-        "reflection_key_source": "UNDERSTUDY_API_KEY" if os.environ.get("UNDERSTUDY_API_KEY") else "FIREWORKS_API_KEY",
-        # Cost model: no synchronous in-process $ fuse in the planned run.
-        # Reflection $ is observed out-of-band in ClickHouse (5-min lag);
-        # student (Tinker) compute is unmetered. total_cost_usd stays null until
-        # final out-of-band reconciliation.
-        "cost_coverage": fuse.cost_coverage,
-        "in_process_dollar_fuse": fuse.in_process_dollar_fuse,
-        "total_cost_usd": None,
-        "student_compute_cost_usd": None,
-        "reflection_cost_usd": (fuse.snapshot()["reflection_spent_usd"]),
-        "spend_authorization_usd": args.spend_authorization_usd,
-        "fuses": fuse.snapshot(),
-        "concurrency": controller.snapshot(),
-    }
+    receipt = build_receipt(
+        run_id=run_id,
+        run_dir=run_dir,
+        seed=args.seed,
+        dspy_version=dspy.__version__,
+        metric_budget=args.max_metric_calls,
+        samples_per_eval=args.samples_per_eval,
+        candidates_tried=len(result.candidates),
+        best_dev_score_gepa_observed=max(result.val_aggregate_scores),
+        train_tasks=len(train),
+        dev_tasks=len(dev),
+        train_split_sha256=call_json(args.sidecar, "/pool?split=train")["split_sha256"],
+        dev_split_sha256=call_json(args.sidecar, "/pool?split=dev")["split_sha256"],
+        wall_clock_s=round(time.time() - started),
+        reflection_key_source=("UNDERSTUDY_API_KEY" if os.environ.get("UNDERSTUDY_API_KEY") else "FIREWORKS_API_KEY"),
+        fuse=fuse,
+        controller=controller,
+        spend_authorization_usd=args.spend_authorization_usd,
+    )
     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     write_latest_pointer(args.runs_root, run_dir)
     print(json.dumps(receipt, indent=2))
