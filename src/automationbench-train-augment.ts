@@ -10,6 +10,7 @@ import {
   finish,
   getTask,
   parseToolCalls,
+  PERSONA_COUNT,
   registerAugmentedTasks,
   reset,
   rollout,
@@ -152,7 +153,7 @@ function buildCandidateTasks(variantsPerFamily: number): { tasks: Task[]; family
     for (let cycle = 0; cycle < variantsPerFamily; cycle += 1) {
       const instance = cycle % 4;
       const offsetIndex = Math.floor(cycle / 4);
-      const offset = (familyIndex * 7 + instance * 5 + (offsetIndex + 1) * RESET_SEED) % 24;
+      const offset = (familyIndex * 7 + instance * 5 + (offsetIndex + 1) * RESET_SEED) % PERSONA_COUNT;
       const authored = authorFamilyCase(slug, instance, offset);
       const task: Task = {
         taskId: `simple-api-${slug}-aug-${String(cycle + 1).padStart(3, "0")}`,

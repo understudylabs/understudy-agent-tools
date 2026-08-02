@@ -47,7 +47,7 @@ from `src/`. For cycle `0..23`:
 ```text
 instance = cycle % 4
 offsetIndex = floor(cycle / 4)
-offset = (familyIndex * 7 + instance * 5 + (offsetIndex + 1) * 7) % 24
+offset = (familyIndex * 7 + instance * 5 + (offsetIndex + 1) * RESET_SEED) % PERSONA_COUNT
 ```
 
 Only the four frozen TRAIN phrasings (`instance` 0–3) are authored. Dev and

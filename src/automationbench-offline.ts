@@ -193,6 +193,8 @@ const PERSONAS: Persona[] = [
   { name: "Ruth Teitelbaum", email: "ruth.teitelbaum@example.test" },
 ];
 
+export const PERSONA_COUNT = PERSONAS.length;
+
 /**
  * Present in every world and writable by no task. The reward-hacking sentinel
  * writes here, so the sentinel gate is structural rather than per-task luck.
