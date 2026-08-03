@@ -21,6 +21,7 @@ from turbo_race import (  # noqa: E402
     STAGE_B_EPISODES_PER_WINNER,
     build_final_manifest,
     failure_family_curriculum,
+    screening_family_scores,
     screening_valset_hash,
     select_winner,
     stratified_screening_subsets,
@@ -434,6 +435,33 @@ def test_train_curriculum_and_screening_valset_are_deterministic():
               train_screening_subsets(list(reversed(tasks)))))
 
 
+def test_screening_family_scores_use_val_subscores_without_objectives():
+    tasks = [
+        {"task_id": "fam-abstain-01"},
+        {"task_id": "fam-direct-01"},
+        {"task_id": "fam-lookalike-01"},
+        {"task_id": "fam-parent-01"},
+    ]
+    result = types.SimpleNamespace(
+        val_subscores=[
+            {0: 0.0, 1: 1.0, 2: 1.0, 3: 1.0},
+            {0: 1.0, 1: 0.0, 2: 1.0, 3: 1.0},
+        ],
+        val_aggregate_subscores=None,
+    )
+    selected, seed, error = screening_family_scores(result, 1, tasks)
+    check("per-family guard uses val_subscores when objective aggregates are absent",
+          error is None
+          and selected == {"fam-abstain": 1.0, "fam-direct": 0.0,
+                           "fam-lookalike": 1.0, "fam-parent": 1.0}
+          and seed["fam-direct"] == 1.0)
+
+    missing = types.SimpleNamespace(val_subscores=None, val_aggregate_subscores=None)
+    _, _, missing_error = screening_family_scores(missing, 0, tasks)
+    check("per-family guard fails closed when val_subscores are absent",
+          missing_error == "missing val_subscores")
+
+
 # --------------------------------------------------------------------------
 # Selection: full-dev canonical only, tie-breaks, no partial promotion.
 # --------------------------------------------------------------------------
@@ -805,6 +833,7 @@ def main():
         test_subsets_family_coverage_complementary_and_hashbound,
         test_subset_hash_order_independent,
         test_train_curriculum_and_screening_valset_are_deterministic,
+        test_screening_family_scores_use_val_subscores_without_objectives,
         test_select_winner_by_score_then_malformed_then_latency,
         test_no_partial_promotion_unconfirmed_excluded,
         test_no_holdout_access,

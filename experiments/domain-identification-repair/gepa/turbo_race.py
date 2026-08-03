@@ -401,9 +401,14 @@ def acceptance_criterion_for_strategy(strategy):
     This only controls the screening candidate pool; canonical dev k=3 remains
     the sole promotion gate.
     """
-    if strategy in {"exploit", "conservative_exploit"}:
+    if is_exploit_strategy(strategy):
         return "strict_improvement"
     return "improvement_or_equal"
+
+
+def is_exploit_strategy(strategy):
+    """Treat lineage-qualified Stage-2 exploit labels as exploit behavior."""
+    return strategy in {"exploit", "conservative_exploit"} or strategy.startswith("exploit_")
 
 
 def make_reflection(fuse, reflection_key, strategy="exploit", *,
@@ -454,7 +459,7 @@ def select_strategy_candidate(result, seed_prompt, strategy):
     if not candidates or len(candidates) != len(scores):
         return result.best_candidate, max(scores) if scores else None, "gepa_best", best_idx
     best_score = max(scores)
-    if strategy in {"exploit", "conservative_exploit"}:
+    if is_exploit_strategy(strategy):
         return result.best_candidate, best_score, "gepa_best", best_idx
     max_drop = 0.10 if strategy == "explore" else 0.25
     seed_hash = hashlib.sha256((seed_prompt.rstrip() + "\n").encode()).hexdigest()

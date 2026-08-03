@@ -344,12 +344,21 @@ def main():
           and exploit_index == 0)
     check("exploit requires strict screening improvement",
           acceptance_criterion_for_strategy("exploit") == "strict_improvement")
+    check("lineage-qualified Stage-2 exploit requires strict screening improvement",
+          acceptance_criterion_for_strategy("exploit_abstain-1") == "strict_improvement")
     check("explore retains tied screening mutations",
           acceptance_criterion_for_strategy("explore") == "improvement_or_equal")
     check("failure-targeted retains tied screening mutations",
           acceptance_criterion_for_strategy("failure_targeted") == "improvement_or_equal")
     check("conservative exploit uses strict GEPA best",
           acceptance_criterion_for_strategy("conservative_exploit") == "strict_improvement")
+    stage2, stage2_score, stage2_mode, stage2_index = select_strategy_candidate(
+        fake, "seed", "exploit_abstain-1",
+    )
+    check("lineage-qualified Stage-2 exploit keeps GEPA best",
+          stage2["system_prompt"] == "seed"
+          and stage2_score == .75 and stage2_mode == "gepa_best"
+          and stage2_index == 0)
     check("abstention strategies use near-best selection",
           acceptance_criterion_for_strategy("abstention_policy") == "improvement_or_equal")
     records = [
@@ -438,7 +447,7 @@ def main():
     serialized = json.dumps(stamp_wave({"state": "completed"}, wave))
     check("wave provenance serializes with curriculum and no secret",
           "curriculum" in serialized and "SENTINEL-SECRET-VALUE" not in serialized)
-    print("ALL 32 ISLAND TESTS PASSED")
+    print("ALL 34 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":
