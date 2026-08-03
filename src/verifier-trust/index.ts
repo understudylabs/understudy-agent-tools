@@ -18,6 +18,6 @@ export function evaluateTrustGate(binding: TrustBinding, natural: ArmEvidence, a
   const reasons: string[] = [];
   if (!passes(adversarial, TRUST_GATE.min_probes)) reasons.push("adversarial_arm_failed");
   if (!passes(natural, TRUST_GATE.min_natural_probes)) reasons.push("natural_arm_failed_or_insufficient");
-  if (!binding.source_binding_sha256 || !binding.verifier_sha256 || !binding.fixture_sha256) reasons.push("missing_provenance_binding");
+  if (![binding.source_binding_sha256, binding.verifier_sha256, binding.fixture_sha256].every((value) => /^[a-f0-9]{64}$/.test(value))) reasons.push("missing_or_invalid_provenance_binding");
   return { schema_version: VERIFIER_TRUST_VERSION, gate_version: "verifier-reliability-gate-v1", ...binding, natural, adversarial, verdict: reasons.length === 0 ? "trusted" : (natural.probes < TRUST_GATE.min_natural_probes ? "insufficient-evidence" : "untrusted"), reasons, idempotency_key: trustIdempotencyKey(binding, natural, adversarial) };
 }
