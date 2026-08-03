@@ -236,12 +236,13 @@ def incomplete_branch_ids(specs, records):
 def required_physical_episode_cap(max_metric_calls, valset_size):
     """Conservative GEPA 0.1.4 physical cap for a logical metric budget.
 
-    The max-metric stopper is checked between iterations.  If the last
-    minibatch is accepted, GEPA evaluates the candidate on the full valset
-    before checking the stopper again, so physical calls may exceed the
-    logical budget by one complete valset.
+    The max-metric stopper is checked between iterations. GEPA may perform the
+    initial full-valset evaluation and one final accepted-candidate full-valset
+    evaluation outside the logical minibatch boundary. Reserve both complete
+    valsets: Wave 4 empirically attempted call 37 at logical=24,valset=12, so
+    the former +1-valset bound was demonstrably insufficient.
     """
-    return max_metric_calls + valset_size
+    return max_metric_calls + (2 * valset_size)
 
 
 def classify_failure(rec):
@@ -644,9 +645,9 @@ def main():
     parser.add_argument("--runs-root", default=str(Path.home() / ".di-runs"))
     parser.add_argument("--experiment-id", default="")
     parser.add_argument("--stage1-episodes", type=int, default=16,
-                        help="physical episode cap; >= stage1 metric calls + screening valset size")
+                        help="physical episode cap; >= stage1 metric calls + 2*screening valset size")
     parser.add_argument("--stage2-episodes", type=int, default=28,
-                        help="physical episode cap; >= stage2 metric calls + screening valset size")
+                        help="physical episode cap; >= stage2 metric calls + 2*screening valset size")
     parser.add_argument("--stage1-metric-calls", type=int, default=12)
     parser.add_argument("--stage2-metric-calls", type=int, default=24)
     parser.add_argument("--concurrency", type=int, default=4)

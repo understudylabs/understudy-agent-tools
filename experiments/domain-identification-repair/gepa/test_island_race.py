@@ -258,9 +258,9 @@ def main():
     check("completed Stage-2 remains eligible",
           incomplete_branch_ids(stage2_specs, normal_stage2) == [])
     check("stage1 physical cap includes final full-valset evaluation",
-          required_physical_episode_cap(12, 4) == 16)
+          required_physical_episode_cap(12, 4) == 20)
     check("stage2 physical cap includes final full-valset evaluation",
-          required_physical_episode_cap(24, 4) == 28)
+          required_physical_episode_cap(24, 4) == 32)
     records = [
         {"status": "completed", "winner_prompt_sha256": "same", "screening_best_score": .7,
          "candidates_tried": 2, "wall_clock_s": 20, "branch_id": "a"},
