@@ -8,6 +8,7 @@ admission manifest carries hashes and bounded screening scalars only.
 import argparse
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from island_race import (
@@ -108,6 +109,8 @@ def main():
     parser.add_argument("--student-project", default="")
     parser.add_argument("--student-workload", default="")
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--seed-concurrency", type=int, default=8,
+                        help="independent seed screens in flight; 8x4 saturates the proven 32-worker shim")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -132,16 +135,21 @@ def main():
         headers["x-understudy-project"] = args.student_project
     if args.student_workload:
         headers["x-understudy-workload"] = args.student_workload
-    adapter = ContractAdapter(
-        args.sidecar, student_model=args.student_model,
-        student_api_base=args.student_base_url, student_api_key=api_key,
-        student_headers=headers, concurrency=args.concurrency,
-    )
+    if not 1 <= args.seed_concurrency <= len(WAVE6_SEEDED_POPULATION_ISLAND_SPECS):
+        raise ValueError("--seed-concurrency must be between 1 and 8")
 
-    entries = []
-    for branch_id, strategy, *_ in WAVE6_SEEDED_POPULATION_ISLAND_SPECS:
+    def screen_seed(spec):
+        branch_id, strategy, *_ = spec
         prompt_path = output_dir / f"{branch_id}.txt"
         prompt_path.write_text(prompts[branch_id])
+        # One adapter per independent seed keeps exact-task summary state and
+        # LiteLLM client bookkeeping isolated while the endpoint handles the
+        # proven 32-way aggregate request concurrency.
+        adapter = ContractAdapter(
+            args.sidecar, student_model=args.student_model,
+            student_api_base=args.student_base_url, student_api_key=api_key,
+            student_headers=headers, concurrency=args.concurrency,
+        )
         evaluated = adapter.evaluate(
             tasks, {"system_prompt": prompts[branch_id]}, capture_traces=True,
         )
@@ -157,12 +165,15 @@ def main():
             all(family_means.get(family) == 1.0 for family in PERFECT_FAMILIES)
             and forbidden == 0
         )
-        entries.append({
+        return {
             "branch_id": branch_id, "strategy": strategy,
             "prompt_path": str(prompt_path), "prompt_sha256": prompt_sha(prompts[branch_id]),
             "eligible": eligible, "screening_by_family": family_means,
             "forbidden_effects": forbidden,
-        })
+        }
+
+    with ThreadPoolExecutor(max_workers=args.seed_concurrency) as pool:
+        entries = list(pool.map(screen_seed, WAVE6_SEEDED_POPULATION_ISLAND_SPECS))
 
     receipt = {
         "schema_version": "understudy.gepa_seed_population.v1",
@@ -170,7 +181,9 @@ def main():
         "scope": "train_screening_only",
         "curriculum_sha256": curriculum["curriculum_sha256"],
         "valset_sha256": valset_sha,
-        "student": {"model": args.student_model, "base_url_kind": "local" if local else "remote"},
+        "student": {"model": args.student_model, "base_url_kind": "local" if local else "remote",
+                    "seed_concurrency": args.seed_concurrency,
+                    "task_concurrency_per_seed": args.concurrency},
         "seeds": entries,
     }
     manifest_path = output_dir / "seed-population-manifest.json"
