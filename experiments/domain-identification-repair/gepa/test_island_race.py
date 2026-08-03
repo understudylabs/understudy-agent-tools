@@ -38,6 +38,7 @@ from island_race import (  # noqa: E402
 from turbo_race import (  # noqa: E402
     acceptance_criterion_for_strategy, screening_family_scores, select_strategy_candidate,
 )
+from prepare_wave6_population import build_seed_prompts  # noqa: E402
 
 
 def check(label, condition):
@@ -205,6 +206,20 @@ def test_wave6_seed_population_admission():
         raise AssertionError("wave6 route-regressing seed must fail closed")
 
 
+def test_wave6_seed_prompt_construction():
+    prompts = build_seed_prompts("synthetic incumbent\n")
+    check("wave6 builder creates exactly eight distinct candidate-zero prompts",
+          len(prompts) == len(set(prompts.values())) == 8)
+    for branch_id, prompt in prompts.items():
+        lower = prompt.lower()
+        check(f"wave6 {branch_id} preserves incumbent bytes",
+              prompt.startswith("synthetic incumbent\n"))
+        check(f"wave6 {branch_id} states the active unmatched transition",
+              "patch" in lower and "unmatched" in lower and "finish" in lower)
+        check(f"wave6 {branch_id} forbids broad mutation",
+              "only" in lower or "never" in lower)
+
+
 def test_completed_manifest_stamps_confirmation_totals():
     live = object.__new__(LiveManifest)
     live.wave = None
@@ -290,6 +305,7 @@ def main():
     test_graph_silent_publish()
     test_reflection_provenance_contains_name_not_secret()
     test_wave6_seed_population_admission()
+    test_wave6_seed_prompt_construction()
     test_completed_manifest_stamps_confirmation_totals()
     check("exactly eight islands", len(ISLAND_SPECS) == 8)
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
@@ -621,7 +637,7 @@ def main():
           and sum(strategy == "exact_state_transition" for _, strategy, *_ in wave4) == 4
           and sum(strategy == "explicit_tool_sequence" for _, strategy, *_ in wave4) == 2
           and sum(strategy == "state_transition_crossover" for _, strategy, *_ in wave4) == 2)
-    print("ALL 38 ISLAND TESTS PASSED")
+    print("ALL 42 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":
