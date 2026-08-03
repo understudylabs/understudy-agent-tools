@@ -23,4 +23,7 @@ docs/skill-comparison-audit.md
 
 # local staging for external snapshots / incoming worktrees — never shipped
 _incoming/
+
+# experiment run artifacts (evidence rows, trajectories, receipts) — stay local
+outputs/
 .trace-viewer-cache*/
