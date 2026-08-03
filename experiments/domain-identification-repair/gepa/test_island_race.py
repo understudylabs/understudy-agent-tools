@@ -30,7 +30,8 @@ import experiment_manifest as em  # noqa: E402
 from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_invalid_execution_receipt,
     build_no_distinct_receipt, classify_failure, global_dedup_annotations,
-    incomplete_branch_ids, prompt_sha, required_physical_episode_cap, unique_ranked,
+    canonical_promotion_eligible, family_aware_ranked, incomplete_branch_ids,
+    prompt_sha, required_physical_episode_cap, stamp_wave, unique_ranked,
 )
 from turbo_race import acceptance_criterion_for_strategy, select_strategy_candidate  # noqa: E402
 
@@ -329,21 +330,74 @@ def main():
         val_aggregate_scores=[.75, .70, .25],
         best_candidate={"system_prompt": "seed"},
     )
-    explore, explore_score, explore_mode = select_strategy_candidate(fake, "seed", "explore")
+    explore, explore_score, explore_mode, explore_index = select_strategy_candidate(fake, "seed", "explore")
     check("explore retains a distinct near-best candidate",
           explore["system_prompt"] == "different near best"
-          and explore_score == .70 and explore_mode == "distinct_near_best")
-    exploit, exploit_score, exploit_mode = select_strategy_candidate(fake, "seed", "exploit")
+          and explore_score == .70 and explore_mode == "distinct_near_best"
+          and explore_index == 1)
+    exploit, exploit_score, exploit_mode, exploit_index = select_strategy_candidate(fake, "seed", "exploit")
     check("exploit preserves GEPA best",
           exploit["system_prompt"] == "seed"
-          and exploit_score == .75 and exploit_mode == "gepa_best")
+          and exploit_score == .75 and exploit_mode == "gepa_best"
+          and exploit_index == 0)
     check("exploit requires strict screening improvement",
           acceptance_criterion_for_strategy("exploit") == "strict_improvement")
     check("explore retains tied screening mutations",
           acceptance_criterion_for_strategy("explore") == "improvement_or_equal")
     check("failure-targeted retains tied screening mutations",
           acceptance_criterion_for_strategy("failure_targeted") == "improvement_or_equal")
-    print("ALL 25 ISLAND TESTS PASSED")
+    check("conservative exploit uses strict GEPA best",
+          acceptance_criterion_for_strategy("conservative_exploit") == "strict_improvement")
+    check("abstention strategies use near-best selection",
+          acceptance_criterion_for_strategy("abstention_policy") == "improvement_or_equal")
+    records = [
+        {"branch_id": "regressor", "status": "completed", "winner_prompt_sha256": "r",
+         "screening_subscores_available": True,
+         "screening_by_family": {"abstain": .9, "direct": .8, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": .2, "direct": .9, "lookalike": 1, "parent": 1}},
+        {"branch_id": "winner", "status": "completed", "winner_prompt_sha256": "w",
+         "screening_subscores_available": True, "screening_best_score": .8, "candidates_tried": 3,
+         "screening_by_family": {"abstain": 1, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": .2, "direct": .9, "lookalike": 1, "parent": 1}},
+        {"branch_id": "second", "status": "completed", "winner_prompt_sha256": "s",
+         "screening_subscores_available": True, "screening_best_score": .7, "candidates_tried": 2,
+         "screening_by_family": {"abstain": .8, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": .2, "direct": 1, "lookalike": 1, "parent": 1}},
+    ]
+    ranked = family_aware_ranked(
+        records, abstain_family="abstain",
+        perfect_families=("direct", "lookalike", "parent"),
+    )
+    check("family guard disqualifies route regression",
+          [record["branch_id"] for record in ranked] == ["winner", "second"])
+    check("family guard fails closed below two eligible",
+          len(family_aware_ranked(
+              records[:1], abstain_family="abstain",
+              perfect_families=("direct", "lookalike", "parent"),
+          )) < 2)
+    check("canonical family guard rejects regression",
+          not canonical_promotion_eligible(
+              {"mean_by_family": {"direct-route": .9, "lookalike-route": 1, "parent-route": 1}},
+              {"direct-route": 1, "lookalike-route": 1, "parent-route": 1},
+          ))
+    check("canonical family guard accepts abstain lift",
+          canonical_promotion_eligible(
+              {"mean_by_family": {"direct-route": 1, "lookalike-route": 1,
+                                  "parent-route": 1, "unmatched-abstain": 1}},
+              {"direct-route": 1, "lookalike-route": 1, "parent-route": 1,
+               "unmatched-abstain": 0},
+          ))
+    wave = {
+        "wave": 3, "parent_run": "parent-run", "parent_winner_sha256": "abc",
+        "failure_family": "abstain", "curriculum_sha256": "curriculum",
+        "valset_sha256": "valset", "sentinels_per_family": 2,
+        "island_plan": "wave3-abstain", "target_score": .875,
+        "seed_prompt_sha256": "seed",
+    }
+    serialized = json.dumps(stamp_wave({"state": "completed"}, wave))
+    check("wave provenance serializes with curriculum and no secret",
+          "curriculum" in serialized and "SENTINEL-SECRET-VALUE" not in serialized)
+    print("ALL 32 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

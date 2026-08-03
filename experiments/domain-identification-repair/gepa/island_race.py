@@ -22,10 +22,14 @@ from pathlib import Path
 
 import experiment_manifest as em
 from optimize import FuseTripped, assert_split_allowed, call_json
-from turbo_race import GlobalBudget, confirm_canonical, run_branch, select_winner, stratified_screening_subsets
+from turbo_race import (
+    GlobalBudget, _family_of, confirm_canonical, failure_family_curriculum,
+    run_branch, screening_valset_hash, select_winner, stratified_screening_subsets,
+    train_screening_subsets,
+)
 
 K = 3
-ISLAND_SPECS = (
+LEGACY_ISLAND_SPECS = (
     ("explore-1", "explore", 178561, 0),
     ("explore-2", "explore", 278561, 1),
     ("explore-3", "explore", 378561, 0),
@@ -35,6 +39,25 @@ ISLAND_SPECS = (
     ("exploit-1", "exploit", 778561, 0),
     ("exploit-2", "exploit", 878561, 1),
 )
+WAVE3_ABSTAIN_ISLAND_SPECS = (
+    ("abstain-1", "abstention_policy", 178561, 0),
+    ("abstain-2", "abstention_policy", 278561, 1),
+    ("abstain-3", "abstention_policy", 378561, 0),
+    ("abstain-4", "abstention_policy", 478561, 1),
+    ("term-1", "termination_discipline", 578561, 0),
+    ("term-2", "termination_discipline", 678561, 1),
+    ("cons-1", "conservative_exploit", 778561, 0),
+    ("cons-2", "conservative_exploit", 878561, 1),
+)
+ISLAND_SPECS = LEGACY_ISLAND_SPECS
+
+
+def island_specs_for_plan(plan):
+    if plan == "legacy":
+        return LEGACY_ISLAND_SPECS
+    if plan == "wave3-abstain":
+        return WAVE3_ABSTAIN_ISLAND_SPECS
+    raise ValueError(f"unknown island plan: {plan}")
 
 
 def prompt_sha(text):
@@ -84,6 +107,70 @@ def global_dedup_annotations(records):
     return annotations
 
 
+def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain",
+                        perfect_families=(
+                            "domain-id-direct-route",
+                            "domain-id-lookalike-route",
+                            "domain-id-parent-route",
+                        )):
+    """Rank wave-3 representatives while rejecting perfect-family regressions."""
+    eligible = []
+    for rec in records:
+        if rec.get("status") != "completed" or not rec.get("winner_prompt_sha256"):
+            continue
+        selected = rec.get("screening_by_family")
+        seed = rec.get("seed_screening_by_family")
+        if (not rec.get("screening_subscores_available")
+                or not isinstance(selected, dict) or not isinstance(seed, dict)):
+            continue
+        if any(family not in selected or family not in seed for family in perfect_families):
+            continue
+        if any(selected[family] < seed[family] for family in perfect_families):
+            continue
+        if abstain_family not in selected:
+            continue
+        eligible.append(rec)
+    return sorted(
+        eligible,
+        key=lambda rec: (
+            -float(rec["screening_by_family"][abstain_family]),
+            -float(rec.get("screening_best_score", -1)),
+            -int(rec.get("candidates_tried", 0)),
+            float(rec.get("wall_clock_s", 1e9)),
+        ),
+    )
+
+
+def canonical_family_score(mean_by_family, family):
+    if not isinstance(mean_by_family, dict):
+        return None
+    suffix = family.removeprefix("domain-id-")
+    for key, score in mean_by_family.items():
+        if str(key).removeprefix("domain-id-") == suffix:
+            try:
+                return float(score)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def canonical_promotion_eligible(confirmation, parent_mean_by_family):
+    """Reject dev-k=3 finalists that regress a perfect family."""
+    candidate = confirmation.get("mean_by_family")
+    if not isinstance(candidate, dict) or not isinstance(parent_mean_by_family, dict):
+        return False
+    for family in (
+        "domain-id-direct-route",
+        "domain-id-lookalike-route",
+        "domain-id-parent-route",
+    ):
+        candidate_score = canonical_family_score(candidate, family)
+        parent_score = canonical_family_score(parent_mean_by_family, family)
+        if candidate_score is None or parent_score is None or candidate_score < parent_score:
+            return False
+    return True
+
+
 def incomplete_branch_ids(specs, records):
     """Return branches without a completed, durable screening receipt.
 
@@ -126,15 +213,16 @@ def classify_failure(rec):
 
 def build_no_distinct_receipt(*, experiment_id, dev_sha, islands, distinct_prompt_count,
                               budget, manifest_path, manifest_digest, publish_status,
-                              wall_clock_s):
+                              wall_clock_s, stop_reason=None):
     """Build a fail-closed terminal receipt without touching a provider.
 
     Full convergence is an experimental outcome, not a runtime failure.  It
     must still produce durable evidence while explicitly refusing Stage 2,
     canonical confirmation, promotion, and holdout access.
     """
-    reason = ("successive halving needs two distinct completed prompts; "
-              f"got {distinct_prompt_count}")
+    reason = (stop_reason or
+              ("successive halving needs two distinct completed prompts; "
+               f"got {distinct_prompt_count}"))
     return {
         "schema_version": "understudy.island_race_receipt.v1",
         "experiment_id": experiment_id,
@@ -203,11 +291,21 @@ def stamp_reflection(receipt, reflection_provenance):
     return receipt
 
 
+def stamp_wave(receipt, wave_provenance):
+    receipt["wave"] = dict(wave_provenance)
+    return receipt
+
+
+def stamp_terminal_receipt(receipt, reflection_provenance, wave_provenance):
+    stamp_reflection(receipt, reflection_provenance)
+    return stamp_wave(receipt, wave_provenance)
+
+
 class LiveManifest:
     def __init__(self, *, path, ingest_url, experiment_id, dev_sha, examples,
                  baseline_nodes, rank_protocol, gepa_protocol, budget, started,
                  expected_total, reference_lines=(), mirror_path=None,
-                 provider="unknown", model="unknown", reflection=None):
+                 provider="unknown", model="unknown", reflection=None, wave=None):
         self.path = Path(path)
         self.ingest_url = ingest_url
         self.experiment_id = experiment_id
@@ -224,6 +322,7 @@ class LiveManifest:
         self.provider = provider
         self.model = model
         self.reflection = dict(reflection) if reflection else None
+        self.wave = dict(wave) if wave else None
         self.records = {}
         self.states = {}
         self.confirmations = {}
@@ -388,6 +487,7 @@ class LiveManifest:
             "holdout_executed": False,
             "serving": {"provider": self.provider, "model": self.model},
             "reflection": self.reflection,
+            "wave": getattr(self, "wave", None),
         }
         totals.update(terminal)
         manifest = em.build_manifest(
@@ -397,6 +497,7 @@ class LiveManifest:
             holdout_untouched=True,
         )
         manifest["reflection"] = self.reflection
+        manifest["wave"] = getattr(self, "wave", None)
         em.write_manifest(manifest, self.path)
         if self.mirror_path:
             em.write_manifest(manifest, self.mirror_path)
@@ -483,6 +584,13 @@ def main():
                         help="environment variable used by GEPA reflection calls; value is never persisted")
     parser.add_argument("--reflection-project", default="rehearsal")
     parser.add_argument("--reflection-workload", default="main")
+    parser.add_argument("--island-plan", choices=("legacy", "wave3-abstain"), default="legacy")
+    parser.add_argument("--wave", type=int, default=1)
+    parser.add_argument("--parent-run", default="")
+    parser.add_argument("--parent-winner-sha", default="")
+    parser.add_argument("--failure-family", default="")
+    parser.add_argument("--sentinels-per-family", type=int, default=2)
+    parser.add_argument("--target-score", type=float, default=0.0)
     parser.add_argument("--seed-prompt", required=True)
     parser.add_argument("--runs-root", default=str(Path.home() / ".di-runs"))
     parser.add_argument("--experiment-id", default="")
@@ -501,6 +609,7 @@ def main():
                         help="optional dashboard manifest path, atomically refreshed on every heartbeat")
     parser.add_argument("--wave1-seed-canonical", required=True)
     parser.add_argument("--wave1-winner-canonical", required=True)
+    parser.add_argument("--parent-winner-canonical", default="")
     args = parser.parse_args()
     if not args.allow_unmetered_cost:
         raise FuseTripped("--allow-unmetered-cost required")
@@ -550,9 +659,35 @@ def main():
     manifest_path = out_dir / "experiment-manifest.json"
     seed_prompt = Path(args.seed_prompt).read_text()
     train = call_json(args.sidecar, "/pool?split=train")["tasks"]
+    island_specs = island_specs_for_plan(args.island_plan)
+    curriculum = None
+    train_for_gepa = train
+    if args.failure_family:
+        curriculum = failure_family_curriculum(
+            train, args.failure_family, args.sentinels_per_family,
+        )
+        train_for_gepa = curriculum["tasks"]
+    wave_provenance = {
+        "wave": args.wave,
+        "parent_run": args.parent_run,
+        "parent_winner_sha256": args.parent_winner_sha,
+        "failure_family": args.failure_family,
+        "curriculum_sha256": curriculum["curriculum_sha256"] if curriculum else None,
+        "valset_sha256": None,
+        "sentinels_per_family": args.sentinels_per_family,
+        "island_plan": args.island_plan,
+        "target_score": args.target_score,
+        "seed_prompt_sha256": prompt_sha(seed_prompt),
+    }
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
-    subsets = stratified_screening_subsets(dev)
+    subsets = (
+        train_screening_subsets(train)
+        if args.island_plan == "wave3-abstain"
+        else stratified_screening_subsets(dev)
+    )
+    if args.island_plan == "wave3-abstain":
+        wave_provenance["valset_sha256"] = screening_valset_hash(subsets)
     screening_size = len(subsets[0]["tasks"])
     required_stage1 = required_physical_episode_cap(args.stage1_metric_calls, screening_size)
     required_stage2 = required_physical_episode_cap(args.stage2_metric_calls, screening_size)
@@ -563,6 +698,10 @@ def main():
         )
     seed_canonical = json.loads(Path(args.wave1_seed_canonical).read_text())
     winner_canonical = json.loads(Path(args.wave1_winner_canonical).read_text())
+    parent_canonical = (
+        json.loads(Path(args.parent_winner_canonical).read_text())
+        if args.parent_winner_canonical else winner_canonical
+    )
     rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha, samples_per_task=K)
     gepa_protocol = em.make_protocol(method="gepa_observed", split_sha256=dev_sha, samples_per_task=1)
     baseline_nodes = [
@@ -574,7 +713,7 @@ def main():
                      rank_eligible=True, parent="baseline-seed",
                      extra={"predictions": em.predictions_from_canonical(winner_canonical, dev)}),
     ]
-    stage1_total = len(ISLAND_SPECS) * args.stage1_episodes
+    stage1_total = len(island_specs) * args.stage1_episodes
     stage2_total = 2 * args.stage2_episodes
     confirm_total = 2 * len(dev) * K
     budget = GlobalBudget(max_total_episodes=stage1_total + stage2_total + confirm_total,
@@ -589,10 +728,10 @@ def main():
                         expected_total=stage1_total + stage2_total + confirm_total,
                         mirror_path=args.manifest_mirror or None,
                         provider=args.provider_label, model=args.model,
-                        reflection=reflection_provenance)
-    stage1_prompts = {bid: seed_prompt for bid, *_ in ISLAND_SPECS}
-    stage1 = run_parallel(ISLAND_SPECS, seed_prompts=stage1_prompts, subsets=subsets,
-                          train=train, sidecar=args.sidecar, budget=budget,
+                        reflection=reflection_provenance, wave=wave_provenance)
+    stage1_prompts = {bid: seed_prompt for bid, *_ in island_specs}
+    stage1 = run_parallel(island_specs, seed_prompts=stage1_prompts, subsets=subsets,
+                          train=train_for_gepa, sidecar=args.sidecar, budget=budget,
                           runs_root=args.runs_root, experiment_id=experiment_id,
                           reflection_key=reflection_key, max_metric_calls=args.stage1_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
@@ -603,19 +742,19 @@ def main():
                           reflection_base_url=args.reflection_base_url,
                           reflection_headers=reflection_headers,
                           reflection_provider_label=args.reflection_provider_label)
-    incomplete = incomplete_branch_ids(ISLAND_SPECS, stage1)
+    incomplete = incomplete_branch_ids(island_specs, stage1)
     if incomplete:
         reason = ("scheduled branches lacked completed receipts: "
                   + ", ".join(incomplete))
         snapshot = live.stop(state="invalid_execution", outcome="incomplete_stage1",
                              reason=reason, distinct_prompt_count=None)
-        receipt = stamp_reflection(build_invalid_execution_receipt(
+        receipt = stamp_terminal_receipt(build_invalid_execution_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             incomplete_branches=incomplete, budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
-        ), reflection_provenance)
+        ), reflection_provenance, wave_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -628,18 +767,38 @@ def main():
                 failure_reason=f"identical prompt hash; representative={representative}",
             )
     unique = unique_ranked(stage1.values())
+    if args.island_plan == "wave3-abstain":
+        representatives = [
+            rec for rec in stage1.values()
+            if dedup_annotations.get(rec.get("branch_id")) is None
+        ]
+        unique = family_aware_ranked(representatives)
     if len(unique) < 2:
-        reason = f"successive halving needs two distinct completed prompts; got {len(unique)}"
+        if args.island_plan == "wave3-abstain":
+            missing = sorted(
+                rec["branch_id"] for rec in stage1.values()
+                if rec.get("status") == "completed"
+                and not rec.get("screening_subscores_available")
+            )
+            reason = (
+                "wave3 regression guard needs two eligible completed prompts; "
+                f"got {len(unique)}"
+            )
+            if missing:
+                reason += "; missing per-instance subscores: " + ", ".join(missing)
+        else:
+            reason = f"successive halving needs two distinct completed prompts; got {len(unique)}"
         snapshot = live.stop(state="stopped_no_distinct_candidates",
                              outcome="no_distinct_candidates", reason=reason,
                              distinct_prompt_count=len(unique))
-        receipt = stamp_reflection(build_no_distinct_receipt(
+        receipt = stamp_terminal_receipt(build_no_distinct_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             distinct_prompt_count=len(unique), budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
-        ), reflection_provenance)
+            stop_reason=reason,
+        ), reflection_provenance, wave_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -658,7 +817,7 @@ def main():
         stage2_specs.append((bid, strategy, 900000 + index, 1 - (index - 1) % 2))
         stage2_prompts[bid] = Path(rec["optimized_prompt_path"]).read_text()
     stage2 = run_parallel(stage2_specs, seed_prompts=stage2_prompts, subsets=subsets,
-                          train=train, sidecar=args.sidecar, budget=budget,
+                          train=train_for_gepa, sidecar=args.sidecar, budget=budget,
                           runs_root=args.runs_root, experiment_id=experiment_id,
                           reflection_key=reflection_key, max_metric_calls=args.stage2_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
@@ -678,14 +837,14 @@ def main():
             state="invalid_execution", outcome="incomplete_stage2", reason=reason,
             distinct_prompt_count=len(unique),
         )
-        receipt = stamp_reflection(build_invalid_execution_receipt(
+        receipt = stamp_terminal_receipt(build_invalid_execution_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             incomplete_branches=incomplete2, budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
             survivors=stage2, outcome="incomplete_stage2", stop_reason=reason,
-        ), reflection_provenance)
+        ), reflection_provenance, wave_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -716,21 +875,33 @@ def main():
         conf = {"branch_id": bid, "confirmed": True, "deduped": deduped,
                 "mean_score": result["mean_score"], "malformed_rate": result.get("malformed_rate"),
                 "wall_clock_s": result.get("wall_clock_s"), "winner_prompt_sha256": sha,
-                "predictions": em.predictions_from_canonical(result, dev)}
+                "predictions": em.predictions_from_canonical(result, dev),
+                "mean_by_family": result.get("mean_by_family")}
+        if args.island_plan == "wave3-abstain":
+            conf["promotion_eligible"] = canonical_promotion_eligible(
+                conf, parent_canonical.get("mean_by_family"),
+            )
         confirmations.append(conf)
         live.update(bid, status="completed", outcome="canonical_k3_complete", confirmation=conf)
 
-    winner = select_winner(confirmations)
+    winner = select_winner(
+        confirmations,
+        eligible=(
+            (lambda conf: conf.get("promotion_eligible", False))
+            if args.island_plan == "wave3-abstain" else None
+        ),
+    )
     if winner:
         live.update(winner["branch_id"], status="promoted", outcome="promoted_canonical_k3",
                     confirmation=winner)
     snapshot = live.finalize_completed(
         selected_winner=winner, confirmations=confirmations,
     )
-    receipt = stamp_reflection({
+    receipt = stamp_terminal_receipt({
         "schema_version": "understudy.island_race_receipt.v1",
         "experiment_id": experiment_id,
         "state": "completed",
+        "outcome": "completed_with_no_promotion" if winner is None else "completed",
         "dev_split_sha256": dev_sha,
         "holdout_executed": False,
         "islands": stage1,
@@ -744,7 +915,7 @@ def main():
         "total_cost_usd": None,
         "cost_coverage": "out_of_band_clickhouse",
         "wall_clock_s": round(time.time() - started),
-    }, reflection_provenance)
+    }, reflection_provenance, wave_provenance)
     (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt, indent=2))
 

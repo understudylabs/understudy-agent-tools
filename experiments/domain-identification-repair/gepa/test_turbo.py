@@ -20,9 +20,12 @@ from turbo_race import (  # noqa: E402
     GlobalBudget,
     STAGE_B_EPISODES_PER_WINNER,
     build_final_manifest,
+    failure_family_curriculum,
+    screening_valset_hash,
     select_winner,
     stratified_screening_subsets,
     subset_hash,
+    train_screening_subsets,
 )
 from optimize import FuseTripped, assert_split_allowed  # noqa: E402
 
@@ -126,6 +129,9 @@ def test_reflection_route_is_scoped_and_headered():
         check("default reflection omits headers", "extra_headers" not in default_call)
     finally:
         litellm.completion = original_completion
+    check("Wave-3 reflection directives are present",
+          all(key in turbo_race.REFLECTION_DIRECTIVES for key in (
+              "abstention_policy", "termination_discipline", "conservative_exploit")))
 
 
 def test_gepa_014_metric_budget_full_valset_headroom():
@@ -397,6 +403,35 @@ def test_subset_hash_order_independent():
     a2, _ = stratified_screening_subsets(list(reversed(dev)))
     check("subset selection is order-independent (deterministic hash)",
           a1["subset_sha256"] == a2["subset_sha256"])
+
+
+def test_train_curriculum_and_screening_valset_are_deterministic():
+    tasks = [
+        {"task_id": f"fam-{family}-{index:02d}"}
+        for family in ("abstain", "direct", "lookalike", "parent")
+        for index in range(1, 7)
+    ]
+    curriculum = failure_family_curriculum(tasks, "fam-abstain", 2)
+    ids = [task["task_id"] for task in curriculum["tasks"]]
+    expected = sorted(
+        [f"fam-abstain-{i:02d}" for i in range(1, 7)]
+        + [f"fam-{family}-01" for family in ("direct", "lookalike", "parent")]
+        + [f"fam-{family}-02" for family in ("direct", "lookalike", "parent")]
+    )
+    check("curriculum contains failure family and sentinels", ids == expected)
+    check("curriculum family counts are exact",
+          curriculum["families"] == {
+              "fam-abstain": 6, "fam-direct": 2, "fam-lookalike": 2, "fam-parent": 2})
+    check("curriculum hash is deterministic",
+          curriculum["curriculum_sha256"] == failure_family_curriculum(
+              tasks, "fam-abstain", 2)["curriculum_sha256"])
+    subsets = train_screening_subsets(tasks)
+    check("train screening subsets are complementary and one per family",
+          [len(s["tasks"]) for s in subsets] == [4, 4]
+          and all(len({t["task_id"].rsplit("-", 1)[0] for t in s["tasks"]}) == 4 for s in subsets))
+    check("train valset hash is deterministic",
+          screening_valset_hash(subsets) == screening_valset_hash(
+              train_screening_subsets(list(reversed(tasks)))))
 
 
 # --------------------------------------------------------------------------
@@ -769,6 +804,7 @@ def main():
         test_reflection_caps_global_and_branch,
         test_subsets_family_coverage_complementary_and_hashbound,
         test_subset_hash_order_independent,
+        test_train_curriculum_and_screening_valset_are_deterministic,
         test_select_winner_by_score_then_malformed_then_latency,
         test_no_partial_promotion_unconfirmed_excluded,
         test_no_holdout_access,

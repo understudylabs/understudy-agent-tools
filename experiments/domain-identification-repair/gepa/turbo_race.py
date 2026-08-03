@@ -285,9 +285,52 @@ def stratified_screening_subsets(dev_tasks):
     )
 
 
+def train_screening_subsets(train_tasks):
+    """Build the Wave-3 train-only, complementary four-task screen."""
+    subsets = stratified_screening_subsets(train_tasks)
+    for subset in subsets:
+        subset["valset_sha256"] = subset["subset_sha256"]
+    return subsets
+
+
+def screening_valset_hash(subsets):
+    task_ids = sorted(
+        task["task_id"] for subset in subsets for task in subset["tasks"]
+    )
+    return hashlib.sha256(",".join(task_ids).encode("utf-8")).hexdigest()
+
+
 def subset_hash(tasks):
     ids = ",".join(sorted(t["task_id"] for t in tasks))
     return hashlib.sha256(ids.encode("utf-8")).hexdigest()
+
+
+def failure_family_curriculum(train_tasks, failure_family, sentinels_per_family):
+    """Build a deterministic train-only curriculum around one failure family."""
+    if sentinels_per_family < 0:
+        raise ValueError("sentinels_per_family must be non-negative")
+    by_family = {}
+    for task in train_tasks:
+        by_family.setdefault(_family_of(task["task_id"]), []).append(task)
+    if failure_family not in by_family:
+        raise ValueError(f"failure family not found in train tasks: {failure_family}")
+    selected = list(sorted(by_family[failure_family], key=lambda t: t["task_id"]))
+    for family in sorted(by_family):
+        if family == failure_family:
+            continue
+        selected.extend(sorted(by_family[family], key=lambda t: t["task_id"])[:sentinels_per_family])
+    selected = sorted(selected, key=lambda t: t["task_id"])
+    task_ids = [task["task_id"] for task in selected]
+    return {
+        "tasks": selected,
+        "curriculum_sha256": hashlib.sha256(",".join(sorted(task_ids)).encode("utf-8")).hexdigest(),
+        "failure_family": failure_family,
+        "families": {
+            family: sum(_family_of(task_id) == family for task_id in task_ids)
+            for family in sorted(set(_family_of(task_id) for task_id in task_ids))
+        },
+        "sentinels_per_family": sentinels_per_family,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -307,6 +350,26 @@ REFLECTION_DIRECTIVES = {
         "Act as a failure-cluster specialist. Derive explicit rules from the supplied failing traces, "
         "counterexamples, and grader feedback. Produce a complete candidate prompt that directly targets "
         "those failure modes; do not return the incumbent unchanged."
+    ),
+    "abstention_policy": (
+        "Act as an abstention-policy specialist. The student correctly handles direct, "
+        "lookalike, and parent routing but fails to ABSTAIN on unmatched cases. From the "
+        "supplied failing TRAIN traces and grader feedback, derive explicit, testable rules "
+        "for when and how to emit the correct unmatched-abstain terminal response. Return "
+        "a COMPLETE candidate prompt that fixes abstention while preserving the working "
+        "routing behavior verbatim. Do not return the incumbent unchanged."
+    ),
+    "termination_discipline": (
+        "Act as a tool-use and termination-discipline specialist. Many abstain failures "
+        "come from over-acting, forbidden writes, extra turns, or failing to emit a clean "
+        "terminal. From the supplied failing TRAIN traces, produce a COMPLETE candidate "
+        "prompt that enforces disciplined stopping and the correct terminal emission for "
+        "unmatched-abstain cases, without weakening the correct routing paths."
+    ),
+    "conservative_exploit": (
+        "Act as a conservative optimizer. Make the SMALLEST evidence-backed change to fix "
+        "the unmatched-abstain failures while preserving direct/lookalike/parent routing "
+        "behavior exactly. Return a complete candidate prompt."
     ),
 }
 
@@ -338,7 +401,9 @@ def acceptance_criterion_for_strategy(strategy):
     This only controls the screening candidate pool; canonical dev k=3 remains
     the sole promotion gate.
     """
-    return "strict_improvement" if strategy == "exploit" else "improvement_or_equal"
+    if strategy in {"exploit", "conservative_exploit"}:
+        return "strict_improvement"
+    return "improvement_or_equal"
 
 
 def make_reflection(fuse, reflection_key, strategy="exploit", *,
@@ -385,11 +450,12 @@ def select_strategy_candidate(result, seed_prompt, strategy):
     """
     candidates = list(result.candidates)
     scores = [float(score) for score in result.val_aggregate_scores]
+    best_idx = getattr(result, "best_idx", scores.index(max(scores)) if scores else 0)
     if not candidates or len(candidates) != len(scores):
-        return result.best_candidate, max(scores) if scores else None, "gepa_best"
+        return result.best_candidate, max(scores) if scores else None, "gepa_best", best_idx
     best_score = max(scores)
-    if strategy == "exploit":
-        return result.best_candidate, best_score, "gepa_best"
+    if strategy in {"exploit", "conservative_exploit"}:
+        return result.best_candidate, best_score, "gepa_best", best_idx
     max_drop = 0.10 if strategy == "explore" else 0.25
     seed_hash = hashlib.sha256((seed_prompt.rstrip() + "\n").encode()).hexdigest()
     eligible = []
@@ -399,9 +465,34 @@ def select_strategy_candidate(result, seed_prompt, strategy):
         if prompt and candidate_sha != seed_hash and score >= best_score - max_drop:
             eligible.append((score, index, candidate))
     if not eligible:
-        return result.best_candidate, best_score, "gepa_best_no_distinct_near_best"
-    score, _, candidate = max(eligible, key=lambda item: (item[0], item[1]))
-    return candidate, score, "distinct_near_best"
+        return result.best_candidate, best_score, "gepa_best_no_distinct_near_best", best_idx
+    score, index, candidate = max(eligible, key=lambda item: (item[0], item[1]))
+    return candidate, score, "distinct_near_best", index
+
+
+def screening_family_scores(result, selected_idx, val_tasks):
+    """Extract per-family screening scores without guessing on malformed output."""
+    subscores = getattr(result, "val_subscores", None)
+    if not isinstance(subscores, list) or len(subscores) == 0:
+        return None, None, "missing val_subscores"
+    if not isinstance(selected_idx, int) or selected_idx < 0 or selected_idx >= len(subscores):
+        return None, None, "selected candidate index missing from val_subscores"
+    if not isinstance(subscores[0], dict) or not isinstance(subscores[selected_idx], dict):
+        return None, None, "candidate val_subscores entry is not a mapping"
+    if len(val_tasks) == 0:
+        return None, None, "screening valset is empty"
+    selected = {}
+    seed = {}
+    for index, task in enumerate(val_tasks):
+        family = _family_of(task["task_id"])
+        if index not in subscores[selected_idx] or index not in subscores[0]:
+            return None, None, f"val_subscores missing instance index {index}"
+        try:
+            selected[family] = float(subscores[selected_idx][index])
+            seed[family] = float(subscores[0][index])
+        except (TypeError, ValueError):
+            return None, None, f"val_subscores instance index {index} is not numeric"
+    return selected, seed, None
 
 
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
@@ -443,6 +534,12 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         "subset_families": subset["families"],
         "seeded_from_prompt_sha256": hashlib.sha256(seed_prompt.encode()).hexdigest(),
         "holdout_executed": False,
+        "screening_by_family": None,
+        "seed_screening_by_family": None,
+        "abstain_family_score": None,
+        "perfect_family_min": None,
+        "screening_subscores_available": False,
+        "screening_ineligible_reason": None,
     }
     try:
         result = gepa.optimize(
@@ -513,9 +610,29 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             results[bid] = record
         return
 
-    selected_candidate, selected_score, selection_mode = select_strategy_candidate(
+    selected_candidate, selected_score, selection_mode, selected_idx = select_strategy_candidate(
         result, seed_prompt, strategy,
     )
+    screening_by_family, seed_screening_by_family, screening_error = screening_family_scores(
+        result, selected_idx, subset["tasks"],
+    )
+    if screening_error is None:
+        perfect_families = {
+            family for family in screening_by_family
+            if family != "domain-id-unmatched-abstain"
+        }
+        record.update({
+            "screening_by_family": screening_by_family,
+            "seed_screening_by_family": seed_screening_by_family,
+            "abstain_family_score": screening_by_family.get("domain-id-unmatched-abstain"),
+            "perfect_family_min": min(
+                (screening_by_family[family] for family in perfect_families),
+                default=None,
+            ),
+            "screening_subscores_available": True,
+        })
+    else:
+        record["screening_ineligible_reason"] = screening_error
     winner_prompt = selected_candidate["system_prompt"]
     (run_dir / "optimized-system-prompt.txt").write_text(winner_prompt.rstrip() + "\n")
     record.update({
@@ -569,15 +686,19 @@ def confirm_canonical(*, prompt_path, out_path, sidecar_base_url, model,
     return json.loads(Path(out_path).read_text())
 
 
-def select_winner(confirmations):
+def select_winner(confirmations, eligible=None):
     """Select strictly by full-dev canonical mean_score; tie-break LOWEST
     malformed_rate, then LOWEST latency. Only fully-confirmed candidates are
     eligible (no partial promotion). Returns the best entry or None."""
-    eligible = [c for c in confirmations if c.get("confirmed") and c.get("mean_score") is not None]
-    if not eligible:
+    candidates = [
+        c for c in confirmations
+        if c.get("confirmed") and c.get("mean_score") is not None
+        and (eligible is None or eligible(c))
+    ]
+    if not candidates:
         return None
     return min(
-        eligible,
+        candidates,
         key=lambda c: (-c["mean_score"], c.get("malformed_rate", 1.0), c.get("wall_clock_s", 1e9)),
     )
 
