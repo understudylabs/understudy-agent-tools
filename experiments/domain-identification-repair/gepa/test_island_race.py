@@ -595,6 +595,13 @@ def main():
               {"direct-route": 1, "lookalike-route": 1, "parent-route": 1,
                "unmatched-abstain": 0},
           ))
+    check("canonical family guard rejects unmatched regression",
+          not canonical_promotion_eligible(
+              {"mean_by_family": {"direct-route": 1, "lookalike-route": 1,
+                                  "parent-route": 1, "unmatched-abstain": .5}},
+              {"direct-route": 1, "lookalike-route": .667,
+               "parent-route": 1, "unmatched-abstain": .75},
+          ))
     # Field-level regression gate over GEPA 0.1.4 result.val_subscores.
     # val_subscores is list[dict[DataId, float]] where DataId is the positional
     # index into the (train-only) valset list; val_aggregate_subscores is None
@@ -650,6 +657,27 @@ def main():
           and sum(strategy == "exact_state_transition" for _, strategy, *_ in wave4) == 4
           and sum(strategy == "explicit_tool_sequence" for _, strategy, *_ in wave4) == 2
           and sum(strategy == "state_transition_crossover" for _, strategy, *_ in wave4) == 2)
+    wave7 = island_specs_for_plan("wave7-family-repair")
+    check("wave7 reuses four explore, two failure-targeted, and two exploit islands",
+          len(wave7) == 8
+          and sum(strategy == "explore" for _, strategy, *_ in wave7) == 4
+          and sum(strategy == "failure_targeted" for _, strategy, *_ in wave7) == 2
+          and sum(strategy == "exploit" for _, strategy, *_ in wave7) == 2)
+    family_repair = family_aware_ranked(
+        [
+            {"branch_id": "safe", "status": "completed", "winner_prompt_sha256": "safe",
+             "screening_subscores_available": True,
+             "screening_by_family": {"direct": 1, "lookalike": 1, "parent": 1, "unmatched": .75},
+             "seed_screening_by_family": {"direct": 1, "lookalike": .5, "parent": 1, "unmatched": .75}},
+            {"branch_id": "regressor", "status": "completed", "winner_prompt_sha256": "reg",
+             "screening_subscores_available": True,
+             "screening_by_family": {"direct": 1, "lookalike": 1, "parent": 1, "unmatched": .5},
+             "seed_screening_by_family": {"direct": 1, "lookalike": .5, "parent": 1, "unmatched": .75}},
+        ],
+        target_family="lookalike", perfect_families=("direct", "parent", "unmatched"),
+    )
+    check("generic family repair advances lookalike lift without unmatched regression",
+          [rec["branch_id"] for rec in family_repair] == ["safe"])
     print("ALL 43 ISLAND TESTS PASSED")
 
 

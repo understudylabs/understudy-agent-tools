@@ -85,7 +85,7 @@ ISLAND_SPECS = LEGACY_ISLAND_SPECS
 
 
 def island_specs_for_plan(plan):
-    if plan == "legacy":
+    if plan in {"legacy", "wave7-family-repair"}:
         return LEGACY_ISLAND_SPECS
     if plan == "wave3-abstain":
         return WAVE3_ABSTAIN_ISLAND_SPECS
@@ -250,12 +250,14 @@ def global_dedup_annotations(records):
 
 
 def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain",
+                        target_family=None,
                         perfect_families=(
                             "domain-id-direct-route",
                             "domain-id-lookalike-route",
                             "domain-id-parent-route",
                         ), primary_reward_first=False, dense_transition=False):
-    """Rank wave-3 representatives while rejecting perfect-family regressions."""
+    """Rank targeted representatives while rejecting protected-family regressions."""
+    target_family = target_family or abstain_family
     eligible = []
     for rec in records:
         if rec.get("status") != "completed" or not rec.get("winner_prompt_sha256"):
@@ -269,7 +271,7 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
             continue
         if any(selected[family] < seed[family] for family in perfect_families):
             continue
-        if abstain_family not in selected:
+        if target_family not in selected:
             continue
         if (primary_reward_first and not isinstance(rec.get("screening_tiebreaks"), dict)
                 or dense_transition and not isinstance(rec.get("screening_dense_metrics"), dict)):
@@ -280,7 +282,7 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
         key=lambda rec: (
             -float(rec.get("selected_screening_score", rec.get("screening_best_score", -1)))
             if primary_reward_first or dense_transition
-            else -float(rec["screening_by_family"][abstain_family]),
+            else -float(rec["screening_by_family"][target_family]),
             -float(rec["screening_dense_metrics"].get("unmatched_dense_mean", -1))
             if dense_transition else 0,
             float(rec["screening_dense_metrics"].get("forbidden_effects_mean", 1e9))
@@ -293,7 +295,7 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
             if dense_transition else 0,
             float(rec["screening_dense_metrics"].get("latency_s_mean", 1e9))
             if dense_transition else 0,
-            -float(rec["screening_by_family"][abstain_family])
+            -float(rec["screening_by_family"][target_family])
             if primary_reward_first and not dense_transition
             else -float(rec.get("screening_best_score", -1)),
             float(rec["screening_tiebreaks"].get("forbidden_effects", 1e9))
@@ -322,15 +324,11 @@ def canonical_family_score(mean_by_family, family):
 
 
 def canonical_promotion_eligible(confirmation, parent_mean_by_family):
-    """Reject dev-k=3 finalists that regress a perfect family."""
+    """Reject dev-k=3 finalists that regress any parent family."""
     candidate = confirmation.get("mean_by_family")
     if not isinstance(candidate, dict) or not isinstance(parent_mean_by_family, dict):
         return False
-    for family in (
-        "domain-id-direct-route",
-        "domain-id-lookalike-route",
-        "domain-id-parent-route",
-    ):
+    for family in parent_mean_by_family:
         candidate_score = canonical_family_score(candidate, family)
         parent_score = canonical_family_score(parent_mean_by_family, family)
         if candidate_score is None or parent_score is None or candidate_score < parent_score:
@@ -764,7 +762,7 @@ def main():
     parser.add_argument("--reflection-workload", default="main")
     parser.add_argument("--island-plan", choices=(
         "legacy", "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
-        "wave6-seeded-population",
+        "wave6-seeded-population", "wave7-family-repair",
     ), default="legacy")
     parser.add_argument("--seed-population-manifest", default="",
                         help="private train-screened seed admission receipt required by Wave 6")
@@ -880,13 +878,14 @@ def main():
     wave_provenance["dev_split_sha256"] = dev_sha
     targeted_plan = args.island_plan in {
         "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
-        "wave6-seeded-population",
+        "wave6-seeded-population", "wave7-family-repair",
     }
     subsets = (
         failure_family_screening_subsets(
             train, args.failure_family, args.sentinels_per_family,
         ) if args.island_plan in {
             "wave4-state-transition", "wave5-dense-transition", "wave6-seeded-population",
+            "wave7-family-repair",
         }
         else train_screening_subsets(train) if args.island_plan == "wave3-abstain"
         else stratified_screening_subsets(dev)
@@ -1047,6 +1046,13 @@ def main():
         ]
         unique = family_aware_ranked(
             representatives,
+            target_family=args.failure_family or "domain-id-unmatched-abstain",
+            perfect_families=tuple(
+                family for family in (
+                    "domain-id-direct-route", "domain-id-lookalike-route",
+                    "domain-id-parent-route", "domain-id-unmatched-abstain",
+                ) if family != (args.failure_family or "domain-id-unmatched-abstain")
+            ),
             primary_reward_first=args.island_plan == "wave4-state-transition",
             dense_transition=args.island_plan in {
                 "wave5-dense-transition", "wave6-seeded-population",
