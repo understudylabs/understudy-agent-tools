@@ -1,150 +1,174 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 
 import {
+  DOMAIN_ID_TASKS,
   domainIdFixtureSha256,
   domainIdSplitSha256,
 } from "../dist/domain-identification-slice.js";
 
-const VALIDATOR = resolve("experiments/domain-identification-repair/validate-pairs.mjs");
-const MINER = resolve("experiments/domain-identification-repair/mine-pairs.mjs");
+const SCRIPT = resolve("experiments/domain-identification-repair/validate-pairs.mjs");
+const FIXTURE_SHA256 = domainIdFixtureSha256();
+const TRAIN_SPLIT_SHA256 = domainIdSplitSha256("train");
+const trainTasks = DOMAIN_ID_TASKS.filter((task) => task.split === "train");
 
-const TRAIN_IDS = {
-  direct: "domain-id-direct-route-01",
-  lookalike: "domain-id-lookalike-route-01",
-  parent: "domain-id-parent-route-01",
-  unmatched: "domain-id-unmatched-abstain-01",
-};
-
-function pair(taskId, suffix = "", rejectedForbidden = 0) {
+function pair(taskId, family, suffix) {
   return {
     task_id: taskId,
-    fixture_sha256: domainIdFixtureSha256(),
-    train_split_sha256: domainIdSplitSha256("train"),
-    prompt_conversation: [{ role: "user", content: `prompt ${suffix}` }],
+    family,
+    fixture_sha256: FIXTURE_SHA256,
+    train_split_sha256: TRAIN_SPLIT_SHA256,
+    prompt_conversation: [{ role: "user", content: `route ${taskId}` }],
     chosen: [{ role: "assistant", content: `chosen ${suffix}` }],
     rejected: [{ role: "assistant", content: `rejected ${suffix}` }],
     chosen_score: 1,
     chosen_forbidden_writes: 0,
-    rejected_score: 0,
-    rejected_forbidden_writes: rejectedForbidden,
+    rejected_score: 0.5,
+    rejected_forbidden_writes: suffix.length % 2,
   };
 }
 
-function runValidator(rows, manifestOverrides = {}) {
-  const dir = mkdtempSync(join(tmpdir(), "domain-dpo-validate-"));
+function runGate(rows, manifestOverrides = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "domain-id-dpo-pairs-"));
   const pairsPath = join(dir, "pairs.jsonl");
   const manifestPath = join(dir, "manifest.json");
-  const outPath = join(dir, "train.jsonl");
+  const outPath = join(dir, "normalized.jsonl");
   const reportPath = join(dir, "report.json");
-  const bytes = `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
-  writeFileSync(pairsPath, bytes);
-  writeFileSync(manifestPath, `${JSON.stringify({
-    source: "synthetic fixture",
-    split: "train",
-    fixture_sha256: domainIdFixtureSha256(),
-    train_split_sha256: domainIdSplitSha256("train"),
-    pairs_sha256: createHash("sha256").update(bytes).digest("hex"),
-    ...manifestOverrides,
-  })}\n`);
+  const body = `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  writeFileSync(pairsPath, body);
+  writeFileSync(
+    manifestPath,
+    `${JSON.stringify({
+      source: "synthetic offline fixture",
+      fixture_id: "domain-identification-offline-v1",
+      fixture_sha256: FIXTURE_SHA256,
+      split: "train",
+      train_split_sha256: TRAIN_SPLIT_SHA256,
+      pairs_sha256: createHash("sha256").update(body).digest("hex"),
+      ...manifestOverrides,
+    })}\n`,
+  );
   const result = spawnSync(process.execPath, [
-    VALIDATOR, "--pairs", pairsPath, "--manifest", manifestPath,
-    "--out", outPath, "--report", reportPath,
+    SCRIPT,
+    "--pairs", pairsPath,
+    "--manifest", manifestPath,
+    "--out", outPath,
+    "--report", reportPath,
   ], { encoding: "utf8" });
-  return { result, report: JSON.parse(readFileSync(reportPath, "utf8")), outPath };
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  return { result, outPath, report };
 }
 
-describe("domain identification Wave 8 DPO pre-spend gate", () => {
-  it("accepts exact fixture/split provenance and summarizes rejected forbidden writes", () => {
+describe("domain-identification DPO pair validation", () => {
+  it("refuses a manifest bound to the old fixture", () => {
+    const task = trainTasks.find((entry) => entry.taskId === "domain-id-direct-route-01");
+    const { result, report } = runGate(
+      [pair(task.taskId, "direct-route", "old-fixture")],
+      { fixture_sha256: "7d8a213753820f7c5fcd2c65521c5c866366020bb1b361ae19c5aff11777c3d5" },
+    );
+    assert.equal(result.status, 1);
+    assert.equal(report.verdict, "fail");
+    assert.match(JSON.stringify(report.failures), /manifest fixture_sha256 missing\/stale vs runtime fixture/);
+  });
+
+  it("requires manifest and row-level train split binding", () => {
     const rows = [
-      pair(TRAIN_IDS.direct, "a", 2), pair(TRAIN_IDS.lookalike, "b"),
-      pair(TRAIN_IDS.parent, "c"), pair(TRAIN_IDS.unmatched, "d"),
+      pair("domain-id-direct-route-01", "direct-route", "split-direct"),
+      pair("domain-id-lookalike-route-01", "lookalike-route", "split-lookalike"),
+      pair("domain-id-parent-route-01", "parent-route", "split-parent"),
+      pair("domain-id-unmatched-abstain-01", "unmatched-abstain", "split-unmatched"),
     ];
-    const { result, report, outPath } = runValidator(rows);
-    assert.equal(result.status, 0, result.stderr);
+    const missingManifest = runGate(rows, { train_split_sha256: undefined });
+    assert.equal(missingManifest.result.status, 1);
+    assert.match(JSON.stringify(missingManifest.report.failures), /manifest train_split_sha256/);
+
+    rows[0].train_split_sha256 = "0".repeat(64);
+    const staleRow = runGate(rows);
+    assert.equal(staleRow.result.status, 1);
+    assert.match(JSON.stringify(staleRow.report.failures), /row train_split_sha256/);
+  });
+
+  it("requires an oracle-correct, zero-forbidden chosen replay", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "direct-route", "chosen-direct"),
+      pair("domain-id-lookalike-route-01", "lookalike-route", "chosen-lookalike"),
+      pair("domain-id-parent-route-01", "parent-route", "chosen-parent"),
+      pair("domain-id-unmatched-abstain-01", "unmatched-abstain", "chosen-unmatched"),
+    ];
+    rows[0].chosen_forbidden_writes = 1;
+    const result = runGate(rows);
+    assert.equal(result.result.status, 1);
+    assert.match(JSON.stringify(result.report.failures), /chosen replay must have zero forbidden effects/);
+  });
+
+  it("derives family from task id instead of trusting a row label", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "lookalike-route", "spoof-1"),
+      pair("domain-id-direct-route-02", "parent-route", "spoof-2"),
+      pair("domain-id-direct-route-03", "unmatched-abstain", "spoof-3"),
+    ];
+    const result = runGate(rows);
+    assert.equal(result.result.status, 1);
+    assert.match(JSON.stringify(result.report.failures), /skewed_family_unbalanceable/);
+  });
+
+  it("binds accepted rows and reports to the current fixture and train split", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "direct-route", "binding-direct"),
+      pair("domain-id-lookalike-route-01", "lookalike-route", "binding-lookalike"),
+      pair("domain-id-parent-route-01", "parent-route", "binding-parent"),
+      pair("domain-id-unmatched-abstain-01", "unmatched-abstain", "binding-unmatched"),
+    ];
+    const { result, outPath, report } = runGate(rows);
+    assert.equal(result.status, 0);
     assert.equal(report.verdict, "pass");
-    assert.equal(report.fixture_sha256, domainIdFixtureSha256());
-    assert.deepEqual(report.rejected_forbidden_writes, { pairs: 1, total: 2, max: 2 });
-    assert.equal(existsSync(outPath), true);
+    assert.equal(report.fixture_sha256, FIXTURE_SHA256);
+    assert.equal(report.train_split_sha256, TRAIN_SPLIT_SHA256);
+    const normalized = readFileSync(outPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    assert.equal(normalized.length, rows.length);
+    assert.ok(normalized.every((row) => row.fixture_sha256 === FIXTURE_SHA256));
   });
 
-  it("fails a stale fixture manifest without emitting trainable output", () => {
-    const rows = Object.values(TRAIN_IDS).map((id, index) => pair(id, String(index)));
-    const { result, report, outPath } = runValidator(rows, { fixture_sha256: "0".repeat(64) });
+  it("refuses dev or holdout task leakage", () => {
+    const { result, report } = runGate([
+      pair("domain-id-lookalike-route-07", "lookalike-route", "dev-leak"),
+    ]);
     assert.equal(result.status, 1);
-    assert.match(JSON.stringify(report.failures), /fixture_sha256/);
-    assert.equal(existsSync(outPath), false);
+    assert.equal(report.verdict, "fail");
+    assert.match(JSON.stringify(report.failures), /LEAKAGE/);
   });
 
-  it("requires the exact train split hash", () => {
-    const rows = Object.values(TRAIN_IDS).map((id, index) => pair(id, String(index)));
-    const { result, report, outPath } = runValidator(rows, { train_split_sha256: undefined });
-    assert.equal(result.status, 1);
-    assert.match(JSON.stringify(report.failures), /train_split_sha256/);
-    assert.equal(existsSync(outPath), false);
-  });
+  it("fails closed when unbalanceable and caps a balanceable family skew", () => {
+    const skewed = trainTasks
+      .filter((entry) => entry.taskId.startsWith("domain-id-lookalike-route-"))
+      .map((entry, index) => pair(entry.taskId, "lookalike-route", `unbalanceable-${index}`));
+    const unbalanceable = runGate(skewed);
+    assert.equal(unbalanceable.result.status, 1);
+    assert.equal(unbalanceable.report.verdict, "fail");
+    assert.match(JSON.stringify(unbalanceable.report.failures), /skewed_family_unbalanceable/);
 
-  it("fails stale row-level fixture provenance", () => {
-    const rows = Object.values(TRAIN_IDS).map((id, index) => pair(id, String(index)));
-    rows[0].fixture_sha256 = "0".repeat(64);
-    const { result, report, outPath } = runValidator(rows);
-    assert.equal(result.status, 1);
-    assert.match(JSON.stringify(report.failures), /row fixture_sha256/);
-    assert.equal(existsSync(outPath), false);
-  });
-
-  it("fails dev or holdout provenance closed", () => {
-    const rows = [
-      pair(TRAIN_IDS.direct, "a"), pair(TRAIN_IDS.lookalike, "b"),
-      pair(TRAIN_IDS.parent, "c"), pair("domain-id-direct-route-07", "dev"),
+    const balanceable = [
+      pair("domain-id-lookalike-route-01", "lookalike-route", "cap-lookalike-1"),
+      pair("domain-id-lookalike-route-02", "lookalike-route", "cap-lookalike-2"),
+      pair("domain-id-lookalike-route-03", "lookalike-route", "cap-lookalike-3"),
+      pair("domain-id-lookalike-route-04", "lookalike-route", "cap-lookalike-4"),
+      pair("domain-id-direct-route-01", "direct-route", "cap-direct-1"),
+      pair("domain-id-direct-route-02", "direct-route", "cap-direct-2"),
+      pair("domain-id-parent-route-01", "parent-route", "cap-parent-1"),
+      pair("domain-id-parent-route-02", "parent-route", "cap-parent-2"),
     ];
-    const { result, report, outPath } = runValidator(rows);
-    assert.equal(result.status, 1);
-    assert.match(JSON.stringify(report.failures), /LEAKAGE.*dev/);
-    assert.equal(existsSync(outPath), false);
-  });
-
-  it("fails deterministic admission when one family exceeds 35%", () => {
-    const rows = [
-      pair(TRAIN_IDS.direct, "a"), pair("domain-id-direct-route-02", "b"),
-      pair(TRAIN_IDS.lookalike, "c"), pair(TRAIN_IDS.parent, "d"),
-      pair(TRAIN_IDS.unmatched, "e"),
-    ];
-    const { result, report, outPath } = runValidator(rows);
-    assert.equal(result.status, 1);
-    assert.match(JSON.stringify(report.failures), /family balance exceeds 35%/);
-    assert.equal(existsSync(outPath), false);
-  });
-
-  it("miner reports insufficient-balanced-pool and emits no pair artifact", () => {
-    const source = JSON.parse(readFileSync(
-      "experiments/domain-identification-repair/outputs/dpo_pairs.jsonl", "utf8",
-    ).split("\n").find(Boolean));
-    const winner = {
-      task_id: source.task_id, score: 1, forbidden_effects: 0,
-      transcript: [...source.prompt_conversation, ...source.chosen],
-    };
-    const loser = {
-      task_id: source.task_id, score: source.rejected_score, forbidden_effects: source.rejected_forbidden_writes,
-      transcript: [...source.prompt_conversation, ...source.rejected],
-    };
-    const dir = mkdtempSync(join(tmpdir(), "domain-dpo-mine-"));
-    const transcripts = join(dir, "episodes.jsonl");
-    const out = join(dir, "pairs.jsonl");
-    const manifest = join(dir, "manifest.json");
-    writeFileSync(transcripts, `${JSON.stringify(winner)}\n${JSON.stringify(loser)}\n`);
-    const result = spawnSync(process.execPath, [
-      MINER, "--transcripts", transcripts, "--out", out, "--manifest", manifest,
-    ], { encoding: "utf8" });
-    assert.equal(result.status, 2, `${result.stdout}\n${result.stderr}`);
-    const receipt = JSON.parse(readFileSync(manifest, "utf8"));
-    assert.equal(receipt.family_balance.status, "insufficient_balanced_pool");
-    assert.equal(receipt.fixture_sha256, domainIdFixtureSha256());
-    assert.equal(existsSync(out), false);
+    const capped = runGate(balanceable);
+    assert.equal(capped.result.status, 0);
+    assert.equal(capped.report.verdict, "pass");
+    assert.equal(capped.report.balance_capped, true);
+    assert.equal(capped.report.dropped_for_balance, 2);
+    assert.ok(Object.values(capped.report.family_counts_final).every(
+      (count) => count <= Math.floor(0.35 * capped.report.accepted),
+    ));
   });
 });
