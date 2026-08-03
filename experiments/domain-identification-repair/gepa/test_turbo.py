@@ -35,6 +35,33 @@ def check(name, cond):
     print(f"  ok: {name}")
 
 
+def test_stdout_logger_survives_late_background_write():
+    """Eight island loggers must survive late background-thread writes."""
+    from gepa.logging.logger import StdOutLogger
+
+    loggers = [StdOutLogger() for _ in range(8)]
+    release = threading.Event()
+    errors = []
+
+    def late_write(index):
+        release.wait(timeout=1)
+        try:
+            loggers[index].log(f"late reflection log {index}")
+        except Exception as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+
+    workers = [threading.Thread(target=late_write, args=(index,)) for index in range(8)]
+    for worker in workers:
+        worker.start()
+    for index, logger in enumerate(loggers):
+        logger.log(f"optimizer returned {index}")
+    release.set()
+    for worker in workers:
+        worker.join(timeout=1)
+    check("all eight late logger threads finished", not any(worker.is_alive() for worker in workers))
+    check("all eight late logger writes avoided closed streams", errors == [])
+
+
 def new_budget():
     b = GlobalBudget(max_total_episodes=120, stage_a_global_cap=72,
                      stage_b_escrow=48, max_total_reflections=8)
@@ -619,6 +646,7 @@ def test_predictions_from_canonical_real_and_aligned():
 
 def main():
     tests = [
+        test_stdout_logger_survives_late_background_write,
         test_global_cap_failure_leaves_branch_unchanged,
         test_branch_cap_failure_leaves_global_unchanged,
         test_32_concurrent_reservations_never_exceed_caps,

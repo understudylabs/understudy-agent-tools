@@ -32,6 +32,7 @@ import re
 import subprocess
 import threading
 import time
+import traceback
 from pathlib import Path
 
 # Isolated runtime glue: reuse the audited wave-1 primitives verbatim.
@@ -405,6 +406,7 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
     """Run one Stage-A GEPA branch. Fail-closed: any fuse trip or service-pressure
     abort records the branch as failed with no promotable score."""
     import gepa
+    from gepa.logging.logger import StdOutLogger
 
     assert_gepa_runtime()
 
@@ -444,6 +446,12 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             acceptance_criterion=acceptance_criterion_for_strategy(strategy),
             frontier_type="instance",
             skip_perfect_score=True,
+            # GEPA's file Logger swaps process-global stdout/stderr for
+            # closable Tee streams. Concurrent islands and late reflection
+            # threads can then write to a stream another island has closed.
+            # Keep run_dir for checkpoints, use non-closing stdout for logs,
+            # and retain ProgressLedger as durable per-branch telemetry.
+            logger=StdOutLogger(),
             run_dir=str(run_dir / "logs"),
             seed=seed,
         )
@@ -459,6 +467,28 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             "status": "failed",
             "abort_reason": "fuse_or_service_pressure",
             "detail": str(exc)[:200],
+            "wall_clock_s": round(time.time() - started),
+            "fuses": fuse.snapshot(),
+        })
+        (run_dir / "branch-receipt.json").write_text(json.dumps(record, indent=2) + "\n")
+        with results_lock:
+            results[bid] = record
+        return
+    except Exception as exc:
+        # Unexpected programming, auth, schema, or third-party failures must
+        # still produce a durable failed receipt and remain unrankable.
+        detail = f"{type(exc).__name__}: {exc}"[:240]
+        ledger.record_invalid({
+            "branch_id": bid,
+            "reason": "unexpected_runtime_error",
+            "detail": detail,
+            "ts": time.time(),
+        })
+        record.update({
+            "status": "failed",
+            "abort_reason": "unexpected_runtime_error",
+            "detail": detail,
+            "traceback": traceback.format_exc(limit=8)[-4000:],
             "wall_clock_s": round(time.time() - started),
             "fuses": fuse.snapshot(),
         })
