@@ -32,7 +32,8 @@ from island_race import (  # noqa: E402
     build_no_distinct_receipt, classify_failure, global_dedup_annotations,
     canonical_promotion_eligible, family_aware_ranked, incomplete_branch_ids,
     island_specs_for_plan,
-    prompt_sha, required_physical_episode_cap, stamp_wave, unique_ranked,
+    load_seed_population_manifest, prompt_sha, required_physical_episode_cap,
+    stamp_wave, unique_ranked,
 )
 from turbo_race import (  # noqa: E402
     acceptance_criterion_for_strategy, screening_family_scores, select_strategy_candidate,
@@ -149,6 +150,61 @@ def test_reflection_provenance_contains_name_not_secret():
           env["UNDERSTUDY_API_KEY"] not in serialized)
 
 
+def test_wave6_seed_population_admission():
+    root = Path(tempfile.mkdtemp())
+    specs = island_specs_for_plan("wave6-seeded-population")
+    seeds = []
+    perfect = {
+        "domain-id-direct-route": 1.0,
+        "domain-id-lookalike-route": 1.0,
+        "domain-id-parent-route": 1.0,
+        "domain-id-unmatched-abstain": 0.0,
+    }
+    for index, (bid, strategy, *_rest) in enumerate(specs):
+        prompt_path = root / f"seed-{index}.txt"
+        prompt_path.write_text(f"distinct synthetic policy {index}\n")
+        seeds.append({
+            "branch_id": bid, "strategy": strategy, "prompt_path": str(prompt_path),
+            "prompt_sha256": prompt_sha(prompt_path.read_text()), "eligible": True,
+            "screening_by_family": dict(perfect), "forbidden_effects": 0,
+        })
+    manifest = {
+        "schema_version": "understudy.gepa_seed_population.v1",
+        "holdout_executed": False, "valset_sha256": "train-screen-v1", "seeds": seeds,
+    }
+    manifest_path = root / "population.json"
+    manifest_path.write_text(json.dumps(manifest))
+    prompts, sanitized, population_sha = load_seed_population_manifest(
+        manifest_path, specs, "train-screen-v1",
+    )
+    check("wave6 admits eight distinct train-screened seeds",
+          len(prompts) == len(sanitized) == len(set(prompts.values())) == 8)
+    check("wave6 provenance omits private prompt paths and text",
+          len(population_sha) == 64 and "prompt_path" not in json.dumps(sanitized)
+          and "distinct synthetic policy" not in json.dumps(sanitized))
+
+    seeds[1]["prompt_path"] = seeds[0]["prompt_path"]
+    seeds[1]["prompt_sha256"] = seeds[0]["prompt_sha256"]
+    manifest_path.write_text(json.dumps(manifest))
+    try:
+        load_seed_population_manifest(manifest_path, specs, "train-screen-v1")
+    except island_race.FuseTripped:
+        pass
+    else:
+        raise AssertionError("wave6 duplicate seed must fail closed")
+
+    seeds[1]["prompt_path"] = str(root / "seed-1.txt")
+    seeds[1]["prompt_sha256"] = prompt_sha((root / "seed-1.txt").read_text())
+    seeds[1]["screening_by_family"]["domain-id-lookalike-route"] = 0.5
+    manifest_path.write_text(json.dumps(manifest))
+    try:
+        load_seed_population_manifest(manifest_path, specs, "train-screen-v1")
+    except island_race.FuseTripped:
+        pass
+    else:
+        raise AssertionError("wave6 route-regressing seed must fail closed")
+
+
 def test_completed_manifest_stamps_confirmation_totals():
     live = object.__new__(LiveManifest)
     live.wave = None
@@ -233,6 +289,7 @@ def test_completed_manifest_stamps_confirmation_totals():
 def main():
     test_graph_silent_publish()
     test_reflection_provenance_contains_name_not_secret()
+    test_wave6_seed_population_admission()
     test_completed_manifest_stamps_confirmation_totals()
     check("exactly eight islands", len(ISLAND_SPECS) == 8)
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
@@ -564,7 +621,7 @@ def main():
           and sum(strategy == "exact_state_transition" for _, strategy, *_ in wave4) == 4
           and sum(strategy == "explicit_tool_sequence" for _, strategy, *_ in wave4) == 2
           and sum(strategy == "state_transition_crossover" for _, strategy, *_ in wave4) == 2)
-    print("ALL 34 ISLAND TESTS PASSED")
+    print("ALL 38 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

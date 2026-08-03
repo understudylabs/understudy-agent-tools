@@ -71,6 +71,16 @@ WAVE5_DENSE_TRANSITION_ISLAND_SPECS = (
     ("crossover-1", "dense_transition_crossover", 2787561, 0),
     ("crossover-2", "dense_transition_crossover", 2887561, 1),
 )
+WAVE6_SEEDED_POPULATION_ISLAND_SPECS = (
+    ("table-1", "dense_state_transition", 3187561, 0),
+    ("table-2", "dense_state_transition", 3287561, 1),
+    ("grammar-1", "explicit_dense_sequence", 3387561, 0),
+    ("grammar-2", "explicit_dense_sequence", 3487561, 1),
+    ("proof-1", "exact_state_transition", 3587561, 0),
+    ("termination-1", "termination_discipline", 3687561, 1),
+    ("lookalike-guard", "dense_transition_crossover", 3787561, 0),
+    ("parent-guard", "dense_transition_crossover", 3887561, 1),
+)
 ISLAND_SPECS = LEGACY_ISLAND_SPECS
 
 
@@ -83,11 +93,71 @@ def island_specs_for_plan(plan):
         return WAVE4_STATE_TRANSITION_ISLAND_SPECS
     if plan == "wave5-dense-transition":
         return WAVE5_DENSE_TRANSITION_ISLAND_SPECS
+    if plan == "wave6-seeded-population":
+        return WAVE6_SEEDED_POPULATION_ISLAND_SPECS
     raise ValueError(f"unknown island plan: {plan}")
 
 
 def prompt_sha(text):
     return hashlib.sha256((text.rstrip() + "\n").encode()).hexdigest()
+
+
+def load_seed_population_manifest(path, island_specs, expected_valset_sha256):
+    """Load eight distinct, train-screened prompts without serializing prompt text.
+
+    The private manifest is an admission receipt, not a scorer. It must bind
+    every prompt file to the exact train-screening valset and prove the three
+    incumbent-perfect route families did not regress before GEPA spends calls.
+    """
+    payload = json.loads(Path(path).read_text())
+    if payload.get("schema_version") != "understudy.gepa_seed_population.v1":
+        raise FuseTripped("seed population schema mismatch")
+    if payload.get("holdout_executed") is not False:
+        raise FuseTripped("seed population must declare holdout_executed=false")
+    if payload.get("valset_sha256") != expected_valset_sha256:
+        raise FuseTripped("seed population train-screening valset hash mismatch")
+    entries = payload.get("seeds")
+    if not isinstance(entries, list):
+        raise FuseTripped("seed population seeds must be a list")
+    expected = {bid: strategy for bid, strategy, *_ in island_specs}
+    by_id = {entry.get("branch_id"): entry for entry in entries if isinstance(entry, dict)}
+    if set(by_id) != set(expected) or len(entries) != len(expected):
+        raise FuseTripped("seed population must contain every island exactly once")
+    prompts, sanitized, hashes = {}, [], set()
+    perfect = (
+        "domain-id-direct-route", "domain-id-lookalike-route", "domain-id-parent-route",
+    )
+    for bid, strategy in expected.items():
+        entry = by_id[bid]
+        if entry.get("strategy") != strategy or entry.get("eligible") is not True:
+            raise FuseTripped(f"seed {bid} strategy or eligibility mismatch")
+        scores = entry.get("screening_by_family")
+        if not isinstance(scores, dict) or any(float(scores.get(family, -1)) < 1 for family in perfect):
+            raise FuseTripped(f"seed {bid} regresses an incumbent-perfect route family")
+        if float(entry.get("forbidden_effects", 1)) != 0:
+            raise FuseTripped(f"seed {bid} has forbidden train-screening effects")
+        prompt_path = Path(entry.get("prompt_path", ""))
+        if not prompt_path.is_file():
+            raise FuseTripped(f"seed {bid} prompt file missing")
+        prompt = prompt_path.read_text()
+        digest = prompt_sha(prompt)
+        if digest != entry.get("prompt_sha256"):
+            raise FuseTripped(f"seed {bid} prompt hash mismatch")
+        if digest in hashes:
+            raise FuseTripped(f"seed {bid} duplicates another admitted prompt")
+        hashes.add(digest)
+        prompts[bid] = prompt
+        sanitized.append({
+            "branch_id": bid, "strategy": strategy, "prompt_sha256": digest,
+            "screening_by_family": {family: scores[family] for family in perfect},
+            "unmatched_score": scores.get("domain-id-unmatched-abstain"),
+            "forbidden_effects": 0, "eligible": True,
+        })
+    sanitized.sort(key=lambda entry: entry["branch_id"])
+    population_sha = hashlib.sha256(
+        json.dumps(sanitized, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return prompts, sanitized, population_sha
 
 
 def write_terminal_artifacts(out_dir, receipt, *record_groups, limit=64):
@@ -688,7 +758,10 @@ def main():
     parser.add_argument("--reflection-workload", default="main")
     parser.add_argument("--island-plan", choices=(
         "legacy", "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
+        "wave6-seeded-population",
     ), default="legacy")
+    parser.add_argument("--seed-population-manifest", default="",
+                        help="private train-screened seed admission receipt required by Wave 6")
     parser.add_argument("--wave", type=int, default=1)
     parser.add_argument("--parent-run", default="")
     parser.add_argument("--parent-winner-sha", default="")
@@ -796,11 +869,14 @@ def main():
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
     targeted_plan = args.island_plan in {
         "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
+        "wave6-seeded-population",
     }
     subsets = (
         failure_family_screening_subsets(
             train, args.failure_family, args.sentinels_per_family,
-        ) if args.island_plan in {"wave4-state-transition", "wave5-dense-transition"}
+        ) if args.island_plan in {
+            "wave4-state-transition", "wave5-dense-transition", "wave6-seeded-population",
+        }
         else train_screening_subsets(train) if args.island_plan == "wave3-abstain"
         else stratified_screening_subsets(dev)
     )
@@ -820,7 +896,7 @@ def main():
         wave_provenance["shaping_contract_sha256"] = hashlib.sha256(
             json.dumps(shaping_contract, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-    if args.island_plan == "wave5-dense-transition":
+    if args.island_plan in {"wave5-dense-transition", "wave6-seeded-population"}:
         shaping_contract = {
             "scope": "train_screening_only",
             "primary": "authoritative_reward",
@@ -844,6 +920,17 @@ def main():
         wave_provenance["shaping_contract_sha256"] = hashlib.sha256(
             json.dumps(shaping_contract, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
+    seed_population_prompts = None
+    if args.island_plan == "wave6-seeded-population":
+        if not args.seed_population_manifest:
+            raise FuseTripped("--seed-population-manifest is required for Wave 6")
+        seed_population_prompts, seed_population, seed_population_sha = (
+            load_seed_population_manifest(
+                args.seed_population_manifest, island_specs, wave_provenance["valset_sha256"],
+            )
+        )
+        wave_provenance["seed_population"] = seed_population
+        wave_provenance["seed_population_sha256"] = seed_population_sha
     screening_size = len(subsets[0]["tasks"])
     required_stage1 = required_physical_episode_cap(args.stage1_metric_calls, screening_size)
     required_stage2 = required_physical_episode_cap(args.stage2_metric_calls, screening_size)
@@ -885,7 +972,7 @@ def main():
                         mirror_path=args.manifest_mirror or None,
                         provider=args.provider_label, model=args.model,
                         reflection=reflection_provenance, wave=wave_provenance)
-    stage1_prompts = {bid: seed_prompt for bid, *_ in island_specs}
+    stage1_prompts = seed_population_prompts or {bid: seed_prompt for bid, *_ in island_specs}
     stage1 = run_parallel(island_specs, seed_prompts=stage1_prompts, subsets=subsets,
                           train=train_for_gepa, sidecar=args.sidecar, budget=budget,
                           runs_root=args.runs_root, experiment_id=experiment_id,
@@ -899,7 +986,9 @@ def main():
                           reflection_base_url=args.reflection_base_url,
                           reflection_headers=reflection_headers,
                           reflection_provider_label=args.reflection_provider_label,
-                          dense_candidate_selection=args.island_plan == "wave5-dense-transition")
+                          dense_candidate_selection=args.island_plan in {
+                              "wave5-dense-transition", "wave6-seeded-population",
+                          })
     incomplete = incomplete_branch_ids(island_specs, stage1)
     if incomplete:
         reason = ("scheduled branches lacked completed receipts: "
@@ -933,7 +1022,9 @@ def main():
         unique = family_aware_ranked(
             representatives,
             primary_reward_first=args.island_plan == "wave4-state-transition",
-            dense_transition=args.island_plan == "wave5-dense-transition",
+            dense_transition=args.island_plan in {
+                "wave5-dense-transition", "wave6-seeded-population",
+            },
         )
     if len(unique) < 2:
         if targeted_plan:
@@ -991,7 +1082,9 @@ def main():
                           reflection_base_url=args.reflection_base_url,
                           reflection_headers=reflection_headers,
                           reflection_provider_label=args.reflection_provider_label,
-                          dense_candidate_selection=args.island_plan == "wave5-dense-transition")
+                          dense_candidate_selection=args.island_plan in {
+                              "wave5-dense-transition", "wave6-seeded-population",
+                          })
 
     incomplete2 = incomplete_branch_ids(stage2_specs, stage2)
     if incomplete2:
