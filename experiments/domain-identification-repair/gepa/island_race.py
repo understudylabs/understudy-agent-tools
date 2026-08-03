@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -726,6 +727,10 @@ def main():
         "island_plan": args.island_plan,
         "target_score": args.target_score,
         "seed_prompt_sha256": prompt_sha(seed_prompt),
+        "source_commit": subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=True,
+            text=True, capture_output=True,
+        ).stdout.strip(),
     }
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
@@ -743,7 +748,10 @@ def main():
         shaping_contract = {
             "scope": "train_screening_only",
             "primary": "authoritative_reward",
-            "tie_breaks": ["failure_family_mean", "route_regression_guard", "candidate_diversity", "latency"],
+            "tie_breaks": [
+                "failure_family_mean", "route_regression_guard", "forbidden_effects",
+                "malformed", "steps", "candidate_diversity", "latency",
+            ],
             "canonical_scorer_modified": False,
         }
         wave_provenance["shaping_contract"] = shaping_contract
