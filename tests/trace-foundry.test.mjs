@@ -141,7 +141,7 @@ test("records the incumbent model from capture metadata on tasks and the manifes
 
 test("incumbent is null when captures carry no model metadata", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-no-incumbent-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
-  writeFileSync(join(source, "one.json"), JSON.stringify(capture("bare", "2026-07-20T00:00:00Z", [{ role: "user", content: "No model recorded" }], {})));
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("bare", "2026-07-20T00:00:00Z", [{ role: "user", content: "No model recorded" }], { content: [{ type: "text", text: "done" }] })));
   compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
   const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
   assert.equal(task.incumbent, null);
@@ -272,7 +272,7 @@ test("trace grouping: multi-workload trace becomes one task with workflow_siblin
   ];
   writeFileSync(join(source, "rows.jsonl"), rows.map(JSON.stringify).join("\n") + "\n");
   const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
-  assert.equal(result.counts.tasks, 1, "one trace = one task despite two workloads");
+  assert.equal(result.counts.tasks, 0, "incomparable terminal leaves are quarantined rather than timestamp-selected");
   const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
   assert.equal(dag.groups.length, 1);
   assert.equal(dag.groups[0].grouping_label, "trace_grouped/valid");
@@ -281,9 +281,7 @@ test("trace grouping: multi-workload trace becomes one task with workflow_siblin
   assert.ok(sibling, "disjoint-prefix chain in the same trace links as workflow_sibling");
   assert.equal(sibling.confidence, "low");
   assert.ok(!dag.edges.some((edge) => edge.type === "destructive_mutation"), "sibling chains are not destructive mutations");
-  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
-  assert.equal(task.grouping_label, "trace_grouped/valid");
-  assert.deepEqual(task.tool_surface, ["save-fields", "update-record"], "tool surface merges across workloads");
+  assert.ok(dag.quarantines.some((row) => row.code === "ambiguous_terminal_leaf"));
 });
 
 test("trace grouping: >120s silence splits, probes segregate as singleton, traceless captures fall back to heuristic", () => {
@@ -307,15 +305,14 @@ test("trace grouping: >120s silence splits, probes segregate as singleton, trace
   const splitGroups = dag.groups.filter((group) => group.grouping_label === "trace_grouped/split");
   assert.notEqual(splitGroups[0].id, splitGroups[1].id);
   assert.equal(new Set(dag.groups.map((group) => group.id)).size, 4, "episode group ids never collide");
-  const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
-  assert.equal(new Set(tasks.map((task) => task.task_id)).size, 4, "task ids unique across split episodes");
+  assert.equal(readFileSync(join(output, "tasks.jsonl"), "utf8").trim(), "", "leaf candidates without terminal responses are quarantined");
 });
 
 test("trace grouping: raw traceparent header parses, and a workload filter flags cross-workload traces instead of silently truncating", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-honesty-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
   const viaHeader = capture("tp-1", "2026-07-20T00:00:00Z", [{ role: "user", content: "Traceparent style capture one" }], { content: [{ type: "tool_use", id: "t1", name: "update-record", input: { id: 9 } }] });
   viaHeader.workload_name = "orchestrator"; viaHeader.traceparent = `00-${TRACE_A}-1111111111111111-01`;
-  const viaHeader2 = capture("tp-2", "2026-07-20T00:00:05Z", [{ role: "user", content: "Traceparent style capture one" }, { role: "assistant", content: "ok" }], {});
+  const viaHeader2 = capture("tp-2", "2026-07-20T00:00:05Z", [{ role: "user", content: "Traceparent style capture one" }, { role: "assistant", content: "ok" }], { content: [{ type: "text", text: "done" }] });
   viaHeader2.workload_name = "orchestrator"; viaHeader2.traceparent = `00-${TRACE_A}-2222222222222222-01`;
   const hidden = traced("hidden", "2026-07-20T00:00:02Z", "helper", TRACE_A, [{ role: "user", content: "Helper call outside the filter" }], {});
   writeFileSync(join(source, "rows.jsonl"), [viaHeader, viaHeader2, hidden].map(JSON.stringify).join("\n") + "\n");
@@ -1197,4 +1194,74 @@ test("filter buckets: non-normalizable captures are split into honest reasons (o
   assert.deepEqual(result.counts.filtered_reasons, { missing_timestamp: 1, malformed_timestamp: 1 });
   assert.equal(result.counts.invalid_timestamp_filtered, 2, "compat: legacy key stays populated with the total");
   assert.equal(result.counts.captures, 1);
+});
+
+test("parent ties resolve only from exact response incorporation and shared execution identity", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-parent-evidence-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const trace = "dddddddddddddddddddddddddddddddd";
+  const parentA = traced("parent-a", "2026-07-20T00:00:00Z", "synthetic", trace, [{ role: "user", content: "choose a branch" }], { content: [{ type: "tool_use", id: "call-a", name: "update-a", input: { value: "a" } }] });
+  const parentB = traced("parent-b", "2026-07-20T00:00:01Z", "synthetic", trace, [{ role: "user", content: "choose a branch" }], { content: [{ type: "tool_use", id: "call-b", name: "update-b", input: { value: "b" } }] });
+  const child = traced("child", "2026-07-20T00:00:02Z", "synthetic", trace, [
+    { role: "user", content: "choose a branch" },
+    { role: "assistant", content: [{ type: "tool_use", id: "call-a", name: "update-a", input: { value: "a" } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "ok" }] },
+  ], { content: [{ type: "text", text: "finished" }] });
+  writeFileSync(join(source, "captures.jsonl"), [parentA, parentB, child].map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+  assert.equal(dag.quarantines.filter((row) => row.code === "ambiguous_parent").length, 0);
+  assert.equal(dag.edges.find((edge) => edge.to === dag.nodes.find((node) => node.capture_id === "child").id).from, dag.nodes.find((node) => node.capture_id === "parent-a").id);
+  assert.equal(result.counts.tasks, 0, "the unmatched parent remains an incomparable terminal leaf");
+});
+
+test("identical-prefix ties with neither or both response matches remain quarantined", () => {
+  const build = (childMessages, suffix) => {
+    const root = mkdtempSync(join(tmpdir(), `understudy-foundry-tie-${suffix}-`)), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+    const trace = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const a = traced(`a-${suffix}`, "2026-07-20T00:00:00Z", "synthetic", trace, [{ role: "user", content: "same prefix" }], { content: [{ type: "tool_use", id: "a", name: "tool-a", input: {} }] });
+    const b = traced(`b-${suffix}`, "2026-07-20T00:00:01Z", "synthetic", trace, [{ role: "user", content: "same prefix" }], { content: [{ type: "tool_use", id: "b", name: "tool-b", input: {} }] });
+    const c = traced(`c-${suffix}`, "2026-07-20T00:00:02Z", "synthetic", trace, childMessages, { content: [{ type: "text", text: "done" }] });
+    writeFileSync(join(source, "captures.jsonl"), [a, b, c].map(JSON.stringify).join("\n") + "\n");
+    const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+    const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8"));
+    assert.ok(dag.quarantines.some((row) => row.code === "ambiguous_parent"));
+    assert.equal(result.counts.tasks, 0);
+  };
+  build([{ role: "user", content: "same prefix" }, { role: "assistant", content: [{ type: "tool_use", id: "other", name: "other", input: {} }] }], "neither");
+  build([{ role: "user", content: "same prefix" }, { role: "assistant", content: [{ type: "tool_use", id: "a", name: "tool-a", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "a", content: "ok" }] }, { role: "assistant", content: [{ type: "tool_use", id: "b", name: "tool-b", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "b", content: "ok" }] }], "both");
+});
+
+test("auxiliary manifest JSON is ignored while malformed capture-shaped rows are counted", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-manifest-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "manifest.json"), JSON.stringify({ schema_version: "understudy.capture_manifest.v1", files: [] }));
+  writeFileSync(join(source, "captures.jsonl"), JSON.stringify(capture("good", "2026-07-20T00:00:00Z", [{ role: "user", content: "hello" }], { content: [{ type: "text", text: "done" }] })) + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  assert.equal(result.counts.captures, 1);
+  assert.equal(JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8")).candidate_boundary !== undefined, true);
+});
+
+test("workload filtering fails on absent metadata and records mixed-scope exclusions", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-scope-")), source = join(root, "captures"); mkdirSync(source, { recursive: true });
+  const absent = capture("absent", "2026-07-20T00:00:00Z", [{ role: "user", content: "hello" }], { content: [{ type: "text", text: "done" }] }); delete absent.workload_name;
+  writeFileSync(join(source, "absent.json"), JSON.stringify(absent));
+  assert.throws(() => compileTraceFoundry(source, join(root, "absent-out"), 3, new Date("2026-07-21T00:00:00Z"), { workload: "automation" }), /no workload metadata/);
+  const known = capture("known", "2026-07-20T00:00:00Z", [{ role: "user", content: "hello" }], { content: [{ type: "text", text: "done" }] });
+  known.workload_name = "automation";
+  const unknown = { ...absent, request_id: "unknown" };
+  const mixedSource = join(root, "mixed-captures"); mkdirSync(mixedSource);
+  writeFileSync(join(mixedSource, "known.json"), JSON.stringify(known));
+  writeFileSync(join(mixedSource, "unknown.json"), JSON.stringify(unknown));
+  const result = compileTraceFoundry(mixedSource, join(root, "mixed-out"), 3, new Date("2026-07-21T00:00:00Z"), { workload: "automation" });
+  assert.equal(result.source_scope.known_rows, 1);
+  assert.equal(result.source_scope.unknown_exclusions, 1);
+  assert.equal(result.source_scope.exact_matches, 1);
+});
+
+test("self-check rejects candidate history that drops a source message", async () => {
+  const { selfCheckTask } = await import("../dist/trace-foundry.js");
+  const task = { task_id: "task-history", title: "history task", outcome_contract: { required: [{ type: "value_propagation", value: "x", must_reach: { kind: "final_response" } }] }, source: { captures: [] } };
+  const source = [{ role: "user", content: "first" }, { role: "assistant", content: [{ type: "tool_use", id: "c", name: "read", input: {} }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "c", content: "x" }] }, { role: "user", content: "second" }];
+  assert.deepEqual(selfCheckTask(task, { prompt: "first", source_messages: source, candidate_prompt: source }, { schemasPresent: true }), []);
+  const dropped = selfCheckTask(task, { prompt: "first", source_messages: source, candidate_prompt: source.slice(0, -1) }, { schemasPresent: true });
+  assert.ok(dropped.some((failure) => failure.check === "history_mismatch"));
 });

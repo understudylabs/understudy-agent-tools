@@ -25,6 +25,8 @@ export type FoundryResult = {
     filtered_reasons: { missing_timestamp: number; malformed_timestamp: number };
   };
   artifacts: Record<string, string>;
+  source_scope?: { requested_workload: string | null; metadata_available: boolean; filter_applied: boolean; filter_note: string | null; known_rows: number; unknown_rows: number; exact_matches: number; explicit_mismatches: number; unknown_exclusions: number };
+  quarantines?: { execution_group: string; code: string; edge_count: number }[];
   privacy: { local_only: true; contains_customer_payloads: true; upload_performed: false; provider_called: false };
   /** Generation-time structural self-check (understudy.foundry_self_check.v1): per-task failures + environment scan. */
   self_check?: Record<string, unknown>;
@@ -71,6 +73,12 @@ function sourceFiles(root: string): string[] {
     if (entry.isDirectory()) return sourceFiles(path);
     return entry.isFile() && [".json", ".jsonl", ".ndjson"].some((ext) => entry.name.endsWith(ext)) ? [path] : [];
   }).sort();
+}
+
+function isCaptureEnvelope(value: Obj): boolean {
+  const hasRequest = ["customer_request_body", "request_body", "request"].some((key) => value[key] !== undefined);
+  const hasResponse = ["response_body", "customer_response_body", "response"].some((key) => value[key] !== undefined);
+  return hasRequest && hasResponse && value.request_id !== undefined;
 }
 
 function envelopes(path: string): Obj[] {
@@ -172,8 +180,20 @@ function normalize(envelope: Obj, pointer: string): Obj | null {
   ].filter(Boolean);
   return {
     schema_version: "understudy.normalized_capture.v1", capture_id: captureId, capture_key: captureKey, captured_at: capturedAt,
-    source: { pointer, sha256: hash(envelope) },
-    scope: { org_id: envelope.workos_org_id ?? envelope.org_id ?? null, project_id: envelope.project_id ?? null, workload_id: envelope.workload_id ?? envelope.placement_id ?? null, workload_name: envelope.workload_name ?? null },
+    source: {
+      pointer,
+      sha256: hash(envelope),
+      identity: {
+        request_id: envelope.request_id ?? envelope.id ?? null,
+        trace_id: envelope.trace_id ?? asObject(envelope.metadata).trace_id ?? null,
+        caller_span_id: envelope.caller_span_id ?? asObject(envelope.metadata).caller_span_id ?? null,
+        execution_id: envelope.execution_id ?? asObject(envelope.metadata).execution_id ?? null,
+        conversation_id: envelope.conversation_id ?? asObject(envelope.metadata).conversation_id ?? null,
+        session_id: envelope.session_id ?? asObject(envelope.metadata).session_id ?? null,
+        parent_event_id: envelope.parent_event_id ?? asObject(envelope.metadata).parent_event_id ?? null,
+      },
+    },
+    scope: { org_id: envelope.workos_org_id ?? envelope.org_id ?? null, project_id: envelope.project_id ?? null, workload_id: envelope.workload_id ?? null, workload_name: envelope.workload_name ?? null },
     routing: { provider: envelope.provider ?? null, requested_model: envelope.requested_model ?? request.model ?? null, upstream_model: envelope.upstream_model ?? null },
     transport: { endpoint: envelope.endpoint ?? null, status_code: envelope.status_code ?? null, latency_ms: envelope.latency_ms ?? null },
     request: { system: request.system ?? null, messages, tools, settings: Object.fromEntries(Object.entries(request).filter(([k]) => !["system", "messages", "tools"].includes(k))) },
@@ -186,6 +206,33 @@ function normalize(envelope: Obj, pointer: string): Obj | null {
 }
 
 function commonPrefix(a: string[], b: string[]): number { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n += 1; return n; }
+
+function responseMessages(row: Obj): Obj[] {
+  const body = asObject(row.response?.body);
+  const choices = Array.isArray(body.choices) ? body.choices.map(asObject) : [];
+  const openAi = choices.map((choice) => asObject(choice.message)).filter((message) => Object.keys(message).length > 0);
+  if (openAi.length > 0) return openAi;
+  const content = Array.isArray(body.content) ? body.content : body.content == null ? [] : [body.content];
+  return content.length > 0 ? [{ role: "assistant", content }] : [];
+}
+
+function containsExactMessages(messages: Obj[], needle: Obj[]): boolean {
+  if (needle.length === 0 || needle.length > messages.length) return false;
+  return messages.some((_, index) => JSON.stringify(messages.slice(index, index + needle.length)) === JSON.stringify(needle));
+}
+
+function parentTransitionEvidence(parent: Obj, child: Obj, traceId: string | null): string | null {
+  const parentIdentity = asObject(parent.source.identity), childIdentity = asObject(child.source.identity);
+  const identityKeys = ["execution_id", "conversation_id", "session_id", "trace_id"];
+  const sharedIdentity = identityKeys.find((key) => parentIdentity[key] !== null && parentIdentity[key] !== undefined && parentIdentity[key] === childIdentity[key]);
+  if (sharedIdentity === undefined && traceId === null) return null;
+  if (new Date(child.captured_at).valueOf() <= new Date(parent.captured_at).valueOf()) return null;
+  const response = responseMessages(parent);
+  if (!containsExactMessages(child.request.messages, response)) return null;
+  const callIds = response.flatMap((message) => (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((call) => asObject(call).id).filter(Boolean));
+  if (callIds.some((id) => !child.request.messages.some((message: Obj) => message.role === "tool" && message.tool_call_id === id))) return null;
+  return sharedIdentity ?? "trace_id";
+}
 
 /** Trace census rule: >120s of silence inside one trace splits it into sub-episodes (async continuations are separate invocations). */
 const TRACE_GAP_MS = 120_000;
@@ -235,7 +282,7 @@ function assignGroups(rows: Obj[]): { id: string; grouping_label: string; trace_
 }
 
 function buildDag(rows: Obj[], traceWorkloads: Map<string, Set<string>> = new Map()): Obj {
-  const nodes: Obj[] = [], edges: Obj[] = [], groupRows: Obj[] = [];
+  const nodes: Obj[] = [], edges: Obj[] = [], groupRows: Obj[] = [], quarantines: Obj[] = [];
   for (const group of assignGroups(rows)) {
     const groupId = group.id, captures = group.captures;
     captures.sort((a, b) => a.captured_at.localeCompare(b.captured_at));
@@ -261,8 +308,23 @@ function buildDag(rows: Obj[], traceWorkloads: Map<string, Set<string>> = new Ma
       const priorError = Number(best.parent.transport.status_code ?? 200) >= 400 || (best.parent.response.tool_calls ?? []).length === 0;
       const summarized = c.some((fingerprint, i) => i < p.length && fingerprint !== p[i]) && capture.request.messages.some((m: Obj) => m.summary === true || m.metadata?.folded === true);
       const type = sameBoundary && priorError ? "retry" : sameBoundary ? "branch" : best.prefix === p.length ? "prefix_append" : summarized ? "folded_continuation" : p.length === c.length && best.prefix > 0 ? "same_depth_mutation" : best.prefix > 0 ? "branch" : "destructive_mutation";
-      const tied = candidates.filter((candidate) => candidate.prefix === best.prefix).length > 1;
-      edges.push({ from: best.parent.capture_key, to: capture.capture_key, type, execution_group: groupId, confidence: tied || type === "destructive_mutation" ? "low" : "deterministic", evidence: { common_prefix_messages: best.prefix, prior_error: priorError, ambiguous_parent: tied } });
+      const tiedCandidates = candidates.filter((candidate) => candidate.prefix === best.prefix);
+      const evidenced = tiedCandidates.map((candidate) => ({ candidate, evidence: parentTransitionEvidence(candidate.parent, capture, group.trace_id) })).filter((candidate) => candidate.evidence !== null);
+      const tied = tiedCandidates.length > 1 && evidenced.length !== 1;
+      if (tied) {
+        quarantines.push({
+          execution_group: groupId,
+          code: "ambiguous_parent",
+          edge_count: 1,
+          candidate_count: tiedCandidates.length,
+          common_prefix_messages: best.prefix,
+          available_identity_fields: [...new Set(tiedCandidates.flatMap((candidate) => Object.entries(asObject(candidate.parent.source.identity)).filter(([, value]) => value !== null && value !== undefined).map(([key]) => key)))],
+        });
+        return;
+      }
+      const selected = evidenced.length === 1 ? evidenced[0].candidate : best;
+      const evidenceReason = evidenced.length === 1 ? evidenced[0].evidence : null;
+      edges.push({ from: selected.parent.capture_key, to: capture.capture_key, type, execution_group: groupId, confidence: evidenceReason !== null ? "deterministic" : type === "destructive_mutation" ? "low" : "deterministic", evidence: { common_prefix_messages: best.prefix, prior_error: priorError, ambiguous_parent: false, parent_transition: evidenceReason } });
     });
     const workloads = [...new Set(captures.map(workloadOf))].sort();
     // Cross-workload honesty: when a workload filter hid part of this trace,
@@ -270,8 +332,9 @@ function buildDag(rows: Obj[], traceWorkloads: Map<string, Set<string>> = new Ma
     const workloadsSpanned = group.trace_id !== null ? [...new Set([...workloads, ...(traceWorkloads.get(group.trace_id) ?? [])])].sort() : workloads;
     groupRows.push({ id: groupId, capture_count: captures.length, edge_count: edges.filter((edge) => edge.execution_group === groupId).length, roots, grouping_label: group.grouping_label, trace_id: group.trace_id, workloads, workloads_spanned: workloadsSpanned });
   }
-  const issues = edges.filter((edge) => edge.evidence.ambiguous_parent).map((edge) => ({ code: "ambiguous_parent", edge: { from: edge.from, to: edge.to } }));
-  return { schema_version: "understudy.source_dag.v1", valid: issues.length === 0, issues, nodes, edges, groups: groupRows };
+  const uniqueQuarantines = [...new Map(quarantines.map((quarantine) => [`${quarantine.execution_group}:${quarantine.code}`, quarantine])).values()];
+  const quarantinedGroups = [...new Set(uniqueQuarantines.map((quarantine) => quarantine.execution_group))];
+  return { schema_version: "understudy.source_dag.v1", valid: true, issues: [], quarantines: uniqueQuarantines, quarantined_groups: quarantinedGroups, nodes, edges, groups: groupRows };
 }
 
 function toolEvents(captures: Obj[]): Obj[] {
@@ -398,6 +461,7 @@ export function manifestIncumbent(tasks: Obj[]): Obj | null {
 
 function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
+  const quarantinedGroups = new Set<string>((dag.quarantined_groups ?? []).map(String));
   const rootTexts = new Map<string, string>(
     dag.groups.map((group: Obj) => {
       const nodes = dag.nodes.filter((node: Obj) => node.execution_group === group.id).sort((a: Obj, b: Obj) => a.captured_at.localeCompare(b.captured_at));
@@ -407,17 +471,26 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     }),
   );
   const distinctiveTitles = taskTitles(rootTexts);
-  return dag.groups.map((group: Obj) => {
+  return dag.groups.flatMap((group: Obj) => {
+    if (quarantinedGroups.has(String(group.id))) return [];
     const nodes = dag.nodes.filter((node: Obj) => node.execution_group === group.id).sort((a: Obj, b: Obj) => a.captured_at.localeCompare(b.captured_at));
     const captures = nodes.map((node: Obj) => byId.get(node.id)).filter(Boolean) as Obj[];
-    const root = captures[0], first = root.request.messages.find((m: Obj) => m.role === "user") ?? {};
+    const outgoing = new Set(dag.edges.filter((edge: Obj) => edge.execution_group === group.id).map((edge: Obj) => String(edge.from)));
+    const leaves = captures.filter((capture) => !outgoing.has(String(capture.capture_key)));
+    const terminalLeaves = leaves.filter((capture) => responseMessages(capture).length > 0);
+    if (terminalLeaves.length !== 1) {
+      dag.quarantines = [...(dag.quarantines ?? []), { execution_group: group.id, code: terminalLeaves.length === 0 ? "missing_terminal_response" : "ambiguous_terminal_leaf", edge_count: 0, leaf_count: leaves.length }];
+      dag.quarantined_groups = [...new Set([...(dag.quarantined_groups ?? []), group.id])];
+      return [];
+    }
+    const terminal = terminalLeaves[0], root = captures[0], first = terminal.request.messages.find((m: Obj) => m.role === "user") ?? {};
     const events = toolEvents(captures), calls = events.filter((e) => e.kind === "call" && e.name), mutations = calls.filter((e) => mutationPrefixes.some((prefix) => String(e.name).toLowerCase().startsWith(prefix)));
     const required = mutations.map((call) => ({ type: "state_effect", tool: call.name, observed_arguments: call.arguments, matching: "semantic_outcome_not_exact_trajectory", confidence: "medium" }));
     const confidence = required.length > 0 && !events.some((e) => e.status === "error") ? "high" : calls.length > 0 ? "medium" : "low";
     const bucket = Number.parseInt(hash(group.id).slice(0, 8), 16) % 100;
     const definitions = captures.flatMap((capture) => capture.request.tools ?? []).map(asObject);
     const observedResults = events.filter((event) => event.kind === "result" && event.tool);
-    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: distinctiveTitles.get(group.id) ?? contentText(first.content).trim().slice(0, 160) ?? `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
+    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: distinctiveTitles.get(group.id) ?? contentText(first.content).trim().slice(0, 160) ?? `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: terminal.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
     // Grouping provenance (what grouping requires, nothing more): the label
     // travels with the task, and a trace that spans workloads hidden by the
     // build's --workload filter is flagged for review — never silently
@@ -438,7 +511,7 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     ensureJudgeableContract(task, finalResponseText(asObject(captures.at(-1)?.response)), contentText(first.content ?? ""));
     task.capability_fit = capabilityFit(task, catalog);
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
-    return task;
+    return [task];
   });
 }
 
@@ -449,6 +522,10 @@ function writeJson(path: string, value: unknown): void { mkdirSync(resolve(path,
 function finalizePrimeVerifierV021Package(pkg: string): void {
   const tasksetPath = join(pkg, "taskset.py");
   const taskset = readFileSync(tasksetPath, "utf8")
+    .replace(
+      "class TraceData(vf.TaskData):\n",
+      "class TraceData(vf.TaskData):\n    source_messages: list\n",
+    )
     .replace(
       "from understudy_trace_env.servers.world import WorldState, WorldToolset, _anchor_arguments, _arguments_match, _tokens\n\n",
       "from understudy_trace_env.servers.world import WorldState, WorldToolset, _anchor_arguments, _arguments_match, _tokens\n\n__all__ = [\"TraceTaskset\"]\n\n",
@@ -467,7 +544,7 @@ function finalizePrimeVerifierV021Package(pkg: string): void {
     )
     .replace(
       "    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n",
-      "    def load(self) -> list[TraceTask]:\n        selected = set(self.config.task_ids)\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if (not selected and r[\"split\"] == self.config.split) or r[\"task_id\"] in selected]\n",
+      "    def load(self) -> list[TraceTask]:\n        selected = set(self.config.task_ids)\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r.get(\"candidate_prompt\") or r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), source_messages=r.get(\"source_messages\") or [], outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if (not selected and r[\"split\"] == self.config.split) or r[\"task_id\"] in selected]\n",
     );
   writeFileSync(tasksetPath, taskset, { mode: 0o600 });
   writeFileSync(
@@ -1144,7 +1221,13 @@ export function selfCheckTask(task: Obj, envRow: Obj | null, options: { schemasP
   } else {
     const prompt = String(asObject(envRow).prompt ?? "").trim();
     if (prompt.length === 0) failures.push({ check: "prompt_empty", detail: "generated prompt is empty" });
-    else if (prompt === title) failures.push({ check: "prompt_equals_title", detail: "generated prompt equals the display title — the source user message did not reach the environment" });
+    else {
+      const sourceMessages = Array.isArray(asObject(envRow).source_messages) ? asObject(envRow).source_messages.map(asObject) : [];
+      const sourceUserText = contentText(sourceMessages.find((message: Obj) => message.role === "user")?.content ?? "").trim();
+      if (prompt === title && sourceUserText !== prompt) failures.push({ check: "prompt_equals_title", detail: "generated prompt equals the display title — the source user message did not reach the environment" });
+      const candidatePrompt = asObject(envRow).candidate_prompt;
+      if (Array.isArray(candidatePrompt) && JSON.stringify(candidatePrompt) !== JSON.stringify(sourceMessages)) failures.push({ check: "history_mismatch", detail: "candidate-visible replay history differs from the exact source message history" });
+    }
   }
   const required = ((asObject(task.outcome_contract).required ?? []) as unknown[]).map(asObject);
   if (required.length === 0) failures.push({ check: "empty_contract", detail: "outcome contract has zero required obligations — not judgeable" });
@@ -1656,7 +1739,7 @@ export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceCo
   // after a rejected call is visible in the watch view, AutomationBench-style).
   const acceptHelper = `    def _accept(self, event: dict, mutating: bool) -> str:\n        error = _validate(event["tool"], event["arguments"] or {})\n        _journal({"at": time.time(), "kind": "call", "tool": event["tool"], "write": bool(mutating and not error), "status": "error" if error else "ok", "arguments": _summary(event["arguments"] or {})})\n        if error:\n            self.state.events.append({**event, "status": "error", "error": error})\n            reply = _rejection_reply(event["tool"], error)\n        else:\n            self.state.events.append(event)\n            if mutating:\n                self.state.writes.append(event)\n            reply = self._fixture_reply(event)\n        _journal({"at": time.time(), "kind": "result", "tool": event["tool"], "status": "error" if error else "ok", "content": _summary(reply or "")})\n        return reply`;
   const worldMethods = `    FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text())\n\n${fixtureReply}\n\n${acceptHelper}\n\n${methods}`;
-  const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: (()=>{ const msgs = (sourceContext.get(task.task_id)?.messages ?? []) as Obj[]; const firstUser = msgs.find((m) => m.role === "user"); const text = firstUser ? contentText(firstUser.content) : ""; return text.trim() || task.title; })(), system_prompt: (()=>{ const sys = sourceContext.get(task.task_id)?.system; if (sys == null) return null; return typeof sys === "string" ? sys : contentText(sys); })(), source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
+  const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: (()=>{ const msgs = (sourceContext.get(task.task_id)?.messages ?? []) as Obj[]; const firstUser = msgs.find((m) => m.role === "user"); const text = firstUser ? contentText(firstUser.content) : ""; return text.trim() || task.title; })(), candidate_prompt: sourceContext.get(task.task_id)?.messages ?? [], system_prompt: (()=>{ const sys = sourceContext.get(task.task_id)?.system; if (sys == null) return null; return typeof sys === "string" ? sys : contentText(sys); })(), source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
   writeJson(join(pkg, "tasks.json"), taskRows);
   writeFileSync(join(pkg, "servers", "world.py"), `import json\nimport os\nimport re\nimport time\nfrom pathlib import Path\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\n\ndef _tokens(value):\n    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)\n    return [token for token in re.split(r"[^a-z0-9#]+", text.lower()) if len(token) > 2 or token.isdigit()]\n\n\ndef _arguments_match(observed: dict, actual: dict) -> bool:\n    \"\"\"Semantic compare: every content token of each observed value appears in the canonicalized actual arguments.\"\"\"\n    hay = json.dumps(actual or {}, sort_keys=True).lower()\n    return all(token in hay for value in (observed or {}).values() for token in _tokens(value))\n\n\ndef _anchor_arguments(observed: dict, depth: int = 0) -> dict:\n    \"\"\"ANCHOR fields only: numbers, booleans, id-shaped strings (uuid / long alnum / path-like)\n    and short strings (<=6 canonical tokens). Long free text is dropped — requiring token\n    containment of the incumbent's full prose zeroed every honest candidate rollout.\n    Recurses one level into nested dicts; arrays and deeper nesting are dropped too.\"\"\"\n    out = {}\n    for key, value in (observed or {}).items():\n        if isinstance(value, bool) or isinstance(value, (int, float)):\n            out[key] = value\n        elif isinstance(value, str):\n            s = value.strip()\n            no_space = not any(ch.isspace() for ch in s)\n            id_shaped = bool(re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", s, re.I)) or (no_space and (bool(re.search(r"[A-Za-z0-9_-]{16,}", s)) or "/" in s))\n            if id_shaped or len(_tokens(s)) <= 6:\n                out[key] = value\n        elif isinstance(value, dict) and depth < 1:\n            nested = _anchor_arguments(value, depth + 1)\n            if nested:\n                out[key] = nested\n    return out\n\n\n# Live rollout journal: one JSON line per tool call and result, written the\n# moment it happens, gated on UNDERSTUDY_LIVE_JOURNAL (no-op when unset).\n_JOURNAL_PATH = os.environ.get("UNDERSTUDY_LIVE_JOURNAL")\n\n\ndef _journal(entry: dict) -> None:\n    if not _JOURNAL_PATH:\n        return\n    try:\n        fd = os.open(_JOURNAL_PATH, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n        with os.fdopen(fd, "a") as fh:\n            fh.write(json.dumps(entry) + "\\n")\n    except Exception:\n        pass\n\n\ndef _summary(value, cap: int = 800) -> str:\n    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True)\n    return text if len(text) <= cap else text[: cap - 1] + "…"\n\n\n# Declared tool schemas (captured from the incumbent's requests); tools with\n# no declared schema carry one inferred from observed calls (inferred: true).\nSCHEMAS = json.loads((Path(__file__).parent / "schemas.json").read_text())\n# Rejection-guidance templates (understudy.rejection_guidance.v1): the\n# rejection message is DATA, not code — guidance.json overrides the terse\n# fallback text per (tool, rule key) so the guidance can be edited,\n# regenerated, or swapped per optimization variant without touching world.py.\n_GUIDANCE_FILE = Path(__file__).parent / "guidance.json"\nGUIDANCE = json.loads(_GUIDANCE_FILE.read_text()) if _GUIDANCE_FILE.exists() else {}\n\n\ndef _guidance(tool: str, key: str, fallback: str) -> str:\n    message = ((GUIDANCE.get("tools") or {}).get(tool) or {}).get(key)\n    return message if isinstance(message, str) and message.strip() else fallback\n\n\n# Observation-tightened checks (required_by_observation / enums_by_observation)\n# are a deliberate strictness choice, on by default; set\n# UNDERSTUDY_STRICT_VALIDATION=0 to fall back to declared-schema-only checks.\n_STRICT_VALIDATION = os.environ.get("UNDERSTUDY_STRICT_VALIDATION", "1") != "0"\n_TYPES ={"string": str, "number": (int, float), "integer": (int, float), "boolean": bool, "object": dict, "array": list}\n\n\ndef _lookup(arguments: dict, path: str):\n    node = arguments\n    for part in path.split("."):\n        if not isinstance(node, dict):\n            return None\n        node = node.get(part)\n    return node\n\n\ndef _validate(tool: str, arguments: dict) -> str | None:\n    \"\"\"AutomationBench-style call validation: required properties present and\n    basic type checks against the declared (or inferred) schema, TIGHTENED by\n    observed incumbent usage (required_by_observation / enums_by_observation —\n    a strict real API rejects what the incumbent never omitted). Rejections\n    are recoverable error events. Unknown tools are unroutable by construction\n    (only defined tools are exposed).\"\"\"\n    schema = SCHEMAS.get(tool)\n    if schema is None:\n        return f"unknown tool '{tool}'"\n    for key in schema.get("required") or []:\n        if arguments.get(key) is None:\n            return _guidance(tool, f"missing_required:{key}", f"missing required field '{key}'")\n    for path in (schema.get("required_by_observation") or []) if _STRICT_VALIDATION else []:\n        if "." in path and not isinstance(_lookup(arguments, path.rsplit(".", 1)[0]), dict):\n            continue\n        if _lookup(arguments, path) is None:\n            present, of = (schema.get("observation_counts") or {}).get(path) or [0, 0]\n            return _guidance(tool, f"missing_by_observation:{path}", f"missing field '{path}' — required by observed usage ({present}/{of} calls)")\n    for key, declared in (schema.get("properties") or {}).items():\n        value = arguments.get(key)\n        if value is None:\n            continue\n        expected = _TYPES.get(declared)\n        if expected is None:\n            continue\n        if declared in ("number", "integer") and isinstance(value, bool):\n            return _guidance(tool, f"type:{key}", f"field '{key}' must be {declared}")\n        if not isinstance(value, expected):\n            return _guidance(tool, f"type:{key}", f"field '{key}' must be {declared}")\n    for path, allowed in ((schema.get("enums_by_observation") or {}) if _STRICT_VALIDATION else {}).items():\n        value = _lookup(arguments, path)\n        if value is None:\n            continue\n        if value not in allowed:\n            return _guidance(tool, f"enum:{path}", f"field '{path}' must be one of {json.dumps(allowed)} — required by observed usage")\n    return None\n\n\ndef _rejection_reply(tool: str, error: str) -> str:\n    \"\"\"Production-shaped rejection: mirror the error payload shape this tool\n    family was observed to use — {"success": false, "error": ...} envelopes,\n    plain "ERROR: ..." strings, or a generic JSON error envelope.\"\"\"\n    schema = SCHEMAS.get(tool) or {}\n    style = schema.get("rejection_style")\n    if style == "string":\n        return f"ERROR: {error}"\n    if style == "success_envelope":\n        return json.dumps({"success": False, "error": error})\n    return json.dumps({"ok": False, "error": error})\n\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n    used_fixtures: list[int] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
   writeFileSync(join(pkg, "taskset.py"), `import json\nimport re\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset, _anchor_arguments, _arguments_match, _tokens\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\n\ndef _value_present(value, hay: str) -> bool:\n    \"\"\"Token-normalized value containment — the same canonicalization _arguments_match uses.\"\"\"\n    toks = _tokens(value)\n    return bool(toks) and all(t in hay for t in toks)\n\n\ndef _field(obj, key):\n    \"\"\"Attribute-or-key lookup: the pinned verifiers v1 runtime hands us OBJECTS (trace.nodes items and their .message), replayed JSON traces hand us dicts.\"\"\"\n    return obj.get(key) if isinstance(obj, dict) else getattr(obj, key, None)\n\n\ndef _assistant_text(message) -> str:\n    \"\"\"Text of one assistant message across shapes: plain string content or a list of text blocks (dicts or objects).\"\"\"\n    if message is None or _field(message, \"role\") != \"assistant\":\n        return \"\"\n    content = _field(message, \"content\")\n    if isinstance(content, str):\n        return content\n    if isinstance(content, (list, tuple)):\n        return \" \".join(str(_field(block, \"text\") or \"\") for block in content)\n    return \"\"\n\n\ndef _final_text(trace) -> str:\n    \"\"\"Last assistant text of the rollout (the final response the contract's response/value obligations judge). The live verifiers v1 Trace exposes the conversation as trace.nodes (node.message objects); older/replayed shapes carry messages/completion/history lists of dicts.\"\"\"\n    nodes = getattr(trace, \"nodes\", None)\n    if isinstance(nodes, (list, tuple)):\n        texts = [t for t in (_assistant_text(_field(n, \"message\")) for n in nodes) if t.strip()]\n        if texts:\n            return texts[-1]\n    for attr in (\"messages\", \"completion\", \"history\"):\n        msgs = getattr(trace, attr, None)\n        if isinstance(msgs, (list, tuple)) and msgs:\n            texts = [t for t in (_assistant_text(m) for m in msgs) if t.strip()]\n            if texts:\n                return texts[-1]\n    return str(getattr(trace, \"final_response\", \"\") or \"\")\n\n\n_FENCE_RE = re.compile(\"\\\\u0060{3}[^\\\\n\\\\u0060]*\\\\n(.*?)\\\\u0060{3}\", re.S)\n\n\ndef _extract_json(text: str):\n    \"\"\"Fence-tolerant JSON extraction — deterministic, mirrored byte-for-byte with the foundry's extractJsonPayload (the TS scoring mirror): (1) the first fenced code block whose body parses as a JSON object/array wins; (2) else the whole trimmed text, when it starts with an opening brace/bracket and parses; (3) else the first balanced object/array substring (string-aware scan) that parses — models routinely wrap the payload in prose.\"\"\"\n    raw = text or \"\"\n\n    def _try(candidate: str):\n        t = candidate.strip()\n        if not t.startswith((\"{\", \"[\")):\n            return None\n        try:\n            parsed = json.loads(t)\n        except Exception:\n            return None\n        return parsed if isinstance(parsed, (dict, list)) else None\n\n    for m in _FENCE_RE.finditer(raw):\n        parsed = _try(m.group(1))\n        if parsed is not None:\n            return parsed\n    parsed = _try(raw)\n    if parsed is not None:\n        return parsed\n    for start, opener in enumerate(raw):\n        if opener not in \"{[\":\n            continue\n        close_ch = \"}\" if opener == \"{\" else \"]\"\n        depth, in_string, escaped = 0, False, False\n        for i in range(start, len(raw)):\n            ch = raw[i]\n            if escaped:\n                escaped = False\n                continue\n            if ch == \"\\\\\":\n                escaped = in_string\n                continue\n            if ch == '\"':\n                in_string = not in_string\n                continue\n            if in_string:\n                continue\n            if ch == opener:\n                depth += 1\n            elif ch == close_ch:\n                depth -= 1\n                if depth == 0:\n                    parsed = _try(raw[start:i + 1])\n                    if parsed is not None:\n                        return parsed\n                    break  # this start's balanced span is not valid JSON; try the next start\n        \n    return None\n\n\ndef _parsed_json(text: str):\n    return _extract_json(text)\n\n\ndef _entry_met(rule: dict, calls: list, final_text: str) -> bool:\n    \"\"\"Deterministic met/unmet per contract entry kind: state_effect,\n    read_obligation, value_propagation, response_obligation. Mirrors the\n    foundry's contractEntryMet exactly — never an LLM at eval time.\"\"\"\n    kind = rule.get(\"type\") or \"state_effect\"\n    # Validation precedes matching: rejected calls (status=error) never satisfy anything.\n    calls = [c for c in calls if c.get(\"status\") != \"error\"]\n    if kind == \"state_effect\":\n        # Anchor matching: authored arguments_semantic first, then the discrete\n        # anchors of the observed arguments (long prose dropped). Zero anchors +\n        # no semantics => the tool call itself (with any args) satisfies.\n        sem = _anchor_arguments(rule.get(\"arguments_semantic\") or {})\n        anchors = _anchor_arguments(rule.get(\"observed_arguments\") or {})\n        for c in calls:\n            if c.get(\"tool\") != rule.get(\"tool\"):\n                continue\n            if sem and _arguments_match(sem, c.get(\"arguments\") or {}):\n                return True\n            if _arguments_match(anchors, c.get(\"arguments\") or {}):\n                return True\n        return False\n    if kind == \"read_obligation\":\n        return any(c.get(\"tool\") == rule.get(\"tool\") and _arguments_match(_anchor_arguments(rule.get(\"arguments_semantic\") or {}), c.get(\"arguments\") or {}) for c in calls)\n    if kind == \"value_propagation\":\n        dest = rule.get(\"must_reach\") or {}\n        if dest.get(\"kind\") == \"final_response\":\n            return _value_present(rule.get(\"value\"), (final_text or \"\").lower())\n        return any((not dest.get(\"tool\") or c.get(\"tool\") == dest.get(\"tool\")) and _value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    if kind == \"response_obligation\":\n        parsed = _parsed_json(final_text)\n        if rule.get(\"kind\") == \"json_parses\":\n            return parsed is not None\n        if rule.get(\"kind\") == \"schema_valid\":\n            return isinstance(parsed, dict) and all(str(k) in parsed for k in (rule.get(\"expected_keys\") or []))\n        if rule.get(\"kind\") == \"contains_category\":\n            return _value_present(rule.get(\"expected\"), (final_text or \"\").lower())\n    return False\n\n\ndef _forbidden_violated(rule: dict, calls: list, final_text: str) -> bool:\n    if (rule.get(\"type\") or \"\") == \"forbidden_value\":\n        hay = (final_text or \"\").lower()\n        return _value_present(rule.get(\"value\"), hay) or any(_value_present(rule.get(\"value\"), json.dumps(c.get(\"arguments\") or {}).lower()) for c in calls)\n    return any(c.get(\"tool\") == rule.get(\"tool\") for c in calls)\n\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _effects(self, trace: vf.Trace) -> tuple[int, int, bool]:\n        \"\"\"Full-contract comparison over the per-rollout world state AND the\n        final assistant response: state effects and read obligations match\n        tool events semantically (token-normalized), value propagations and\n        response obligations judge the final response deterministically.\n        Forbidden tools/values are violations.\"\"\"\n        events = list(getattr(trace.state, \"events\", None) or [])\n        writes = list(getattr(trace.state, \"writes\", None) or [])\n        final_text = _final_text(trace)\n        contract = self.data.outcome_contract\n        required = contract.get(\"required\", [])\n        satisfied = sum(1 for rule in required if _entry_met(rule, events, final_text))\n        violated = any(_forbidden_violated(rule, writes, final_text) for rule in contract.get(\"forbidden\", []))\n        return satisfied, len(required), violated\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        if violated:\n            return 0.0\n        return float(total > 0 and satisfied == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        satisfied, total, violated = self._effects(trace)\n        return 0.0 if violated else satisfied / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        def well_formed(r):\n            kind = r.get(\"type\") or \"state_effect\"\n            if kind == \"state_effect\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict)\n            if kind == \"read_obligation\":\n                return isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"arguments_semantic\"), dict)\n            if kind == \"value_propagation\":\n                return bool(r.get(\"value\")) and (r.get(\"must_reach\") or {}).get(\"kind\") in (\"final_response\", \"tool_args\")\n            if kind == \"response_obligation\":\n                return r.get(\"kind\") in (\"json_parses\", \"schema_valid\", \"contains_category\")\n            return False\n        return bool(required) and all(well_formed(r) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
@@ -1973,7 +2056,9 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   // only drops for timestamp problems, split honestly into missing vs
   // malformed (the historical bucket lumped every drop under one label).
   const filteredReasons = { missing_timestamp: 0, malformed_timestamp: 0 };
+  const scopeCensus = { known_rows: 0, unknown_rows: 0, exact_matches: 0, explicit_mismatches: 0, unknown_exclusions: 0 };
   for (const file of files) for (const [index, envelope] of envelopes(file).entries()) {
+    if (!isCaptureEnvelope(envelope)) continue;
     const row = normalize(envelope, `${relative(source, file) || file}#L${index + 1}`);
     if (row === null) {
       const tsRaw = envelope.ts ?? envelope.created_at ?? envelope.uploaded;
@@ -1984,11 +2069,21 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
     // unfiltered build keeps every sibling episode as its own task, so the
     // census is threaded through (and tasks flagged) only when filtering.
     if (options.workload && row.trace?.valid) traceWorkloads.set(row.trace.trace_id, new Set([...(traceWorkloads.get(row.trace.trace_id) ?? [])]).add(String(row.scope.workload_name ?? row.scope.workload_id ?? "unknown")));
-    if (!options.workload || [row.scope.workload_id, row.scope.workload_name].some((value) => String(value ?? "").toLowerCase() === options.workload?.toLowerCase())) all.push(row);
+    const scopeValues = [row.scope.workload_id, row.scope.workload_name].map((value) => String(value ?? "").trim()).filter(Boolean);
+    const hasScope = scopeValues.length > 0;
+    if (hasScope) scopeCensus.known_rows += 1;
+    else scopeCensus.unknown_rows += 1;
+    const matches = options.workload !== undefined && scopeValues.some((value) => value.toLowerCase() === options.workload?.toLowerCase());
+    if (options.workload && matches) scopeCensus.exact_matches += 1;
+    else if (options.workload && hasScope) scopeCensus.explicit_mismatches += 1;
+    else if (options.workload) scopeCensus.unknown_exclusions += 1;
+    if (!options.workload || matches) all.push(row);
   }
   const fresh = all.filter((row) => new Date(row.captured_at) >= cutoff);
   let rows = fresh.filter((row) => knownHashes.has(row.source.sha256));
   let queuedRows = fresh.filter((row) => !knownHashes.has(row.source.sha256));
+  const metadataAvailable = scopeCensus.known_rows > 0;
+  if (options.workload && !metadataAvailable) throw new Error(`Cannot apply --workload ${options.workload}: source captures contain no workload metadata; rerun unfiltered and record the missing-scope fact.`);
   if (rows.length + queuedRows.length === 0) throw new Error(`No captures satisfy --max-age-days ${maxAgeDays}; cutoff ${cutoff.toISOString()}. Refusing to compile a stale benchmark.`);
 
   // Batch loop: per pass, ingest at most batchSize new captures and recompute
@@ -2021,7 +2116,7 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   if (queuedRows.length > 0) {
     throw new Error(`${rows.length} of ${rows.length + queuedRows.length} captures compiled before the batch loop stopped; resume with: understudy traces build-benchmark --source ${source} --output ${output}`);
   }
-  return writeFoundryArtifacts({ source, output, files, cutoff, maxAgeDays, now, options, rows, dag, tasks, staleFiltered: all.length - fresh.length, filteredReasons });
+  return writeFoundryArtifacts({ source, output, files, cutoff, maxAgeDays, now, options, rows, dag, tasks, staleFiltered: all.length - fresh.length, filteredReasons, sourceScope: { requested_workload: options.workload ?? null, metadata_available: metadataAvailable, filter_applied: Boolean(options.workload), filter_note: options.workload ? null : metadataAvailable ? null : "unfiltered_exact_source_missing_workload_metadata", ...scopeCensus } });
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2102,7 +2197,7 @@ export function stampInitialVersionsLog(output: string, benchmark: Obj, now: Dat
 }
 
 
-function writeFoundryArtifacts(ctx: { source: string; output: string; files: string[]; cutoff: Date; maxAgeDays: number; now: Date; options: TraceFoundryOptions; rows: Obj[]; dag: Obj; tasks: Obj[]; staleFiltered: number; filteredReasons: { missing_timestamp: number; malformed_timestamp: number } }): FoundryResult {
+function writeFoundryArtifacts(ctx: { source: string; output: string; files: string[]; cutoff: Date; maxAgeDays: number; now: Date; options: TraceFoundryOptions; rows: Obj[]; dag: Obj; tasks: Obj[]; staleFiltered: number; filteredReasons: { missing_timestamp: number; malformed_timestamp: number }; sourceScope: FoundryResult["source_scope"] }): FoundryResult {
   const { source, output, files, cutoff, now, options, rows, dag, tasks, staleFiltered, filteredReasons } = ctx;
   const notNormalizableFiltered = filteredReasons.missing_timestamp + filteredReasons.malformed_timestamp;
   const viewer = join(output, "viewer"), capturesDir = join(viewer, "data", "captures");
@@ -2141,7 +2236,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   const versionBumps = stampTaskVersions(tasks, priorTasks, now);
   writeJsonl(join(output, "tasks.jsonl"), tasks);
   const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
-  const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
+  const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...((dag.quarantines ?? []).length > 0 ? ["source_dag_quarantines"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
   // Pre-promotion output is a PROPOSAL, stamped honestly: the schema name
   // "understudy.benchmark.v1" is reserved for the executable manifest written
   // by `traces promote` after human review (this resolves the known
@@ -2159,7 +2254,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, source_scope: ctx.sourceScope, quarantines: dag.quarantines ?? [], self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
