@@ -22,7 +22,10 @@ if "gepa" not in sys.modules:
     core.adapter = adapter
     gepa.core = core
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
-from island_race import ISLAND_SPECS, LiveManifest, classify_failure, prompt_sha, unique_ranked  # noqa: E402
+from island_race import (  # noqa: E402
+    ISLAND_SPECS, LiveManifest, build_no_distinct_receipt, classify_failure,
+    prompt_sha, unique_ranked,
+)
 
 
 def check(label, condition):
@@ -72,7 +75,20 @@ def main():
     check("terminal no-distinct state is explicit",
           live.terminal["state"] == "stopped_no_distinct_candidates"
           and live.terminal["promotion_blocked"] is True)
-    print("ALL 15 ISLAND TESTS PASSED")
+    receipt = build_no_distinct_receipt(
+        experiment_id="synthetic", dev_sha="d" * 64, islands={},
+        distinct_prompt_count=1, budget={"stage_a_completed": 96},
+        manifest_path="synthetic-manifest.json", manifest_digest="m" * 64,
+        publish_status={"ok": True}, wall_clock_s=505,
+    )
+    check("convergence receipt refuses every promotion surface",
+          receipt["state"] == "stopped_no_distinct_candidates"
+          and receipt["stage2_executed"] is False
+          and receipt["confirmations"] == []
+          and receipt["selected_winner"] is None
+          and receipt["promotion_blocked"] is True
+          and receipt["holdout_executed"] is False)
+    print("ALL 16 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

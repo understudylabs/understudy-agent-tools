@@ -76,6 +76,41 @@ def classify_failure(rec):
     return category, detail
 
 
+def build_no_distinct_receipt(*, experiment_id, dev_sha, islands, distinct_prompt_count,
+                              budget, manifest_path, manifest_digest, publish_status,
+                              wall_clock_s):
+    """Build a fail-closed terminal receipt without touching a provider.
+
+    Full convergence is an experimental outcome, not a runtime failure.  It
+    must still produce durable evidence while explicitly refusing Stage 2,
+    canonical confirmation, promotion, and holdout access.
+    """
+    reason = ("successive halving needs two distinct completed prompts; "
+              f"got {distinct_prompt_count}")
+    return {
+        "schema_version": "understudy.island_race_receipt.v1",
+        "experiment_id": experiment_id,
+        "state": "stopped_no_distinct_candidates",
+        "stop_reason": reason,
+        "dev_split_sha256": dev_sha,
+        "holdout_executed": False,
+        "islands": islands,
+        "distinct_prompt_count": distinct_prompt_count,
+        "stage2_executed": False,
+        "survivors": {},
+        "confirmations": [],
+        "selected_winner": None,
+        "promotion_blocked": True,
+        "budget": budget,
+        "manifest_path": str(manifest_path),
+        "manifest_digest": manifest_digest,
+        "publish_status": publish_status,
+        "total_cost_usd": None,
+        "cost_coverage": "out_of_band_clickhouse",
+        "wall_clock_s": wall_clock_s,
+    }
+
+
 class LiveManifest:
     def __init__(self, *, path, ingest_url, experiment_id, dev_sha, examples,
                  baseline_nodes, rank_protocol, gepa_protocol, budget, started,
@@ -378,28 +413,13 @@ def main():
         snapshot = live.stop(state="stopped_no_distinct_candidates",
                              outcome="no_distinct_candidates", reason=reason,
                              distinct_prompt_count=len(unique))
-        receipt = {
-            "schema_version": "understudy.island_race_receipt.v1",
-            "experiment_id": experiment_id,
-            "state": "stopped_no_distinct_candidates",
-            "stop_reason": reason,
-            "dev_split_sha256": dev_sha,
-            "holdout_executed": False,
-            "islands": stage1,
-            "distinct_prompt_count": len(unique),
-            "stage2_executed": False,
-            "survivors": {},
-            "confirmations": [],
-            "selected_winner": None,
-            "promotion_blocked": True,
-            "budget": budget.snapshot(),
-            "manifest_path": str(manifest_path),
-            "manifest_digest": em.manifest_digest(json.loads(manifest_path.read_text())),
-            "publish_status": snapshot["ingest"],
-            "total_cost_usd": None,
-            "cost_coverage": "out_of_band_clickhouse",
-            "wall_clock_s": round(time.time() - started),
-        }
+        receipt = build_no_distinct_receipt(
+            experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
+            distinct_prompt_count=len(unique), budget=budget.snapshot(),
+            manifest_path=manifest_path,
+            manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
+            publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
+        )
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
