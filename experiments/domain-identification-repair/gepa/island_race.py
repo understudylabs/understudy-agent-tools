@@ -84,6 +84,19 @@ def global_dedup_annotations(records):
     return annotations
 
 
+def incomplete_branch_ids(specs, records):
+    """Return branches without a completed, durable screening receipt.
+
+    Global deduplication and no-distinct-candidate conclusions are valid only
+    after every scheduled branch completes.  Missing or failed branches are an
+    execution failure, not evidence that the optimizer converged.
+    """
+    return [
+        bid for bid, *_ in specs
+        if records.get(bid, {}).get("status") != "completed"
+    ]
+
+
 def classify_failure(rec):
     detail = str(rec.get("detail") or rec.get("abort_reason") or "unknown failure")[:240]
     lowered = detail.lower()
@@ -120,6 +133,40 @@ def build_no_distinct_receipt(*, experiment_id, dev_sha, islands, distinct_promp
         "holdout_executed": False,
         "islands": islands,
         "distinct_prompt_count": distinct_prompt_count,
+        "stage2_executed": False,
+        "survivors": {},
+        "confirmations": [],
+        "selected_winner": None,
+        "promotion_blocked": True,
+        "budget": budget,
+        "manifest_path": str(manifest_path),
+        "manifest_digest": manifest_digest,
+        "publish_status": publish_status,
+        "total_cost_usd": None,
+        "cost_coverage": "out_of_band_clickhouse",
+        "wall_clock_s": wall_clock_s,
+    }
+
+
+def build_invalid_execution_receipt(*, experiment_id, dev_sha, islands,
+                                    incomplete_branches, budget, manifest_path,
+                                    manifest_digest, publish_status, wall_clock_s):
+    """Build terminal evidence for an incomplete island wave.
+
+    This receipt deliberately contains no survivor, confirmation, or promotion
+    result.  A later run may retry with a fresh immutable experiment id, but it
+    must not reinterpret partial branch output as optimizer-quality evidence.
+    """
+    return {
+        "schema_version": "understudy.island_race_receipt.v1",
+        "experiment_id": experiment_id,
+        "state": "invalid_execution",
+        "stop_reason": "one or more scheduled branches lacked a completed receipt",
+        "dev_split_sha256": dev_sha,
+        "holdout_executed": False,
+        "islands": islands,
+        "incomplete_branches": list(incomplete_branches),
+        "distinct_prompt_count": None,
         "stage2_executed": False,
         "survivors": {},
         "confirmations": [],
@@ -476,6 +523,22 @@ def main():
                           live=live, phase="stage1", episode_cap=args.stage1_episodes,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers)
+    incomplete = incomplete_branch_ids(ISLAND_SPECS, stage1)
+    if incomplete:
+        reason = ("scheduled branches lacked completed receipts: "
+                  + ", ".join(incomplete))
+        snapshot = live.stop(state="invalid_execution", outcome="incomplete_stage1",
+                             reason=reason, distinct_prompt_count=None)
+        receipt = build_invalid_execution_receipt(
+            experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
+            incomplete_branches=incomplete, budget=budget.snapshot(),
+            manifest_path=manifest_path,
+            manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
+            publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
+        )
+        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        print(json.dumps(receipt, indent=2))
+        return
     dedup_annotations = global_dedup_annotations(stage1.values())
     for bid, representative in dedup_annotations.items():
         if representative is not None:

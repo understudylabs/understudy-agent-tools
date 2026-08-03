@@ -26,8 +26,9 @@ if "gepa" not in sys.modules:
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
 import island_race  # noqa: E402
 from island_race import (  # noqa: E402
-    ISLAND_SPECS, LiveManifest, build_no_distinct_receipt, classify_failure,
-    global_dedup_annotations, prompt_sha, unique_ranked,
+    ISLAND_SPECS, LiveManifest, build_invalid_execution_receipt,
+    build_no_distinct_receipt, classify_failure, global_dedup_annotations,
+    incomplete_branch_ids, prompt_sha, unique_ranked,
 )
 from turbo_race import acceptance_criterion_for_strategy, select_strategy_candidate  # noqa: E402
 
@@ -92,6 +93,25 @@ def main():
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
     check("two failure-targeted islands", sum(s[1] == "failure_targeted" for s in ISLAND_SPECS) == 2)
     check("two exploit islands", sum(s[1] == "exploit" for s in ISLAND_SPECS) == 2)
+    complete_records = {bid: {"status": "completed"} for bid, *_ in ISLAND_SPECS}
+    check("complete wave has no incomplete branches",
+          incomplete_branch_ids(ISLAND_SPECS, complete_records) == [])
+    failed_records = dict(complete_records)
+    failed_records["explore-2"] = {"status": "failed"}
+    del failed_records["failure-1"]
+    check("failed and missing branches invalidate wave",
+          incomplete_branch_ids(ISLAND_SPECS, failed_records) == ["explore-2", "failure-1"])
+    invalid = build_invalid_execution_receipt(
+        experiment_id="invalid-test", dev_sha="dev", islands=failed_records,
+        incomplete_branches=["explore-2", "failure-1"], budget={},
+        manifest_path="manifest.json", manifest_digest="digest",
+        publish_status="graph-silent", wall_clock_s=1,
+    )
+    check("invalid wave state", invalid["state"] == "invalid_execution")
+    check("invalid wave has no distinct count", invalid["distinct_prompt_count"] is None)
+    check("invalid wave blocks stage2", invalid["stage2_executed"] is False)
+    check("invalid wave blocks promotion", invalid["promotion_blocked"] is True)
+    check("invalid wave keeps holdout sealed", invalid["holdout_executed"] is False)
     records = [
         {"status": "completed", "winner_prompt_sha256": "same", "screening_best_score": .7,
          "candidates_tried": 2, "wall_clock_s": 20, "branch_id": "a"},
