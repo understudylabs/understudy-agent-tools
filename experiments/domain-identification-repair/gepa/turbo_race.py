@@ -341,7 +341,11 @@ def acceptance_criterion_for_strategy(strategy):
     return "strict_improvement" if strategy == "exploit" else "improvement_or_equal"
 
 
-def make_reflection(fuse, reflection_key, strategy="exploit"):
+def make_reflection(fuse, reflection_key, strategy="exploit", *,
+                    model="openai/kimi-k3",
+                    api_base="https://api.understudylabs.com/v1",
+                    extra_headers=None,
+                    provider_label="understudy-gateway"):
     import litellm
 
     def reflection(messages):
@@ -350,15 +354,18 @@ def make_reflection(fuse, reflection_key, strategy="exploit"):
             messages = [{"role": "user", "content": messages}]
         directive = REFLECTION_DIRECTIVES.get(strategy, REFLECTION_DIRECTIVES["exploit"])
         messages = [{"role": "system", "content": directive}, *messages]
-        response = litellm.completion(
-            model="openai/kimi-k3",
-            messages=messages,
-            api_base="https://api.understudylabs.com/v1",
-            api_key=reflection_key,
-            temperature=1.0,
-            max_tokens=8000,
-            stream=True,
-        )
+        completion_kwargs = {
+            "model": model,
+            "messages": messages,
+            "api_base": api_base,
+            "api_key": reflection_key,
+            "temperature": 1.0,
+            "max_tokens": 8000,
+            "stream": True,
+        }
+        if extra_headers:
+            completion_kwargs["extra_headers"] = extra_headers
+        response = litellm.completion(**completion_kwargs)
         return "".join(
             chunk.choices[0].delta.content or ""
             for chunk in response
@@ -402,7 +409,11 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                spend_authorization_usd, results, results_lock, strategy="exploit",
                student_model="openai/nemotron-3-nano-base",
                student_api_base="http://127.0.0.1:8099/v1", student_api_key="local-shim",
-               student_headers=None):
+               student_headers=None,
+               reflection_model="openai/kimi-k3",
+               reflection_base_url="https://api.understudylabs.com/v1",
+               reflection_headers=None,
+               reflection_provider_label="understudy-gateway"):
     """Run one Stage-A GEPA branch. Fail-closed: any fuse trip or service-pressure
     abort records the branch as failed with no promotable score."""
     import gepa
@@ -439,7 +450,12 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             trainset=trainset,
             valset=subset["tasks"],
             adapter=adapter,
-            reflection_lm=make_reflection(fuse, reflection_key, strategy),
+            reflection_lm=make_reflection(
+                fuse, reflection_key, strategy,
+                model=reflection_model, api_base=reflection_base_url,
+                extra_headers=reflection_headers,
+                provider_label=reflection_provider_label,
+            ),
             max_metric_calls=max_metric_calls,
             reflection_minibatch_size=4,
             candidate_selection_strategy="current_best",

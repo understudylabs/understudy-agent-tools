@@ -198,11 +198,16 @@ def build_invalid_execution_receipt(*, experiment_id, dev_sha, islands,
     return receipt
 
 
+def stamp_reflection(receipt, reflection_provenance):
+    receipt["reflection"] = dict(reflection_provenance)
+    return receipt
+
+
 class LiveManifest:
     def __init__(self, *, path, ingest_url, experiment_id, dev_sha, examples,
                  baseline_nodes, rank_protocol, gepa_protocol, budget, started,
                  expected_total, reference_lines=(), mirror_path=None,
-                 provider="unknown", model="unknown"):
+                 provider="unknown", model="unknown", reflection=None):
         self.path = Path(path)
         self.ingest_url = ingest_url
         self.experiment_id = experiment_id
@@ -218,6 +223,7 @@ class LiveManifest:
         self.mirror_path = Path(mirror_path) if mirror_path else None
         self.provider = provider
         self.model = model
+        self.reflection = dict(reflection) if reflection else None
         self.records = {}
         self.states = {}
         self.confirmations = {}
@@ -381,6 +387,7 @@ class LiveManifest:
             "cost_coverage": "out_of_band_clickhouse",
             "holdout_executed": False,
             "serving": {"provider": self.provider, "model": self.model},
+            "reflection": self.reflection,
         }
         totals.update(terminal)
         manifest = em.build_manifest(
@@ -389,6 +396,7 @@ class LiveManifest:
             reference_lines=self.reference_lines, totals=totals,
             holdout_untouched=True,
         )
+        manifest["reflection"] = self.reflection
         em.write_manifest(manifest, self.path)
         if self.mirror_path:
             em.write_manifest(manifest, self.mirror_path)
@@ -400,7 +408,11 @@ class LiveManifest:
 def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_root,
                  experiment_id, reflection_key, max_metric_calls, concurrency,
                  spend_authorization_usd, live, phase, episode_cap,
-                 student_model, student_api_base, student_api_key, student_headers):
+                 student_model, student_api_base, student_api_key, student_headers,
+                 reflection_model="openai/kimi-k3",
+                 reflection_base_url="https://api.understudylabs.com/v1",
+                 reflection_headers=None,
+                 reflection_provider_label="understudy-gateway"):
     results = {}
     lock = threading.Lock()
     threads = []
@@ -419,6 +431,10 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
             "results": results, "results_lock": lock, "strategy": strategy,
             "student_model": student_model, "student_api_base": student_api_base,
             "student_api_key": student_api_key, "student_headers": student_headers,
+            "reflection_model": reflection_model,
+            "reflection_base_url": reflection_base_url,
+            "reflection_headers": reflection_headers,
+            "reflection_provider_label": reflection_provider_label,
         }, name=bid, daemon=True)
         thread.start()
         threads.append(thread)
@@ -460,6 +476,13 @@ def main():
                         help="Understudy project header for GEPA student calls")
     parser.add_argument("--student-workload", default="",
                         help="Understudy workload header for GEPA student calls")
+    parser.add_argument("--reflection-model", default="openai/kimi-k3")
+    parser.add_argument("--reflection-base-url", default="https://api.understudylabs.com/v1")
+    parser.add_argument("--reflection-provider-label", default="understudy-gateway")
+    parser.add_argument("--reflection-api-key-env", default="UNDERSTUDY_API_KEY",
+                        help="environment variable used by GEPA reflection calls; value is never persisted")
+    parser.add_argument("--reflection-project", default="rehearsal")
+    parser.add_argument("--reflection-workload", default="main")
     parser.add_argument("--seed-prompt", required=True)
     parser.add_argument("--runs-root", default=str(Path.home() / ".di-runs"))
     parser.add_argument("--experiment-id", default="")
@@ -498,9 +521,25 @@ def main():
     if not args.base_url.startswith(("http://127.0.0.1", "http://localhost")):
         if not os.environ.get(args.api_key_env):
             raise RuntimeError(f"{args.api_key_env} is required for canonical remote rollout")
-    reflection_key = os.environ.get("UNDERSTUDY_API_KEY") or os.environ.get("FIREWORKS_API_KEY")
+    reflection_key = os.environ.get(args.reflection_api_key_env)
+    if not reflection_key and args.reflection_api_key_env == "UNDERSTUDY_API_KEY":
+        reflection_key = os.environ.get("FIREWORKS_API_KEY")
     if not reflection_key:
-        raise RuntimeError("UNDERSTUDY_API_KEY or FIREWORKS_API_KEY is required")
+        raise RuntimeError(
+            f"{args.reflection_api_key_env} is required for GEPA reflection calls"
+        )
+    reflection_headers = {}
+    if args.reflection_project:
+        reflection_headers["x-understudy-project"] = args.reflection_project
+    if args.reflection_workload:
+        reflection_headers["x-understudy-workload"] = args.reflection_workload
+    reflection_provenance = {
+        "provider": args.reflection_provider_label,
+        "model": args.reflection_model,
+        "project": args.reflection_project,
+        "workload": args.reflection_workload,
+        "api_key_env": args.reflection_api_key_env,
+    }
     for split in ("train", "dev"):
         assert_split_allowed(split)
 
@@ -549,7 +588,8 @@ def main():
                         gepa_protocol=gepa_protocol, budget=budget, started=started,
                         expected_total=stage1_total + stage2_total + confirm_total,
                         mirror_path=args.manifest_mirror or None,
-                        provider=args.provider_label, model=args.model)
+                        provider=args.provider_label, model=args.model,
+                        reflection=reflection_provenance)
     stage1_prompts = {bid: seed_prompt for bid, *_ in ISLAND_SPECS}
     stage1 = run_parallel(ISLAND_SPECS, seed_prompts=stage1_prompts, subsets=subsets,
                           train=train, sidecar=args.sidecar, budget=budget,
@@ -558,20 +598,24 @@ def main():
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage1", episode_cap=args.stage1_episodes,
                           student_model=args.student_model, student_api_base=args.student_base_url,
-                          student_api_key=student_api_key, student_headers=student_headers)
+                          student_api_key=student_api_key, student_headers=student_headers,
+                          reflection_model=args.reflection_model,
+                          reflection_base_url=args.reflection_base_url,
+                          reflection_headers=reflection_headers,
+                          reflection_provider_label=args.reflection_provider_label)
     incomplete = incomplete_branch_ids(ISLAND_SPECS, stage1)
     if incomplete:
         reason = ("scheduled branches lacked completed receipts: "
                   + ", ".join(incomplete))
         snapshot = live.stop(state="invalid_execution", outcome="incomplete_stage1",
                              reason=reason, distinct_prompt_count=None)
-        receipt = build_invalid_execution_receipt(
+        receipt = stamp_reflection(build_invalid_execution_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             incomplete_branches=incomplete, budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
-        )
+        ), reflection_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -589,13 +633,13 @@ def main():
         snapshot = live.stop(state="stopped_no_distinct_candidates",
                              outcome="no_distinct_candidates", reason=reason,
                              distinct_prompt_count=len(unique))
-        receipt = build_no_distinct_receipt(
+        receipt = stamp_reflection(build_no_distinct_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             distinct_prompt_count=len(unique), budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
-        )
+        ), reflection_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -620,7 +664,11 @@ def main():
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage2", episode_cap=args.stage2_episodes,
                           student_model=args.student_model, student_api_base=args.student_base_url,
-                          student_api_key=student_api_key, student_headers=student_headers)
+                          student_api_key=student_api_key, student_headers=student_headers,
+                          reflection_model=args.reflection_model,
+                          reflection_base_url=args.reflection_base_url,
+                          reflection_headers=reflection_headers,
+                          reflection_provider_label=args.reflection_provider_label)
 
     incomplete2 = incomplete_branch_ids(stage2_specs, stage2)
     if incomplete2:
@@ -630,14 +678,14 @@ def main():
             state="invalid_execution", outcome="incomplete_stage2", reason=reason,
             distinct_prompt_count=len(unique),
         )
-        receipt = build_invalid_execution_receipt(
+        receipt = stamp_reflection(build_invalid_execution_receipt(
             experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
             incomplete_branches=incomplete2, budget=budget.snapshot(),
             manifest_path=manifest_path,
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
             survivors=stage2, outcome="incomplete_stage2", stop_reason=reason,
-        )
+        ), reflection_provenance)
         (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
         print(json.dumps(receipt, indent=2))
         return
@@ -679,7 +727,7 @@ def main():
     snapshot = live.finalize_completed(
         selected_winner=winner, confirmations=confirmations,
     )
-    receipt = {
+    receipt = stamp_reflection({
         "schema_version": "understudy.island_race_receipt.v1",
         "experiment_id": experiment_id,
         "state": "completed",
@@ -696,7 +744,7 @@ def main():
         "total_cost_usd": None,
         "cost_coverage": "out_of_band_clickhouse",
         "wall_clock_s": round(time.time() - started),
-    }
+    }, reflection_provenance)
     (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps(receipt, indent=2))
 

@@ -9,6 +9,7 @@ import re
 import sys
 import tempfile
 import threading
+import types
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -61,6 +62,70 @@ def test_stdout_logger_survives_late_background_write():
         worker.join(timeout=1)
     check("all eight late logger threads finished", not any(worker.is_alive() for worker in workers))
     check("all eight late logger writes avoided closed streams", errors == [])
+
+
+def test_reflection_route_is_scoped_and_headered():
+    import litellm
+
+    class FakeFuse:
+        def __init__(self):
+            self.events = []
+
+        def note_reflection(self):
+            self.events.append("reflection")
+
+    class Chunk:
+        def __init__(self, content):
+            self.choices = [types.SimpleNamespace(
+                delta=types.SimpleNamespace(content=content),
+            )]
+
+    calls = []
+    original_completion = litellm.completion
+
+    def fake_completion(**kwargs):
+        calls.append(kwargs)
+        if "reflection" not in fuse.events:
+            raise AssertionError("reflection fuse was not noted before completion")
+        fuse.events.append("completion")
+        return [Chunk("ok")]
+
+    litellm.completion = fake_completion
+    try:
+        fuse = FakeFuse()
+        reflection = turbo_race.make_reflection(
+            fuse, "SENTINEL-KEY", "exploit",
+            model="openai/gpt-5.6-sol",
+            api_base="https://api.understudylabs.com/v1",
+            extra_headers={
+                "x-understudy-project": "rehearsal",
+                "x-understudy-workload": "main",
+            },
+            provider_label="understudy-gateway",
+        )
+        check("scoped reflection returns streamed content", reflection("hello") == "ok")
+        call = calls[-1]
+        check("reflection model is parameterized", call["model"] == "openai/gpt-5.6-sol")
+        check("reflection base URL is parameterized",
+              call["api_base"] == "https://api.understudylabs.com/v1")
+        check("reflection headers are forwarded", call["extra_headers"] == {
+            "x-understudy-project": "rehearsal",
+            "x-understudy-workload": "main",
+        })
+        check("reflection key is forwarded", call["api_key"] == "SENTINEL-KEY")
+        check("reflection fuse is noted before completion",
+              fuse.events[:2] == ["reflection", "completion"])
+
+        calls.clear()
+        fuse = FakeFuse()
+        reflection = turbo_race.make_reflection(fuse, "SENTINEL-KEY")
+        check("default reflection returns streamed content", reflection("hello") == "ok")
+        default_call = calls[-1]
+        check("default reflection keeps Kimi model",
+              default_call["model"] == "openai/kimi-k3")
+        check("default reflection omits headers", "extra_headers" not in default_call)
+    finally:
+        litellm.completion = original_completion
 
 
 def test_gepa_014_metric_budget_full_valset_headroom():
@@ -690,6 +755,7 @@ def test_predictions_from_canonical_real_and_aligned():
 def main():
     tests = [
         test_stdout_logger_survives_late_background_write,
+        test_reflection_route_is_scoped_and_headered,
         test_gepa_014_metric_budget_full_valset_headroom,
         test_global_cap_failure_leaves_branch_unchanged,
         test_branch_cap_failure_leaves_global_unchanged,

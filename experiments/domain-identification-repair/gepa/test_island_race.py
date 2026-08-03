@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Provider-free unit tests for eight-island selection and failure evidence."""
+import json
 import sys
 import tempfile
 import threading
@@ -63,6 +64,7 @@ def test_graph_silent_publish():
     live.mirror_path = None
     live.provider = "synthetic"
     live.model = "synthetic"
+    live.reflection = None
     live.records = {}
     live.states = {}
     live.terminal = {}
@@ -86,6 +88,27 @@ def test_graph_silent_publish():
     finally:
         island_race.em.write_manifest = original_write
         island_race.em.publish_run_shaped = original_publish
+
+
+def test_reflection_provenance_contains_name_not_secret():
+    reflection_provenance = {
+        "provider": "understudy-gateway",
+        "model": "openai/kimi-k3",
+        "project": "rehearsal",
+        "workload": "main",
+        "api_key_env": "UNDERSTUDY_API_KEY",
+    }
+    env = {"UNDERSTUDY_API_KEY": "SENTINEL-SECRET-VALUE"}
+    serialized = json.dumps({
+        "reflection": reflection_provenance,
+        "env_name": reflection_provenance["api_key_env"],
+    })
+    check("reflection provenance includes API key environment name",
+          "UNDERSTUDY_API_KEY" in serialized)
+    check("reflection provenance includes provider label",
+          "understudy-gateway" in serialized)
+    check("reflection secret is not serialized",
+          env["UNDERSTUDY_API_KEY"] not in serialized)
 
 
 def test_completed_manifest_stamps_confirmation_totals():
@@ -123,6 +146,7 @@ def test_completed_manifest_stamps_confirmation_totals():
     live.mirror_path = None
     live.provider = "synthetic"
     live.model = "synthetic"
+    live.reflection = None
     live.records = {
         "survivor-1": {"status": "completed", "run_dir": "", "wall_clock_s": 1},
         "survivor-2": {"status": "completed", "run_dir": "", "wall_clock_s": 1},
@@ -169,6 +193,7 @@ def test_completed_manifest_stamps_confirmation_totals():
 
 def main():
     test_graph_silent_publish()
+    test_reflection_provenance_contains_name_not_secret()
     test_completed_manifest_stamps_confirmation_totals()
     check("exactly eight islands", len(ISLAND_SPECS) == 8)
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
