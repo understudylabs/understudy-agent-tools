@@ -20,7 +20,12 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { DOMAIN_ID_TASKS, domainIdSplitSha256, domainIdTaskBands } from "../../dist/domain-identification-slice.js";
+import {
+  DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
+  domainIdSplitSha256,
+  domainIdTaskBands,
+} from "../../dist/domain-identification-slice.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -39,6 +44,7 @@ const reportPath = argValue("--report");
 
 const BANDS = domainIdTaskBands();
 const SPLIT_BY_TASK = new Map(DOMAIN_ID_TASKS.map((task) => [task.taskId, task.split]));
+const RUNTIME_FIXTURE_SHA256 = domainIdFixtureSha256();
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -59,6 +65,9 @@ const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 
 if (typeof manifest.pairs_sha256 !== "string") fail(0, "manifest has no pairs_sha256");
 else if (manifest.pairs_sha256 !== pairsSha256) fail(0, `manifest pairs_sha256 ${manifest.pairs_sha256} != file ${pairsSha256}`);
+if (manifest.fixture_sha256 !== RUNTIME_FIXTURE_SHA256) {
+  fail(0, "manifest fixture_sha256 missing/stale vs runtime fixture");
+}
 
 const declaredSource = String(manifest.source ?? manifest.data_source ?? "");
 if (!/synthetic|public|fixture/i.test(declaredSource)) {
@@ -86,7 +95,6 @@ function toMessages(value, role) {
 const lines = raw.toString("utf8").split("\n").filter((line) => line.trim().length > 0);
 const normalized = [];
 const seen = new Set();
-const bandCounts = {};
 const splitCounts = {};
 
 lines.forEach((line, index) => {
@@ -96,6 +104,11 @@ lines.forEach((line, index) => {
     row = JSON.parse(line);
   } catch {
     fail(lineNumber, "line is not valid JSON");
+    return;
+  }
+
+  if (row.fixture_sha256 !== RUNTIME_FIXTURE_SHA256) {
+    fail(lineNumber, "row fixture_sha256 missing/stale");
     return;
   }
 
@@ -140,13 +153,70 @@ lines.forEach((line, index) => {
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
   seen.add(key);
 
-  const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
+  const family = row.family ?? taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
   const band = BANDS[family] ?? "unknown";
-  bandCounts[band] = (bandCounts[band] ?? 0) + 1;
-  normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
+  normalized.push({
+    task_id: taskId,
+    family,
+    band,
+    split,
+    prompt_conversation: prompt,
+    chosen,
+    rejected,
+    rejected_forbidden_writes: Number.isFinite(row.rejected_forbidden_writes)
+      ? row.rejected_forbidden_writes
+      : 0,
+    fixture_sha256: RUNTIME_FIXTURE_SHA256,
+    _line_index: lineNumber,
+  });
 });
 
 if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" });
+
+const familyCounts = (rows) => rows.reduce((counts, row) => {
+  counts[row.family] = (counts[row.family] ?? 0) + 1;
+  return counts;
+}, {});
+const familyCountsRaw = familyCounts(normalized);
+let droppedForBalance = 0;
+let balanceCapped = false;
+const CAP = 0.35;
+
+while (normalized.length > 0) {
+  const counts = familyCounts(normalized);
+  const [family, count] = Object.entries(counts)
+    .sort(([leftFamily, leftCount], [rightFamily, rightCount]) =>
+      rightCount - leftCount || leftFamily.localeCompare(rightFamily))
+    [0];
+  if (count <= Math.floor(CAP * normalized.length)) break;
+
+  const others = normalized.length - count;
+  const allowed = Math.floor((CAP / (1 - CAP)) * others);
+  if (others === 0 || allowed < 1) {
+    failures.push({ line: 0, reason: `skewed_family_unbalanceable: ${JSON.stringify(counts)}` });
+    break;
+  }
+
+  const familyRows = normalized
+    .filter((row) => row.family === family)
+    .sort((left, right) =>
+      left.task_id.localeCompare(right.task_id) || left._line_index - right._line_index);
+  const dropRows = new Set(familyRows.slice(allowed).map((row) => row._line_index));
+  normalized.splice(0, normalized.length, ...normalized.filter((row) => !dropRows.has(row._line_index)));
+  droppedForBalance += count - allowed;
+  balanceCapped = true;
+}
+
+const familyCountsFinal = familyCounts(normalized);
+const bandCounts = normalized.reduce((counts, row) => {
+  counts[row.band] = (counts[row.band] ?? 0) + 1;
+  return counts;
+}, {});
+const normalizedOutput = normalized.map(({ _line_index, ...row }) => row);
+const rejectedForbiddenWritesTotal = normalized.reduce(
+  (total, row) => total + row.rejected_forbidden_writes,
+  0,
+);
 
 const report = {
   schema_version: "understudy.dpo_pairs_validation.v1",
@@ -161,6 +231,12 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
+  family_counts_raw: familyCountsRaw,
+  family_counts_final: familyCountsFinal,
+  dropped_for_balance: droppedForBalance,
+  balance_capped: balanceCapped,
+  rejected_forbidden_writes_total: rejectedForbiddenWritesTotal,
+  fixture_sha256: RUNTIME_FIXTURE_SHA256,
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),
   failures: failures.slice(0, 50),
@@ -180,5 +256,5 @@ if (failures.length > 0) {
 
 if (outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, `${normalized.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  writeFileSync(outPath, `${normalizedOutput.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }

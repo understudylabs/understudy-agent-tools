@@ -33,7 +33,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
-import { DOMAIN_ID_TASKS, domainIdSplitSha256, domainIdTaskBands } from "../../dist/domain-identification-slice.js";
+import {
+  DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
+  domainIdSplitSha256,
+  domainIdTaskBands,
+} from "../../dist/domain-identification-slice.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -227,6 +232,7 @@ for (const [taskId, entries] of [...byTask.entries()].sort()) {
         chosen_score: chosenReplay.score,
         rejected_score: rejectedReplay.score,
         rejected_forbidden_writes: rejectedReplay.forbidden,
+        fixture_sha256: domainIdFixtureSha256(),
       });
       emitted += 1;
     }
@@ -245,6 +251,7 @@ const manifest = {
   schema_version: "understudy.dpo_pairs_manifest.v1",
   source: "synthetic offline fixture rollouts (domain-identification-offline-v1); no customer data",
   fixture_id: "domain-identification-offline-v1",
+  fixture_sha256: domainIdFixtureSha256(),
   split: "train",
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),
