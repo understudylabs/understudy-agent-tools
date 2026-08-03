@@ -1,0 +1,66 @@
+{
+  "schema_version": "understudy.cleanup-receipt.v1",
+  "experiment_id": "automationbench-v2-gepa",
+  "shim": {
+    "pid": 5017,
+    "stopped_at": "2026-08-02T03:07:49Z",
+    "command": "scripts/tinker-openai-shim.py --base-model nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 --renderer nemotron3 --port 8099",
+    "port": 8099,
+    "port_closed": true,
+    "python_shim_process_present": false
+  },
+  "resource_evidence": {
+    "no_deployments_created": true,
+    "no_training_run_or_model_creation_called": true,
+    "basis": [
+      "The experiment used only the local OpenAI-compatible shim and its ServiceClient.create_sampling_client(base_model=...) path.",
+      "No training-client, model-creation, weight-save, checkpoint-publish, or deployment API was invoked.",
+      "The Tinker CLI exposes run and checkpoint listings; the post-run queries returned existing account resources, but no experiment-created resource identifier was produced.",
+      "The Tinker CLI has no deployment-create command, and no deployment endpoint was used."
+    ],
+    "verification_commands": [
+      "tinker --format json run list",
+      "tinker --format json checkpoint list",
+      "ss -ltn sport = :8099",
+      "pgrep -af '[t]inker-openai-shim.py'"
+    ],
+    "observations": {
+      "training_runs_listed": 20,
+      "checkpoints_listed": 20,
+      "deployment_create_invoked": false
+    }
+  },
+  "receipts": {
+    "base_dev": {
+      "prompt_tokens": 463379,
+      "completion_tokens": 100330,
+      "wall_clock_s": 565
+    },
+    "gepa_train": {
+      "prompt_tokens": 2434461,
+      "completion_tokens": 415436,
+      "wall_clock_s": null
+    },
+    "evolved_dev": {
+      "prompt_tokens": 438242,
+      "completion_tokens": 73286,
+      "wall_clock_s": 588
+    },
+    "base_holdout": {
+      "prompt_tokens": 875825,
+      "completion_tokens": 173462,
+      "wall_clock_s": 793
+    },
+    "evolved_holdout": {
+      "prompt_tokens": 973241,
+      "completion_tokens": 140468,
+      "wall_clock_s": 669
+    },
+    "totals": {
+      "episodes": 354,
+      "prompt_tokens": 2750687,
+      "completion_tokens": 487546,
+      "measured_arm_wall_clock_s": 2615
+    }
+  }
+}

@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export function createEpisodeRunner(config) {
   const captureMalformed = Number(config.captureMalformed ?? 0);
   const isLocalEndpoint = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/|$)/i.test(config.baseUrl);
-  const apiKey = process.env.FIREWORKS_API_KEY ?? process.env.OPENAI_API_KEY;
+  const apiKey = config.apiKey ?? process.env.FIREWORKS_API_KEY ?? process.env.OPENAI_API_KEY;
   if (!apiKey && !isLocalEndpoint) throw new Error("FIREWORKS_API_KEY or OPENAI_API_KEY is required (never hard-code it)");
 
   async function chat(messages, attempt = 0) {
@@ -49,7 +49,7 @@ export function createEpisodeRunner(config) {
   return async function runTask(task) {
     const { handle } = reset(task.taskId);
     const messages = [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: config.systemPrompt ?? SYSTEM },
       { role: "user", content: task.prompt },
     ];
     let promptTokens = 0;

@@ -2,7 +2,8 @@
 /**
  * Zero-shot difficulty probe for the AutomationBench v2 offline fixture.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { V2_TASKS, v2SplitSha256, v2TaskPool } from "../dist/automationbench-v2.js";
@@ -32,6 +33,15 @@ const captureMalformed = Number(argValue("--capture-malformed", "0"));
 const baseUrl = argValue("--base-url", "https://api.fireworks.ai/inference/v1");
 const outPath = argValue("--out");
 const frozenHoldout = argValue("--frozen-holdout");
+const systemFile = argValue("--system-file");
+const apiKeyEnv = argValue("--api-key-env", "FIREWORKS_API_KEY");
+const systemPrompt = systemFile ? readFileSync(systemFile, "utf8") : null;
+const systemPromptSha256 = createHash("sha256")
+  .update(systemPrompt ?? SYSTEM)
+  .digest("hex");
+const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
+const apiKey = process.env[apiKeyEnv] ?? (isLocalShim ? "local-shim" : undefined);
+if (!apiKey) throw new Error(`${apiKeyEnv} is required (never hard-code it)`);
 
 const pool = v2TaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 const strided = pool.filter((_task, index) => index % stride === 0);
@@ -44,6 +54,8 @@ const runTask = createEpisodeRunner({
   maxTurns,
   malformedTolerance,
   captureMalformed,
+  systemPrompt,
+  apiKey,
 });
 
 const started = Date.now();
@@ -68,6 +80,7 @@ const report = summarizeRows({
   started,
 });
 report.split_sha256 = v2SplitSha256(split);
+report.system_prompt_sha256 = systemPromptSha256;
 if (outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, `${JSON.stringify(report, null, 2)}\n`);

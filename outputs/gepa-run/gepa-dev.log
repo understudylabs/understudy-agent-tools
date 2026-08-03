@@ -1,0 +1,61 @@
+1/36 done2/36 done3/36 done4/36 done5/36 done6/36 done7/36 done8/36 done9/36 done10/36 done11/36 done12/36 done13/36 done14/36 done15/36 done16/36 done17/36 done18/36 done19/36 done20/36 done21/36 done22/36 done23/36 done24/36 done25/36 done26/36 done27/36 done28/36 done29/36 done30/36 done31/36 done32/36 done33/36 done34/36 done35/36 done36/36 done
+{
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "split": "dev",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+  "pool_size": 36,
+  "sampled": 36,
+  "scored": 36,
+  "errors": 0,
+  "mean_score": 0.875,
+  "exact_1_rate": 0.8333333333333334,
+  "zero_rate": 0.08333333333333333,
+  "mean_by_tier": {
+    "v1": 1,
+    "hard": 0.8125
+  },
+  "mean_by_family": {
+    "mail-send": 1,
+    "mail-discard": 1,
+    "crm-owner": 1,
+    "crm-close": 1,
+    "crm-rename": 1,
+    "crm-lost": 1,
+    "mail-draft": 1,
+    "crm-disambiguate": 1,
+    "mail-revise": 1,
+    "crm-bulk-owner": 1,
+    "ticket-owner-route": 1,
+    "ticket-resolve-notify": 1,
+    "crm-mail-churn": 1,
+    "mail-send-and-close": 1,
+    "duplicate-merge": 0.5,
+    "churn-cascade": 1,
+    "rep-departure-cascade": 0.5,
+    "reply-thread-close": 1,
+    "priority-escalation-filter": 1,
+    "dual-close-cleanup": 0.5,
+    "conditional-route": 0.5,
+    "same-title-trap": 1,
+    "load-balance-assign": 0.75,
+    "derived-subject-close": 1
+  },
+  "mean_by_band": {
+    "discovery": 1,
+    "single-write": 1,
+    "multi-write": 1,
+    "cross-record": 0.8333333333333334,
+    "multi-hop": 1,
+    "cascade": 0.75,
+    "long-chain": 0.75,
+    "conditional": 0.75,
+    "aggregation": 0.75
+  },
+  "forbidden_effect_rate": 0,
+  "malformed_rate": 0.75,
+  "prompt_tokens": 438242,
+  "completion_tokens": 73286,
+  "wall_clock_s": 588,
+  "system_prompt_sha256": "d3ec6e2b4f34097b99e114a940017cbb096efe612de49d174f301c1eaac728b8"
+}

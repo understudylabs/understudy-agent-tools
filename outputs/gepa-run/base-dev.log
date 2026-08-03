@@ -1,0 +1,61 @@
+1/36 done2/36 done3/36 done4/36 done5/36 done6/36 done7/36 done8/36 done9/36 done10/36 done11/36 done12/36 done13/36 done14/36 done15/36 done16/36 done17/36 done18/36 done19/36 done20/36 done21/36 done22/36 done23/36 done24/36 done25/36 done26/36 done27/36 done28/36 done29/36 done30/36 done31/36 done32/36 done33/36 done34/36 done35/36 done36/36 done
+{
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "split": "dev",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "split_sha256": "f125ee0096802c57894644c5af0d8b3531cb9d7f8210a1cfd8a700afcbb52135",
+  "pool_size": 36,
+  "sampled": 36,
+  "scored": 36,
+  "errors": 0,
+  "mean_score": 0.5929232804232804,
+  "exact_1_rate": 0.5277777777777778,
+  "zero_rate": 0.3333333333333333,
+  "mean_by_tier": {
+    "v1": 0.8888888888888888,
+    "hard": 0.4449404761904762
+  },
+  "mean_by_family": {
+    "crm-lost": 1,
+    "crm-rename": 1,
+    "mail-discard": 1,
+    "crm-owner": 1,
+    "mail-revise": 1,
+    "crm-disambiguate": 1,
+    "mail-draft": 1,
+    "crm-bulk-owner": 1,
+    "crm-mail-churn": 1,
+    "ticket-owner-route": 1,
+    "mail-send": 1,
+    "crm-close": 0,
+    "ticket-resolve-notify": 0.5,
+    "rep-departure-cascade": 0.5,
+    "mail-send-and-close": 0.6666666666666666,
+    "duplicate-merge": 0.25,
+    "churn-cascade": 0.375,
+    "reply-thread-close": 0,
+    "priority-escalation-filter": 0.5,
+    "dual-close-cleanup": 0.21428571428571427,
+    "conditional-route": 0.5,
+    "load-balance-assign": 1,
+    "same-title-trap": 0.5,
+    "derived-subject-close": 0
+  },
+  "mean_by_band": {
+    "single-write": 0.75,
+    "discovery": 1,
+    "multi-write": 0.9166666666666666,
+    "cross-record": 0.5833333333333334,
+    "multi-hop": 0.25,
+    "cascade": 0.4375,
+    "long-chain": 0.10714285714285714,
+    "conditional": 0.5,
+    "aggregation": 1
+  },
+  "forbidden_effect_rate": 0.027777777777777776,
+  "malformed_rate": 0.9166666666666666,
+  "prompt_tokens": 463379,
+  "completion_tokens": 100330,
+  "wall_clock_s": 565,
+  "system_prompt_sha256": "7c368c6cf822306fc563d4425f004e949c26cd70d0afd6a3b9f5856beac49b2c"
+}
