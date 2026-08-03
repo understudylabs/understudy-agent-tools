@@ -17,10 +17,15 @@
  * trainer is unreachable without passing this gate.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { DOMAIN_ID_TASKS, domainIdSplitSha256, domainIdTaskBands } from "../../dist/domain-identification-slice.js";
+import {
+  DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
+  domainIdSplitSha256,
+  domainIdTaskBands,
+} from "../../dist/domain-identification-slice.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -36,6 +41,10 @@ if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
+const MAX_FAMILY_SHARE = 0.35;
+// A failed rerun must not leave a previously validated artifact at the path the
+// trainer is about to consume.
+if (outPath && existsSync(outPath)) unlinkSync(outPath);
 
 const BANDS = domainIdTaskBands();
 const SPLIT_BY_TASK = new Map(DOMAIN_ID_TASKS.map((task) => [task.taskId, task.split]));
@@ -65,11 +74,11 @@ if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
-  fail(0, "manifest train_split_sha256 does not match this slice's frozen train split");
+if (manifest.fixture_sha256 !== domainIdFixtureSha256()) {
+  fail(0, `manifest fixture_sha256 ${manifest.fixture_sha256 ?? "missing"} does not match current fixture ${domainIdFixtureSha256()}`);
 }
-if (manifest.holdout_split_sha256 && manifest.holdout_split_sha256 !== domainIdSplitSha256("holdout")) {
-  fail(0, "manifest holdout_split_sha256 does not match this slice's frozen holdout");
+if (manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
+  fail(0, "manifest train_split_sha256 does not match this slice's frozen train split");
 }
 
 /** Accept a message list, a bare string, or {role,content}; reject anything else. */
@@ -88,6 +97,7 @@ const normalized = [];
 const seen = new Set();
 const bandCounts = {};
 const splitCounts = {};
+const rejectedForbiddenWrites = { pairs: 0, total: 0, max: 0 };
 
 lines.forEach((line, index) => {
   const lineNumber = index + 1;
@@ -121,6 +131,14 @@ lines.forEach((line, index) => {
     fail(lineNumber, `LEAKAGE: task_id ${taskId} belongs to the ${split} split`);
     return;
   }
+  if (row.fixture_sha256 !== domainIdFixtureSha256()) {
+    fail(lineNumber, `row fixture_sha256 ${row.fixture_sha256 ?? "missing"} does not match current fixture`);
+    return;
+  }
+  if (row.train_split_sha256 !== domainIdSplitSha256("train")) {
+    fail(lineNumber, "row train_split_sha256 does not match this slice's frozen train split");
+    return;
+  }
 
   const prompt = toMessages(row.prompt_conversation ?? row.prompt ?? row.messages, "user");
   const chosen = toMessages(row.chosen ?? row.completion_chosen ?? row.preferred, "assistant");
@@ -135,6 +153,11 @@ lines.forEach((line, index) => {
   if (typeof row.chosen_score === "number" && typeof row.rejected_score === "number" && row.chosen_score <= row.rejected_score) {
     return void fail(lineNumber, `chosen (${row.chosen_score}) does not beat rejected (${row.rejected_score})`);
   }
+  if (row.chosen_score !== 1) return void fail(lineNumber, "chosen replay score must be exactly 1.0");
+  if (row.chosen_forbidden_writes !== 0) return void fail(lineNumber, "chosen replay must have zero forbidden effects");
+  if (!Number.isInteger(row.rejected_forbidden_writes) || row.rejected_forbidden_writes < 0) {
+    return void fail(lineNumber, "rejected_forbidden_writes must be a non-negative integer");
+  }
 
   const key = createHash("sha256").update(JSON.stringify([prompt, chosenText, rejectedText])).digest("hex");
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
@@ -143,15 +166,36 @@ lines.forEach((line, index) => {
   const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
   const band = BANDS[family] ?? "unknown";
   bandCounts[band] = (bandCounts[band] ?? 0) + 1;
-  normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
+  normalized.push({
+    task_id: taskId,
+    fixture_sha256: domainIdFixtureSha256(),
+    train_split_sha256: domainIdSplitSha256("train"),
+    family,
+    band,
+    split,
+    prompt_conversation: prompt,
+    chosen,
+    rejected,
+  });
+  if (row.rejected_forbidden_writes > 0) rejectedForbiddenWrites.pairs += 1;
+  rejectedForbiddenWrites.total += row.rejected_forbidden_writes;
+  rejectedForbiddenWrites.max = Math.max(rejectedForbiddenWrites.max, row.rejected_forbidden_writes);
 });
 
 if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" });
+for (const [family, count] of Object.entries(
+  normalized.reduce((counts, row) => ({ ...counts, [row.family]: (counts[row.family] ?? 0) + 1 }), {}),
+)) {
+  const share = count / normalized.length;
+  if (share > MAX_FAMILY_SHARE) fail(0, `family balance exceeds 35%: ${family}=${count}/${normalized.length} (${share.toFixed(4)})`);
+}
 
 const report = {
-  schema_version: "understudy.dpo_pairs_validation.v1",
+  schema_version: "understudy.dpo_pairs_validation.v2",
   generated_at: new Date().toISOString(),
   fixture_id: "domain-identification-offline-v1",
+  fixture_sha256: domainIdFixtureSha256(),
+  manifest_fixture_sha256: manifest.fixture_sha256 ?? null,
   pairs_path: pairsPath,
   manifest_path: manifestPath,
   pairs_sha256: pairsSha256,
@@ -161,6 +205,9 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
+  family_counts: normalized.reduce((counts, row) => ({ ...counts, [row.family]: (counts[row.family] ?? 0) + 1 }), {}),
+  family_balance_max_share: MAX_FAMILY_SHARE,
+  rejected_forbidden_writes: rejectedForbiddenWrites,
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),
   failures: failures.slice(0, 50),
