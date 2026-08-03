@@ -873,6 +873,11 @@ def main():
     }
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
+    fixture_sha = dev_payload.get("fixture_sha256")
+    if not fixture_sha:
+        raise FuseTripped("sidecar pool is missing fixture_sha256 provenance")
+    wave_provenance["fixture_sha256"] = fixture_sha
+    wave_provenance["dev_split_sha256"] = dev_sha
     targeted_plan = args.island_plan in {
         "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
         "wave6-seeded-population",
@@ -951,8 +956,23 @@ def main():
         json.loads(Path(args.parent_winner_canonical).read_text())
         if args.parent_winner_canonical else winner_canonical
     )
-    rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha, samples_per_task=K)
-    gepa_protocol = em.make_protocol(method="gepa_observed", split_sha256=dev_sha, samples_per_task=1)
+    for label, receipt in (
+        ("seed", seed_canonical),
+        ("wave1", winner_canonical),
+        ("parent", parent_canonical),
+    ):
+        if receipt.get("fixture_sha256") != fixture_sha:
+            raise FuseTripped(
+                f"{label} canonical receipt fixture_sha256 does not match active sidecar"
+            )
+        if receipt.get("split_sha256") != dev_sha:
+            raise FuseTripped(
+                f"{label} canonical receipt split_sha256 does not match active dev split"
+            )
+    rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha,
+                                     fixture_sha256=fixture_sha, samples_per_task=K)
+    gepa_protocol = em.make_protocol(method="gepa_observed", split_sha256=dev_sha,
+                                     fixture_sha256=fixture_sha, samples_per_task=1)
     baseline_nodes = [
         em.make_node(node_id="baseline-seed", label="Seed prompt (canonical k=3)", wave="baseline",
                      stage="completed", protocol=rank_protocol, score=seed_canonical["mean_score"],

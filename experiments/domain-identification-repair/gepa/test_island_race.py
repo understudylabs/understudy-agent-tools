@@ -305,6 +305,16 @@ def test_completed_manifest_stamps_confirmation_totals():
 
 
 def main():
+    repaired = em.make_protocol(
+        method="canonical_rollout", split_sha256="same-split",
+        fixture_sha256="repaired-fixture", samples_per_task=3,
+    )
+    old = em.make_protocol(
+        method="canonical_rollout", split_sha256="same-split",
+        fixture_sha256="old-fixture", samples_per_task=3,
+    )
+    check("fixture identity prevents cross-environment score comparison",
+          not em.protocols_comparable(repaired, old))
     test_graph_silent_publish()
     test_reflection_provenance_contains_name_not_secret()
     test_wave6_seed_population_admission()

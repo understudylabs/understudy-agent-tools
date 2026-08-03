@@ -13,8 +13,9 @@ final score and are NEVER encoded as score=0 or rejected — a null score means
 
 Methodology guards (critical):
   * A score is only meaningful within one evaluation protocol. The protocol
-    identity is (method, scorer_version, rollout_contract, split_sha256,
-    samples_per_task). Scores from different protocols are NOT comparable.
+    identity is (method, scorer_version, rollout_contract, fixture_sha256,
+    split_sha256, samples_per_task). Scores from different protocols are NOT
+    comparable.
   * The headline high-score and any ranking operate ONLY within a single
     designated rank protocol (canonical rollout, k=3, on the dev split). GEPA
     "observed" scores are labeled metadata and never rank-eligible; a canonical
@@ -46,20 +47,23 @@ METHODS = ("gepa_observed", "canonical_rollout")
 RANKABLE_METHODS = frozenset({"canonical_rollout"})
 
 
-def make_protocol(*, method, split_sha256, samples_per_task,
+def make_protocol(*, method, split_sha256, samples_per_task, fixture_sha256=None,
                   scorer_version="domain-identification-offline-v1",
                   rollout_contract="rollout.mjs@max_tokens=384;max_turns=10;malformed_tolerance=3;temperature=0"):
     """Build a protocol identity. samples_per_task (k) is part of identity, so
     canonical k=1 and canonical k=3 are DIFFERENT protocols."""
     if method not in METHODS:
         raise ValueError(f"unknown method: {method}")
-    return {
+    protocol = {
         "method": method,
         "scorer_version": scorer_version,
         "rollout_contract": rollout_contract,
         "split_sha256": split_sha256,
         "samples_per_task": int(samples_per_task),
     }
+    if fixture_sha256:
+        protocol["fixture_sha256"] = fixture_sha256
+    return protocol
 
 
 def protocol_key(protocol):
@@ -68,6 +72,7 @@ def protocol_key(protocol):
         protocol["method"],
         protocol["scorer_version"],
         protocol["rollout_contract"],
+        protocol.get("fixture_sha256"),
         protocol["split_sha256"],
         int(protocol["samples_per_task"]),
     )
