@@ -95,6 +95,20 @@ describe("domain-identification synthetic slice", () => {
     }
   });
 
+  it("keeps every abstain requester domain absent from the visible account pool", () => {
+    for (const task of DOMAIN_ID_TASKS.filter(
+      (entry) => entry.split !== "holdout" && entry.taskId.includes("unmatched-abstain"),
+    )) {
+      const requesterDomain = task.initialState.support.tickets["t-2"].requester.split("@").at(-1);
+      const accountDomains = Object.values(task.initialState.crm.contacts)
+        .map((contact) => contact.email.split("@").at(-1));
+      assert.ok(
+        !accountDomains.includes(requesterDomain),
+        `${task.taskId} accidentally registers its abstain requester domain`,
+      );
+    }
+  });
+
   it("leaks no assertion path into the prompt and stays solvable from read-only listings", () => {
     for (const task of DOMAIN_ID_TASKS) {
       const text = discoverableText(task);

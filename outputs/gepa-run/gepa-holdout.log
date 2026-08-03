@@ -1,0 +1,61 @@
+1/60 done2/60 done3/60 done4/60 done5/60 done6/60 done7/60 done8/60 done9/60 done10/60 done11/60 done12/60 done13/60 done14/60 done15/60 done16/60 done17/60 done18/60 done19/60 done20/60 done21/60 done22/60 done23/60 done24/60 done25/60 done26/60 done27/60 done28/60 done29/60 done30/60 done31/60 done32/60 done33/60 done34/60 done35/60 done36/60 done37/60 done38/60 done39/60 done40/60 done41/60 done42/60 done43/60 done44/60 done45/60 done46/60 done47/60 done48/60 done49/60 done50/60 done51/60 done52/60 done53/60 done54/60 done55/60 done56/60 done57/60 done58/60 done59/60 done60/60 done
+{
+  "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+  "split": "holdout",
+  "fixture": "automationbench-simple-api-offline-v2",
+  "split_sha256": "2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9",
+  "pool_size": 60,
+  "sampled": 60,
+  "scored": 60,
+  "errors": 0,
+  "mean_score": 0.9083333333333333,
+  "exact_1_rate": 0.85,
+  "zero_rate": 0.05,
+  "mean_by_tier": {
+    "v1": 1,
+    "hard": 0.8854166666666666
+  },
+  "mean_by_family": {
+    "mail-revise": 1,
+    "crm-owner": 1,
+    "crm-rename": 1,
+    "mail-send": 1,
+    "mail-draft": 1,
+    "mail-discard": 1,
+    "crm-lost": 1,
+    "crm-close": 1,
+    "crm-disambiguate": 1,
+    "crm-bulk-owner": 1,
+    "ticket-owner-route": 1,
+    "crm-mail-churn": 1,
+    "mail-send-and-close": 1,
+    "ticket-resolve-notify": 1,
+    "churn-cascade": 1,
+    "rep-departure-cascade": 0.875,
+    "duplicate-merge": 0.5,
+    "reply-thread-close": 1,
+    "priority-escalation-filter": 1,
+    "conditional-route": 0.75,
+    "dual-close-cleanup": 0.75,
+    "same-title-trap": 1,
+    "load-balance-assign": 0.75,
+    "derived-subject-close": 1
+  },
+  "mean_by_band": {
+    "discovery": 1,
+    "single-write": 1,
+    "multi-write": 1,
+    "cross-record": 0.8333333333333334,
+    "multi-hop": 1,
+    "cascade": 0.9375,
+    "conditional": 0.875,
+    "long-chain": 0.875,
+    "aggregation": 0.75
+  },
+  "forbidden_effect_rate": 0.016666666666666666,
+  "malformed_rate": 0.9,
+  "prompt_tokens": 973241,
+  "completion_tokens": 140468,
+  "wall_clock_s": 669,
+  "system_prompt_sha256": "d3ec6e2b4f34097b99e114a940017cbb096efe612de49d174f301c1eaac728b8"
+}

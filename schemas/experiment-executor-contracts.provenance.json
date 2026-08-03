@@ -1,0 +1,14 @@
+{
+  "branch": "yolo/vercel-experiment-orchestrator",
+  "commit": "c299ca4",
+  "note": "Schemas are unchanged from 8c8fb65 and vendored verbatim from the Understudy platform contracts.",
+  "files": [
+    "understudy.executor-submit.v1.schema.json",
+    "understudy.executor-job-ref.v1.schema.json",
+    "understudy.executor-job-status.v1.schema.json",
+    "understudy.executor-cancellation-receipt.v1.schema.json",
+    "understudy.executor-usage-receipt.v1.schema.json",
+    "understudy.experiment-result.v1.schema.json"
+  ],
+  "copied_verbatim": true
+}

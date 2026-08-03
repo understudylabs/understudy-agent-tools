@@ -1,0 +1,3 @@
+{"task_id":"synthetic-07","band":"playbook","request":{"messages":[{"role":"user","content":"Synthetic playbook routing case 7."}]},"label":{"calls":[{"tool":"save-execution-summary","arguments":{}}]}}
+{"task_id":"synthetic-08","band":"playbook","request":{"messages":[{"role":"user","content":"Synthetic playbook routing case 8."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}
+{"task_id":"synthetic-09","band":"judgment","request":{"messages":[{"role":"user","content":"Synthetic judgment routing case 9."}]},"label":{"calls":[{"tool":"run-subagent","arguments":{"subagentPath":"ops/triage"}}]}}

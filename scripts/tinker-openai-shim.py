@@ -38,10 +38,14 @@ import tinker
 from tinker_cookbook.renderers import get_renderer
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
+from tinker_openai_compat import build_chat_completion, normalize_finish_reason
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--base-model", required=True)
+model_group = parser.add_mutually_exclusive_group(required=True)
+model_group.add_argument("--base-model")
+model_group.add_argument("--model-path", help="Tinker sampler-state/checkpoint path returned by save_weights_for_sampler().")
+parser.add_argument("--tokenizer-model", help="Base model used for tokenization/rendering when --model-path is selected.")
 parser.add_argument("--renderer", required=True)
-parser.add_argument("--model-path", default=None, help="tinker:// checkpoint to serve over the base weights")
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
 parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
@@ -60,13 +64,16 @@ def log_event(event, **fields):
             stream.write(json.dumps(record) + "\n")
 
 
-service = tinker.ServiceClient()
+service = tinker.ServiceClient(_client_config={"use_pyqwest_transport": False})
 sampler = (
-    service.create_sampling_client(model_path=args.model_path, base_model=args.base_model)
+    service.create_sampling_client(model_path=args.model_path)
     if args.model_path
     else service.create_sampling_client(base_model=args.base_model)
 )
-renderer = get_renderer(args.renderer, get_tokenizer(args.base_model))
+tokenizer_model = args.tokenizer_model or args.base_model
+if not tokenizer_model:
+    raise SystemExit("--tokenizer-model is required with --model-path")
+renderer = get_renderer(args.renderer, get_tokenizer(tokenizer_model))
 pool = ThreadPoolExecutor(max_workers=args.max_workers)
 
 
@@ -78,12 +85,19 @@ def sample(messages, temperature, max_tokens):
         stop=renderer.get_stop_sequences(),
     )
     result = sampler.sample(prompt=prompt, sampling_params=params, num_samples=1).result()
-    tokens = result.sequences[0].tokens
-    message, _termination = renderer.parse_response(tokens)
+    sequence = result.sequences[0]
+    tokens = sequence.tokens
+    message, termination = renderer.parse_response(tokens)
     content = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
     if isinstance(content, list):
         content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
-    return content or "", prompt.length, len(tokens)
+    finish_reason = normalize_finish_reason(
+        stop_reason=sequence.stop_reason,
+        termination=getattr(termination, "value", termination),
+        completion_tokens=len(tokens),
+        max_tokens=max_tokens,
+    )
+    return content or "", prompt.length, len(tokens), finish_reason
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -104,7 +118,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             for attempt in range(2):
                 try:
-                    content, prompt_tokens, completion_tokens = pool.submit(
+                    content, prompt_tokens, completion_tokens, finish_reason = pool.submit(
                         sample,
                         body["messages"],
                         float(body.get("temperature", 0.0)),
@@ -116,10 +130,7 @@ class Handler(BaseHTTPRequestHandler):
                     if attempt == 1:
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
-            payload = {
-                "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
-            }
+            payload = build_chat_completion(content, prompt_tokens, completion_tokens, finish_reason)
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
             log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])

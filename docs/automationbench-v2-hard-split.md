@@ -112,10 +112,16 @@ per-task rows are in `outputs/zeroshot-<model>-dev.json`.
 
 | Base | Provider | dev mean | v1-tier | hard-tier | exact-1 | zero | forbidden writes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | Tinker (sampling, `nemotron3`) | **0.843** | 0.889 | **0.820** | 0.694 | 0.056 | 0 |
+| `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | Tinker (sampling, `nemotron3`; historical, provenance unverified/different serving lane) | **0.843** | 0.889 | **0.820** | 0.694 | 0.056 | 0 |
+| `NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` | Tinker (sampling, `nemotron3`, reproducible lane, `max_tokens=1024`) | **0.783** | 0.833 | **0.758** | 0.639 | 0.083 | 0 |
 | `gpt-oss-20b` | Fireworks serverless | **0.514** | 0.667 | **0.438** | 0.500 | 0.472 | 0 |
 | `qwen3p7-plus` | Fireworks serverless | 0.907 | 0.917 | 0.903 | 0.889 | 0.083 | 0 |
 | `deepseek-v4-flash` | Fireworks serverless | 1.000 | 1.000 | 1.000 | 1.000 | 0.000 | 0 |
+
+The historical Nemotron row above is not reproducible on the frozen Tinker lane. The
+reproducible `max_tokens=1024` run scored 0.783 with a 0.389 malformed rate. The
+previous v2 runner defaulted to `max_tokens=512`, which truncated Nemotron
+mid-reasoning and inflated malformed emissions.
 
 The bases the RL arms actually train — Nemotron-3-Nano and the 20B class — sit
 well below ceiling with real headroom concentrated in the hard tier, which is
@@ -145,5 +151,5 @@ node scripts/automationbench-v2-zeroshot.mjs \
 Holdout is read exactly once, at the end of an arm, with
 `--frozen-holdout 2f8d0fa9478e47fbb609023918206bc7edbd25ec0992d2ccca945962a2a889c9`.
 
-All records are synthetic and index-generated. No private or customer data is
-present in this fixture.
+All records are synthetic and index-generated. No customer or private workload
+data is present in this fixture.

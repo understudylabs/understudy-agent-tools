@@ -17,10 +17,15 @@
  * trainer is unreachable without passing this gate.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { DOMAIN_ID_TASKS, domainIdSplitSha256, domainIdTaskBands } from "../../dist/domain-identification-slice.js";
+import {
+  DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
+  domainIdSplitSha256,
+  domainIdTaskBands,
+} from "../../dist/domain-identification-slice.js";
 
 function argValue(name, fallback = null) {
   const index = process.argv.indexOf(name);
@@ -36,9 +41,11 @@ if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
+if (outPath && existsSync(outPath)) unlinkSync(outPath);
 
 const BANDS = domainIdTaskBands();
 const SPLIT_BY_TASK = new Map(DOMAIN_ID_TASKS.map((task) => [task.taskId, task.split]));
+const RUNTIME_FIXTURE_SHA256 = domainIdFixtureSha256();
 
 /** Identifiers that must never reach a public training artifact. */
 const PRIVATE_ID_PATTERNS = [
@@ -59,13 +66,16 @@ const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 
 if (typeof manifest.pairs_sha256 !== "string") fail(0, "manifest has no pairs_sha256");
 else if (manifest.pairs_sha256 !== pairsSha256) fail(0, `manifest pairs_sha256 ${manifest.pairs_sha256} != file ${pairsSha256}`);
+if (manifest.fixture_sha256 !== RUNTIME_FIXTURE_SHA256) {
+  fail(0, "manifest fixture_sha256 missing/stale vs runtime fixture");
+}
 
 const declaredSource = String(manifest.source ?? manifest.data_source ?? "");
 if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
+if (manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
   fail(0, "manifest train_split_sha256 does not match this slice's frozen train split");
 }
 if (manifest.holdout_split_sha256 && manifest.holdout_split_sha256 !== domainIdSplitSha256("holdout")) {
@@ -86,7 +96,6 @@ function toMessages(value, role) {
 const lines = raw.toString("utf8").split("\n").filter((line) => line.trim().length > 0);
 const normalized = [];
 const seen = new Set();
-const bandCounts = {};
 const splitCounts = {};
 
 lines.forEach((line, index) => {
@@ -96,6 +105,15 @@ lines.forEach((line, index) => {
     row = JSON.parse(line);
   } catch {
     fail(lineNumber, "line is not valid JSON");
+    return;
+  }
+
+  if (row.fixture_sha256 !== RUNTIME_FIXTURE_SHA256) {
+    fail(lineNumber, "row fixture_sha256 missing/stale");
+    return;
+  }
+  if (row.train_split_sha256 !== domainIdSplitSha256("train")) {
+    fail(lineNumber, "row train_split_sha256 missing/stale");
     return;
   }
 
@@ -135,6 +153,11 @@ lines.forEach((line, index) => {
   if (typeof row.chosen_score === "number" && typeof row.rejected_score === "number" && row.chosen_score <= row.rejected_score) {
     return void fail(lineNumber, `chosen (${row.chosen_score}) does not beat rejected (${row.rejected_score})`);
   }
+  if (row.chosen_score !== 1) return void fail(lineNumber, "chosen replay score must be exactly 1.0");
+  if (row.chosen_forbidden_writes !== 0) return void fail(lineNumber, "chosen replay must have zero forbidden effects");
+  if (!Number.isInteger(row.rejected_forbidden_writes) || row.rejected_forbidden_writes < 0) {
+    return void fail(lineNumber, "rejected_forbidden_writes must be a non-negative integer");
+  }
 
   const key = createHash("sha256").update(JSON.stringify([prompt, chosenText, rejectedText])).digest("hex");
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
@@ -142,11 +165,74 @@ lines.forEach((line, index) => {
 
   const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
   const band = BANDS[family] ?? "unknown";
-  bandCounts[band] = (bandCounts[band] ?? 0) + 1;
-  normalized.push({ task_id: taskId, family, band, split, prompt_conversation: prompt, chosen, rejected });
+  normalized.push({
+    task_id: taskId,
+    family,
+    band,
+    split,
+    prompt_conversation: prompt,
+    chosen,
+    rejected,
+    chosen_score: row.chosen_score,
+    chosen_forbidden_writes: row.chosen_forbidden_writes,
+    rejected_score: row.rejected_score,
+    rejected_forbidden_writes: Number.isFinite(row.rejected_forbidden_writes)
+      ? row.rejected_forbidden_writes
+      : 0,
+    fixture_sha256: RUNTIME_FIXTURE_SHA256,
+    train_split_sha256: domainIdSplitSha256("train"),
+    _line_index: lineNumber,
+  });
 });
 
 if (normalized.length === 0) failures.push({ line: 0, reason: "no usable pairs" });
+
+const familyCounts = (rows) => rows.reduce((counts, row) => {
+  counts[row.family] = (counts[row.family] ?? 0) + 1;
+  return counts;
+}, {});
+const familyCountsRaw = familyCounts(normalized);
+let droppedForBalance = 0;
+let balanceCapped = false;
+const CAP = 0.35;
+
+while (normalized.length > 0) {
+  const counts = familyCounts(normalized);
+  const [family, count] = Object.entries(counts)
+    .sort(([leftFamily, leftCount], [rightFamily, rightCount]) =>
+      rightCount - leftCount || leftFamily.localeCompare(rightFamily))
+    [0];
+  if (count <= Math.floor(CAP * normalized.length)) break;
+
+  const others = normalized.length - count;
+  const allowed = Math.floor((CAP / (1 - CAP)) * others);
+  if (others === 0 || allowed < 1) {
+    failures.push({ line: 0, reason: `skewed_family_unbalanceable: ${JSON.stringify(counts)}` });
+    break;
+  }
+
+  const familyRows = normalized
+    .filter((row) => row.family === family)
+    .sort((left, right) =>
+      left.task_id.localeCompare(right.task_id) || left._line_index - right._line_index);
+  const dropRows = new Set(familyRows.slice(allowed).map((row) => row._line_index));
+  normalized.splice(0, normalized.length, ...normalized.filter((row) => !dropRows.has(row._line_index)));
+  droppedForBalance += count - allowed;
+  balanceCapped = true;
+}
+
+const familyCountsFinal = familyCounts(normalized);
+const bandCounts = normalized.reduce((counts, row) => {
+  counts[row.band] = (counts[row.band] ?? 0) + 1;
+  return counts;
+}, {});
+const normalizedOutput = normalized.map(({ _line_index, ...row }) => row);
+const rejectedForbiddenWrites = normalized.reduce((summary, row) => {
+  if (row.rejected_forbidden_writes > 0) summary.pairs += 1;
+  summary.total += row.rejected_forbidden_writes;
+  summary.max = Math.max(summary.max, row.rejected_forbidden_writes);
+  return summary;
+}, { pairs: 0, total: 0, max: 0 });
 
 const report = {
   schema_version: "understudy.dpo_pairs_validation.v1",
@@ -161,6 +247,12 @@ const report = {
   rejected: failures.length,
   split_counts: splitCounts,
   band_counts: bandCounts,
+  family_counts_raw: familyCountsRaw,
+  family_counts_final: familyCountsFinal,
+  dropped_for_balance: droppedForBalance,
+  balance_capped: balanceCapped,
+  rejected_forbidden_writes: rejectedForbiddenWrites,
+  fixture_sha256: RUNTIME_FIXTURE_SHA256,
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),
   failures: failures.slice(0, 50),
@@ -180,5 +272,5 @@ if (failures.length > 0) {
 
 if (outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, `${normalized.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  writeFileSync(outPath, `${normalizedOutput.map((row) => JSON.stringify(row)).join("\n")}\n`);
 }

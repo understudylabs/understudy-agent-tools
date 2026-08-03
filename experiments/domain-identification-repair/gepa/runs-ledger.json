@@ -1,0 +1,102 @@
+{
+  "schema": "understudy.gepa_run_ledger.v0",
+  "workload": "domain-identification",
+  "workload_code": "WL-DI",
+  "source": {
+    "repo": "understudylabs/understudy-agent-tools",
+    "branch": "devin/178561-cookbook-audit-and-benchmark-repair",
+    "commit": "025c8909a86da7c2258fc98ef11a76880c8f77d7",
+    "fixture": "domain-identification-offline-v1"
+  },
+  "holdout": {
+    "status": "observed_contaminated",
+    "digest": "omitted; sealed digest retained only in the private run receipt",
+    "holdout_executed": true,
+    "gepa_holdout_executed": false,
+    "observed_during": "fresh-baseline phase of this session",
+    "observed_values": {"incumbent_gpt4o_holdout": 0.906, "nemotron_base_holdout": 0.313},
+    "permitted_claim": "holdout was not read by either GEPA run",
+    "prohibited_claim": "holdout sealed the entire time",
+    "reuse_as_sealed_promotion_evidence": false,
+    "final_meetbeat_requires": "newly hash-bound untouched holdout OR clearly-labeled already-observed confirmation set",
+    "plan": "FRESH-HOLDOUT-PLAN.md"
+  },
+  "runs": [
+    {
+      "run_id": "gepa-run-20260802T182750Z",
+      "state": "lost_superseded",
+      "start_utc": "2026-08-02T18:27:50Z",
+      "loss_boundary_utc": "2026-08-02T19:32:45Z",
+      "destructive_command": "rm -rf experiments/domain-identification-repair/gepa/logs",
+      "destructive_origin": "automated optimizer relaunch (not human-issued)",
+      "config": {
+        "method": "gepa-prompt-only",
+        "splits": "train+dev",
+        "student": "nemotron-3-nano-base@tinker-shim:8099",
+        "reflection_lm": "kimi-k3",
+        "metric_budget_calls": 40
+      },
+      "progress_at_loss": {
+        "iteration": 0,
+        "seed_dev_valset_subscores": [1, 0, 1, 1, 0, 1, 0, 0],
+        "seed_dev_mean": 0.5,
+        "converged_candidate": false,
+        "gepa_dev_transfer_artifact": null
+      },
+      "spend": {
+        "student_calls": "free (local shim)",
+        "kimi_k3_tokens": "unlogged/unknown",
+        "envelope_usd": 500,
+        "ambiguous_charges": false
+      },
+      "recovery": "unrecoverable (no open fds, not in /tmp or $HOME, git-untracked)"
+    },
+    {
+      "run_id": "gepa-run-20260802T193247Z",
+      "state": "active",
+      "start_utc": "2026-08-02T19:32:47Z",
+      "pid": 16170,
+      "continuous_with_prior": false,
+      "config": {
+        "method": "gepa-prompt-only",
+        "splits": "train+dev",
+        "student": "nemotron-3-nano-base@tinker-shim:8099",
+        "reflection_lm": "kimi-k3",
+        "metric_budget_calls": 40,
+        "seed_prompt": "unchanged rollout.mjs SYSTEM block"
+      },
+      "live_artifacts": "experiments/domain-identification-repair/gepa/logs/",
+      "preserved_snapshots": "/home/ubuntu/di-runs/gepa-run-20260802T193247Z/"
+    },
+    {
+      "run_id": "gepa-run-20260802T194713Z",
+      "state": "duplicate_contained",
+      "pid": 19888,
+      "ppid": 2373,
+      "cmdline": "optimize.py --max-metric-calls 34",
+      "start_utc": "2026-08-02T19:47:13Z",
+      "destructive_command": "rm -rf experiments/domain-identification-repair/gepa/logs",
+      "loss_boundary_utc": "2026-08-02T19:47:17Z",
+      "cause": "duplicate optimizer launched by sidekick optimizer shell; raced PID 16170 on same logs dir",
+      "containment": {
+        "signal": "SIGINT",
+        "signal_utc": "2026-08-02T19:48:48Z",
+        "sigterm_needed": false,
+        "exited": true,
+        "pid_16170_signaled": false,
+        "sidekick_optimizer_control": "halted; lead is sole optimizer owner"
+      },
+      "recovery": "none recoverable (no deleted-but-open checkpoint fd; optimizer closes gepa_state.bin after each save)",
+      "incident_dir": "/home/ubuntu/di-runs/incident-20260802T194832Z/",
+      "live_gepa_state_sha256_at_capture": "259725a8f8f037fe9262d0cb7071135e4615aeb8c2895bc70c994f0b6df6ceff"
+    }
+  ],
+  "publisher": {
+    "script": "experiments/domain-identification-repair/gepa/publish_snapshot.py",
+    "mode": "watch",
+    "source": "PRESERVED copy snapshots/20260802T193544Z (NOT live logs)",
+    "out": "/home/ubuntu/di-runs/gepa-run-20260802T193247Z/run.json",
+    "endpoint": "http://127.0.0.1:5151/ingest (via ssh -fNT forward)",
+    "published_candidate_0_dev_mean": 0.5
+  }
+}

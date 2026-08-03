@@ -10,15 +10,30 @@ metadata:
 
 # Serve the Spark lane
 
-Use this skill for the public/synthetic self-hosted NVIDIA DGX Spark lane. The
-lane is currently **paused at Tailscale enrollment**: do not run `tailscale up`,
-reach the Sparks, request an auth key, or read a host `.env` file until the
-organization provides `TAILSCALE_AUTH_KEY` through the runtime environment.
+Use this skill for the public/synthetic self-hosted NVIDIA DGX Spark lane.
+Enrollment requires `TAILSCALE_AUTH_KEY` in the runtime environment: without
+it, do not run `tailscale up`, reach the Sparks, request an auth key, or read a
+host `.env` file.
 
 The complete recipe, account preparation, endpoint contract, and hardware
 verification checklist are in [`../../docs/spark-serving-lane.md`](../../docs/spark-serving-lane.md).
 The unified Modal + Spark router contract is in
 [`../../docs/unified-serving-router.md`](../../docs/unified-serving-router.md).
+
+An unprivileged account does not need Docker. The verified no-sudo path — `uv`
+venv, aarch64 vLLM wheels, Python headers without root, and the shared-node
+memory limits — is in
+[`../../docs/spark-userspace-vllm.md`](../../docs/spark-userspace-vllm.md).
+
+Before promising anyone a LoRA on this lane, read
+[`../../docs/nemotron-h-lora-vllm-compatibility.md`](../../docs/nemotron-h-lora-vllm-compatibility.md):
+a Nemotron-H adapter trained with `target_modules: "all-linear"` cannot be
+served by vLLM 0.26.0, and the target modules must be constrained at training
+time.
+
+The lane is an executor for the durable experiment Workflow, never a controller
+of its own; that boundary is
+[`../../docs/spark-executor-contract.md`](../../docs/spark-executor-contract.md).
 
 ## Safety Gates
 
@@ -28,7 +43,14 @@ The unified Modal + Spark router contract is in
 - The Devin-side bootstrap uses no sudo and userspace networking.
 - Human administrators may use sudo only for the documented Spark-side
   `devin` account and dedicated SSH key setup.
-- Use only the ACL-approved ports 22, 443, and 5153; serving binds to 5153.
+- Use only the ACL-approved ports 22, 443, and 5153; serving binds to 5153, and
+  to the node's own tailnet address rather than `0.0.0.0`.
+- Pass the serving API key through `VLLM_API_KEY`, never `--api-key`: argv is
+  world-readable through `ps` on a shared host.
+- The Sparks are shared. Cap `--gpu-memory-utilization` at `0.70`, keep the
+  context modest, and never instantiate a second copy of a model while a server
+  is live — doing so has taken a node to 120 of 121 GiB and a load average
+  above 230.
 - Do not claim a model, adapter, LoRA combination, throughput, or memory fit is
   verified until the hardware checklist has produced evidence.
 

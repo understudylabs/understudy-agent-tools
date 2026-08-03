@@ -26,8 +26,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
+import { loadSystemPrompt } from "./prompt-loader.mjs";
 import {
   DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
   domainIdSplitSha256,
   domainIdTaskBands,
   domainIdTaskPool,
@@ -52,18 +54,22 @@ const temperature = Number(argValue("--temperature", "0"));
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "384"));
 const baseUrl = argValue("--base-url", "http://localhost:8099/v1");
+const apiKeyEnv = argValue("--api-key-env", "FIREWORKS_API_KEY");
+const project = argValue("--project");
+const workload = argValue("--workload");
 const outPath = argValue("--out");
 const transcriptPath = argValue("--transcripts");
 const frozenHoldout = argValue("--frozen-holdout");
+const systemFile = argValue("--system-file");
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
-const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
-if (!apiKey) throw new Error("FIREWORKS_API_KEY is required for a remote endpoint (never hard-code it)");
+const apiKey = process.env[apiKeyEnv] ?? (isLocalShim ? "local-shim" : undefined);
+if (!apiKey) throw new Error(`${apiKeyEnv} is required for a remote endpoint (never hard-code it)`);
 
 const pool = domainIdTaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 const BANDS = domainIdTaskBands();
 const tasks = limit > 0 ? pool.slice(0, limit) : pool;
 
-const SYSTEM = [
+const DEFAULT_SYSTEM = [
   "You operate business apps through two tools.",
   'api_search — read-only endpoint discovery. arguments: {"query": string}',
   'api_fetch  — apply ONE API call. arguments: {"method": string, "url": string, "body": object}',
@@ -76,6 +82,7 @@ const SYSTEM = [
   "Read before you write: list the relevant collections first, then make the smallest set of writes that satisfies the request.",
   "Writing to a record the request did not ask you to change scores zero for the whole task.",
 ].join("\n");
+const SYSTEM = systemFile ? loadSystemPrompt(systemFile) : DEFAULT_SYSTEM;
 
 /** Strict parse: one JSON object naming a known tool. No repair, no salvage of prose. */
 function parseAction(text) {
@@ -109,9 +116,12 @@ function parseAction(text) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function chat(messages, attempt = 0) {
+  const headers = { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
+  if (project) headers["x-understudy-project"] = project;
+  if (workload) headers["x-understudy-workload"] = workload;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    headers,
     body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
   });
   if (!response.ok) {
@@ -224,10 +234,14 @@ async function main() {
   const report = {
     schema_version: "understudy.slice_rollout.v1",
     model,
+    api_key_env: apiKeyEnv,
+    project: project ?? null,
+    workload: workload ?? null,
     split,
     temperature,
     samples,
     fixture: "domain-identification-offline-v1",
+    fixture_sha256: domainIdFixtureSha256(),
     split_sha256: domainIdSplitSha256(split),
     pool_size: DOMAIN_ID_TASKS.filter((task) => task.split === split).length,
     episodes: rows.length,

@@ -1,0 +1,21 @@
+{
+  "schema_version": "understudy.wl07_dpo_pairs_validation.v1",
+  "generated_at": "2026-08-02T02:54:40.857Z",
+  "pairs_path": "experiments/on-event-email-orchestrator/outputs/dpo_pairs.jsonl",
+  "manifest_path": "experiments/on-event-email-orchestrator/outputs/dpo_pairs.manifest.json",
+  "pairs_sha256": "fa3f2d3bb688eb0dbde3caf4fa246f02d7aa7431adcfe48703f61b453de4b5cb",
+  "manifest_declared_sha256": "fa3f2d3bb688eb0dbde3caf4fa246f02d7aa7431adcfe48703f61b453de4b5cb",
+  "lines": 6,
+  "accepted": 6,
+  "rejected": 0,
+  "split_counts": {
+    "train": 6
+  },
+  "band_counts": {
+    "cross-record": 6
+  },
+  "train_split_sha256": "8da73d592c6b0365e0538354175420c236b314754085cc266fb544dbe3ec78a7",
+  "holdout_split_sha256": "e4e1c7538f5076ce2704169b75cfee8a12ced73f35add4d9106aab3dc2b36497",
+  "failures": [],
+  "verdict": "pass"
+}

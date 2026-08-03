@@ -1,0 +1,32 @@
+{
+  "fixture": {
+    "fixture_id": "wl07-email-orchestration-offline-v1",
+    "code": "WL-07",
+    "seed": 7,
+    "counts": {
+      "train": 36,
+      "dev": 12,
+      "holdout": 24
+    },
+    "fixture_sha256": "d5065be43f6765f830b0cf5fadb27a7c77a0db4120b22d073cadec693c2fa3c5",
+    "train_sha256": "8da73d592c6b0365e0538354175420c236b314754085cc266fb544dbe3ec78a7",
+    "dev_sha256": "96ea61ca795a7e67f52481d82e96ab5bd5d9bcdab7d82b5e5f59b6283f20fcd0",
+    "holdout_sha256": "e4e1c7538f5076ce2704169b75cfee8a12ced73f35add4d9106aab3dc2b36497",
+    "splits_sha256": "0ddc3369051f168ef73789e1c3510291cb55e281fa2bd7bef528dc0768400512"
+  },
+  "counts": {
+    "train": 36,
+    "dev": 12,
+    "holdout": 24
+  },
+  "totals": {
+    "tasks": 72
+  },
+  "gates": {
+    "oracle_mean": 1,
+    "sentinel_max": 0,
+    "oracle_forbidden_effects": 0,
+    "failures": []
+  },
+  "fixture_sha256": "d5065be43f6765f830b0cf5fadb27a7c77a0db4120b22d073cadec693c2fa3c5"
+}

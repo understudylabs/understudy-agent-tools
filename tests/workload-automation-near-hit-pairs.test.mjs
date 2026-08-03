@@ -8,13 +8,13 @@ import {
   divergenceIndex,
   minePairsForTask,
 } from "../experiments/workload-automation/scripts/mine-near-hit-pairs.mjs";
+import { ACTION_PROTOCOL_SYSTEM_PROMPT } from "../dist/automationbench-action-protocol.js";
 
-/** Pull the same literal out of the scorer so the two can never drift apart. */
+/** Ensure the scorer and miner both consume the shared protocol module. */
 function scorerSystemPrompt() {
   const source = readFileSync("scripts/automationbench-v2-zeroshot.mjs", "utf8");
-  const match = source.match(/const SYSTEM = \[([\s\S]*?)\]\.join\("\\n"\);/);
-  assert.ok(match, "scorer no longer declares SYSTEM as a joined array");
-  return new Function(`return [${match[1]}].join("\\n");`)();
+  assert.match(source, /automationbench-action-protocol\.js/);
+  return ACTION_PROTOCOL_SYSTEM_PROMPT;
 }
 
 const turn = (text) => ({ prefix: [{ role: "user", content: "p" }], text, signature: actionSignature(text) });

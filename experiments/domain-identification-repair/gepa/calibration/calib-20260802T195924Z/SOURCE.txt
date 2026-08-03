@@ -1,0 +1,4 @@
+Private run dir (raw rows/transcripts/prompt, NOT committed): /home/ubuntu/di-runs/calib-20260802T195924Z
+Sanitized evidence committed here: CALIBRATION-SUMMARY.json/.md, CALIBRATION-NOTE.md
+Per-artifact SHA-256s: see CALIBRATION-SUMMARY.json -> artifact_hashes
+Excluded (parallel-contention, quarantined): see summary -> excluded_artifacts

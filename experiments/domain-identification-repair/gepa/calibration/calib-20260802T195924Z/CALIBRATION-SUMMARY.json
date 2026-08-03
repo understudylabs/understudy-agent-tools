@@ -1,0 +1,328 @@
+{
+  "schema_version": "understudy.calibration_summary.v1",
+  "purpose": "harness-parity calibration: canonical rollout.mjs vs GEPA ContractAdapter, seed prompt, 8 dev tasks",
+  "state": "calibration_complete",
+  "n_tasks": 8,
+  "reps_per_path": 3,
+  "total_episodes": 48,
+  "seed_control": false,
+  "config": {
+    "max_tokens": 384,
+    "temperature": 0,
+    "max_turns": 10,
+    "malformed_tolerance_consecutive": 3,
+    "concurrency": 6,
+    "endpoint": "http://127.0.0.1:8099/v1",
+    "model": "nemotron-3-nano-base",
+    "scorer": "handle.done ? partialCredit : finish.reward (identical in-process functions)",
+    "env": "env-sidecar.mjs wraps the same in-process reset/step/partialCredit/finish as rollout.mjs"
+  },
+  "scores": {
+    "canonical": {
+      "reps": [
+        0.625,
+        0.5625,
+        0.75
+      ],
+      "mean": 0.6458,
+      "range": [
+        0.5625,
+        0.75
+      ],
+      "stdev": 0.078
+    },
+    "adapter": {
+      "reps": [
+        0.5,
+        0.5,
+        0.75
+      ],
+      "mean": 0.5833,
+      "range": [
+        0.5,
+        0.75
+      ],
+      "stdev": 0.1179
+    },
+    "original_baseline_nemotron_dev": 0.75,
+    "gepa_checkpoint_seed": 0.5
+  },
+  "per_band_mean": {
+    "canonical": {
+      "direct-match": 0.8333,
+      "near-match": 0.8333,
+      "parent-join": 0.6667,
+      "abstain": 0.25
+    },
+    "adapter": {
+      "direct-match": 0.6667,
+      "near-match": 1.0,
+      "parent-join": 0.5,
+      "abstain": 0.1667
+    }
+  },
+  "paired_task_disagreement": {
+    "total_pairs": 24,
+    "disagreements": 4,
+    "disagreement_rate": 0.1667,
+    "per_task_agreement": {
+      "domain-id-direct-route-07": {
+        "band": "direct-match",
+        "canonical_scores": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "adapter_scores": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 3,
+        "canonical_malformed_total": [
+          1,
+          2,
+          2
+        ],
+        "adapter_malformed_total": [
+          2,
+          2,
+          1
+        ]
+      },
+      "domain-id-direct-route-08": {
+        "band": "direct-match",
+        "canonical_scores": [
+          0.0,
+          1.0,
+          1.0
+        ],
+        "adapter_scores": [
+          0.0,
+          1.0,
+          0.0
+        ],
+        "agree_reps_out_of_3": 2,
+        "canonical_malformed_total": [
+          3,
+          3,
+          2
+        ],
+        "adapter_malformed_total": [
+          4,
+          3,
+          3
+        ]
+      },
+      "domain-id-lookalike-route-07": {
+        "band": "near-match",
+        "canonical_scores": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "adapter_scores": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 3,
+        "canonical_malformed_total": [
+          1,
+          3,
+          2
+        ],
+        "adapter_malformed_total": [
+          1,
+          1,
+          2
+        ]
+      },
+      "domain-id-lookalike-route-08": {
+        "band": "near-match",
+        "canonical_scores": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "adapter_scores": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 2,
+        "canonical_malformed_total": [
+          2,
+          4,
+          5
+        ],
+        "adapter_malformed_total": [
+          4,
+          3,
+          6
+        ]
+      },
+      "domain-id-parent-route-07": {
+        "band": "parent-join",
+        "canonical_scores": [
+          1.0,
+          0.0,
+          1.0
+        ],
+        "adapter_scores": [
+          1.0,
+          0.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 3,
+        "canonical_malformed_total": [
+          2,
+          3,
+          2
+        ],
+        "adapter_malformed_total": [
+          2,
+          5,
+          2
+        ]
+      },
+      "domain-id-parent-route-08": {
+        "band": "parent-join",
+        "canonical_scores": [
+          1.0,
+          0.0,
+          1.0
+        ],
+        "adapter_scores": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 2,
+        "canonical_malformed_total": [
+          2,
+          4,
+          2
+        ],
+        "adapter_malformed_total": [
+          5,
+          4,
+          2
+        ]
+      },
+      "domain-id-unmatched-abstain-07": {
+        "band": "abstain",
+        "canonical_scores": [
+          0.0,
+          0.5,
+          1.0
+        ],
+        "adapter_scores": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "agree_reps_out_of_3": 2,
+        "canonical_malformed_total": [
+          4,
+          4,
+          2
+        ],
+        "adapter_malformed_total": [
+          2,
+          3,
+          2
+        ]
+      },
+      "domain-id-unmatched-abstain-08": {
+        "band": "abstain",
+        "canonical_scores": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "adapter_scores": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "agree_reps_out_of_3": 3,
+        "canonical_malformed_total": [
+          3,
+          4,
+          2
+        ],
+        "adapter_malformed_total": [
+          2,
+          2,
+          3
+        ]
+      }
+    }
+  },
+  "malformed_total_uniform_definition": "count of assistant turns whose content fails parse_action (comparable across both paths)",
+  "malformed_total": {
+    "canonical_per_rep": [
+      18,
+      27,
+      19
+    ],
+    "adapter_per_rep": [
+      22,
+      23,
+      21
+    ]
+  },
+  "conclusion": "Both paths span the same score range [0.50, 0.75] and both reach 0.75; the failing band rotates across reps. The 0.75-vs-0.50 gap is sampling variance at n=8 on a temp-0 nondeterministic endpoint, NOT a scoring-harness parity defect. Config, parser, turn cap, scorer, and env are identical across paths. Remaining real defect is a malformed-metric semantics mismatch (adapter reported trailing-consecutive, canonical reports cumulative).",
+  "excluded_artifacts": {
+    "invalid_due_parallel_contention": [
+      "adapter/_invalid_due_parallel_contention/dev-rep2.stderr.txt"
+    ],
+    "reason": "adapter reps2/3 first attempt ran concurrently with canonical reps2/3 against one shim; contention confounds temp-0 variance. Re-run cleanly as *.seq.*"
+  },
+  "artifact_hashes": {
+    "canonical": {
+      "dev-rep1.json": "9805aa5b364f3859cc8a7856eef185e0be63601669574cdec0e4fd6b35aae73d",
+      "dev-rep2.json": "e660158660f6c187a3dbd7b887f3ce86654f0fd78150bf337b41f87efee25eb7",
+      "dev-rep3.json": "b651fa3b313941030f091b9061571d305d0a39ead47912985630d5fbd73393a1"
+    },
+    "canonical_transcripts": {
+      "dev-rep1.transcripts.jsonl": "5d8437e5edd9034873936d0536d01f72e80c176c5b0e686c409badff20b92230",
+      "dev-rep2.transcripts.jsonl": "b975dc4c6cfab7d16bbdecf201147acbdbfa6357b6e105e9452e51e976eb6f0e",
+      "dev-rep3.transcripts.jsonl": "bee524c9d31ebf413916826afb58d62b402a5997c76e105028da0867e9b52535"
+    },
+    "adapter": {
+      "dev-rep1.json": "a76e6692df63b43099ffa1d2689b36cf0485f6873967d5fa07aa5a19e3a11ab9",
+      "dev-rep2.seq.json": "9bf909d9b295eb2024aad887bee0658bc34db195574ac6ed844e3f2af7e7f494",
+      "dev-rep3.seq.json": "0600960bf683bd48531dc86da774044460ce6ce33efebc4b952fe8c76057b5bc"
+    }
+  },
+  "gepa_metric_accounting": {
+    "budget_max_metric_calls": 40,
+    "total_num_evals": 40,
+    "num_full_ds_evals": 1,
+    "iterations_i": 7,
+    "candidates": 1,
+    "discovery": [
+      0
+    ],
+    "seed_val_subscores": {
+      "0": 1.0,
+      "1": 0.0,
+      "2": 1.0,
+      "3": 1.0,
+      "4": 1.0,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0
+    },
+    "explanation": "Budget 40 = 8 (seed full dev eval) + ~7 iterations of 4-task reflection minibatch proposals (~32). No proposed mutation beat the seed on its minibatch gate, so none was promoted to a full-val eval or accepted; best stayed candidate 0 (seed). This is an honest 'no improvement found within budget', compounded by a tight budget.",
+    "min_budget_one_accepted_mutation": {
+      "seed_full_dev_eval": 8,
+      "one_reflection_new_candidate_minibatch": 4,
+      "new_candidate_full_dev_eval_to_accept": 8,
+      "total_minimum": 20,
+      "note": "40 allows ~1-2 accepted candidates IF proposals pass the minibatch gate; recommend >=60-80 for a meaningful search with reflection_minibatch_size=4."
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "fixture": "automationbench-simple-api-offline-v2",
+  "train_size": 36,
+  "iterations": 16,
+  "total_episodes": 162,
+  "consecutive_rejections": 1,
+  "best_id": "c4",
+  "best_train_subset_mean": 0.8518518518518517
+}

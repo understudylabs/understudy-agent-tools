@@ -1,0 +1,18 @@
+{
+  "source": "synthetic WL-07 fixture and synthetic model rollouts",
+  "split": "train",
+  "train_split_sha256": "8da73d592c6b0365e0538354175420c236b314754085cc266fb544dbe3ec78a7",
+  "pairs_sha256": "f6c8af12dfe143de8773411063b14f22d7c0db90f1b582069074551f1ea40913",
+  "pair_count": 29,
+  "pair_provenance": {
+    "sibling_rollout": 27,
+    "oracle_fallback_no_passing_rollout": 2,
+    "no_pair": 7
+  },
+  "sampling_k": 4,
+  "sampling_rollouts": 144,
+  "retained_pair_candidates": 27,
+  "rollout_files": [],
+  "raw_rollout_retention": "fourth sampling raw completion artifact removed after pair mining",
+  "retained_pair_candidates_removed_after_mining": true
+}

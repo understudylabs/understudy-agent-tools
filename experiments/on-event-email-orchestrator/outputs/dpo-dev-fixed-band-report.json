@@ -1,0 +1,199 @@
+{
+  "schema_version": "understudy.wl07_email_orchestration_band_report.v1",
+  "split": "dev",
+  "split_sha256": "96ea61ca795a7e67f52481d82e96ab5bd5d9bcdab7d82b5e5f59b6283f20fcd0",
+  "base": {
+    "model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "split": "dev",
+    "split_sha256": "96ea61ca795a7e67f52481d82e96ab5bd5d9bcdab7d82b5e5f59b6283f20fcd0",
+    "tasks": 12,
+    "mean_score": 0.5833333333333334,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 3,
+    "bands": {
+      "cascade": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 1,
+        "exact_1": 2,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 2
+      },
+      "conditional": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 1,
+        "exact_1": 2,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      },
+      "cross-record": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 1,
+        "exact_1": 2,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 1
+      },
+      "discovery": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0,
+        "exact_1": 0,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      },
+      "multi-hop": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.5,
+        "exact_1": 1,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      },
+      "single-write": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0,
+        "exact_1": 0,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      }
+    }
+  },
+  "candidate": {
+    "model": "tuned-nemotron-dpo-oracle-backed-6-pairs",
+    "split": "dev",
+    "split_sha256": "96ea61ca795a7e67f52481d82e96ab5bd5d9bcdab7d82b5e5f59b6283f20fcd0",
+    "tasks": 12,
+    "mean_score": 0.6041666666666666,
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "malformed_episodes": 4,
+    "bands": {
+      "cascade": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.875,
+        "exact_1": 1,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      },
+      "conditional": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 1,
+        "exact_1": 2,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      },
+      "cross-record": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.75,
+        "exact_1": 1,
+        "zero": 0,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 2
+      },
+      "discovery": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.5,
+        "exact_1": 1,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 1
+      },
+      "multi-hop": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0.5,
+        "exact_1": 1,
+        "zero": 1,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 1
+      },
+      "single-write": {
+        "tasks": 2,
+        "scored": 2,
+        "mean_score": 0,
+        "exact_1": 0,
+        "zero": 2,
+        "over_acting_episodes": 0,
+        "forbidden_writes": 0,
+        "malformed_episodes": 0
+      }
+    }
+  },
+  "per_band_delta": {
+    "cascade": {
+      "tasks": 2,
+      "base_mean": 1,
+      "candidate_mean": 0.875,
+      "delta_mean": -0.125,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    },
+    "conditional": {
+      "tasks": 2,
+      "base_mean": 1,
+      "candidate_mean": 1,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    },
+    "cross-record": {
+      "tasks": 2,
+      "base_mean": 1,
+      "candidate_mean": 0.75,
+      "delta_mean": -0.25,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    },
+    "discovery": {
+      "tasks": 2,
+      "base_mean": 0,
+      "candidate_mean": 0.5,
+      "delta_mean": 0.5,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    },
+    "multi-hop": {
+      "tasks": 2,
+      "base_mean": 0.5,
+      "candidate_mean": 0.5,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    },
+    "single-write": {
+      "tasks": 2,
+      "base_mean": 0,
+      "candidate_mean": 0,
+      "delta_mean": 0,
+      "base_over_acting_episodes": 0,
+      "candidate_over_acting_episodes": 0
+    }
+  }
+}
