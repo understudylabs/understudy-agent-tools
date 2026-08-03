@@ -17,7 +17,6 @@ const PROVIDERS = [
   { key: "minimax", label: "MiniMax", logo: "minimax-icon.svg", match: /minimax/ },
   { key: "nvidia", label: "NVIDIA", logo: "nvidia.svg", match: /nemotron/ },
   { key: "stepfun", label: "StepFun", logo: null, match: /^step-/ },
-  { key: "cohere", label: "Cohere", logo: null, match: /^command-a/ },
 ];
 const OTHER = { key: "other", label: "Other", logo: null };
 
@@ -62,13 +61,7 @@ export const RATE_CARD = {
   "gemma-3-12b": { input: 0.117, cached: 0, output: 0.377 },
   "gemma-3-4b": { input: 0.052, cached: 0, output: 0.104 },
   // xAI
-  "grok-4.20-multi-agent-0309": { input: 2.6, cached: 0.26, output: 7.8 },
-  "grok-4.20-0309-reasoning": { input: 2.6, cached: 0.26, output: 7.8 },
-  "grok-4.20-non-reasoning": { input: 2.6, cached: 0.26, output: 7.8 },
-  "grok-build-0.1": { input: 1.3, cached: 0.26, output: 2.6 },
-  "grok-4.5": { input: 2.6, cached: 0.65, output: 7.8 },
   "grok-4.3": { input: 1.625, cached: 0.26, output: 3.25 },
-  "grok-3-mini": { input: 0.39, cached: 0.0975, output: 0.65 },
   // DeepSeek
   "deepseek-v4": { input: 0.3, output: 0.5 },
   "deepseek": { input: 0.14, output: 0.28 },
@@ -78,23 +71,14 @@ export const RATE_CARD = {
   // MiniMax
   "minimax": { input: 0.3, output: 1.2 },
   // Qwen
-  "qwen3.7-max": { input: 2.145, cached: 0.429, output: 6.4363 },
-  "qwen3.7-plus": { input: 0.3588, cached: 0.0728, output: 1.4313 },
-  "qwen3.7-flash": { input: 0.0364, cached: 0.0078, output: 0.143 },
-  "qwen3.6-plus": { input: 0.3588, cached: 0, output: 2.1463 },
-  "qwen3.6-flash": { input: 0.2145, cached: 0, output: 1.287 },
   "qwen3.6-35b": { input: 0.3224, cached: 0, output: 1.9305 },
   "qwen": { input: 0.5, output: 3 },
   // NVIDIA
   "nemotron-3-ultra-nvfp4": { input: 0.78, cached: 0.156, output: 3.12 },
   "nemotron-3-nano-omni": { input: 0.26, cached: 0, output: 1.04 },
-  "nemotron-3-120b": { input: 0.65, cached: 0, output: 1.95 },
   // StepFun
   "step-3-7-flash": { input: 0.26, cached: 0.052, output: 1.495 },
   "step-3-5-flash": { input: 0.13, cached: 0.026, output: 0.39 },
-  // Cohere
-  "command-a-vision": { input: 3.25, cached: 0, output: 13 },
-  "command-a": { input: 3.25, cached: 0, output: 13 },
 };
 
 export function rateCardFor(id) {

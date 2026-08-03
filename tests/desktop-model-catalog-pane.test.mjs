@@ -63,20 +63,18 @@ test("new platform catalog families group under their model providers", () => {
   const groups = groupByProvider([
     { id: "gemini-3.6-flash" },
     { id: "grok-4.5" },
-    { id: "qwen3.7-max" },
+    { id: "qwen3.6-35b" },
     { id: "nemotron-3-nano-omni" },
     { id: "step-3-7-flash" },
-    { id: "command-a-vision" },
   ]);
   assert.deepEqual(
     groups.map(({ provider, models }) => [provider.label, models.map((model) => model.id)]),
     [
       ["Google", ["gemini-3.6-flash"]],
-      ["Qwen", ["qwen3.7-max"]],
+      ["Qwen", ["qwen3.6-35b"]],
       ["xAI", ["grok-4.5"]],
       ["NVIDIA", ["nemotron-3-nano-omni"]],
       ["StepFun", ["step-3-7-flash"]],
-      ["Cohere", ["command-a-vision"]],
     ],
   );
 });
@@ -88,8 +86,8 @@ test("new platform catalog uses the published customer rate cards", () => {
   assert.deepEqual(rateCardFor("gemma-4-31b"), {
     local: false, input: 0.182, cached: 0, output: 0.52,
   });
-  assert.deepEqual(rateCardFor("grok-4.20-0309-reasoning"), {
-    local: false, input: 2.6, cached: 0.26, output: 7.8,
+  assert.deepEqual(rateCardFor("grok-4.3"), {
+    local: false, input: 1.625, cached: 0.26, output: 3.25,
   });
   assert.deepEqual(rateCardFor("qwen3.6-35b"), {
     local: false, input: 0.3224, cached: 0, output: 1.9305,
@@ -99,8 +97,5 @@ test("new platform catalog uses the published customer rate cards", () => {
   });
   assert.deepEqual(rateCardFor("step-3-7-flash"), {
     local: false, input: 0.26, cached: 0.052, output: 1.495,
-  });
-  assert.deepEqual(rateCardFor("command-a-vision"), {
-    local: false, input: 3.25, cached: 0, output: 13,
   });
 });
