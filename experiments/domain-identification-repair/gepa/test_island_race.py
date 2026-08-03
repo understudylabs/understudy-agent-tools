@@ -77,12 +77,31 @@ def test_graph_silent_publish():
     original_write = island_race.em.write_manifest
     original_publish = island_race.em.publish_run_shaped
     calls = []
-    island_race.em.write_manifest = lambda manifest, path: None
+    writes = []
+    island_race.em.write_manifest = lambda manifest, path: writes.append(manifest)
     island_race.em.publish_run_shaped = lambda *args: calls.append(args)
     try:
         result = live.publish()
         check("empty ingest is graph-silent", result["ingest"] == "graph-silent")
         check("empty ingest does not publish", calls == [])
+
+        run_dir = live.path.parent / "active-branch"
+        run_dir.mkdir()
+        (run_dir / "progress.jsonl").write_text(
+            json.dumps({"kind": "episode", "latency_s": 2.0, "status": "success"}) + "\n"
+            + json.dumps({"kind": "episode", "latency_s": 6.0, "status": "timeout"}) + "\n"
+        )
+        live.states = {"branch-a": {
+            "status": "screening", "phase": "stage1", "strategy": "synthetic",
+            "run_dir": str(run_dir), "episodes_expected": 2, "parent": None,
+        }}
+        live.publish()
+        totals = writes[-1]["totals"]
+        check("active branch ledger streams rollout latency",
+              totals["rollout_latency_s"] == {"p50": 2.0, "p95": 6.0,
+                                               "max": 6.0, "samples": 2})
+        check("active branch ledger streams rollout statuses",
+              totals["rollout_statuses"] == {"success": 1, "timeout": 1})
 
         live.ingest_url = "http://synthetic.invalid/ingest"
         island_race.em.publish_run_shaped = lambda *args: calls.append(args) or {"ok": True}

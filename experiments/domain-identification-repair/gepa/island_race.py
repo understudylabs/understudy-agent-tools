@@ -534,8 +534,9 @@ class LiveManifest:
                               if isinstance(rec.get("wall_clock_s"), (int, float)))
         rollout_latencies = []
         rollout_statuses = {}
-        for rec in records.values():
-            ledger = Path(rec.get("run_dir", "")) / "progress.jsonl"
+        for node_id, state in states.items():
+            rec = records.get(node_id, {})
+            ledger = Path(rec.get("run_dir") or state.get("run_dir") or "") / "progress.jsonl"
             if not ledger.is_file():
                 continue
             for line in ledger.read_text().splitlines():
@@ -613,14 +614,16 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
     threads = []
     for bid, strategy, seed, subset_index in specs:
         subset = subsets[subset_index]
+        run_id = f"{experiment_id}-{bid}"
+        run_dir = str(Path(runs_root) / run_id)
         budget.register_branch(bid, episode_cap, reflection_cap, time.time() + 3600)
         live.update(bid, label=f"{strategy.replace('_', ' ').title()} · {bid}", phase=phase,
                     strategy=strategy, status="screening", episodes_expected=episode_cap,
-                    parent="wave1-winner")
+                    parent="wave1-winner", run_dir=run_dir)
         thread = threading.Thread(target=run_branch, kwargs={
             "bid": bid, "seed": seed, "subset": subset, "trainset": train,
             "seed_prompt": seed_prompts[bid], "sidecar": sidecar, "budget": budget,
-            "runs_root": runs_root, "run_id": f"{experiment_id}-{bid}",
+            "runs_root": runs_root, "run_id": run_id,
             "reflection_key": reflection_key, "max_metric_calls": max_metric_calls,
             "concurrency": concurrency, "spend_authorization_usd": spend_authorization_usd,
             "results": results, "results_lock": lock, "strategy": strategy,
