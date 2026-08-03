@@ -22,6 +22,7 @@ from turbo_race import (  # noqa: E402
     STAGE_B_EPISODES_PER_WINNER,
     build_final_manifest,
     dense_state_transition_score,
+    dense_select_strategy_candidate,
     failure_family_curriculum,
     failure_family_screening_subsets,
     screening_family_scores,
@@ -89,6 +90,79 @@ def test_wave5_dense_transition_reward():
     check("forbidden write fails dense reward",
           dense_state_transition_score(forbidden)[1] == 0.0)
     check("dense shaping does not alter canonical scalar", clean["score"] == 0.5)
+
+
+def test_wave5b_dense_candidate_selection():
+    def assistant(tool, arguments):
+        return {"role": "assistant", "content": json.dumps({
+            "tool": tool, "arguments": arguments,
+        })}
+    clean_trace = {
+        "score": 1.0, "forbidden_effects": 0, "malformed_total": 0,
+        "steps": 3, "latency_s": 1.0,
+        "messages": [
+            assistant("api_fetch", {"method": "GET", "url": "/support/tickets"}),
+            {"role": "user", "content": "addressed unowned t-2 requester user@example.com"},
+            assistant("api_fetch", {"method": "GET", "url": "/support/contacts"}),
+            {"role": "user", "content": "accounts include example.com"},
+            assistant("api_fetch", {"method": "PATCH", "url": "/support/tickets/t-2",
+                                    "body": {"assignee": "none", "status": "unmatched"}}),
+            assistant("finish", {}),
+        ],
+    }
+    passive_trace = {
+        "score": 0.0, "forbidden_effects": 0, "malformed_total": 0,
+        "steps": 1, "latency_s": 1.0,
+        "messages": [assistant("finish", {})],
+    }
+    task_ids = [
+        "domain" + "-id-direct-route-1",
+        "domain" + "-id-lookalike-route-1",
+        "domain" + "-id-parent-route-1",
+        "domain" + "-id-unmatched-abstain-1",
+    ]
+    val_tasks = [{"task_id": task_id} for task_id in task_ids]
+    def summaries(unmatched, direct=1.0):
+        rows = [
+            {"score": direct, "forbidden_effects": 0, "messages": [], "steps": 2, "latency_s": 1.0},
+            {"score": 1.0, "forbidden_effects": 0, "messages": [], "steps": 2, "latency_s": 1.0},
+            {"score": 1.0, "forbidden_effects": 0, "messages": [], "steps": 2, "latency_s": 1.0},
+            unmatched,
+        ]
+        return rows
+    candidates = [
+        {"system_prompt": "seed"},
+        {"system_prompt": "passive"},
+        {"system_prompt": "clean"},
+        {"system_prompt": "regressor"},
+    ]
+    result = types.SimpleNamespace(
+        candidates=candidates,
+        val_aggregate_scores=[0.5, 0.5, 0.5, 0.5],
+        best_idx=1,
+        best_candidate=candidates[1],
+    )
+    adapter = types.SimpleNamespace(evaluation_summaries={
+        turbo_race.candidate_hash("seed"): summaries(passive_trace, direct=1.0),
+        turbo_race.candidate_hash("passive"): summaries(passive_trace, direct=1.0),
+        turbo_race.candidate_hash("clean"): summaries(clean_trace, direct=1.0),
+        turbo_race.candidate_hash("regressor"): summaries(clean_trace, direct=0.0),
+    })
+    selected, score, mode, index = dense_select_strategy_candidate(
+        result, "seed", adapter, val_tasks,
+    )
+    check("dense candidate selection chooses full PATCH over tied passive",
+          selected["system_prompt"] == "clean" and score == 0.5
+          and mode == "dense_candidate" and index == 2)
+    fallback = types.SimpleNamespace(
+        evaluation_summaries={},  # no candidate traces: fail closed
+    )
+    selected, _, mode, index = dense_select_strategy_candidate(
+        result, "seed", fallback, val_tasks,
+    )
+    check("dense candidate selection falls back to GEPA best without summaries",
+          selected["system_prompt"] == "passive"
+          and mode == "dense_gepa_best_fallback" and index == 1)
 
 
 def test_stdout_logger_survives_late_background_write():
@@ -893,6 +967,7 @@ def test_predictions_from_canonical_real_and_aligned():
 def main():
     tests = [
         test_wave5_dense_transition_reward,
+        test_wave5b_dense_candidate_selection,
         test_stdout_logger_survives_late_background_write,
         test_reflection_route_is_scoped_and_headered,
         test_gepa_014_metric_budget_full_valset_headroom,

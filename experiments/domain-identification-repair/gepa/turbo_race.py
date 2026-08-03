@@ -651,6 +651,11 @@ def dense_state_transition_score(trace):
 def screening_dense_metrics(adapter, candidate_hash, val_tasks):
     """Return bounded dense rows and means for train-screening traces."""
     summaries = adapter.evaluation_summaries.get(candidate_hash)
+    return dense_metrics_from_summaries(summaries, val_tasks)
+
+
+def dense_metrics_from_summaries(summaries, val_tasks):
+    """Aggregate dense screening evidence from stored per-task traces."""
     if not isinstance(summaries, list) or len(summaries) != len(val_tasks):
         return None, None
     rows = []
@@ -683,6 +688,76 @@ def screening_dense_metrics(adapter, candidate_hash, val_tasks):
     }
 
 
+def screening_family_scores_from_summaries(summaries, val_tasks):
+    """Aggregate authoritative per-task rewards by family from traces."""
+    if not isinstance(summaries, list) or len(summaries) != len(val_tasks):
+        return None
+    values = {}
+    for task, trace in zip(val_tasks, summaries):
+        if not isinstance(trace, dict) or "score" not in trace:
+            return None
+        try:
+            score = float(trace["score"])
+        except (TypeError, ValueError):
+            return None
+        values.setdefault(_family_of(task["task_id"]), []).append(score)
+    return {family: sum(scores) / len(scores) for family, scores in values.items()}
+
+
+def dense_select_strategy_candidate(result, seed_prompt, adapter, val_tasks):
+    """Select the best dense-screened candidate, failing closed on missing traces."""
+    candidates = list(result.candidates)
+    scores = [float(score) for score in result.val_aggregate_scores]
+    best_idx = result.best_idx
+    if not candidates or len(candidates) != len(scores):
+        return result.best_candidate, max(scores) if scores else None, "gepa_best", best_idx
+    seed_hash = candidate_hash(seed_prompt)
+    seed_summaries = adapter.evaluation_summaries.get(seed_hash)
+    seed_by_family = screening_family_scores_from_summaries(seed_summaries, val_tasks)
+    if seed_by_family is None:
+        return result.best_candidate, scores[best_idx], "dense_gepa_best_fallback", best_idx
+    eligible = []
+    perfect_families = (
+        "domain-id-direct-route",
+        "domain-id-lookalike-route",
+        "domain-id-parent-route",
+    )
+    for index, (candidate, score) in enumerate(zip(candidates, scores)):
+        prompt = candidate.get("system_prompt", "")
+        candidate_hash_value = candidate_hash(prompt)
+        summaries = adapter.evaluation_summaries.get(candidate_hash_value)
+        by_family = screening_family_scores_from_summaries(summaries, val_tasks)
+        dense_rows, dense_metrics = dense_metrics_from_summaries(summaries, val_tasks)
+        if by_family is None or dense_rows is None or dense_metrics is None:
+            continue
+        if any(
+            family not in by_family
+            or family not in seed_by_family
+            or by_family[family] < seed_by_family[family]
+            for family in perfect_families
+        ):
+            continue
+        eligible.append((
+            -score,
+            -float(dense_metrics["unmatched_dense_mean"]),
+            float(dense_metrics["forbidden_effects_mean"]),
+            -float(dense_metrics["state_transition_partial_mean"]),
+            float(dense_metrics["malformed_mean"]),
+            float(dense_metrics["steps_mean"]),
+            float(dense_metrics["latency_s_mean"]),
+            index,
+            candidate,
+            candidate_hash_value,
+            by_family,
+            dense_rows,
+            dense_metrics,
+        ))
+    if not eligible:
+        return result.best_candidate, scores[best_idx], "dense_gepa_best_fallback", best_idx
+    selected = min(eligible, key=lambda item: item[:8])
+    return selected[8], -selected[0], "dense_candidate", selected[7]
+
+
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                runs_root, run_id, reflection_key, max_metric_calls, concurrency,
                spend_authorization_usd, results, results_lock, strategy="exploit",
@@ -692,7 +767,8 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                reflection_model="openai/kimi-k3",
                reflection_base_url="https://api.understudylabs.com/v1",
                reflection_headers=None,
-               reflection_provider_label="understudy-gateway"):
+               reflection_provider_label="understudy-gateway",
+               dense_candidate_selection=False):
     """Run one Stage-A GEPA branch. Fail-closed: any fuse trip or service-pressure
     abort records the branch as failed with no promotable score."""
     import gepa
@@ -731,6 +807,8 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         "screening_tiebreaks": None,
         "screening_dense_rows": None,
         "screening_dense_metrics": None,
+        "dense_selected_idx": None,
+        "dense_selected_hash": None,
     }
     try:
         result = gepa.optimize(
@@ -801,9 +879,18 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             results[bid] = record
         return
 
-    selected_candidate, selected_score, selection_mode, selected_idx = select_strategy_candidate(
-        result, seed_prompt, strategy,
-    )
+    if dense_candidate_selection:
+        selected_candidate, selected_score, selection_mode, selected_idx = (
+            dense_select_strategy_candidate(result, seed_prompt, adapter, subset["tasks"])
+        )
+    else:
+        selected_candidate, selected_score, selection_mode, selected_idx = (
+            select_strategy_candidate(result, seed_prompt, strategy)
+        )
+    if dense_candidate_selection:
+        selected_hash = candidate_hash(selected_candidate["system_prompt"])
+        record["dense_selected_idx"] = selected_idx
+        record["dense_selected_hash"] = selected_hash
     screening_by_family, seed_screening_by_family, screening_error = screening_family_scores(
         result, selected_idx, subset["tasks"],
     )

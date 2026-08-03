@@ -606,7 +606,8 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
                  reflection_model="openai/kimi-k3",
                  reflection_base_url="https://api.understudylabs.com/v1",
                  reflection_headers=None,
-                 reflection_provider_label="understudy-gateway"):
+                 reflection_provider_label="understudy-gateway",
+                 dense_candidate_selection=False):
     results = {}
     lock = threading.Lock()
     threads = []
@@ -629,6 +630,7 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
             "reflection_base_url": reflection_base_url,
             "reflection_headers": reflection_headers,
             "reflection_provider_label": reflection_provider_label,
+            "dense_candidate_selection": dense_candidate_selection,
         }, name=bid, daemon=True)
         thread.start()
         threads.append(thread)
@@ -828,6 +830,7 @@ def main():
             ],
             "fail_closed": "forbidden_or_wrong_ticket_patch_dense_reward_zero",
             "canonical_scorer_modified": False,
+            "dense_candidate_selection": True,
             "source_commit": wave_provenance["source_commit"],
         }
         wave_provenance["shaping_contract"] = shaping_contract
@@ -888,7 +891,8 @@ def main():
                           reflection_model=args.reflection_model,
                           reflection_base_url=args.reflection_base_url,
                           reflection_headers=reflection_headers,
-                          reflection_provider_label=args.reflection_provider_label)
+                          reflection_provider_label=args.reflection_provider_label,
+                          dense_candidate_selection=args.island_plan == "wave5-dense-transition")
     incomplete = incomplete_branch_ids(island_specs, stage1)
     if incomplete:
         reason = ("scheduled branches lacked completed receipts: "
@@ -979,7 +983,8 @@ def main():
                           reflection_model=args.reflection_model,
                           reflection_base_url=args.reflection_base_url,
                           reflection_headers=reflection_headers,
-                          reflection_provider_label=args.reflection_provider_label)
+                          reflection_provider_label=args.reflection_provider_label,
+                          dense_candidate_selection=args.island_plan == "wave5-dense-transition")
 
     incomplete2 = incomplete_branch_ids(stage2_specs, stage2)
     if incomplete2:
