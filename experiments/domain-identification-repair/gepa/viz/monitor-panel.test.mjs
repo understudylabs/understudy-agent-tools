@@ -170,4 +170,13 @@ test("holdout status is fail-closed unless explicitly true", () => {
   assert.equal(trueSummary.holdoutUntouched, true);
   assert.match(renderSummaryHTML(trueSummary), /holdout untouched/);
   assert.doesNotMatch(renderSummaryHTML(trueSummary), /FAIL CLOSED/);
+
+  const observedSummary = summarizeManifest({
+    ...manifest(),
+    holdout_untouched: false,
+    holdout_status: "historical_holdout_observed",
+  });
+  assert.equal(observedSummary.holdoutUntouched, false);
+  assert.match(renderSummaryHTML(observedSummary), /historical holdout observed/);
+  assert.match(renderSummaryHTML(observedSummary), /not promotion evidence/);
 });

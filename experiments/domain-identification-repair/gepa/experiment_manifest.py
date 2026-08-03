@@ -22,8 +22,9 @@ Methodology guards (critical):
     k=1 reference (e.g. the incumbent) is a reference line, not rank-comparable
     to canonical k=3.
 
-The manifest is hash-bound to the dev split provenance and always declares that
-the holdout is untouched.
+The manifest is hash-bound to the dev split provenance. Holdout state is
+explicit and fail-closed: a run can truthfully declare that it did not execute
+holdout without implying that an unobserved promotion holdout exists.
 """
 import copy
 import hashlib
@@ -154,7 +155,7 @@ def rank_nodes(nodes, rank_protocol):
 
 def build_manifest(*, experiment, dev_split_sha256, rank_protocol, nodes,
                    reference_lines=None, totals=None, holdout_untouched=True,
-                   generated_ts=None):
+                   holdout_status=None, generated_ts=None):
     """Assemble the combined manifest. The headline high-score is computed ONLY
     from rank-eligible nodes matching rank_protocol, so an in-progress node, a
     gepa_observed metadata node, or a canonical k=1 reference can never become
@@ -164,12 +165,15 @@ def build_manifest(*, experiment, dev_split_sha256, rank_protocol, nodes,
     ranked = rank_nodes(nodes, rank_protocol)
     high = ranked[0]["score"] if ranked else None
     high_node = ranked[0]["node_id"] if ranked else None
+    if holdout_status is None:
+        holdout_status = "untouched" if holdout_untouched else "unverified"
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "experiment": experiment,
         "generated_ts": generated_ts if generated_ts is not None else time.time(),
         "dev_split_sha256": dev_split_sha256,
         "holdout_untouched": bool(holdout_untouched),
+        "holdout_status": holdout_status,
         "rank_protocol": dict(rank_protocol),
         "headline": {
             "high_score": high,
@@ -191,8 +195,16 @@ def validate_manifest(manifest):
         raise ValueError("bad schema_version")
     if not manifest.get("dev_split_sha256"):
         raise ValueError("manifest must be hash-bound to dev provenance")
-    if manifest.get("holdout_untouched") is not True:
-        raise ValueError("manifest must declare holdout untouched")
+    if not isinstance(manifest.get("holdout_untouched"), bool):
+        raise ValueError("manifest must explicitly declare holdout_untouched")
+    holdout_status = manifest.get("holdout_status")
+    if holdout_status not in {
+            "untouched", "historical_holdout_observed", "unverified", "executed"}:
+        raise ValueError("manifest must declare a recognized holdout_status")
+    if manifest["holdout_untouched"] and holdout_status != "untouched":
+        raise ValueError("holdout_untouched=true requires holdout_status=untouched")
+    if not manifest["holdout_untouched"] and holdout_status == "untouched":
+        raise ValueError("holdout_status=untouched contradicts holdout_untouched=false")
     rank_protocol = manifest.get("rank_protocol")
     if not rank_protocol or rank_protocol.get("method") not in RANKABLE_METHODS:
         raise ValueError("rank_protocol must be a canonical (rank-eligible) protocol")

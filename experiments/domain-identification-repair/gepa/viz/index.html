@@ -185,7 +185,11 @@
       document.getElementById("elapsed").textContent = duration(manifest.totals?.wall_clock_s);
       document.getElementById("budget").textContent = cap ? `${completed}/${cap} episodes` : `${completed} episodes`;
       const holdout = document.getElementById("holdout");
-      holdout.textContent = manifest.holdout_untouched === true ? "GEPA holdout not run" : "GEPA holdout unverified";
+      holdout.textContent = manifest.holdout_untouched === true
+        ? "holdout untouched"
+        : manifest.holdout_status === "historical_holdout_observed"
+          ? "historical holdout observed · dev evidence only"
+          : "holdout status unverified";
       holdout.style.color = manifest.holdout_untouched === true ? "#4ade80" : "#f87171";
       document.getElementById("started").textContent = pct(baseline?.score);
       document.getElementById("current").textContent = pct(best?.score);
