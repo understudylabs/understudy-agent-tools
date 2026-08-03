@@ -70,11 +70,10 @@ concluded there is no valid match, PATCH only the addressed ticket with
 {"assignee":"none","status":"unmatched"}, then finish. Never write elsewhere.
 """,
     "termination-1": """
-Policy delta — terminal replacement only:
-Do not change any incumbent read, match decision, direct route, lookalike route, parent route, or
-matched write. Only where the incumbent would otherwise passively finish after deciding no match,
-first PATCH the addressed ticket only to assignee none/status unmatched, wait for success, then
-finish exactly once. Never retry after success or write an unrelated object.
+Additional terminal invariant only:
+Keep every existing decision and action unchanged. If and only if the existing policy has already
+selected the unmatched outcome, ensure the addressed ticket is PATCHed to
+{"assignee":"none","status":"unmatched"} before finish. Do nothing else.
 """,
     "lookalike-guard": """
 Policy delta — lookalike safety:
