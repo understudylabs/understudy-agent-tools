@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.promotion_receipt.v1.schema.json",
+  "title": "understudy.promotion_receipt.v1",
+  "description": "Canonical fail-closed promotion or no-promotion receipt. Dev-only and historical-holdout evidence can be recorded but can never satisfy the promoted branch. All private evidence remains behind content-addressed references.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "run_id", "workload_id", "decision", "evidence_scope", "source_binding_sha256", "verifier_calibration_sha256", "splits", "holdout", "baseline", "optimized", "serving_parity", "cost", "latency", "compiled_policy_ref", "claim_boundary", "demotion_trigger", "artifact_refs", "created_at"],
+  "properties": {
+    "schema_version": { "const": "understudy.promotion_receipt.v1" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "workload_id": { "type": "string", "minLength": 1 },
+    "decision": { "enum": ["promoted", "not_promoted", "insufficient_evidence"] },
+    "evidence_scope": { "enum": ["unknown", "dev_only", "historical_holdout", "fresh_holdout"] },
+    "source_binding_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "verifier_calibration_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "splits": { "$ref": "#/$defs/splits" },
+    "holdout": { "$ref": "#/$defs/holdout" },
+    "baseline": { "$ref": "#/$defs/result" },
+    "optimized": { "$ref": "#/$defs/result" },
+    "serving_parity": { "$ref": "#/$defs/serving_parity" },
+    "cost": { "$ref": "#/$defs/cost" },
+    "latency": { "$ref": "#/$defs/latency" },
+    "compiled_policy_ref": { "type": ["string", "null"], "minLength": 1 },
+    "claim_boundary": { "type": ["string", "null"], "minLength": 1 },
+    "demotion_trigger": { "type": ["string", "null"], "minLength": 1 },
+    "artifact_refs": { "$ref": "#/$defs/artifact_refs" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "decision": { "const": "promoted" } }, "required": ["decision"] },
+      "then": {
+        "properties": {
+          "evidence_scope": { "const": "fresh_holdout" },
+          "source_binding_sha256": { "$ref": "#/$defs/sha256" },
+          "verifier_calibration_sha256": { "$ref": "#/$defs/sha256" },
+          "splits": { "$ref": "#/$defs/promotion_splits" },
+          "holdout": { "$ref": "#/$defs/fresh_holdout" },
+          "baseline": { "$ref": "#/$defs/scored_result" },
+          "optimized": { "$ref": "#/$defs/passing_result" },
+          "serving_parity": { "$ref": "#/$defs/passed_parity" },
+          "compiled_policy_ref": { "type": "string", "minLength": 1 },
+          "claim_boundary": { "type": "string", "minLength": 1 },
+          "demotion_trigger": { "type": "string", "minLength": 1 },
+          "artifact_refs": { "$ref": "#/$defs/nonempty_artifact_refs" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullable_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "splits": {
+      "type": "object", "additionalProperties": false, "required": ["train_sha256", "dev_sha256", "holdout_sha256"],
+      "properties": { "train_sha256": { "$ref": "#/$defs/nullable_sha256" }, "dev_sha256": { "$ref": "#/$defs/nullable_sha256" }, "holdout_sha256": { "$ref": "#/$defs/nullable_sha256" } }
+    },
+    "promotion_splits": {
+      "type": "object", "additionalProperties": false, "required": ["train_sha256", "dev_sha256", "holdout_sha256"],
+      "properties": { "train_sha256": { "$ref": "#/$defs/sha256" }, "dev_sha256": { "$ref": "#/$defs/sha256" }, "holdout_sha256": { "$ref": "#/$defs/sha256" } }
+    },
+    "holdout": {
+      "type": "object", "additionalProperties": false, "required": ["status", "sha256", "executed_at", "receipt_ref"],
+      "properties": { "status": { "enum": ["unknown", "not_executed", "historical_observed", "executed_fresh"] }, "sha256": { "$ref": "#/$defs/nullable_sha256" }, "executed_at": { "type": ["string", "null"], "format": "date-time" }, "receipt_ref": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "fresh_holdout": {
+      "type": "object", "additionalProperties": false, "required": ["status", "sha256", "executed_at", "receipt_ref"],
+      "properties": { "status": { "const": "executed_fresh" }, "sha256": { "$ref": "#/$defs/sha256" }, "executed_at": { "type": "string", "format": "date-time" }, "receipt_ref": { "type": "string", "minLength": 1 } }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false, "required": ["run_id", "quality", "passed", "artifact_ref"],
+      "properties": { "run_id": { "type": ["string", "null"], "minLength": 1 }, "quality": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }, "passed": { "type": ["boolean", "null"] }, "artifact_ref": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "scored_result": {
+      "type": "object", "additionalProperties": false, "required": ["run_id", "quality", "passed", "artifact_ref"],
+      "properties": { "run_id": { "type": "string", "minLength": 1 }, "quality": { "type": "number", "minimum": 0, "maximum": 1 }, "passed": { "type": "boolean" }, "artifact_ref": { "type": "string", "minLength": 1 } }
+    },
+    "passing_result": {
+      "type": "object", "additionalProperties": false, "required": ["run_id", "quality", "passed", "artifact_ref"],
+      "properties": { "run_id": { "type": "string", "minLength": 1 }, "quality": { "type": "number", "minimum": 0, "maximum": 1 }, "passed": { "const": true }, "artifact_ref": { "type": "string", "minLength": 1 } }
+    },
+    "serving_parity": {
+      "type": "object", "additionalProperties": false, "required": ["passed", "receipt_ref"],
+      "properties": { "passed": { "type": ["boolean", "null"] }, "receipt_ref": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "passed_parity": {
+      "type": "object", "additionalProperties": false, "required": ["passed", "receipt_ref"],
+      "properties": { "passed": { "const": true }, "receipt_ref": { "type": "string", "minLength": 1 } }
+    },
+    "cost": {
+      "type": "object", "additionalProperties": false, "required": ["actual_usd", "budget_usd", "basis"],
+      "properties": { "actual_usd": { "type": ["number", "null"], "minimum": 0 }, "budget_usd": { "type": ["number", "null"], "minimum": 0 }, "basis": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "latency": {
+      "type": "object", "additionalProperties": false, "required": ["p50_ms", "p95_ms", "basis"],
+      "properties": { "p50_ms": { "type": ["number", "null"], "minimum": 0 }, "p95_ms": { "type": ["number", "null"], "minimum": 0 }, "basis": { "type": ["string", "null"], "minLength": 1 } }
+    },
+    "artifact_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "nonempty_artifact_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  }
+}
