@@ -24,7 +24,8 @@ import experiment_manifest as em
 from optimize import FuseTripped, assert_split_allowed, call_json
 from turbo_race import (
     GlobalBudget, _family_of, confirm_canonical, failure_family_curriculum,
-    run_branch, screening_valset_hash, select_winner, stratified_screening_subsets,
+    failure_family_screening_subsets, run_branch, screening_valset_hash,
+    select_winner, stratified_screening_subsets,
     train_screening_subsets,
 )
 
@@ -49,6 +50,16 @@ WAVE3_ABSTAIN_ISLAND_SPECS = (
     ("cons-1", "conservative_exploit", 778561, 0),
     ("cons-2", "conservative_exploit", 878561, 1),
 )
+WAVE4_STATE_TRANSITION_ISLAND_SPECS = (
+    ("state-1", "exact_state_transition", 1187561, 0),
+    ("state-2", "exact_state_transition", 1287561, 1),
+    ("state-3", "exact_state_transition", 1387561, 0),
+    ("state-4", "exact_state_transition", 1487561, 1),
+    ("sequence-1", "explicit_tool_sequence", 1587561, 0),
+    ("sequence-2", "explicit_tool_sequence", 1687561, 1),
+    ("crossover-1", "state_transition_crossover", 1787561, 0),
+    ("crossover-2", "state_transition_crossover", 1887561, 1),
+)
 ISLAND_SPECS = LEGACY_ISLAND_SPECS
 
 
@@ -57,6 +68,8 @@ def island_specs_for_plan(plan):
         return LEGACY_ISLAND_SPECS
     if plan == "wave3-abstain":
         return WAVE3_ABSTAIN_ISLAND_SPECS
+    if plan == "wave4-state-transition":
+        return WAVE4_STATE_TRANSITION_ISLAND_SPECS
     raise ValueError(f"unknown island plan: {plan}")
 
 
@@ -112,7 +125,7 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
                             "domain-id-direct-route",
                             "domain-id-lookalike-route",
                             "domain-id-parent-route",
-                        )):
+                        ), primary_reward_first=False):
     """Rank wave-3 representatives while rejecting perfect-family regressions."""
     eligible = []
     for rec in records:
@@ -133,8 +146,10 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
     return sorted(
         eligible,
         key=lambda rec: (
-            -float(rec["screening_by_family"][abstain_family]),
-            -float(rec.get("screening_best_score", -1)),
+            -float(rec.get("selected_screening_score", rec.get("screening_best_score", -1)))
+            if primary_reward_first else -float(rec["screening_by_family"][abstain_family]),
+            -float(rec["screening_by_family"][abstain_family])
+            if primary_reward_first else -float(rec.get("screening_best_score", -1)),
             -int(rec.get("candidates_tried", 0)),
             float(rec.get("wall_clock_s", 1e9)),
         ),
@@ -584,7 +599,7 @@ def main():
                         help="environment variable used by GEPA reflection calls; value is never persisted")
     parser.add_argument("--reflection-project", default="rehearsal")
     parser.add_argument("--reflection-workload", default="main")
-    parser.add_argument("--island-plan", choices=("legacy", "wave3-abstain"), default="legacy")
+    parser.add_argument("--island-plan", choices=("legacy", "wave3-abstain", "wave4-state-transition"), default="legacy")
     parser.add_argument("--wave", type=int, default=1)
     parser.add_argument("--parent-run", default="")
     parser.add_argument("--parent-winner-sha", default="")
@@ -681,13 +696,27 @@ def main():
     }
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
+    targeted_plan = args.island_plan in {"wave3-abstain", "wave4-state-transition"}
     subsets = (
-        train_screening_subsets(train)
-        if args.island_plan == "wave3-abstain"
+        failure_family_screening_subsets(
+            train, args.failure_family, args.sentinels_per_family,
+        ) if args.island_plan == "wave4-state-transition"
+        else train_screening_subsets(train) if args.island_plan == "wave3-abstain"
         else stratified_screening_subsets(dev)
     )
-    if args.island_plan == "wave3-abstain":
+    if targeted_plan:
         wave_provenance["valset_sha256"] = screening_valset_hash(subsets)
+    if args.island_plan == "wave4-state-transition":
+        shaping_contract = {
+            "scope": "train_screening_only",
+            "primary": "authoritative_reward",
+            "tie_breaks": ["failure_family_mean", "route_regression_guard", "candidate_diversity", "latency"],
+            "canonical_scorer_modified": False,
+        }
+        wave_provenance["shaping_contract"] = shaping_contract
+        wave_provenance["shaping_contract_sha256"] = hashlib.sha256(
+            json.dumps(shaping_contract, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
     screening_size = len(subsets[0]["tasks"])
     required_stage1 = required_physical_episode_cap(args.stage1_metric_calls, screening_size)
     required_stage2 = required_physical_episode_cap(args.stage2_metric_calls, screening_size)
@@ -767,14 +796,17 @@ def main():
                 failure_reason=f"identical prompt hash; representative={representative}",
             )
     unique = unique_ranked(stage1.values())
-    if args.island_plan == "wave3-abstain":
+    if targeted_plan:
         representatives = [
             rec for rec in stage1.values()
             if dedup_annotations.get(rec.get("branch_id")) is None
         ]
-        unique = family_aware_ranked(representatives)
+        unique = family_aware_ranked(
+            representatives,
+            primary_reward_first=args.island_plan == "wave4-state-transition",
+        )
     if len(unique) < 2:
-        if args.island_plan == "wave3-abstain":
+        if targeted_plan:
             missing = sorted(
                 rec["branch_id"] for rec in stage1.values()
                 if rec.get("status") == "completed"
@@ -877,7 +909,7 @@ def main():
                 "wall_clock_s": result.get("wall_clock_s"), "winner_prompt_sha256": sha,
                 "predictions": em.predictions_from_canonical(result, dev),
                 "mean_by_family": result.get("mean_by_family")}
-        if args.island_plan == "wave3-abstain":
+        if targeted_plan:
             conf["promotion_eligible"] = canonical_promotion_eligible(
                 conf, parent_canonical.get("mean_by_family"),
             )
@@ -888,7 +920,7 @@ def main():
         confirmations,
         eligible=(
             (lambda conf: conf.get("promotion_eligible", False))
-            if args.island_plan == "wave3-abstain" else None
+            if targeted_plan else None
         ),
     )
     if winner:

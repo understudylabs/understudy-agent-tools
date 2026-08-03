@@ -21,6 +21,7 @@ from turbo_race import (  # noqa: E402
     STAGE_B_EPISODES_PER_WINNER,
     build_final_manifest,
     failure_family_curriculum,
+    failure_family_screening_subsets,
     screening_family_scores,
     screening_valset_hash,
     select_winner,
@@ -433,6 +434,10 @@ def test_train_curriculum_and_screening_valset_are_deterministic():
     check("train valset hash is deterministic",
           screening_valset_hash(subsets) == screening_valset_hash(
               train_screening_subsets(list(reversed(tasks)))))
+    targeted = failure_family_screening_subsets(tasks, "fam-abstain", 2)
+    targeted_ids = [task["task_id"] for task in targeted[0]["tasks"]]
+    check("targeted screen retains all failure rows plus route sentinels",
+          targeted_ids == expected and targeted[0]["subset_sha256"] == targeted[1]["subset_sha256"])
 
 
 def test_screening_family_scores_use_val_subscores_without_objectives():
@@ -460,6 +465,17 @@ def test_screening_family_scores_use_val_subscores_without_objectives():
     _, _, missing_error = screening_family_scores(missing, 0, tasks)
     check("per-family guard fails closed when val_subscores are absent",
           missing_error == "missing val_subscores")
+    repeated = types.SimpleNamespace(
+        val_subscores=[{0: 0.0, 1: 1.0, 2: 1.0}, {0: 1.0, 1: 0.5, 2: 1.0}],
+        val_aggregate_subscores=None,
+    )
+    repeated_tasks = [
+        {"task_id": "fam-abstain-01"}, {"task_id": "fam-abstain-02"},
+        {"task_id": "fam-direct-01"},
+    ]
+    selected, seed, error = screening_family_scores(repeated, 1, repeated_tasks)
+    check("family score averages repeated target rows rather than overwriting",
+          error is None and selected["fam-abstain"] == .75 and seed["fam-abstain"] == .5)
 
 
 # --------------------------------------------------------------------------

@@ -31,6 +31,7 @@ from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_invalid_execution_receipt,
     build_no_distinct_receipt, classify_failure, global_dedup_annotations,
     canonical_promotion_eligible, family_aware_ranked, incomplete_branch_ids,
+    island_specs_for_plan,
     prompt_sha, required_physical_episode_cap, stamp_wave, unique_ranked,
 )
 from turbo_race import (  # noqa: E402
@@ -381,6 +382,22 @@ def main():
     )
     check("family guard disqualifies route regression",
           [record["branch_id"] for record in ranked] == ["winner", "second"])
+    reward_first = [
+        {"branch_id": "higher-total", "status": "completed", "winner_prompt_sha256": "ht",
+         "screening_subscores_available": True, "selected_screening_score": .9,
+         "screening_by_family": {"abstain": .5, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
+        {"branch_id": "higher-target", "status": "completed", "winner_prompt_sha256": "hf",
+         "screening_subscores_available": True, "selected_screening_score": .8,
+         "screening_by_family": {"abstain": 1, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
+    ]
+    check("wave4 keeps authoritative aggregate reward primary before target tie-break",
+          family_aware_ranked(
+              reward_first, abstain_family="abstain",
+              perfect_families=("direct", "lookalike", "parent"),
+              primary_reward_first=True,
+          )[0]["branch_id"] == "higher-total")
     check("family guard fails closed below two eligible",
           len(family_aware_ranked(
               records[:1], abstain_family="abstain",
@@ -447,6 +464,12 @@ def main():
     serialized = json.dumps(stamp_wave({"state": "completed"}, wave))
     check("wave provenance serializes with curriculum and no secret",
           "curriculum" in serialized and "SENTINEL-SECRET-VALUE" not in serialized)
+    wave4 = island_specs_for_plan("wave4-state-transition")
+    check("wave4 has four state, two sequence, and two crossover islands",
+          len(wave4) == 8
+          and sum(strategy == "exact_state_transition" for _, strategy, *_ in wave4) == 4
+          and sum(strategy == "explicit_tool_sequence" for _, strategy, *_ in wave4) == 2
+          and sum(strategy == "state_transition_crossover" for _, strategy, *_ in wave4) == 2)
     print("ALL 34 ISLAND TESTS PASSED")
 
 

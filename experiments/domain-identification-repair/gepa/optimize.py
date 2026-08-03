@@ -729,6 +729,15 @@ class ContractAdapter:
             raw = trace["messages"][-1]["content"] if trace["messages"] else ""
             if trace["malformed"]:
                 feedback = f"Malformed output: rejected {trace['malformed']} time(s). The strict parser strips think tags only, then requires one JSON object; output no thinking and JSON on the first line."
+            elif "unmatched-abstain" in trace["task_id"]:
+                feedback = (
+                    f"Authoritative outcome reward was {trace['score']:.3f}. Unmatched is an active "
+                    "state transition, not passive abstention: GET tickets, identify the addressed "
+                    "requester's full domain, GET accounts, compare domains character-for-character, "
+                    "then if no exact account exists PATCH only the addressed ticket with "
+                    "{assignee: none, status: unmatched} and finish. Preserve matched routing and "
+                    "never write another ticket."
+                )
             else:
                 feedback = f"Outcome reward was {trace['score']:.3f}. Preserve exact tool semantics and avoid unrequested writes."
             records.append({

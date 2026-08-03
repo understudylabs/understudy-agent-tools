@@ -293,6 +293,16 @@ def train_screening_subsets(train_tasks):
     return subsets
 
 
+def failure_family_screening_subsets(train_tasks, failure_family, sentinels_per_family=2):
+    """Hash-bound train-only screen with every target row plus route sentinels."""
+    curriculum = failure_family_curriculum(train_tasks, failure_family, sentinels_per_family)
+    tasks = curriculum["tasks"]
+    families = sorted({_family_of(task["task_id"]) for task in tasks})
+    subset = {"tasks": tasks, "subset_sha256": subset_hash(tasks),
+              "valset_sha256": subset_hash(tasks), "families": families}
+    return dict(subset), dict(subset)
+
+
 def screening_valset_hash(subsets):
     task_ids = sorted(
         task["task_id"] for subset in subsets for task in subset["tasks"]
@@ -370,6 +380,23 @@ REFLECTION_DIRECTIVES = {
         "Act as a conservative optimizer. Make the SMALLEST evidence-backed change to fix "
         "the unmatched-abstain failures while preserving direct/lookalike/parent routing "
         "behavior exactly. Return a complete candidate prompt."
+    ),
+    "exact_state_transition": (
+        "Act as an exact state-transition prompt optimizer. Unmatched is NOT passive abstention. "
+        "GET tickets, identify the addressed requester's full domain, GET accounts, compare domains "
+        "character-for-character, and when no exact account exists PATCH only the addressed ticket "
+        "with {assignee: none, status: unmatched}, then finish. Preserve every working route."
+    ),
+    "explicit_tool_sequence": (
+        "Act as a tool-sequence specialist. Produce a complete prompt with this ordered procedure: "
+        "GET tickets; identify the addressed requester; GET accounts; exact full-domain comparison; "
+        "on no exact match PATCH only that ticket with assignee none and status unmatched; finish. "
+        "Never substitute passive finish and preserve direct, lookalike, and parent routing."
+    ),
+    "state_transition_crossover": (
+        "Act as a conservative crossover optimizer. Preserve incumbent routing and splice in one "
+        "explicit unmatched transition: after exact full-domain comparison finds no account, PATCH "
+        "only the addressed ticket with {assignee: none, status: unmatched}, then finish."
     ),
 }
 
@@ -486,17 +513,19 @@ def screening_family_scores(result, selected_idx, val_tasks):
         return None, None, "candidate val_subscores entry is not a mapping"
     if len(val_tasks) == 0:
         return None, None, "screening valset is empty"
-    selected = {}
-    seed = {}
+    selected_values = {}
+    seed_values = {}
     for index, task in enumerate(val_tasks):
         family = _family_of(task["task_id"])
         if index not in subscores[selected_idx] or index not in subscores[0]:
             return None, None, f"val_subscores missing instance index {index}"
         try:
-            selected[family] = float(subscores[selected_idx][index])
-            seed[family] = float(subscores[0][index])
+            selected_values.setdefault(family, []).append(float(subscores[selected_idx][index]))
+            seed_values.setdefault(family, []).append(float(subscores[0][index]))
         except (TypeError, ValueError):
             return None, None, f"val_subscores instance index {index} is not numeric"
+    selected = {family: sum(values) / len(values) for family, values in selected_values.items()}
+    seed = {family: sum(values) / len(values) for family, values in seed_values.items()}
     return selected, seed, None
 
 
