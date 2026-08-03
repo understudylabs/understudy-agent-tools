@@ -33,7 +33,9 @@ from island_race import (  # noqa: E402
     canonical_promotion_eligible, family_aware_ranked, incomplete_branch_ids,
     prompt_sha, required_physical_episode_cap, stamp_wave, unique_ranked,
 )
-from turbo_race import acceptance_criterion_for_strategy, select_strategy_candidate  # noqa: E402
+from turbo_race import (  # noqa: E402
+    acceptance_criterion_for_strategy, screening_family_scores, select_strategy_candidate,
+)
 
 
 def check(label, condition):
@@ -387,6 +389,45 @@ def main():
               {"direct-route": 1, "lookalike-route": 1, "parent-route": 1,
                "unmatched-abstain": 0},
           ))
+    # Field-level regression gate over GEPA 0.1.4 result.val_subscores.
+    # val_subscores is list[dict[DataId, float]] where DataId is the positional
+    # index into the (train-only) valset list; val_aggregate_subscores is None
+    # because ContractAdapter returns no objective_scores. The gate must still
+    # reject a candidate that regresses any sentinel family.
+    val_tasks = [
+        {"task_id": "aa-route-1"}, {"task_id": "bb-route-1"},
+        {"task_id": "cc-route-1"}, {"task_id": "zz-abstain-1"},
+    ]
+    fake_result = types.SimpleNamespace(
+        val_aggregate_subscores=None,
+        val_subscores=[
+            {0: 1.0, 1: 1.0, 2: 1.0, 3: 0.0},   # index 0 = seed baseline
+            {0: 0.5, 1: 1.0, 2: 1.0, 3: 1.0},   # index 1 = sentinel regressor
+        ],
+    )
+    selected, seed_baseline, err = screening_family_scores(fake_result, 1, val_tasks)
+    check("val_subscores maps DataId to valset family order with None aggregate",
+          err is None
+          and selected == {"aa-route": 0.5, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": 1.0}
+          and seed_baseline == {"aa-route": 1.0, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": 0.0})
+    field_records = [
+        {"branch_id": "reg", "status": "completed", "winner_prompt_sha256": "reg",
+         "screening_subscores_available": True,
+         "screening_by_family": selected, "seed_screening_by_family": seed_baseline},
+        {"branch_id": "clean-a", "status": "completed", "winner_prompt_sha256": "ca",
+         "screening_subscores_available": True, "screening_best_score": .9, "candidates_tried": 3,
+         "screening_by_family": {"aa-route": 1.0, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": 1.0},
+         "seed_screening_by_family": {"aa-route": 1.0, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": 0.0}},
+        {"branch_id": "clean-b", "status": "completed", "winner_prompt_sha256": "cb",
+         "screening_subscores_available": True, "screening_best_score": .8, "candidates_tried": 2,
+         "screening_by_family": {"aa-route": 1.0, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": .8},
+         "seed_screening_by_family": {"aa-route": 1.0, "bb-route": 1.0, "cc-route": 1.0, "zz-abstain": 0.0}},
+    ]
+    check("field-level gate disqualifies sentinel regressor from val_subscores",
+          [rec["branch_id"] for rec in family_aware_ranked(
+              field_records, abstain_family="zz-abstain",
+              perfect_families=("aa-route", "bb-route", "cc-route"),
+          )] == ["clean-a", "clean-b"])
     wave = {
         "wave": 3, "parent_run": "parent-run", "parent_winner_sha256": "abc",
         "failure_family": "abstain", "curriculum_sha256": "curriculum",
