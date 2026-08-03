@@ -29,6 +29,7 @@ import { finish, partialCredit, reset, step } from "../../dist/automationbench-o
 import { loadSystemPrompt } from "./prompt-loader.mjs";
 import {
   DOMAIN_ID_TASKS,
+  domainIdFixtureSha256,
   domainIdSplitSha256,
   domainIdTaskBands,
   domainIdTaskPool,
@@ -240,6 +241,7 @@ async function main() {
     temperature,
     samples,
     fixture: "domain-identification-offline-v1",
+    fixture_sha256: domainIdFixtureSha256(),
     split_sha256: domainIdSplitSha256(split),
     pool_size: DOMAIN_ID_TASKS.filter((task) => task.split === split).length,
     episodes: rows.length,

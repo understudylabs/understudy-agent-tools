@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from "node:http";
 import { finish, partialCredit, reset, step } from "../../../dist/automationbench-offline.js";
-import { DOMAIN_ID_TASKS, domainIdSplitSha256, domainIdTaskBands, domainIdTaskPool } from "../../../dist/domain-identification-slice.js";
+import { DOMAIN_ID_TASKS, domainIdFixtureSha256, domainIdSplitSha256, domainIdTaskBands, domainIdTaskPool } from "../../../dist/domain-identification-slice.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const sessions = new Map();
@@ -25,6 +25,7 @@ const server = createServer(async (req, res) => {
       const pool = domainIdTaskPool({ split });
       return send(res, 200, {
         fixture: "domain-identification-offline-v1",
+        fixture_sha256: domainIdFixtureSha256(),
         split,
         split_sha256: domainIdSplitSha256(split),
         tasks: pool.map((task) => ({ task_id: task.taskId, prompt: task.prompt, band: bands[task.taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "")] ?? "unknown" })),

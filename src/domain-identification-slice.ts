@@ -329,7 +329,9 @@ const FAMILIES: SliceFamily[] = [
         account("c-1", `${label}.example.com`, rep(instance + 1)),
         account("c-2", `${label}-group.example.com`, rep(instance + 2)),
         account("c-3", `mail.${label}.example.com`, rep(instance + 3)),
-      ], instance, 4, [unregistered]);
+      // Repair train/dev only. The historically observed holdout remains
+      // byte-for-byte unchanged and is not valid promotion evidence.
+      ], instance, 4, instance < 8 ? [unregistered] : []);
       const tickets = padTickets([
         ticket("t-1", DECOY_SUBJECTS[(instance + 9) % INSTANCES], `ops@${label}.example.com`, rep(instance + 1), "in_progress"),
         ticket("t-2", TICKET_SUBJECTS[(instance + 9) % INSTANCES], requester(instance + 9, unregistered), "pending"),

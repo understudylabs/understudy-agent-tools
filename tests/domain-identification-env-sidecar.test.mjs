@@ -54,6 +54,7 @@ describe("env-sidecar HTTP contract (real offline env)", () => {
     const { status, body } = await get("/pool?split=dev");
     assert.equal(status, 200);
     assert.equal(body.fixture, "domain-identification-offline-v1");
+    assert.match(body.fixture_sha256, /^[0-9a-f]{64}$/);
     assert.equal(body.split, "dev");
     assert.match(body.split_sha256, /^[0-9a-f]{64}$/);
     assert.equal(body.tasks.length, 8);
