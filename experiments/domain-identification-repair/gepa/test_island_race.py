@@ -24,9 +24,9 @@ if "gepa" not in sys.modules:
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
 from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_no_distinct_receipt, classify_failure,
-    prompt_sha, unique_ranked,
+    global_dedup_annotations, prompt_sha, unique_ranked,
 )
-from turbo_race import select_strategy_candidate  # noqa: E402
+from turbo_race import acceptance_criterion_for_strategy, select_strategy_candidate  # noqa: E402
 
 
 def check(label, condition):
@@ -51,6 +51,11 @@ def main():
     ]
     ranked = unique_ranked(records)
     check("global prompt dedupe", [r["branch_id"] for r in ranked] == ["b", "c"])
+    annotations = global_dedup_annotations(records)
+    check("best duplicate is the representative",
+          annotations["a"] == "b" and annotations["b"] is None)
+    check("distinct prompt remains representative", annotations["c"] is None)
+    check("failed branch is absent from dedupe evidence", "d" not in annotations)
     selected_ranked = unique_ranked([
         {"status": "completed", "winner_prompt_sha256": "x", "screening_best_score": .9,
          "selected_screening_score": .6, "candidates_tried": 2, "wall_clock_s": 1, "branch_id": "x"},
@@ -114,7 +119,13 @@ def main():
     check("exploit preserves GEPA best",
           exploit["system_prompt"] == "seed"
           and exploit_score == .75 and exploit_mode == "gepa_best")
-    print("ALL 19 ISLAND TESTS PASSED")
+    check("exploit requires strict screening improvement",
+          acceptance_criterion_for_strategy("exploit") == "strict_improvement")
+    check("explore retains tied screening mutations",
+          acceptance_criterion_for_strategy("explore") == "improvement_or_equal")
+    check("failure-targeted retains tied screening mutations",
+          acceptance_criterion_for_strategy("failure_targeted") == "improvement_or_equal")
+    print("ALL 25 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

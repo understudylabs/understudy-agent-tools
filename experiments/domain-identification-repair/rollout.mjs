@@ -53,13 +53,16 @@ const temperature = Number(argValue("--temperature", "0"));
 const malformedTolerance = Number(argValue("--malformed-tolerance", "3"));
 const maxTokens = Number(argValue("--max-tokens", "384"));
 const baseUrl = argValue("--base-url", "http://localhost:8099/v1");
+const apiKeyEnv = argValue("--api-key-env", "FIREWORKS_API_KEY");
+const project = argValue("--project");
+const workload = argValue("--workload");
 const outPath = argValue("--out");
 const transcriptPath = argValue("--transcripts");
 const frozenHoldout = argValue("--frozen-holdout");
 const systemFile = argValue("--system-file");
 const isLocalShim = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::|\/|$)/.test(baseUrl);
-const apiKey = process.env.FIREWORKS_API_KEY ?? (isLocalShim ? "local-shim" : undefined);
-if (!apiKey) throw new Error("FIREWORKS_API_KEY is required for a remote endpoint (never hard-code it)");
+const apiKey = process.env[apiKeyEnv] ?? (isLocalShim ? "local-shim" : undefined);
+if (!apiKey) throw new Error(`${apiKeyEnv} is required for a remote endpoint (never hard-code it)`);
 
 const pool = domainIdTaskPool({ split, frozenHoldoutSha256: frozenHoldout ?? undefined });
 const BANDS = domainIdTaskBands();
@@ -112,9 +115,12 @@ function parseAction(text) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function chat(messages, attempt = 0) {
+  const headers = { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
+  if (project) headers["x-understudy-project"] = project;
+  if (workload) headers["x-understudy-workload"] = workload;
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
+    headers,
     body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
   });
   if (!response.ok) {
@@ -227,6 +233,9 @@ async function main() {
   const report = {
     schema_version: "understudy.slice_rollout.v1",
     model,
+    api_key_env: apiKeyEnv,
+    project: project ?? null,
+    workload: workload ?? null,
     split,
     temperature,
     samples,

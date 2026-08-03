@@ -63,9 +63,9 @@ class FakeLLM:
         return _Resp(self._texts.pop(0))
 
 
-def run_rollout(texts):
+def run_rollout(texts, **adapter_kwargs):
     """Drive ContractAdapter.rollout with a faked LLM and faked sidecar."""
-    adapter = ContractAdapter("http://fake")
+    adapter = ContractAdapter("http://fake", **adapter_kwargs)
     adapter.litellm = FakeLLM(texts)
 
     step_n = {"n": 0}
@@ -141,10 +141,19 @@ def test_d_config_parity_defaults():
 
 
 def test_d_config_forwarded_to_endpoint():
-    adapter, _ = run_rollout([FINISH])
+    adapter, _ = run_rollout(
+        [FINISH], student_model="openai/deepseek-v4-flash",
+        student_api_base="https://gateway.invalid/v1", student_api_key="test-key",
+        student_headers={"x-understudy-project": "synthetic", "x-understudy-workload": "parity"},
+    )
     call = adapter.litellm.calls[0]
     check("d: max_tokens forwarded to completion", call["max_tokens"] == 384)
     check("d: temperature forwarded to completion", call["temperature"] == 0)
+    check("d: student model forwarded", call["model"] == "openai/deepseek-v4-flash")
+    check("d: student base URL forwarded", call["api_base"] == "https://gateway.invalid/v1")
+    check("d: Understudy attribution headers forwarded",
+          call["extra_headers"] == {"x-understudy-project": "synthetic",
+                                    "x-understudy-workload": "parity"})
 
 
 def test_reflection_uses_malformed_total():

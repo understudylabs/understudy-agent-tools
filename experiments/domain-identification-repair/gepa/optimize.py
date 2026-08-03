@@ -503,11 +503,16 @@ PolicySignature.instructions = DEFAULT_SYSTEM
 class ContractAdapter:
     """GEPA adapter whose rollout is the exact rollout.mjs contract."""
     def __init__(self, sidecar, student_model="openai/nemotron-3-nano-base",
+                 student_api_base="http://127.0.0.1:8099/v1", student_api_key="local-shim",
+                 student_headers=None,
                  max_tokens=384, max_turns=10, malformed_tolerance=3, temperature=0,
                  samples_per_eval=1, concurrency=6, fuse=None, ledger=None,
                  controller=None):
         self.sidecar = sidecar
         self.student_model = student_model
+        self.student_api_base = student_api_base
+        self.student_api_key = student_api_key
+        self.student_headers = dict(student_headers or {})
         self.samples_per_eval = samples_per_eval
         self._max_workers = concurrency
         self.fuse = fuse
@@ -537,8 +542,9 @@ class ContractAdapter:
             response = self.litellm.completion(
                 model=self.student_model,
                 messages=messages,
-                api_base="http://127.0.0.1:8099/v1",
-                api_key="local-shim",
+                api_base=self.student_api_base,
+                api_key=self.student_api_key,
+                extra_headers=self.student_headers or None,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
                 stream=False,

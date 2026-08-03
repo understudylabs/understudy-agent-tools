@@ -60,6 +60,30 @@ def unique_ranked(records):
     return [item[1] for item in sorted(by_hash.values(), key=lambda item: item[0])]
 
 
+def global_dedup_annotations(records):
+    """Map each completed branch to its prompt-hash representative.
+
+    Representatives use the exact same ordering as successive halving. A
+    ``None`` value means the branch is the representative; a branch id means
+    the branch is a duplicate of that representative. This keeps live and
+    terminal evidence aligned with the work the optimizer will actually
+    advance.
+    """
+    representatives = {
+        rec["winner_prompt_sha256"]: rec["branch_id"]
+        for rec in unique_ranked(records)
+    }
+    annotations = {}
+    for rec in records:
+        if rec.get("status") != "completed" or not rec.get("winner_prompt_sha256"):
+            continue
+        representative = representatives[rec["winner_prompt_sha256"]]
+        annotations[rec["branch_id"]] = (
+            None if rec["branch_id"] == representative else representative
+        )
+    return annotations
+
+
 def classify_failure(rec):
     detail = str(rec.get("detail") or rec.get("abort_reason") or "unknown failure")[:240]
     lowered = detail.lower()
@@ -114,7 +138,8 @@ def build_no_distinct_receipt(*, experiment_id, dev_sha, islands, distinct_promp
 class LiveManifest:
     def __init__(self, *, path, ingest_url, experiment_id, dev_sha, examples,
                  baseline_nodes, rank_protocol, gepa_protocol, budget, started,
-                 expected_total, reference_lines=(), mirror_path=None):
+                 expected_total, reference_lines=(), mirror_path=None,
+                 provider="unknown", model="unknown"):
         self.path = Path(path)
         self.ingest_url = ingest_url
         self.experiment_id = experiment_id
@@ -128,6 +153,8 @@ class LiveManifest:
         self.expected_total = expected_total
         self.reference_lines = list(reference_lines)
         self.mirror_path = Path(mirror_path) if mirror_path else None
+        self.provider = provider
+        self.model = model
         self.records = {}
         self.states = {}
         self.confirmations = {}
@@ -280,6 +307,7 @@ class LiveManifest:
             "cost_usd": None,
             "cost_coverage": "out_of_band_clickhouse",
             "holdout_executed": False,
+            "serving": {"provider": self.provider, "model": self.model},
         }
         totals.update(terminal)
         manifest = em.build_manifest(
@@ -297,7 +325,8 @@ class LiveManifest:
 
 def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_root,
                  experiment_id, reflection_key, max_metric_calls, concurrency,
-                 spend_authorization_usd, live, phase, episode_cap):
+                 spend_authorization_usd, live, phase, episode_cap,
+                 student_model, student_api_base, student_api_key, student_headers):
     results = {}
     lock = threading.Lock()
     threads = []
@@ -314,6 +343,8 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
             "reflection_key": reflection_key, "max_metric_calls": max_metric_calls,
             "concurrency": concurrency, "spend_authorization_usd": spend_authorization_usd,
             "results": results, "results_lock": lock, "strategy": strategy,
+            "student_model": student_model, "student_api_base": student_api_base,
+            "student_api_key": student_api_key, "student_headers": student_headers,
         }, name=bid, daemon=True)
         thread.start()
         threads.append(thread)
@@ -339,6 +370,22 @@ def main():
     parser.add_argument("--sidecar", default="http://127.0.0.1:8787")
     parser.add_argument("--base-url", default="http://127.0.0.1:8099/v1")
     parser.add_argument("--model", default="nemotron-3-nano-base")
+    parser.add_argument("--provider-label", default="tinker",
+                        help="non-secret provider label persisted in the experiment manifest")
+    parser.add_argument("--api-key-env", default="FIREWORKS_API_KEY",
+                        help="environment variable used by canonical remote rollout; value is never persisted")
+    parser.add_argument("--project", default="",
+                        help="Understudy project header for canonical rollout")
+    parser.add_argument("--workload", default="",
+                        help="Understudy workload header for canonical rollout")
+    parser.add_argument("--student-model", default="openai/nemotron-3-nano-base")
+    parser.add_argument("--student-base-url", default="http://127.0.0.1:8099/v1")
+    parser.add_argument("--student-api-key-env", default="",
+                        help="environment variable used by GEPA student calls; local shim needs none")
+    parser.add_argument("--student-project", default="",
+                        help="Understudy project header for GEPA student calls")
+    parser.add_argument("--student-workload", default="",
+                        help="Understudy workload header for GEPA student calls")
     parser.add_argument("--seed-prompt", required=True)
     parser.add_argument("--runs-root", default=str(Path.home() / ".di-runs"))
     parser.add_argument("--experiment-id", default="")
@@ -358,6 +405,23 @@ def main():
     args = parser.parse_args()
     if not args.allow_unmetered_cost:
         raise FuseTripped("--allow-unmetered-cost required")
+    student_is_local = args.student_base_url.startswith(("http://127.0.0.1", "http://localhost"))
+    student_api_key = (
+        os.environ.get(args.student_api_key_env) if args.student_api_key_env
+        else ("local-shim" if student_is_local else None)
+    )
+    if not student_api_key:
+        raise RuntimeError(
+            "--student-api-key-env must name a populated environment variable for a remote student endpoint"
+        )
+    student_headers = {}
+    if args.student_project:
+        student_headers["x-understudy-project"] = args.student_project
+    if args.student_workload:
+        student_headers["x-understudy-workload"] = args.student_workload
+    if not args.base_url.startswith(("http://127.0.0.1", "http://localhost")):
+        if not os.environ.get(args.api_key_env):
+            raise RuntimeError(f"{args.api_key_env} is required for canonical remote rollout")
     reflection_key = os.environ.get("UNDERSTUDY_API_KEY") or os.environ.get("FIREWORKS_API_KEY")
     if not reflection_key:
         raise RuntimeError("UNDERSTUDY_API_KEY or FIREWORKS_API_KEY is required")
@@ -400,14 +464,25 @@ def main():
                         baseline_nodes=baseline_nodes, rank_protocol=rank_protocol,
                         gepa_protocol=gepa_protocol, budget=budget, started=started,
                         expected_total=stage1_total + stage2_total + confirm_total,
-                        mirror_path=args.manifest_mirror or None)
+                        mirror_path=args.manifest_mirror or None,
+                        provider=args.provider_label, model=args.model)
     stage1_prompts = {bid: seed_prompt for bid, *_ in ISLAND_SPECS}
     stage1 = run_parallel(ISLAND_SPECS, seed_prompts=stage1_prompts, subsets=subsets,
                           train=train, sidecar=args.sidecar, budget=budget,
                           runs_root=args.runs_root, experiment_id=experiment_id,
                           reflection_key=reflection_key, max_metric_calls=args.stage1_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
-                          live=live, phase="stage1", episode_cap=args.stage1_episodes)
+                          live=live, phase="stage1", episode_cap=args.stage1_episodes,
+                          student_model=args.student_model, student_api_base=args.student_base_url,
+                          student_api_key=student_api_key, student_headers=student_headers)
+    dedup_annotations = global_dedup_annotations(stage1.values())
+    for bid, representative in dedup_annotations.items():
+        if representative is not None:
+            live.update(
+                bid, status="rejected", outcome="global_prompt_deduplication",
+                dedup_of=representative, failure_category="duplicate_prompt",
+                failure_reason=f"identical prompt hash; representative={representative}",
+            )
     unique = unique_ranked(stage1.values())
     if len(unique) < 2:
         reason = f"successive halving needs two distinct completed prompts; got {len(unique)}"
@@ -425,9 +500,10 @@ def main():
         print(json.dumps(receipt, indent=2))
         return
     survivors = unique[:2]
-    survivor_hashes = {rec["winner_prompt_sha256"] for rec in survivors}
+    survivor_ids = {rec["branch_id"] for rec in survivors}
     for bid, rec in stage1.items():
-        if rec.get("status") == "completed" and rec.get("winner_prompt_sha256") not in survivor_hashes:
+        if (rec.get("status") == "completed" and bid not in survivor_ids
+                and dedup_annotations.get(bid) is None):
             live.update(bid, status="rejected", outcome="successive_halving", failure_category="not_selected",
                         failure_reason="lower screening rank or globally deduplicated")
 
@@ -442,7 +518,9 @@ def main():
                           runs_root=args.runs_root, experiment_id=experiment_id,
                           reflection_key=reflection_key, max_metric_calls=args.stage2_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
-                          live=live, phase="stage2", episode_cap=args.stage2_episodes)
+                          live=live, phase="stage2", episode_cap=args.stage2_episodes,
+                          student_model=args.student_model, student_api_base=args.student_base_url,
+                          student_api_key=student_api_key, student_headers=student_headers)
 
     finalists = unique_ranked(stage2.values())[:2]
     confirmations = []
@@ -463,7 +541,8 @@ def main():
             receipt_path = out_dir / f"canonical-{bid}-dev-k3.json"
             result = confirm_canonical(prompt_path=rec["optimized_prompt_path"], out_path=receipt_path,
                                        sidecar_base_url=args.base_url, model=args.model,
-                                       repo_root=repo_root, k=K)
+                                       repo_root=repo_root, k=K, api_key_env=args.api_key_env,
+                                       project=args.project or None, workload=args.workload or None)
             canonical_cache[sha] = result
             deduped = False
         conf = {"branch_id": bid, "confirmed": True, "deduped": deduped,

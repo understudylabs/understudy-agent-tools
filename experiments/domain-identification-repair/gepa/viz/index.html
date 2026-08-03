@@ -93,6 +93,7 @@
       <div class="waves" id="waves"></div>
       <div class="progress" aria-label="Episode budget progress"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="stream" aria-live="polite">
+        <span>route <b id="serving-route">—</b></span>
         <span>islands <b id="island-state">—</b></span>
         <span>evidence <b id="evidence-state">—</b></span>
         <span>latency <b id="latency">—</b></span>
@@ -149,6 +150,9 @@
       document.getElementById("progress-fill").style.width = cap ? `${Math.min(100, completed / cap * 100)}%` : "0%";
       const succeeded = Number(manifest.totals?.islands_succeeded ?? 0);
       const failed = Number(manifest.totals?.islands_failed ?? 0);
+      const serving = manifest.totals?.serving || {};
+      document.getElementById("serving-route").textContent =
+        [serving.provider, serving.model].filter(Boolean).join(" · ") || "unknown";
       const islandState = document.getElementById("island-state");
       islandState.innerHTML = manifest.totals?.outcome === "no_distinct_candidates"
         ? `<span class="ok">${succeeded} screened</span> · 0 distinct advances · <span class="bad">${failed} failed</span>`

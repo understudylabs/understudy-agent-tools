@@ -1,0 +1,4 @@
+# GEPA 0.1.4 exposes the acceptance_criterion API used to keep tied mutations
+# in explore/failure-targeted screening islands. The runner also asserts this
+# exact version before dispatching any provider work.
+gepa==0.1.4

@@ -1,0 +1,80 @@
+{
+  "schema_version": "understudy.gateway_model_baseline.v1",
+  "generated_at": "2026-08-03T00:36:23Z",
+  "workload": "domain_identification",
+  "fixture": "domain-identification-offline-v1",
+  "split": "dev",
+  "split_sha256": "3934011a2182ac6d4b32e7016b705cb908e21c2c1ae469f3b0e116ed7bc345a2",
+  "holdout_executed": false,
+  "provider": "understudy-gateway",
+  "gateway_url": "https://api.understudylabs.com/v1",
+  "project": "rehearsal",
+  "workload_route": "main",
+  "requested_model": "deepseek-v4-flash",
+  "route_probe": {
+    "status": 200,
+    "latency_ms": 724,
+    "request_id": "019fc507-c093-7824-90da-f25e79514565"
+  },
+  "serving_contract": {
+    "max_tokens": 384,
+    "max_turns": 10,
+    "malformed_tolerance": 3,
+    "temperature": 0
+  },
+  "runs": [
+    {
+      "name": "wave1_prompt_k1_scout",
+      "samples_per_task": 1,
+      "episodes": 8,
+      "mean_score": 0.75,
+      "exact_1_rate": 0.75,
+      "zero_rate": 0.25,
+      "malformed_rate": 0,
+      "over_acting_episodes": 0,
+      "errors": 0,
+      "wall_clock_s": 36,
+      "system_file_sha256": "cd718da1b0189d2153c24dabd78e00bd0b99ae3779c433cf2c7de47246dc1493",
+      "source_receipt_sha256": "4b34a8cc7daedcceb330030341043504d3bd93496b28ab262d4d0b76e33eed91",
+      "rank_eligible": false
+    },
+    {
+      "name": "default_prompt_k3",
+      "samples_per_task": 3,
+      "episodes": 24,
+      "mean_score": 0.75,
+      "exact_1_rate": 0.75,
+      "zero_rate": 0.25,
+      "malformed_rate": 0.25,
+      "over_acting_episodes": 0,
+      "errors": 0,
+      "wall_clock_s": 35,
+      "source_receipt_sha256": "b2bce7ce3fe1d997c3ba426a42c532314369ef256eb88590afc4f31e98e01d8c",
+      "rank_eligible": true
+    },
+    {
+      "name": "wave1_prompt_k3",
+      "samples_per_task": 3,
+      "episodes": 24,
+      "mean_score": 0.75,
+      "exact_1_rate": 0.75,
+      "zero_rate": 0.25,
+      "malformed_rate": 0.08333333333333333,
+      "over_acting_episodes": 0,
+      "errors": 0,
+      "wall_clock_s": 26,
+      "system_file_sha256": "cd718da1b0189d2153c24dabd78e00bd0b99ae3779c433cf2c7de47246dc1493",
+      "source_receipt_sha256": "13cdab3cc531502a5637c863a639d7499dee28aab8a3df16bbf4320336ef9144",
+      "rank_eligible": true
+    }
+  ],
+  "mean_by_band": {
+    "abstain": 0,
+    "direct-match": 1,
+    "parent-join": 1,
+    "near-match": 1
+  },
+  "claim_boundary": "DeepSeek V4 Flash beats the existing Wave-1 student on the same canonical dev k=3 score (0.7500 vs 0.7292). It is not yet compared to the incumbent under a matching canonical k=3 protocol, and no holdout was executed.",
+  "cost_usd": null,
+  "cost_coverage": "understudy_gateway_pending_usage_reconciliation"
+}

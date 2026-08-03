@@ -46,3 +46,34 @@ or a p95 rollout latency that dominates otherwise-parallel branch wall time.
 - The eight Stage-1 island scores are screening-only and not rank eligible.
 - Stage 2 and canonical finalist confirmation were not executed.
 - The experiment did not execute holdout.
+
+## 2026-08-03 update: Gateway DeepSeek lane and GEPA acceptance
+
+The second corrected Nemotron run (`islands-20260803T000907Z`) again completed
+96/96 Stage-1 episodes with no 429, 5xx, or timeout, but all eight accepted
+outputs deduplicated to the seed. Artifact inspection proved that each island
+generated and evaluated a distinct mutation; three exploratory mutations tied
+the seed and were discarded by GEPA 0.0.27's strictly-better gate before the
+runner could select them.
+
+The optimizer runtime is therefore pinned to `gepa==0.1.4`. Exploit islands use
+`strict_improvement`; explore and failure-targeted islands use
+`improvement_or_equal`. This changes only the screening pool. Full-dev
+canonical `k=3` remains the sole promotion authority.
+
+In parallel, the managed Understudy Gateway route `deepseek-v4-flash` was
+validated on the same dev fixture and serving contract:
+
+| Prompt / protocol | Score | Malformed | Wall | Errors |
+|---|---:|---:|---:|---:|
+| Wave-1 prompt, k=1 scout | 0.7500 | 0.0% | 36 s | 0 |
+| Default prompt, canonical k=3 | 0.7500 | 25.0% | 35 s | 0 |
+| Wave-1 prompt, canonical k=3 | 0.7500 | 8.3% | 26 s | 0 |
+
+DeepSeek already exceeds the current Wave-1 student on a matching canonical
+dev `k=3` protocol (`0.7500` vs `0.7292`) and is much faster than the measured
+Nemotron lane. Its remaining failures are isolated to the abstain band, making
+it the preferred parallel GEPA target. This is not yet a Sonnet replacement
+claim: the incumbent's `0.875` reference is `k=1` and cannot rank against these
+`k=3` results. Gateway cost remains pending usage reconciliation. Holdout is
+untouched.

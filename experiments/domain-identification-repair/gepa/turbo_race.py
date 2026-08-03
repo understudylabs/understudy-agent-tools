@@ -24,6 +24,8 @@ read-only manifest.
 """
 import argparse
 import hashlib
+import importlib.metadata
+import inspect
 import json
 import os
 import re
@@ -307,6 +309,36 @@ REFLECTION_DIRECTIVES = {
     ),
 }
 
+REQUIRED_GEPA_VERSION = "0.1.4"
+
+
+def assert_gepa_runtime():
+    """Fail closed unless the optimizer supports strategy-aware acceptance."""
+    import gepa
+
+    installed = importlib.metadata.version("gepa")
+    if installed != REQUIRED_GEPA_VERSION:
+        raise RuntimeError(
+            f"gepa=={REQUIRED_GEPA_VERSION} required; found {installed}. "
+            "Refusing to silently collapse exploratory ties."
+        )
+    if "acceptance_criterion" not in inspect.signature(gepa.optimize).parameters:
+        raise RuntimeError("gepa.optimize lacks acceptance_criterion; runtime is incompatible")
+    return installed
+
+
+def acceptance_criterion_for_strategy(strategy):
+    """Keep tied mutations available to exploratory islands.
+
+    GEPA's default strict-improvement gate discards a syntactically valid
+    mutation before it appears in ``result.candidates`` when its minibatch
+    score ties the parent. That is appropriate for exploit, but collapses all
+    exploration islands back to the incumbent on a coarse four-task score.
+    This only controls the screening candidate pool; canonical dev k=3 remains
+    the sole promotion gate.
+    """
+    return "strict_improvement" if strategy == "exploit" else "improvement_or_equal"
+
 
 def make_reflection(fuse, reflection_key, strategy="exploit"):
     import litellm
@@ -366,10 +398,15 @@ def select_strategy_candidate(result, seed_prompt, strategy):
 
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                runs_root, run_id, reflection_key, max_metric_calls, concurrency,
-               spend_authorization_usd, results, results_lock, strategy="exploit"):
+               spend_authorization_usd, results, results_lock, strategy="exploit",
+               student_model="openai/nemotron-3-nano-base",
+               student_api_base="http://127.0.0.1:8099/v1", student_api_key="local-shim",
+               student_headers=None):
     """Run one Stage-A GEPA branch. Fail-closed: any fuse trip or service-pressure
     abort records the branch as failed with no promotable score."""
     import gepa
+
+    assert_gepa_runtime()
 
     run_dir = prepare_run_dir(runs_root, run_id)
     ledger = ProgressLedger(run_dir)
@@ -377,7 +414,9 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                       spend_authorization_usd=spend_authorization_usd).preflight()
     controller = ConcurrencyController(start=concurrency, ladder=(concurrency, 12, 8))
     adapter = ContractAdapter(
-        sidecar, samples_per_eval=1, concurrency=concurrency,
+        sidecar, student_model=student_model, student_api_base=student_api_base,
+        student_api_key=student_api_key, student_headers=student_headers,
+        samples_per_eval=1, concurrency=concurrency,
         fuse=fuse, ledger=ledger, controller=controller,
     )
     started = time.time()
@@ -402,6 +441,7 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             max_metric_calls=max_metric_calls,
             reflection_minibatch_size=4,
             candidate_selection_strategy="current_best",
+            acceptance_criterion=acceptance_criterion_for_strategy(strategy),
             frontier_type="instance",
             skip_perfect_score=True,
             run_dir=str(run_dir / "logs"),
@@ -454,7 +494,8 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
 # Stage B: canonical full-dev confirmation via rollout.mjs (off-adapter).
 # ---------------------------------------------------------------------------
 def confirm_canonical(*, prompt_path, out_path, sidecar_base_url, model,
-                      repo_root, k=STAGE_B_K):
+                      repo_root, k=STAGE_B_K, api_key_env="FIREWORKS_API_KEY",
+                      project=None, workload=None):
     """Run rollout.mjs on the FULL dev split at k=3 for a frozen prompt. Refuses
     holdout by default (no --frozen-holdout is ever passed). Returns the parsed
     canonical result dict."""
@@ -462,6 +503,7 @@ def confirm_canonical(*, prompt_path, out_path, sidecar_base_url, model,
     cmd = [
         "node", str(rollout),
         "--model", model,
+        "--api-key-env", api_key_env,
         "--split", "dev",
         "--base-url", sidecar_base_url,
         "--system-file", str(prompt_path),
@@ -473,6 +515,10 @@ def confirm_canonical(*, prompt_path, out_path, sidecar_base_url, model,
         "--malformed-tolerance", "3",
         "--out", str(out_path),
     ]
+    if project:
+        cmd.extend(["--project", project])
+    if workload:
+        cmd.extend(["--workload", workload])
     subprocess.run(cmd, check=True, cwd=str(repo_root))
     return json.loads(Path(out_path).read_text())
 
