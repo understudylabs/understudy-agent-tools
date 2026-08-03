@@ -18,3 +18,21 @@ failed preflight refuses comparison. `observed`, `weak`, `deviation`, and
 
 Run only against synthetic or already-approved local artifacts; this verifier
 makes no provider calls and does not access holdout data.
+
+## Safety Gates
+
+- Compare at least two uniquely named lanes using the same artifact hash,
+  observed render fingerprint, contract fingerprint, protocol, sampling, stop
+  sequences, parser contract, and frozen task IDs.
+- Predeclare a paired-sample floor and equivalence band. Missing pairs,
+  duplicate task IDs, deviations, weak evidence, or invalid hashes fail closed.
+- Keep prompts, responses, labels, traces, credentials, and weights out of the
+  parity artifact. A passing parity receipt is necessary but not sufficient for
+  promotion.
+
+## Resolve CLI
+
+There is no public CLI yet. Build the package and call
+`preflightServingParity` followed by `scoreServingParity` from
+`dist/serving-parity/index.js` in an offline script. Do not score when preflight
+refuses the evidence.

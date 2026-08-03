@@ -23,34 +23,46 @@ export type ParityArtifact = {
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const canonical = (value: unknown) => JSON.stringify(value, Object.keys(value as object).sort());
 const fail = (message: string): never => { throw new Error(`serving parity refused: ${message}`); };
+const validHash = (value: string) => /^[a-f0-9]{64}$/.test(value);
 
 export function observedRenderFingerprint(renderedPrompt: string): string { return sha256(renderedPrompt); }
 export function artifactSha256(bytes: string | Buffer): string { return sha256(bytes.toString()); }
 
 export function preflightServingParity(lanes: LaneInput[], options: { minimumPairedSample?: number } = {}): Preflight {
   const min = options.minimumPairedSample ?? 20;
+  if (!Number.isInteger(min) || min < 2) fail("minimum paired sample must be an integer >= 2");
   const diagnostics: string[] = [];
   const output: Preflight["lanes"] = {};
   const reference = lanes[0];
   if (!reference || lanes.length < 2) diagnostics.push("at least two lanes are required");
+  if (new Set(lanes.map((lane) => lane.lane)).size !== lanes.length) diagnostics.push("lane names must be unique");
   for (const lane of lanes) {
-    if (!lane.artifact_ref || !lane.artifact_sha256) diagnostics.push(`${lane.lane}: artifact ref and sha256 are required`);
-    if (!lane.rendered_prompt_fingerprint) diagnostics.push(`${lane.lane}: observed render fingerprint is required`);
-    if (!lane.contract_fingerprint) diagnostics.push(`${lane.lane}: contract fingerprint is required`);
+    if (!lane.artifact_ref || !validHash(lane.artifact_sha256)) diagnostics.push(`${lane.lane}: artifact ref and valid sha256 are required`);
+    if (!validHash(lane.rendered_prompt_fingerprint)) diagnostics.push(`${lane.lane}: observed render fingerprint is required`);
+    if (!validHash(lane.contract_fingerprint)) diagnostics.push(`${lane.lane}: contract fingerprint is required`);
     if (!lane.parse_ok) diagnostics.push(`${lane.lane}: parse evidence failed`);
     if (reference && lane.rendered_prompt_fingerprint !== reference.rendered_prompt_fingerprint) diagnostics.push(`${lane.lane}: render fingerprint deviation`);
+    if (reference && lane.contract_fingerprint !== reference.contract_fingerprint) diagnostics.push(`${lane.lane}: contract fingerprint deviation`);
+    if (reference && lane.protocol_id !== reference.protocol_id) diagnostics.push(`${lane.lane}: protocol deviation`);
     if (reference && canonical(lane.sampling) !== canonical(reference.sampling)) diagnostics.push(`${lane.lane}: sampling deviation`);
+    if (reference && canonical(lane.stop_sequences) !== canonical(reference.stop_sequences)) diagnostics.push(`${lane.lane}: stop sequence deviation`);
+    if (new Set(lane.rows.map((row) => row.task_id)).size !== lane.rows.length) diagnostics.push(`${lane.lane}: duplicate task ids`);
     output[lane.lane] = { rendered_prompt_fingerprint: lane.rendered_prompt_fingerprint, artifact_ref: lane.artifact_ref, artifact_sha256: lane.artifact_sha256, evidence_status: lane.deviations?.length ? "deviation" : "observed" };
   }
   const weak = lanes.some((lane) => (lane.deviations?.length ?? 0) > 0);
+  if (reference) for (const lane of lanes.slice(1)) {
+    const ids = new Set(lane.rows.map((row) => row.task_id));
+    const paired = reference.rows.filter((row) => ids.has(row.task_id)).length;
+    if (paired < min) diagnostics.push(`${lane.lane}: paired sample ${paired} is below minimum ${min}`);
+  }
   const status: EvidenceStatus = diagnostics.length ? (weak ? "deviation" : "failed") : "observed";
-  if (lanes.some((lane) => lane.rows.length < min)) diagnostics.push(`minimum paired sample is ${min}`);
   return { schema_version: "understudy.serving_contract.v1", passed: diagnostics.length === 0, evidence_status: status, diagnostics, lanes: output };
 }
 
 export function scoreServingParity(lanes: LaneInput[], options: { minimumPairedSample?: number; equivalenceBand?: number } = {}): ParityArtifact {
   const minimum = options.minimumPairedSample ?? 20;
   const band = options.equivalenceBand ?? 0.05;
+  if (!Number.isFinite(band) || band < 0 || band > 1) fail("equivalence band must be in [0, 1]");
   const preflight = preflightServingParity(lanes, { minimumPairedSample: minimum });
   if (!preflight.passed) fail(preflight.diagnostics.join("; "));
   const reference = lanes[0];

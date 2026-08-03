@@ -10,7 +10,18 @@ test("requires observed render evidence and a meaningful paired sample", () => {
   const result = preflightServingParity([lane("tinker"), weak]);
   assert.equal(result.passed, false);
   assert.ok(result.diagnostics.some((d) => d.includes("render fingerprint")));
-  assert.ok(result.diagnostics.some((d) => d.includes("minimum paired sample")));
+  assert.ok(result.diagnostics.some((d) => d.includes("paired sample")));
+  assert.equal(result.evidence_status, "failed");
+});
+
+test("requires matching contract, protocol, stops, and paired task ids", () => {
+  const changed = { ...lane("vllm"), contract_fingerprint: "d".repeat(64), protocol_id: "other", stop_sequences: ["STOP"], rows: rows(20).map((row, i) => ({ ...row, task_id: `other-${i}` })) };
+  const result = preflightServingParity([lane("tinker"), changed]);
+  assert.equal(result.passed, false);
+  assert.match(result.diagnostics.join(" "), /contract fingerprint deviation/);
+  assert.match(result.diagnostics.join(" "), /protocol deviation/);
+  assert.match(result.diagnostics.join(" "), /stop sequence deviation/);
+  assert.match(result.diagnostics.join(" "), /paired sample 0/);
 });
 
 test("emits hash/ref-only promotion-compatible parity", () => {
@@ -20,4 +31,11 @@ test("emits hash/ref-only promotion-compatible parity", () => {
   assert.equal(result.evidence_status, "observed");
   assert.deepEqual(result.refs.map((r) => Object.keys(r).sort()), [["ref", "sha256"], ["ref", "sha256"]]);
   assert.equal(Object.hasOwn(result, "prompt"), false);
+});
+
+test("rejects duplicate task ids and invalid thresholds", () => {
+  const duplicate = { ...lane("vllm"), rows: [rows(20)[0], ...rows(20)] };
+  assert.equal(preflightServingParity([lane("tinker"), duplicate]).passed, false);
+  assert.throws(() => preflightServingParity([lane("tinker"), lane("vllm")], { minimumPairedSample: 1 }), /minimum paired sample/);
+  assert.throws(() => scoreServingParity([lane("tinker"), lane("vllm")], { equivalenceBand: 2 }), /equivalence band/);
 });
