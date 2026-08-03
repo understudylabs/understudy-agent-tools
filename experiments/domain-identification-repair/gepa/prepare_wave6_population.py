@@ -6,6 +6,7 @@ It never reads dev or holdout. Prompt text remains in private files; the
 admission manifest carries hashes and bounded screening scalars only.
 """
 import argparse
+import hashlib
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -41,11 +42,11 @@ Policy delta — explicit decision table:
 Never write any other record.
 """,
     "table-2": """
-Policy delta — closed-world routing:
-Treat an account as matching only when its complete normalized domain equals the requester's
-complete domain. A suffix, substring, shared parent, or visual resemblance is not an exact match.
-After GET tickets and GET accounts/contacts prove no exact match, PATCH only the addressed ticket
-to assignee "none" and status "unmatched", then finish. Preserve all incumbent matched routes.
+Policy delta — unmatched postcondition only:
+Do not change the incumbent's direct, lookalike, parent, or other matched-route classification or
+actions. Only after that existing decision procedure has already classified the addressed requester
+as unmatched, replace passive finish with one PATCH of the addressed ticket only to assignee "none"
+and status "unmatched", then finish. Never alter a matched-route action.
 """,
     "grammar-1": """
 Policy delta — tool grammar:
@@ -62,17 +63,18 @@ addressed_ticket only with assignee=none,status=unmatched -> finish. Never passi
 the required unmatched PATCH and never write an unrelated ticket.
 """,
     "proof-1": """
-Policy delta — explicit proof obligation:
-Before choosing unmatched, establish that every registered account/contact domain differs from the
-addressed requester's full domain. Record no state while checking. When that proof succeeds, the
-only allowed state transition is PATCH of the addressed ticket to
-{"assignee":"none","status":"unmatched"}, followed immediately by finish. Keep matched routes intact.
+Policy delta — no-match branch postcondition:
+Preserve the incumbent's discovery, domain comparison, classification, and every matched-route tool
+action exactly. Add no new proof or lookup to those paths. On the existing branch that has already
+concluded there is no valid match, PATCH only the addressed ticket with
+{"assignee":"none","status":"unmatched"}, then finish. Never write elsewhere.
 """,
     "termination-1": """
-Policy delta — termination discipline:
-For unmatched cases, do not stop after discovery. Complete the exact-domain search, PATCH the
-addressed ticket only to assignee none/status unmatched, wait for the successful tool observation,
-then finish exactly once. Avoid prose, malformed tool objects, retries after success, and unrelated writes.
+Policy delta — terminal replacement only:
+Do not change any incumbent read, match decision, direct route, lookalike route, parent route, or
+matched write. Only where the incumbent would otherwise passively finish after deciding no match,
+first PATCH the addressed ticket only to assignee none/status unmatched, wait for success, then
+finish exactly once. Never retry after success or write an unrelated object.
 """,
     "lookalike-guard": """
 Policy delta — lookalike safety:
@@ -111,6 +113,8 @@ def main():
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--seed-concurrency", type=int, default=8,
                         help="independent seed screens in flight; 8x4 saturates the proven 32-worker shim")
+    parser.add_argument("--reuse-manifest", default="",
+                        help="prior same-valset admission receipt; unchanged admitted seeds are reused")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -125,6 +129,20 @@ def main():
     subsets = failure_family_screening_subsets(train, FAILURE_FAMILY, 2)
     tasks = subsets[0]["tasks"]
     valset_sha = screening_valset_hash(subsets)
+    reusable = {}
+    reused_manifest_sha = None
+    if args.reuse_manifest:
+        prior_path = Path(args.reuse_manifest)
+        prior = json.loads(prior_path.read_text())
+        if (prior.get("schema_version") != "understudy.gepa_seed_population.v1"
+                or prior.get("holdout_executed") is not False
+                or prior.get("valset_sha256") != valset_sha):
+            raise RuntimeError("reuse manifest provenance mismatch")
+        reusable = {
+            entry.get("branch_id"): entry for entry in prior.get("seeds", [])
+            if isinstance(entry, dict) and entry.get("eligible") is True
+        }
+        reused_manifest_sha = hashlib.sha256(prior_path.read_bytes()).hexdigest()
     local = args.student_base_url.startswith(("http://127.0.0.1", "http://localhost"))
     api_key = os.environ.get(args.student_api_key_env) if args.student_api_key_env else None
     api_key = api_key or ("local-shim" if local else None)
@@ -142,6 +160,16 @@ def main():
         branch_id, strategy, *_ = spec
         prompt_path = output_dir / f"{branch_id}.txt"
         prompt_path.write_text(prompts[branch_id])
+        prior = reusable.get(branch_id)
+        if prior and prior.get("prompt_sha256") == prompt_sha(prompts[branch_id]):
+            return {
+                "branch_id": branch_id, "strategy": strategy,
+                "prompt_path": str(prompt_path), "prompt_sha256": prior["prompt_sha256"],
+                "eligible": True,
+                "screening_by_family": prior["screening_by_family"],
+                "forbidden_effects": prior["forbidden_effects"],
+                "reused": True,
+            }
         # One adapter per independent seed keeps exact-task summary state and
         # LiteLLM client bookkeeping isolated while the endpoint handles the
         # proven 32-way aggregate request concurrency.
@@ -169,7 +197,7 @@ def main():
             "branch_id": branch_id, "strategy": strategy,
             "prompt_path": str(prompt_path), "prompt_sha256": prompt_sha(prompts[branch_id]),
             "eligible": eligible, "screening_by_family": family_means,
-            "forbidden_effects": forbidden,
+            "forbidden_effects": forbidden, "reused": False,
         }
 
     with ThreadPoolExecutor(max_workers=args.seed_concurrency) as pool:
@@ -184,6 +212,7 @@ def main():
         "student": {"model": args.student_model, "base_url_kind": "local" if local else "remote",
                     "seed_concurrency": args.seed_concurrency,
                     "task_concurrency_per_seed": args.concurrency},
+        "reused_manifest_sha256": reused_manifest_sha,
         "seeds": entries,
     }
     manifest_path = output_dir / "seed-population-manifest.json"
