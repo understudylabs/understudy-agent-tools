@@ -126,6 +126,7 @@ export function summarizeManifest(manifest) {
     holdoutUntouched: manifest?.holdout_untouched === undefined
       ? null
       : manifest.holdout_untouched === true,
+    holdoutStatus: manifest?.holdout_status ?? "unverified",
     evidenceState,
     isPreview: evidenceState === "preview",
   };
@@ -156,7 +157,9 @@ export function renderSummaryHTML(summary) {
     : "";
   const holdout = summary.holdoutUntouched === true
     ? '<span class="monitor-panel__holdout-ok">holdout untouched</span>'
-    : '<span class="monitor-panel__holdout-fail">HOLDOUT UNTOUCHED: UNVERIFIED — FAIL CLOSED</span>';
+    : summary.holdoutStatus === "historical_holdout_observed"
+      ? '<span class="monitor-panel__holdout-fail">historical holdout observed — not promotion evidence</span>'
+      : '<span class="monitor-panel__holdout-fail">HOLDOUT UNTOUCHED: UNVERIFIED — FAIL CLOSED</span>';
   return `<div class="monitor-panel__inner">
     <div class="monitor-panel__title">Overall experiment</div>
     ${preview}
