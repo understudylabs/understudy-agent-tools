@@ -559,6 +559,7 @@ class LiveManifest:
 def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_root,
                  experiment_id, reflection_key, max_metric_calls, concurrency,
                  spend_authorization_usd, live, phase, episode_cap,
+                 reflection_cap,
                  student_model, student_api_base, student_api_key, student_headers,
                  reflection_model="openai/kimi-k3",
                  reflection_base_url="https://api.understudylabs.com/v1",
@@ -569,7 +570,7 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
     threads = []
     for bid, strategy, seed, subset_index in specs:
         subset = subsets[subset_index]
-        budget.register_branch(bid, episode_cap, 4, time.time() + 3600)
+        budget.register_branch(bid, episode_cap, reflection_cap, time.time() + 3600)
         live.update(bid, label=f"{strategy.replace('_', ' ').title()} · {bid}", phase=phase,
                     strategy=strategy, status="screening", episodes_expected=episode_cap,
                     parent="wave1-winner")
@@ -651,7 +652,8 @@ def main():
     parser.add_argument("--stage1-metric-calls", type=int, default=12)
     parser.add_argument("--stage2-metric-calls", type=int, default=24)
     parser.add_argument("--concurrency", type=int, default=4)
-    parser.add_argument("--max-total-reflections", type=int, default=32)
+    parser.add_argument("--max-total-reflections", type=int, default=64,
+                        help="global ceiling; Stage 1 islands get 4 each and Stage 2 survivors 8 each")
     parser.add_argument("--spend-authorization-usd", type=float, default=1000.0)
     parser.add_argument("--allow-unmetered-cost", action="store_true")
     parser.add_argument("--ingest-url", default="http://127.0.0.1:5151/ingest")
@@ -807,6 +809,7 @@ def main():
                           reflection_key=reflection_key, max_metric_calls=args.stage1_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage1", episode_cap=args.stage1_episodes,
+                          reflection_cap=4,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers,
                           reflection_model=args.reflection_model,
@@ -896,6 +899,7 @@ def main():
                           reflection_key=reflection_key, max_metric_calls=args.stage2_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage2", episode_cap=args.stage2_episodes,
+                          reflection_cap=8,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers,
                           reflection_model=args.reflection_model,
