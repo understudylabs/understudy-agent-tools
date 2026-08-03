@@ -29,7 +29,7 @@
  *     --manifest experiments/domain-identification-repair/outputs/dpo_pairs.manifest.json
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import { finish, partialCredit, reset, step } from "../../dist/automationbench-offline.js";
@@ -54,6 +54,7 @@ const outPath = argValue("--out");
 if (!outPath) throw new Error("--out is required");
 const manifestPath = argValue("--manifest");
 const maxPairsPerTask = Number(argValue("--max-pairs-per-task", "3"));
+const MAX_FAMILY_SHARE = 0.35;
 
 const SPLIT_BY_TASK = new Map(DOMAIN_ID_TASKS.map((task) => [task.taskId, task.split]));
 const BANDS = domainIdTaskBands();
@@ -173,7 +174,7 @@ for (const episode of episodes) {
   byTask.get(episode.task_id).push(entry);
 }
 
-const pairs = [];
+const candidatePairs = [];
 const emittedKeys = new Set();
 const skipped = { no_winner: 0, no_candidate_decision: 0, replay_unusable: 0, not_outcome_changing: 0, duplicate: 0 };
 
@@ -222,17 +223,19 @@ for (const [taskId, entries] of [...byTask.entries()].sort()) {
       }
       emittedKeys.add(key);
       const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
-      pairs.push({
+      candidatePairs.push({
         task_id: taskId,
+        fixture_sha256: domainIdFixtureSha256(),
+        train_split_sha256: domainIdSplitSha256("train"),
         family,
         band: BANDS[family] ?? "unknown",
         prompt_conversation: winner.prefix.map((message) => ({ role: message.role, content: message.content })),
         chosen: [{ role: "assistant", content: winner.transcript[winner.decisionIndex].content }],
         rejected: [{ role: "assistant", content: loser.transcript[loser.decisionIndex].content }],
         chosen_score: chosenReplay.score,
+        chosen_forbidden_writes: chosenReplay.forbidden,
         rejected_score: rejectedReplay.score,
         rejected_forbidden_writes: rejectedReplay.forbidden,
-        fixture_sha256: domainIdFixtureSha256(),
       });
       emitted += 1;
     }
@@ -240,15 +243,64 @@ for (const [taskId, entries] of [...byTask.entries()].sort()) {
   }
 }
 
+/**
+ * Deterministically retain the largest prefix-balanced corpus. A corpus with
+ * fewer than three represented families can never satisfy a 35% cap, so it is
+ * an explicit stop rather than a tiny or silently skewed training artifact.
+ */
+function balancedAdmission(candidates) {
+  const byFamily = new Map();
+  for (const pair of candidates) {
+    const rows = byFamily.get(pair.family) ?? [];
+    rows.push(pair);
+    byFamily.set(pair.family, rows);
+  }
+  const families = [...byFamily].sort(([left], [right]) => left.localeCompare(right));
+  for (let size = candidates.length; size >= 1; size -= 1) {
+    const cap = Math.floor(MAX_FAMILY_SHARE * size);
+    if (cap < 1) continue;
+    if (families.reduce((sum, [, rows]) => sum + Math.min(rows.length, cap), 0) < size) continue;
+    const admitted = [];
+    for (let offset = 0; admitted.length < size; offset += 1) {
+      let progressed = false;
+      for (const [, rows] of families) {
+        if (offset < rows.length && offset < cap && admitted.length < size) {
+          admitted.push(rows[offset]);
+          progressed = true;
+        }
+      }
+      if (!progressed) break;
+    }
+    if (admitted.length === size) return { admitted, cap };
+  }
+  return { admitted: [], cap: 0 };
+}
+
+const candidateFamilyCounts = {};
+for (const pair of candidatePairs) candidateFamilyCounts[pair.family] = (candidateFamilyCounts[pair.family] ?? 0) + 1;
+const { admitted: pairs, cap: familyCapCount } = balancedAdmission(candidatePairs);
+const insufficientBalancedPool = pairs.length === 0;
 const serialized = `${pairs.map((pair) => JSON.stringify(pair)).join("\n")}\n`;
-mkdirSync(dirname(outPath), { recursive: true });
-writeFileSync(outPath, serialized);
+if (!insufficientBalancedPool) {
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, serialized);
+} else if (existsSync(outPath)) {
+  unlinkSync(outPath);
+}
 
 const bandCounts = {};
 for (const pair of pairs) bandCounts[pair.band] = (bandCounts[pair.band] ?? 0) + 1;
+const familyCounts = {};
+const rejectedForbiddenWrites = { pairs: 0, total: 0, max: 0 };
+for (const pair of pairs) {
+  familyCounts[pair.family] = (familyCounts[pair.family] ?? 0) + 1;
+  if (pair.rejected_forbidden_writes > 0) rejectedForbiddenWrites.pairs += 1;
+  rejectedForbiddenWrites.total += pair.rejected_forbidden_writes;
+  rejectedForbiddenWrites.max = Math.max(rejectedForbiddenWrites.max, pair.rejected_forbidden_writes);
+}
 
 const manifest = {
-  schema_version: "understudy.dpo_pairs_manifest.v1",
+  schema_version: "understudy.dpo_pairs_manifest.v2",
   source: "synthetic offline fixture rollouts (domain-identification-offline-v1); no customer data",
   fixture_id: "domain-identification-offline-v1",
   fixture_sha256: domainIdFixtureSha256(),
@@ -256,8 +308,17 @@ const manifest = {
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),
   pairs: pairs.length,
+  candidate_pairs: candidatePairs.length,
   tasks_covered: new Set(pairs.map((pair) => pair.task_id)).size,
   band_counts: bandCounts,
+  family_counts: familyCounts,
+  rejected_forbidden_writes: rejectedForbiddenWrites,
+  candidate_family_counts: candidateFamilyCounts,
+  family_balance: {
+    max_share: MAX_FAMILY_SHARE,
+    cap_count: familyCapCount,
+    status: insufficientBalancedPool ? "insufficient_balanced_pool" : "admitted",
+  },
   skipped,
   pairs_sha256: createHash("sha256").update(serialized).digest("hex"),
 };
@@ -267,3 +328,7 @@ if (manifestPath) {
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 console.log(JSON.stringify(manifest, null, 2));
+if (insufficientBalancedPool) {
+  console.error("refusing to emit training data: insufficient balanced family pool for 35% cap");
+  process.exit(2);
+}
