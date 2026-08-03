@@ -88,6 +88,21 @@ export type {
   EvalResultRow,
 } from "./arm-evidence/index.js";
 export * from "./incumbent-ladder/index.js";
+export {
+  ExecutorCancellationReceiptSchema,
+  ExecutorJobRefSchema,
+  ExecutorJobStatusSchema,
+  ExecutorUsageReceiptSchema,
+  ExperimentSubmitRequestSchema,
+  ModalExperimentExecutor,
+  type ExecutorCancellationReceipt,
+  type ExecutorJobRef,
+  type ExecutorJobStatus,
+  type ExecutorUsageReceipt,
+  type ExperimentExecutor,
+  type ExperimentRequest,
+  type ExperimentSubmitRequest,
+} from "./experiment-executor.js";
 
 export const repoRoot = installedPackageRoot();
 

@@ -51,6 +51,7 @@
     "synthetic:fixture-report": "npm run build && node scripts/synthetic-workflow-fixture-report.mjs",
     "synthetic:oee-freeze": "npm run build && node scripts/on-event-execution-freeze.mjs",
     "test": "node --test tests/*.test.mjs",
+    "test:modal-executor": "python3 -m unittest tests/modal_executor_test.py",
     "typecheck": "tsc --noEmit",
     "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run package:smoke"
   },
