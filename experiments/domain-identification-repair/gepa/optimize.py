@@ -743,9 +743,21 @@ class ContractAdapter:
                     "ts": time.time(),
                 })
         trajectories = outputs if capture_traces else None
-        self.evaluation_summaries[chash] = outputs
+        task_key = tuple(task["task_id"] for task in batch)
+        self.evaluation_summaries.setdefault(chash, {})[task_key] = outputs
         return EvaluationBatch(outputs=outputs, scores=mean_scores, trajectories=trajectories,
                                objective_scores=objective_scores)
+
+    def summaries_for(self, chash, val_tasks):
+        """Return summaries only for the exact ordered task batch requested."""
+        task_key = tuple(task["task_id"] for task in val_tasks)
+        candidate_batches = self.evaluation_summaries.get(chash)
+        if not isinstance(candidate_batches, dict):
+            return None
+        summaries = candidate_batches.get(task_key)
+        if not isinstance(summaries, list):
+            return None
+        return summaries
 
     def make_reflective_dataset(self, candidate, eval_batch, components_to_update):
         records = []

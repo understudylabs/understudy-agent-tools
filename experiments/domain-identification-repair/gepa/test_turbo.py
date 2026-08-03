@@ -23,6 +23,7 @@ from turbo_race import (  # noqa: E402
     build_final_manifest,
     dense_state_transition_score,
     dense_select_strategy_candidate,
+    ContractAdapter,
     failure_family_curriculum,
     failure_family_screening_subsets,
     screening_family_scores,
@@ -142,27 +143,53 @@ def test_wave5b_dense_candidate_selection():
         best_idx=1,
         best_candidate=candidates[1],
     )
-    adapter = types.SimpleNamespace(evaluation_summaries={
+    summary_map = {
         turbo_race.candidate_hash("seed"): summaries(passive_trace, direct=1.0),
         turbo_race.candidate_hash("passive"): summaries(passive_trace, direct=1.0),
         turbo_race.candidate_hash("clean"): summaries(clean_trace, direct=1.0),
         turbo_race.candidate_hash("regressor"): summaries(clean_trace, direct=0.0),
-    })
+    }
+    full_key = tuple(task["task_id"] for task in val_tasks)
+    adapter = types.SimpleNamespace(
+        summaries_for=lambda chash, tasks: summary_map.get(chash)
+        if tuple(task["task_id"] for task in tasks) == full_key else None,
+    )
     selected, score, mode, index = dense_select_strategy_candidate(
         result, "seed", adapter, val_tasks,
     )
     check("dense candidate selection chooses full PATCH over tied passive",
           selected["system_prompt"] == "clean" and score == 0.5
           and mode == "dense_candidate" and index == 2)
-    fallback = types.SimpleNamespace(
-        evaluation_summaries={},  # no candidate traces: fail closed
+    selected, _, mode, index = dense_select_strategy_candidate(
+        result, "seed", adapter, list(reversed(val_tasks)),
     )
+    check("mismatched screening task order falls back closed",
+          selected["system_prompt"] == "passive"
+          and mode == "dense_gepa_best_fallback" and index == 1)
+    fallback = types.SimpleNamespace(summaries_for=lambda _chash, _tasks: None)
     selected, _, mode, index = dense_select_strategy_candidate(
         result, "seed", fallback, val_tasks,
     )
     check("dense candidate selection falls back to GEPA best without summaries",
           selected["system_prompt"] == "passive"
           and mode == "dense_gepa_best_fallback" and index == 1)
+
+
+def test_wave5c_task_keyed_summary_storage():
+    task_ids = ["task-a", "task-b", "task-c", "task-d"]
+    full_tasks = [{"task_id": task_id} for task_id in task_ids]
+    mini_tasks = full_tasks[:2]
+    wrong_tasks = [full_tasks[1], full_tasks[0]]
+    candidate = turbo_race.candidate_hash("candidate")
+    adapter = ContractAdapter.__new__(ContractAdapter)
+    adapter.evaluation_summaries = {candidate: {
+        tuple(task_ids): [{"score": 1.0}] * 4,
+        tuple(task["task_id"] for task in mini_tasks): [{"score": 0.0}] * 2,
+    }}
+    check("exact full task key survives later minibatch summary",
+          len(adapter.summaries_for(candidate, full_tasks)) == 4)
+    check("mismatched task order fails closed",
+          adapter.summaries_for(candidate, wrong_tasks) is None)
 
 
 def test_stdout_logger_survives_late_background_write():
@@ -968,6 +995,7 @@ def main():
     tests = [
         test_wave5_dense_transition_reward,
         test_wave5b_dense_candidate_selection,
+        test_wave5c_task_keyed_summary_storage,
         test_stdout_logger_survives_late_background_write,
         test_reflection_route_is_scoped_and_headered,
         test_gepa_014_metric_budget_full_valset_headroom,

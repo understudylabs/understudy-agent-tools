@@ -650,7 +650,7 @@ def dense_state_transition_score(trace):
 
 def screening_dense_metrics(adapter, candidate_hash, val_tasks):
     """Return bounded dense rows and means for train-screening traces."""
-    summaries = adapter.evaluation_summaries.get(candidate_hash)
+    summaries = adapter.summaries_for(candidate_hash, val_tasks)
     return dense_metrics_from_summaries(summaries, val_tasks)
 
 
@@ -712,7 +712,7 @@ def dense_select_strategy_candidate(result, seed_prompt, adapter, val_tasks):
     if not candidates or len(candidates) != len(scores):
         return result.best_candidate, max(scores) if scores else None, "gepa_best", best_idx
     seed_hash = candidate_hash(seed_prompt)
-    seed_summaries = adapter.evaluation_summaries.get(seed_hash)
+    seed_summaries = adapter.summaries_for(seed_hash, val_tasks)
     seed_by_family = screening_family_scores_from_summaries(seed_summaries, val_tasks)
     if seed_by_family is None:
         return result.best_candidate, scores[best_idx], "dense_gepa_best_fallback", best_idx
@@ -725,7 +725,7 @@ def dense_select_strategy_candidate(result, seed_prompt, adapter, val_tasks):
     for index, (candidate, score) in enumerate(zip(candidates, scores)):
         prompt = candidate.get("system_prompt", "")
         candidate_hash_value = candidate_hash(prompt)
-        summaries = adapter.evaluation_summaries.get(candidate_hash_value)
+        summaries = adapter.summaries_for(candidate_hash_value, val_tasks)
         by_family = screening_family_scores_from_summaries(summaries, val_tasks)
         dense_rows, dense_metrics = dense_metrics_from_summaries(summaries, val_tasks)
         if by_family is None or dense_rows is None or dense_metrics is None:
