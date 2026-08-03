@@ -22,10 +22,12 @@ function pair(taskId, family, suffix) {
     task_id: taskId,
     family,
     fixture_sha256: FIXTURE_SHA256,
+    train_split_sha256: TRAIN_SPLIT_SHA256,
     prompt_conversation: [{ role: "user", content: `route ${taskId}` }],
     chosen: [{ role: "assistant", content: `chosen ${suffix}` }],
     rejected: [{ role: "assistant", content: `rejected ${suffix}` }],
     chosen_score: 1,
+    chosen_forbidden_writes: 0,
     rejected_score: 0.5,
     rejected_forbidden_writes: suffix.length % 2,
   };
@@ -72,6 +74,47 @@ describe("domain-identification DPO pair validation", () => {
     assert.equal(result.status, 1);
     assert.equal(report.verdict, "fail");
     assert.match(JSON.stringify(report.failures), /manifest fixture_sha256 missing\/stale vs runtime fixture/);
+  });
+
+  it("requires manifest and row-level train split binding", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "direct-route", "split-direct"),
+      pair("domain-id-lookalike-route-01", "lookalike-route", "split-lookalike"),
+      pair("domain-id-parent-route-01", "parent-route", "split-parent"),
+      pair("domain-id-unmatched-abstain-01", "unmatched-abstain", "split-unmatched"),
+    ];
+    const missingManifest = runGate(rows, { train_split_sha256: undefined });
+    assert.equal(missingManifest.result.status, 1);
+    assert.match(JSON.stringify(missingManifest.report.failures), /manifest train_split_sha256/);
+
+    rows[0].train_split_sha256 = "0".repeat(64);
+    const staleRow = runGate(rows);
+    assert.equal(staleRow.result.status, 1);
+    assert.match(JSON.stringify(staleRow.report.failures), /row train_split_sha256/);
+  });
+
+  it("requires an oracle-correct, zero-forbidden chosen replay", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "direct-route", "chosen-direct"),
+      pair("domain-id-lookalike-route-01", "lookalike-route", "chosen-lookalike"),
+      pair("domain-id-parent-route-01", "parent-route", "chosen-parent"),
+      pair("domain-id-unmatched-abstain-01", "unmatched-abstain", "chosen-unmatched"),
+    ];
+    rows[0].chosen_forbidden_writes = 1;
+    const result = runGate(rows);
+    assert.equal(result.result.status, 1);
+    assert.match(JSON.stringify(result.report.failures), /chosen replay must have zero forbidden effects/);
+  });
+
+  it("derives family from task id instead of trusting a row label", () => {
+    const rows = [
+      pair("domain-id-direct-route-01", "lookalike-route", "spoof-1"),
+      pair("domain-id-direct-route-02", "parent-route", "spoof-2"),
+      pair("domain-id-direct-route-03", "unmatched-abstain", "spoof-3"),
+    ];
+    const result = runGate(rows);
+    assert.equal(result.result.status, 1);
+    assert.match(JSON.stringify(result.report.failures), /skewed_family_unbalanceable/);
   });
 
   it("binds accepted rows and reports to the current fixture and train split", () => {

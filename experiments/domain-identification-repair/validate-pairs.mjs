@@ -17,7 +17,7 @@
  * trainer is unreachable without passing this gate.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
@@ -41,6 +41,7 @@ if (!pairsPath) throw new Error("--pairs is required");
 if (!manifestPath) throw new Error("--manifest is required (a pair file with no manifest is not trainable)");
 const outPath = argValue("--out");
 const reportPath = argValue("--report");
+if (outPath && existsSync(outPath)) unlinkSync(outPath);
 
 const BANDS = domainIdTaskBands();
 const SPLIT_BY_TASK = new Map(DOMAIN_ID_TASKS.map((task) => [task.taskId, task.split]));
@@ -74,7 +75,7 @@ if (!/synthetic|public|fixture/i.test(declaredSource)) {
   fail(0, `manifest source must declare synthetic/public data (got ${JSON.stringify(declaredSource)})`);
 }
 if (manifest.split && manifest.split !== "train") fail(0, `manifest declares split ${manifest.split}; only train is trainable`);
-if (manifest.train_split_sha256 && manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
+if (manifest.train_split_sha256 !== domainIdSplitSha256("train")) {
   fail(0, "manifest train_split_sha256 does not match this slice's frozen train split");
 }
 if (manifest.holdout_split_sha256 && manifest.holdout_split_sha256 !== domainIdSplitSha256("holdout")) {
@@ -109,6 +110,10 @@ lines.forEach((line, index) => {
 
   if (row.fixture_sha256 !== RUNTIME_FIXTURE_SHA256) {
     fail(lineNumber, "row fixture_sha256 missing/stale");
+    return;
+  }
+  if (row.train_split_sha256 !== domainIdSplitSha256("train")) {
+    fail(lineNumber, "row train_split_sha256 missing/stale");
     return;
   }
 
@@ -148,12 +153,17 @@ lines.forEach((line, index) => {
   if (typeof row.chosen_score === "number" && typeof row.rejected_score === "number" && row.chosen_score <= row.rejected_score) {
     return void fail(lineNumber, `chosen (${row.chosen_score}) does not beat rejected (${row.rejected_score})`);
   }
+  if (row.chosen_score !== 1) return void fail(lineNumber, "chosen replay score must be exactly 1.0");
+  if (row.chosen_forbidden_writes !== 0) return void fail(lineNumber, "chosen replay must have zero forbidden effects");
+  if (!Number.isInteger(row.rejected_forbidden_writes) || row.rejected_forbidden_writes < 0) {
+    return void fail(lineNumber, "rejected_forbidden_writes must be a non-negative integer");
+  }
 
   const key = createHash("sha256").update(JSON.stringify([prompt, chosenText, rejectedText])).digest("hex");
   if (seen.has(key)) return void fail(lineNumber, "duplicate pair");
   seen.add(key);
 
-  const family = row.family ?? taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
+  const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
   const band = BANDS[family] ?? "unknown";
   normalized.push({
     task_id: taskId,
@@ -163,10 +173,14 @@ lines.forEach((line, index) => {
     prompt_conversation: prompt,
     chosen,
     rejected,
+    chosen_score: row.chosen_score,
+    chosen_forbidden_writes: row.chosen_forbidden_writes,
+    rejected_score: row.rejected_score,
     rejected_forbidden_writes: Number.isFinite(row.rejected_forbidden_writes)
       ? row.rejected_forbidden_writes
       : 0,
     fixture_sha256: RUNTIME_FIXTURE_SHA256,
+    train_split_sha256: domainIdSplitSha256("train"),
     _line_index: lineNumber,
   });
 });
@@ -213,10 +227,12 @@ const bandCounts = normalized.reduce((counts, row) => {
   return counts;
 }, {});
 const normalizedOutput = normalized.map(({ _line_index, ...row }) => row);
-const rejectedForbiddenWritesTotal = normalized.reduce(
-  (total, row) => total + row.rejected_forbidden_writes,
-  0,
-);
+const rejectedForbiddenWrites = normalized.reduce((summary, row) => {
+  if (row.rejected_forbidden_writes > 0) summary.pairs += 1;
+  summary.total += row.rejected_forbidden_writes;
+  summary.max = Math.max(summary.max, row.rejected_forbidden_writes);
+  return summary;
+}, { pairs: 0, total: 0, max: 0 });
 
 const report = {
   schema_version: "understudy.dpo_pairs_validation.v1",
@@ -235,7 +251,7 @@ const report = {
   family_counts_final: familyCountsFinal,
   dropped_for_balance: droppedForBalance,
   balance_capped: balanceCapped,
-  rejected_forbidden_writes_total: rejectedForbiddenWritesTotal,
+  rejected_forbidden_writes: rejectedForbiddenWrites,
   fixture_sha256: RUNTIME_FIXTURE_SHA256,
   train_split_sha256: domainIdSplitSha256("train"),
   holdout_split_sha256: domainIdSplitSha256("holdout"),

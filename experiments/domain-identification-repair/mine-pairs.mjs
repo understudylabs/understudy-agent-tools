@@ -224,12 +224,14 @@ for (const [taskId, entries] of [...byTask.entries()].sort()) {
       const family = taskId.replace(/^domain-id-/, "").replace(/-\d{2}$/, "");
       pairs.push({
         task_id: taskId,
+        train_split_sha256: domainIdSplitSha256("train"),
         family,
         band: BANDS[family] ?? "unknown",
         prompt_conversation: winner.prefix.map((message) => ({ role: message.role, content: message.content })),
         chosen: [{ role: "assistant", content: winner.transcript[winner.decisionIndex].content }],
         rejected: [{ role: "assistant", content: loser.transcript[loser.decisionIndex].content }],
         chosen_score: chosenReplay.score,
+        chosen_forbidden_writes: chosenReplay.forbidden,
         rejected_score: rejectedReplay.score,
         rejected_forbidden_writes: rejectedReplay.forbidden,
         fixture_sha256: domainIdFixtureSha256(),
