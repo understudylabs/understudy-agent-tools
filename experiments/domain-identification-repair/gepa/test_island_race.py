@@ -51,6 +51,14 @@ def main():
     ]
     ranked = unique_ranked(records)
     check("global prompt dedupe", [r["branch_id"] for r in ranked] == ["b", "c"])
+    selected_ranked = unique_ranked([
+        {"status": "completed", "winner_prompt_sha256": "x", "screening_best_score": .9,
+         "selected_screening_score": .6, "candidates_tried": 2, "wall_clock_s": 1, "branch_id": "x"},
+        {"status": "completed", "winner_prompt_sha256": "y", "screening_best_score": .8,
+         "selected_screening_score": .7, "candidates_tried": 2, "wall_clock_s": 1, "branch_id": "y"},
+    ])
+    check("halving ranks the selected prompt score, not another candidate's best score",
+          [r["branch_id"] for r in selected_ranked] == ["y", "x"])
     check("canonical prompt hash normalizes trailing newline", prompt_sha("x") == prompt_sha("x\n"))
     check("429 classified", classify_failure({"detail": "HTTP 429"})[0] == "rate_limit")
     check("timeout classified", classify_failure({"detail": "request timed out"})[0] == "timeout")
@@ -106,7 +114,7 @@ def main():
     check("exploit preserves GEPA best",
           exploit["system_prompt"] == "seed"
           and exploit_score == .75 and exploit_mode == "gepa_best")
-    print("ALL 18 ISLAND TESTS PASSED")
+    print("ALL 19 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

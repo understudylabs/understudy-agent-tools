@@ -53,7 +53,7 @@ def unique_ranked(records):
             continue
         key = rec["winner_prompt_sha256"]
         prior = by_hash.get(key)
-        rank = (-float(rec.get("screening_best_score", -1)),
+        rank = (-float(rec.get("selected_screening_score", rec.get("screening_best_score", -1))),
                 -int(rec.get("candidates_tried", 0)), float(rec.get("wall_clock_s", 1e9)))
         if prior is None or rank < prior[0]:
             by_hash[key] = (rank, rec)
@@ -186,7 +186,8 @@ class LiveManifest:
         provenance = {
             "phase": phase,
             "strategy": state.get("strategy"),
-            "screening_score": rec.get("screening_best_score"),
+            "screening_score": rec.get("selected_screening_score", rec.get("screening_best_score")),
+            "gepa_best_screening_score": rec.get("screening_best_score"),
             "prompt_sha256": rec.get("winner_prompt_sha256"),
             "dedup_of": state.get("dedup_of"),
             "outcome": state.get("outcome"),

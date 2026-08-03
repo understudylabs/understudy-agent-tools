@@ -434,8 +434,8 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
     (run_dir / "optimized-system-prompt.txt").write_text(winner_prompt.rstrip() + "\n")
     record.update({
         "status": "completed",
-        "screening_best_score": selected_score,
-        "gepa_best_score": max(result.val_aggregate_scores),
+        "screening_best_score": max(result.val_aggregate_scores),
+        "selected_screening_score": selected_score,
         "strategy": strategy,
         "selection_mode": selection_mode,
         "candidates_tried": len(result.candidates),
