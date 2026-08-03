@@ -1,0 +1,12 @@
+{
+  "schema_version": "understudy.artifact-manifest.v1",
+  "artifacts": [
+    {
+      "role": "receipt",
+      "path": "outputs/qwen-serverless-verifier-rl/p1-sft.receipt.json",
+      "sha256": "39ccc12c105af149b9be9dd7a903421686650873a893af062ada1b683a8cafd2",
+      "size_bytes": 3498,
+      "row_count": 1
+    }
+  ]
+}

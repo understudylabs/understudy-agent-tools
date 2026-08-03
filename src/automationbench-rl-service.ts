@@ -25,8 +25,14 @@ import {
   taskBands as syntheticTaskBands,
   taskPool as syntheticTaskPool,
 } from "./synthetic-workflow-offline.js";
+import {
+  ACTION_PROTOCOL_MAX_MODEL_TURNS,
+  ACTION_PROTOCOL_SYSTEM_PROMPT,
+  parseAction,
+} from "./automationbench-action-protocol.js";
 
-export const ACTION_PROTOCOL_SYSTEM_PROMPT = `You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.
+export { ACTION_PROTOCOL_SYSTEM_PROMPT };
+const SYNTHETIC_WORKFLOW_SYSTEM_PROMPT = `You operate workflow apps by calling tools. Reply with exactly ONE JSON object and nothing else.
 
 Allowed replies:
 {"tool":"api_search","arguments":{"query":"<text>"}}
@@ -35,7 +41,8 @@ Allowed replies:
 
 Look up any id you need before writing. Make the smallest change that satisfies the request, touch nothing else, then reply with the finish action.`;
 
-export const MAX_MODEL_TURNS = 12;
+export const SYNTHETIC_WORKFLOW_MAX_MODEL_TURNS = 12;
+export const MAX_MODEL_TURNS = ACTION_PROTOCOL_MAX_MODEL_TURNS;
 export type BenchmarkName = "automationbench" | "synthetic-workflow";
 type Split = "train" | "dev" | "holdout";
 type Adapter = {
@@ -131,10 +138,24 @@ async function route(
   benchmark: BenchmarkName,
 ): Promise<Response> {
   const env = adapter(benchmark);
+  const systemPrompt = benchmark === "automationbench"
+    ? ACTION_PROTOCOL_SYSTEM_PROMPT
+    : SYNTHETIC_WORKFLOW_SYSTEM_PROMPT;
+  const maxModelTurns = benchmark === "automationbench"
+    ? ACTION_PROTOCOL_MAX_MODEL_TURNS
+    : SYNTHETIC_WORKFLOW_MAX_MODEL_TURNS;
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
   if (request.method === "GET" && url.pathname === "/health") return jsonResponse({ ok: true, benchmark });
   if (request.method === "GET" && url.pathname === "/protocol") {
-    return jsonResponse({ system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT, max_model_turns: MAX_MODEL_TURNS });
+    return jsonResponse({ system_prompt: systemPrompt, max_model_turns: maxModelTurns });
+  }
+  if (request.method === "POST" && url.pathname === "/parse") {
+    try {
+      const body = parseBody(await readBody(request));
+      return jsonResponse(parseAction(body.text));
+    } catch (error) {
+      return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
+    }
   }
   if (request.method === "GET" && url.pathname === "/hashes") {
     return jsonResponse({
@@ -167,7 +188,7 @@ async function route(
       const { handle } = env.reset(taskId);
       const episodeId = randomUUID();
       episodes.set(episodeId, { episodeId, taskId, handle, task, finished: false, benchmark });
-      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: ACTION_PROTOCOL_SYSTEM_PROMPT });
+      return jsonResponse({ episode_id: episodeId, task_id: taskId, prompt: task.prompt, system_prompt: systemPrompt });
     } catch (error) {
       return jsonResponse({ error: String(error instanceof Error ? error.message : error) }, 400);
     }
@@ -176,9 +197,15 @@ async function route(
     try {
       const body = parseBody(await readBody(request));
       const episodeId = typeof body.episode_id === "string" ? body.episode_id : "";
-      const action = body.action;
+      let action = body.action;
       const episode = episodes.get(episodeId);
       if (!episode) return jsonResponse({ error: "unknown episode" }, 404);
+      if (typeof action === "string") {
+        const parsed = parseAction(action);
+        if ("error" in parsed) return jsonResponse({ error: parsed.error }, 400);
+        if ("finish" in parsed) return jsonResponse({ error: "finish belongs on /finish" }, 400);
+        action = parsed.action;
+      }
       if (!action || typeof action !== "object" || Array.isArray(action)) return jsonResponse({ error: "action must be an object" }, 400);
       const result = env.step(episode.handle, action);
       episode.finished = result.done;

@@ -1,0 +1,117 @@
+{
+  "schema_version": "understudy.qwen_serverless_verifier_rl.receipt.v1",
+  "phase": "sft",
+  "started_at": 1785638914.8111908,
+  "base_model": "accounts/fireworks/models/qwen3p6-27b",
+  "tokenizer": "Qwen/Qwen3.6-27B",
+  "max_usd": 15.0,
+  "retry": {
+    "attempts": 1,
+    "failures": 0
+  },
+  "snapshots": [],
+  "session_characterization": {
+    "max_live_training_sessions_per_process": 1,
+    "concurrency_finding": "Concurrent sessions showed intermittent 404 TrainingSession-not-found failures; idle-delay probe at 0/30/120/300 seconds succeeded."
+  },
+  "artifact_manifest": [
+    {
+      "role": "serving_contract",
+      "path": "/home/ubuntu/repos/understudy-agent-tools/experiments/qwen-serverless-verifier-rl/serving-contract.qwen3p6-27b.json",
+      "sha256": "1506564ffcf6cd69cb7f7f581802716f5fbb78d3a33952de9479eddc9ad00058",
+      "size_bytes": 758,
+      "row_count": null
+    },
+    {
+      "role": "oracle_jsonl",
+      "path": "outputs/qwen-serverless-verifier-rl/p1-oracle-failed-stride-2.jsonl",
+      "sha256": "e3c1ccc908f48580930a16467f5bb6849a2295d851debace3b8ac50831c658e7",
+      "size_bytes": 208479,
+      "row_count": 60
+    }
+  ],
+  "cost_accounting": {
+    "prefill_priced_at_uncached_rate": true,
+    "note": "Prefill uses the uncached rate as an upper bound.",
+    "evidence_scope": "client-side token counts, uncached prefill upper bound",
+    "request_isolation": "one serialized Fireworks session per process",
+    "figures": {
+      "prefill": {
+        "basis": "upper_bound"
+      },
+      "cached": {
+        "basis": "upper_bound"
+      },
+      "sample": {
+        "basis": "upper_bound"
+      },
+      "train": {
+        "basis": "upper_bound"
+      }
+    }
+  },
+  "split_binding": {
+    "fixture_id": "automationbench-simple-api-offline-v2",
+    "fixture_sha256": "918023a1c2f342ea33e99251ff1f2e5f489c9c4f24e5412a774d97ec2d36cd22",
+    "split": "train",
+    "split_sha256": "71a58657efad873bc21ec13a2b8fdaf2fde483cbcfeb8f6dbc4824207d51758b"
+  },
+  "holdout": {
+    "state": "clean",
+    "run_once": true
+  },
+  "quality_calibration": {
+    "status": "not_scored",
+    "over_acting_episodes": 0,
+    "forbidden_writes": 0,
+    "veto_if_forbidden_writes_increase": true,
+    "failure_clusters": []
+  },
+  "claim_boundary": {
+    "entitled": [
+      "client-side token-cost upper bound",
+      "offline verifier scores for explicitly recorded split"
+    ],
+    "not_entitled": [
+      "provider-authoritative billing total",
+      "holdout quality before an executed frozen-hash run"
+    ]
+  },
+  "run_id": "run-aebf86e4300e496ba99b9eebb633a222",
+  "session_id": "ts-711395946b9a42feb6c40d1675e72749",
+  "teardown_asserted": true,
+  "status": "error",
+  "error": "ValueError: assistant prefix/template mismatch",
+  "stopped_at": "exception",
+  "cost": {
+    "tokens": {
+      "prefill": 0,
+      "cached": 0,
+      "sample": 0,
+      "train": 0
+    },
+    "usd": 0.0,
+    "basis": "upper_bound",
+    "evidence_scope": "client-side token counts, uncached prefill upper bound",
+    "request_isolation": "serialized; at most one live Fireworks training session per process",
+    "figures": {
+      "prefill": {
+        "tokens": 0,
+        "basis": "upper_bound"
+      },
+      "cached": {
+        "tokens": 0,
+        "basis": "upper_bound"
+      },
+      "sample": {
+        "tokens": 0,
+        "basis": "upper_bound"
+      },
+      "train": {
+        "tokens": 0,
+        "basis": "upper_bound"
+      }
+    }
+  },
+  "finished_at": 1785638922.2434807
+}

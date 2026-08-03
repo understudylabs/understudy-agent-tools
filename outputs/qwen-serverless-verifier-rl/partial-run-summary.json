@@ -1,0 +1,71 @@
+{
+  "schema_version": "understudy.qwen_serverless_verifier_rl.partial_run.v1",
+  "status": "aborted_partial",
+  "paid_provider_calls_stopped": true,
+  "phases_completed": [
+    "P0",
+    "P0b",
+    "P1_export"
+  ],
+  "phases_not_run": [
+    "P1_sft",
+    "P2",
+    "P3",
+    "P4",
+    "P5"
+  ],
+  "holdout": {
+    "state": "clean",
+    "executed": false,
+    "run_once": true
+  },
+  "p0": {
+    "base_snapshot": "understudy-dev/run-2accd3a2a22f42668d1d0b602ea12e5a/verifier-rl-base-be9d72d7",
+    "dev_artifact": "p0-base-dev.json",
+    "train_stride": 2,
+    "train_artifact": "p0-base-train-stride-2.json"
+  },
+  "p0b": {
+    "artifact": "p0b-inference-dev-12.json",
+    "status": "unavailable",
+    "reason": "Fireworks inference API returned 404 Model not found, inaccessible, and/or not deployed"
+  },
+  "p1": {
+    "oracle_artifact": "p1-oracle-failed-stride-2.jsonl",
+    "sft_status": "aborted_before_optimizer_due_to_assistant_prefix_template_mismatch",
+    "run_id": "run-aebf86e4300e496ba99b9eebb633a222",
+    "training_session_id": "ts-711395946b9a42feb6c40d1675e72749"
+  },
+  "usage": {
+    "prefill_tokens": 172746,
+    "sample_tokens": 46798,
+    "train_tokens": 0,
+    "cached_tokens": 0,
+    "usd": 0.58314237,
+    "basis": "upper_bound",
+    "evidence_scope": "client-side token counts, uncached prefill upper bound; not provider-authoritative billing"
+  },
+  "retry_404": {
+    "p0": {
+      "attempts": 0,
+      "failures": 0
+    },
+    "p1_sft": {
+      "attempts": 1,
+      "failures": 0,
+      "404": 0
+    }
+  },
+  "claim_boundary": {
+    "entitled": [
+      "partial offline scores and client-side upper-bound cost for recorded runs"
+    ],
+    "not_entitled": [
+      "finished base-to-RL lift",
+      "provider-authoritative billing",
+      "holdout quality",
+      "base capability score: P0 reports are invalid due to the serving harness defect"
+    ]
+  },
+  "measurement_status": "aborted_partial_harness_defect"
+}
