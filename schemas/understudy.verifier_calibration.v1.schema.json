@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.verifier_calibration.v1.schema.json",
+  "title": "understudy.verifier_calibration.v1",
+  "description": "Fail-closed calibration receipt for a hash-bound verifier. A passed receipt proves oracle, sentinel, replay, and malformed-counter semantics; unknown evidence remains explicitly null. References only, with no inline prompts or traces.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "calibration_id", "workload_id", "status", "source_binding_sha256", "fixture_sha256", "verifier_sha256", "oracle", "sentinel", "replay", "malformed_semantics", "artifact_refs", "created_at"],
+  "properties": {
+    "schema_version": { "const": "understudy.verifier_calibration.v1" },
+    "calibration_id": { "type": "string", "minLength": 1 },
+    "workload_id": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["unknown", "passed", "failed"] },
+    "source_binding_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "fixture_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "verifier_sha256": { "$ref": "#/$defs/nullable_sha256" },
+    "oracle": { "$ref": "#/$defs/probe" },
+    "sentinel": { "$ref": "#/$defs/probe" },
+    "replay": { "$ref": "#/$defs/replay_probe" },
+    "malformed_semantics": { "$ref": "#/$defs/malformed_probe" },
+    "artifact_refs": { "$ref": "#/$defs/artifact_refs" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "passed" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "source_binding_sha256": { "$ref": "#/$defs/sha256" },
+          "fixture_sha256": { "$ref": "#/$defs/sha256" },
+          "verifier_sha256": { "$ref": "#/$defs/sha256" },
+          "oracle": { "$ref": "#/$defs/passed_oracle" },
+          "sentinel": { "$ref": "#/$defs/passed_sentinel" },
+          "replay": { "$ref": "#/$defs/passed_replay" },
+          "malformed_semantics": { "$ref": "#/$defs/passed_malformed" },
+          "artifact_refs": { "$ref": "#/$defs/nonempty_artifact_refs" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullable_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "nullable_unit_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+    "probe": {
+      "type": "object", "additionalProperties": false, "required": ["score", "passed"],
+      "properties": { "score": { "$ref": "#/$defs/nullable_unit_score" }, "passed": { "type": ["boolean", "null"] } }
+    },
+    "passed_oracle": {
+      "type": "object", "additionalProperties": false, "required": ["score", "passed"],
+      "properties": { "score": { "const": 1 }, "passed": { "const": true } }
+    },
+    "passed_sentinel": {
+      "type": "object", "additionalProperties": false, "required": ["score", "passed"],
+      "properties": { "score": { "const": 0 }, "passed": { "const": true } }
+    },
+    "replay_probe": {
+      "type": "object", "additionalProperties": false, "required": ["executed", "passed", "trajectory_count"],
+      "properties": { "executed": { "type": ["boolean", "null"] }, "passed": { "type": ["boolean", "null"] }, "trajectory_count": { "type": ["integer", "null"], "minimum": 0 } }
+    },
+    "passed_replay": {
+      "type": "object", "additionalProperties": false, "required": ["executed", "passed", "trajectory_count"],
+      "properties": { "executed": { "const": true }, "passed": { "const": true }, "trajectory_count": { "type": "integer", "minimum": 1 } }
+    },
+    "malformed_probe": {
+      "type": "object", "additionalProperties": false, "required": ["malformed_total_distinct_from_consecutive", "passed"],
+      "properties": { "malformed_total_distinct_from_consecutive": { "type": ["boolean", "null"] }, "passed": { "type": ["boolean", "null"] } }
+    },
+    "passed_malformed": {
+      "type": "object", "additionalProperties": false, "required": ["malformed_total_distinct_from_consecutive", "passed"],
+      "properties": { "malformed_total_distinct_from_consecutive": { "const": true }, "passed": { "const": true } }
+    },
+    "artifact_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "nonempty_artifact_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+  }
+}

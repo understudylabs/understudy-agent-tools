@@ -3,6 +3,33 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## Outcome-first replacement contracts
+
+Four draft-2020-12 contracts form the fail-closed evidence boundary for an
+outcome-first replacement run:
+
+- [`understudy.source_binding.v1.schema.json`](understudy.source_binding.v1.schema.json)
+  binds an opaque source id and sanitized fixture to explicit content hashes.
+- [`understudy.verifier_calibration.v1.schema.json`](understudy.verifier_calibration.v1.schema.json)
+  can pass only with hash-bound oracle=1, sentinel=0, replay, and distinct
+  total-versus-consecutive malformed semantics.
+- [`understudy.gepa_viz_manifest.v1.schema.json`](understudy.gepa_viz_manifest.v1.schema.json)
+  exposes redacted live state, aggregate progress, cost, latency, and artifact
+  references; running/completed manifests require source, calibration, train,
+  and dev hashes.
+- [`understudy.promotion_receipt.v1.schema.json`](understudy.promotion_receipt.v1.schema.json)
+  records promotion or a truthful no-promotion terminal. `promoted` requires a
+  freshly executed hash-bound holdout, passing serving parity, scored results,
+  a compiled-policy reference, claim boundary, demotion trigger, and receipts.
+  Dev-only or historically observed holdout evidence can never promote.
+
+Unknown evidence is represented by required nullable fields rather than an
+invented value. These schemas are deliberately closed: prompts, trace bodies,
+source rows, secrets, and other private payloads must stay in referenced,
+content-addressed artifacts. Costs and latency remain null unless a truthful
+basis exists. Focused conformance cases live in
+[`tests/outcome-first-contracts.test.mjs`](../tests/outcome-first-contracts.test.mjs).
+
 ## Portable environment proposals
 
 [`understudy.proposal_environment.v1.schema.json`](understudy.proposal_environment.v1.schema.json)
