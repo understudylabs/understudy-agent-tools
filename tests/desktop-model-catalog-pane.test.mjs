@@ -98,4 +98,10 @@ test("new platform catalog uses the published customer rate cards", () => {
   assert.deepEqual(rateCardFor("step-3-7-flash"), {
     local: false, input: 0.26, cached: 0.052, output: 1.495,
   });
+  assert.deepEqual(rateCardFor("deepseek-v4-flash"), {
+    local: false, input: 0.182, cached: 0.0364, output: 0.364,
+  });
+  assert.deepEqual(rateCardFor("kimi-k2-7-code"), {
+    local: false, input: 1.235, cached: 0.247, output: 5.2,
+  });
 });

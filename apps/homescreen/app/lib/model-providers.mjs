@@ -63,10 +63,12 @@ export const RATE_CARD = {
   // xAI
   "grok-4.3": { input: 1.625, cached: 0.26, output: 3.25 },
   // DeepSeek
+  "deepseek-v4-flash": { input: 0.182, cached: 0.0364, output: 0.364 },
   "deepseek-v4": { input: 0.3, output: 0.5 },
   "deepseek": { input: 0.14, output: 0.28 },
   // Moonshot
   "kimi-k3": { input: 3, output: 15 },
+  "kimi-k2-7-code": { input: 1.235, cached: 0.247, output: 5.2 },
   "kimi-k2": { input: 0.95, output: 4 },
   // MiniMax
   "minimax": { input: 0.3, output: 1.2 },
