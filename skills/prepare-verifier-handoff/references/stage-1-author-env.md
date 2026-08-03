@@ -170,6 +170,12 @@ Verified integration map (reuse the sim's own primitives; do not rebuild):
   `initial_state` / `assertions`. Set `AUTOMATIONBENCH_STRICT_ASSERTIONS=0` so a
   buggy assertion yields reward 0 instead of crashing the rollout.
 
+An executable, offline, synthetic reference for this wiring — deterministic
+reset, terminal `partial_credit`, scripted oracle, reward-hacking sentinel, and
+frozen-holdout refusal, all under test — lives in
+[`../../../docs/automationbench-offline-subset.md`](../../../docs/automationbench-offline-subset.md).
+It is a harness self-check on invented data, not an AutomationBench score.
+
 ## Determinism caveat (verified, not hypothetical)
 
 `WorldState()` stamps a wall-clock `gmail.internal_date` at construction time. Two
