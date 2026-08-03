@@ -103,6 +103,20 @@ def test_graph_silent_publish():
         check("active branch ledger streams rollout statuses",
               totals["rollout_statuses"] == {"success": 1, "timeout": 1})
 
+        live.records["branch-a"] = {
+            "selection_mode": "dense_candidate",
+            "dense_selected_idx": 2,
+            "dense_selected_hash": "candidate-hash",
+            "screening_dense_metrics": {"unmatched_dense_mean": 1.0},
+        }
+        live.publish()
+        provenance = writes[-1]["nodes"][-1]["provenance"]
+        check("live node publishes dense selection evidence",
+              provenance["selection_mode"] == "dense_candidate"
+              and provenance["selected_candidate_index"] == 2
+              and provenance["selected_candidate_hash"] == "candidate-hash"
+              and provenance["screening_dense_metrics"] == {"unmatched_dense_mean": 1.0})
+
         live.ingest_url = "http://synthetic.invalid/ingest"
         island_race.em.publish_run_shaped = lambda *args: calls.append(args) or {"ok": True}
         result = live.publish()
