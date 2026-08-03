@@ -652,8 +652,8 @@ def main():
     parser.add_argument("--stage1-metric-calls", type=int, default=12)
     parser.add_argument("--stage2-metric-calls", type=int, default=24)
     parser.add_argument("--concurrency", type=int, default=4)
-    parser.add_argument("--max-total-reflections", type=int, default=64,
-                        help="global ceiling; Stage 1 islands get 4 each and Stage 2 survivors 8 each")
+    parser.add_argument("--max-total-reflections", type=int, default=128,
+                        help="global ceiling; Stage 1 islands get 8 each and Stage 2 survivors 16 each")
     parser.add_argument("--spend-authorization-usd", type=float, default=1000.0)
     parser.add_argument("--allow-unmetered-cost", action="store_true")
     parser.add_argument("--ingest-url", default="http://127.0.0.1:5151/ingest")
@@ -809,7 +809,7 @@ def main():
                           reflection_key=reflection_key, max_metric_calls=args.stage1_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage1", episode_cap=args.stage1_episodes,
-                          reflection_cap=4,
+                          reflection_cap=8,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers,
                           reflection_model=args.reflection_model,
@@ -899,7 +899,7 @@ def main():
                           reflection_key=reflection_key, max_metric_calls=args.stage2_metric_calls,
                           concurrency=args.concurrency, spend_authorization_usd=args.spend_authorization_usd,
                           live=live, phase="stage2", episode_cap=args.stage2_episodes,
-                          reflection_cap=8,
+                          reflection_cap=16,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers,
                           reflection_model=args.reflection_model,
