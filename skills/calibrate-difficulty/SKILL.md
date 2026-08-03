@@ -20,3 +20,26 @@ scored rows; insufficient sample takes precedence and remains `caution`.
 Only sufficiently sampled bands below the threshold are `measurable` and
 `invest`. Keep fixture, split, scoring protocol, and source hash visible, and
 use dev/train data for decisions—never holdout data.
+
+## Safety Gates
+
+- Use only a frozen, source-bound train/dev run. Never use holdout rows or make
+  provider calls from this calibration step.
+- Predeclare the saturation threshold and minimum sample. An undersized band is
+  `insufficient_sample` even when its observed mean is perfect.
+- Treat the report as a spend-routing screen, not promotion evidence or proof
+  that a model can beat the incumbent.
+
+## Resolve CLI
+
+Build before invoking the repository-local script:
+
+```bash
+npm run build
+node scripts/difficulty-calibration.mjs \
+  --run path/to/source-bound-dev-run.json \
+  --threshold 0.95 --min-sample 10 --out report.json
+```
+
+The script hashes the exact input bytes and writes a deterministic calibration
+report apart from `generated_at`.
