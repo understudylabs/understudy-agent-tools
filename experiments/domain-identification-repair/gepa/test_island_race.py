@@ -33,7 +33,7 @@ from island_race import (  # noqa: E402
     canonical_promotion_eligible, family_aware_ranked, incomplete_branch_ids,
     island_specs_for_plan,
     load_seed_population_manifest, prompt_sha, required_physical_episode_cap,
-    stamp_wave, unique_ranked,
+    stage2_parent_map, stamp_wave, unique_ranked,
 )
 from turbo_race import (  # noqa: E402
     acceptance_criterion_for_strategy, screening_family_scores, select_strategy_candidate,
@@ -218,6 +218,9 @@ def test_wave6_seed_prompt_construction():
               "patch" in lower and "unmatched" in lower and "finish" in lower)
         check(f"wave6 {branch_id} forbids broad mutation",
               "only" in lower or "never" in lower)
+    check("stage2 survivors retain their actual stage1 ancestry",
+          stage2_parent_map([{"branch_id": "table-1"}, {"branch_id": "proof-1"}])
+          == {"survivor-1": "table-1", "survivor-2": "proof-1"})
 
 
 def test_completed_manifest_stamps_confirmation_totals():
@@ -637,7 +640,7 @@ def main():
           and sum(strategy == "exact_state_transition" for _, strategy, *_ in wave4) == 4
           and sum(strategy == "explicit_tool_sequence" for _, strategy, *_ in wave4) == 2
           and sum(strategy == "state_transition_crossover" for _, strategy, *_ in wave4) == 2)
-    print("ALL 42 ISLAND TESTS PASSED")
+    print("ALL 43 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

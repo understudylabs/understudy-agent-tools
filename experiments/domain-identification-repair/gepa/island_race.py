@@ -102,6 +102,12 @@ def prompt_sha(text):
     return hashlib.sha256((text.rstrip() + "\n").encode()).hexdigest()
 
 
+def stage2_parent_map(survivors):
+    """Bind stable Stage-2 node IDs to the Stage-1 candidates they exploit."""
+    return {f"survivor-{index}": rec["branch_id"]
+            for index, rec in enumerate(survivors, 1)}
+
+
 def load_seed_population_manifest(path, island_specs, expected_valset_sha256):
     """Load eight distinct, train-screened prompts without serializing prompt text.
 
@@ -682,7 +688,7 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
                  reflection_base_url="https://api.understudylabs.com/v1",
                  reflection_headers=None,
                  reflection_provider_label="understudy-gateway",
-                 dense_candidate_selection=False):
+                 dense_candidate_selection=False, parents=None):
     results = {}
     lock = threading.Lock()
     threads = []
@@ -693,7 +699,7 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
         budget.register_branch(bid, episode_cap, reflection_cap, time.time() + 3600)
         live.update(bid, label=f"{strategy.replace('_', ' ').title()} · {bid}", phase=phase,
                     strategy=strategy, status="screening", episodes_expected=episode_cap,
-                    parent="wave1-winner", run_dir=run_dir)
+                    parent=(parents or {}).get(bid, "wave1-winner"), run_dir=run_dir)
         thread = threading.Thread(target=run_branch, kwargs={
             "bid": bid, "seed": seed, "subset": subset, "trainset": train,
             "seed_prompt": seed_prompts[bid], "sidecar": sidecar, "budget": budget,
@@ -1064,6 +1070,7 @@ def main():
                         failure_reason="lower screening rank or globally deduplicated")
 
     stage2_specs, stage2_prompts = [], {}
+    stage2_parents = stage2_parent_map(survivors)
     for index, rec in enumerate(survivors, 1):
         bid = f"survivor-{index}"
         strategy = f"exploit_{rec['branch_id']}"
@@ -1084,7 +1091,7 @@ def main():
                           reflection_provider_label=args.reflection_provider_label,
                           dense_candidate_selection=args.island_plan in {
                               "wave5-dense-transition", "wave6-seeded-population",
-                          })
+                          }, parents=stage2_parents)
 
     incomplete2 = incomplete_branch_ids(stage2_specs, stage2)
     if incomplete2:
