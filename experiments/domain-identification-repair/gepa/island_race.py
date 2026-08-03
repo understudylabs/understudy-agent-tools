@@ -312,7 +312,7 @@ def run_parallel(specs, *, seed_prompts, subsets, train, sidecar, budget, runs_r
             "runs_root": runs_root, "run_id": f"{experiment_id}-{bid}",
             "reflection_key": reflection_key, "max_metric_calls": max_metric_calls,
             "concurrency": concurrency, "spend_authorization_usd": spend_authorization_usd,
-            "results": results, "results_lock": lock,
+            "results": results, "results_lock": lock, "strategy": strategy,
         }, name=bid, daemon=True)
         thread.start()
         threads.append(thread)

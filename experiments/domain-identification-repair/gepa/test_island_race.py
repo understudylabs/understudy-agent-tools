@@ -26,6 +26,7 @@ from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_no_distinct_receipt, classify_failure,
     prompt_sha, unique_ranked,
 )
+from turbo_race import select_strategy_candidate  # noqa: E402
 
 
 def check(label, condition):
@@ -88,7 +89,24 @@ def main():
           and receipt["selected_winner"] is None
           and receipt["promotion_blocked"] is True
           and receipt["holdout_executed"] is False)
-    print("ALL 16 ISLAND TESTS PASSED")
+    fake = types.SimpleNamespace(
+        candidates=[
+            {"system_prompt": "seed"},
+            {"system_prompt": "different near best"},
+            {"system_prompt": "different weak"},
+        ],
+        val_aggregate_scores=[.75, .70, .25],
+        best_candidate={"system_prompt": "seed"},
+    )
+    explore, explore_score, explore_mode = select_strategy_candidate(fake, "seed", "explore")
+    check("explore retains a distinct near-best candidate",
+          explore["system_prompt"] == "different near best"
+          and explore_score == .70 and explore_mode == "distinct_near_best")
+    exploit, exploit_score, exploit_mode = select_strategy_candidate(fake, "seed", "exploit")
+    check("exploit preserves GEPA best",
+          exploit["system_prompt"] == "seed"
+          and exploit_score == .75 and exploit_mode == "gepa_best")
+    print("ALL 18 ISLAND TESTS PASSED")
 
 
 if __name__ == "__main__":

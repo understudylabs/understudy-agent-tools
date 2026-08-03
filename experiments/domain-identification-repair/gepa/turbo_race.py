@@ -290,13 +290,33 @@ def subset_hash(tasks):
 # ---------------------------------------------------------------------------
 # Stage A: one GEPA branch.
 # ---------------------------------------------------------------------------
-def make_reflection(fuse, reflection_key):
+REFLECTION_DIRECTIVES = {
+    "exploit": (
+        "Act as a conservative prompt optimizer. Preserve working behavior and make the smallest "
+        "evidence-backed change that fixes the supplied failures. Return a complete candidate prompt."
+    ),
+    "explore": (
+        "Act as a divergent prompt optimizer. Produce a materially different complete prompt, not a "
+        "paraphrase or the incumbent unchanged. Explore a new decomposition or decision procedure while "
+        "still satisfying the supplied contracts."
+    ),
+    "failure_targeted": (
+        "Act as a failure-cluster specialist. Derive explicit rules from the supplied failing traces, "
+        "counterexamples, and grader feedback. Produce a complete candidate prompt that directly targets "
+        "those failure modes; do not return the incumbent unchanged."
+    ),
+}
+
+
+def make_reflection(fuse, reflection_key, strategy="exploit"):
     import litellm
 
     def reflection(messages):
         fuse.note_reflection()  # counts + caps (global + branch) BEFORE the spend
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
+        directive = REFLECTION_DIRECTIVES.get(strategy, REFLECTION_DIRECTIVES["exploit"])
+        messages = [{"role": "system", "content": directive}, *messages]
         response = litellm.completion(
             model="openai/kimi-k3",
             messages=messages,
@@ -315,9 +335,38 @@ def make_reflection(fuse, reflection_key):
     return reflection
 
 
+def select_strategy_candidate(result, seed_prompt, strategy):
+    """Select a branch output without confusing exploration with promotion.
+
+    Exploit keeps GEPA's best candidate. Explore modes may retain a distinct,
+    near-best generated candidate so independent islands do not all collapse
+    back to the incumbent before global deduplication. These are still
+    screening-only; canonical k=3 remains the sole promotion evidence.
+    """
+    candidates = list(result.candidates)
+    scores = [float(score) for score in result.val_aggregate_scores]
+    if not candidates or len(candidates) != len(scores):
+        return result.best_candidate, max(scores) if scores else None, "gepa_best"
+    best_score = max(scores)
+    if strategy == "exploit":
+        return result.best_candidate, best_score, "gepa_best"
+    max_drop = 0.10 if strategy == "explore" else 0.25
+    seed_hash = hashlib.sha256((seed_prompt.rstrip() + "\n").encode()).hexdigest()
+    eligible = []
+    for index, (candidate, score) in enumerate(zip(candidates, scores)):
+        prompt = candidate.get("system_prompt", "")
+        candidate_sha = hashlib.sha256((prompt.rstrip() + "\n").encode()).hexdigest()
+        if prompt and candidate_sha != seed_hash and score >= best_score - max_drop:
+            eligible.append((score, index, candidate))
+    if not eligible:
+        return result.best_candidate, best_score, "gepa_best_no_distinct_near_best"
+    score, _, candidate = max(eligible, key=lambda item: (item[0], item[1]))
+    return candidate, score, "distinct_near_best"
+
+
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                runs_root, run_id, reflection_key, max_metric_calls, concurrency,
-               spend_authorization_usd, results, results_lock):
+               spend_authorization_usd, results, results_lock, strategy="exploit"):
     """Run one Stage-A GEPA branch. Fail-closed: any fuse trip or service-pressure
     abort records the branch as failed with no promotable score."""
     import gepa
@@ -349,7 +398,7 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             trainset=trainset,
             valset=subset["tasks"],
             adapter=adapter,
-            reflection_lm=make_reflection(fuse, reflection_key),
+            reflection_lm=make_reflection(fuse, reflection_key, strategy),
             max_metric_calls=max_metric_calls,
             reflection_minibatch_size=4,
             candidate_selection_strategy="current_best",
@@ -378,11 +427,17 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
             results[bid] = record
         return
 
-    winner_prompt = result.best_candidate["system_prompt"]
+    selected_candidate, selected_score, selection_mode = select_strategy_candidate(
+        result, seed_prompt, strategy,
+    )
+    winner_prompt = selected_candidate["system_prompt"]
     (run_dir / "optimized-system-prompt.txt").write_text(winner_prompt.rstrip() + "\n")
     record.update({
         "status": "completed",
-        "screening_best_score": max(result.val_aggregate_scores),
+        "screening_best_score": selected_score,
+        "gepa_best_score": max(result.val_aggregate_scores),
+        "strategy": strategy,
+        "selection_mode": selection_mode,
         "candidates_tried": len(result.candidates),
         "winner_prompt_sha256": hashlib.sha256((winner_prompt.rstrip() + "\n").encode()).hexdigest(),
         "winner_candidate_hash": candidate_hash(winner_prompt),
