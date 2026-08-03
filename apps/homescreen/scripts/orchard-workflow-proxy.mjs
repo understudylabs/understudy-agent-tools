@@ -5,6 +5,7 @@ import {
   eventSchemaSha256,
   validateCanonicalEvent,
 } from "./orchard-contract.mjs";
+import { validateEventPage, viewerAuthorized } from "./orchard-live-policy.mjs";
 
 const required = (name) => {
   const value = process.env[name]?.trim();
@@ -16,6 +17,7 @@ const baseUrl = required("ORCHARD_TRAIN_API_URL").replace(/\/$/, "");
 const experimentId = required("ORCHARD_EXPERIMENT_ID");
 const apiKey = required("ORCHARD_TRAIN_API_KEY");
 const runToken = required("ORCHARD_EXPERIMENT_RUN_TOKEN");
+const viewerToken = required("ORCHARD_VIEWER_TOKEN");
 const allowedOrigin = process.env.ORCHARD_ALLOWED_ORIGIN?.trim() ?? "http://localhost:1420";
 const port = Number(process.env.ORCHARD_EVENT_PROXY_PORT ?? 1431);
 
@@ -36,17 +38,29 @@ const redact = (event) => Object.fromEntries(
 );
 
 const headers = (origin) => ({
-  "access-control-allow-origin": origin === allowedOrigin ? origin : allowedOrigin,
+  ...(origin === allowedOrigin ? { "access-control-allow-origin": origin } : {}),
+  "access-control-allow-headers": "authorization, content-type",
+  "access-control-allow-methods": "GET, OPTIONS",
   "cache-control": "no-store, max-age=0",
   "content-type": "application/json; charset=utf-8",
   "vary": "origin",
 });
 
 createServer(async (request, response) => {
-  const origin = request.headers.origin ?? allowedOrigin;
+  const origin = request.headers.origin;
   if (origin !== allowedOrigin) {
     response.writeHead(403, headers(origin));
     response.end(JSON.stringify({ error: "origin not allowed" }));
+    return;
+  }
+  if (request.method === "OPTIONS") {
+    response.writeHead(204, headers(origin));
+    response.end();
+    return;
+  }
+  if (!viewerAuthorized(request.headers.authorization, viewerToken)) {
+    response.writeHead(401, headers(origin));
+    response.end(JSON.stringify({ error: "viewer authorization required" }));
     return;
   }
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
@@ -71,6 +85,7 @@ createServer(async (request, response) => {
     response.end(JSON.stringify({ error: "invalid cursor" }));
     return;
   }
+  const requestedAfter = Number(after);
   try {
     const upstream = await fetch(
       `${baseUrl}/api/train/v1/experiments/${encodeURIComponent(experimentId)}/events?after=${after}`,
@@ -84,13 +99,7 @@ createServer(async (request, response) => {
     );
     const body = await upstream.json();
     if (!upstream.ok) throw new Error(`upstream ${upstream.status}`);
-    if (
-      body.experiment_id !== experimentId
-      || !Array.isArray(body.events)
-      || body.events.some((event) => !isCanonicalEvent(event))
-      || !Number.isInteger(body.next_after)
-      || typeof body.has_more !== "boolean"
-    ) {
+    if (!validateEventPage(body, { experimentId, requestedAfter, isCanonicalEvent })) {
       throw new Error("upstream returned an invalid event stream");
     }
     response.writeHead(200, headers(origin));

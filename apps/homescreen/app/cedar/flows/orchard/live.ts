@@ -16,18 +16,16 @@ export type WorkflowEvent = {
   code?: string;
 };
 
-function scoreOf(metrics?: Record<string, number>): number | null {
-  if (!metrics) return null;
-  for (const key of ["quality", "score", "accuracy", "pass_rate", "reward"]) {
-    const value = metrics[key];
-    if (Number.isFinite(value)) return value;
-  }
-  const first = Object.values(metrics).find(Number.isFinite);
-  return first ?? null;
+type QualityPolicy = { metric: string; direction: "higher" | "lower" };
+
+function scoreOf(metrics: Record<string, number> | undefined, policy: QualityPolicy): number | null {
+  if (!metrics || policy.direction !== "higher") return null;
+  const value = metrics[policy.metric];
+  return Number.isFinite(value) ? value : null;
 }
 
 /** Convert the canonical redacted Workflow stream into Orchard's renderer model. */
-export function buildWorkflowWorld(events: WorkflowEvent[]) {
+export function buildWorkflowWorld(events: WorkflowEvent[], quality: QualityPolicy) {
   const sorted = [...events].sort((a, b) => a.sequence - b.sequence);
   const experimentId = sorted[0]?.experiment_id ?? "waiting-for-workflow";
   const candidates = new Map<string, OrchardRun>();
@@ -59,7 +57,7 @@ export function buildWorkflowWorld(events: WorkflowEvent[]) {
     run.at ??= event.occurred_at;
     if (event.type === "candidate.state_changed" && event.state) run.status = event.state;
     if (event.type === "score.snapshot") {
-      run.acc = scoreOf(event.metrics);
+      run.acc = scoreOf(event.metrics, quality);
       run.balanced = run.acc;
     }
     if (event.type === "rollout.state_changed" && event.task_id && event.state) {

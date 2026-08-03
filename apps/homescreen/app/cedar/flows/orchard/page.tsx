@@ -156,7 +156,10 @@ export default function OrchardFlow() {
   const [liveEvents, setLiveEvents] = useState<WorkflowEvent[]>([]);
   const [liveStatus, setLiveStatus] = useState<"idle" | "connecting" | "live" | "unavailable">("idle");
   const world = useMemo(
-    () => src === "workflow" ? buildWorkflowWorld(liveEvents) : generateRun(),
+    () => src === "workflow" ? buildWorkflowWorld(liveEvents, {
+      metric: process.env.NEXT_PUBLIC_ORCHARD_QUALITY_METRIC ?? "quality",
+      direction: process.env.NEXT_PUBLIC_ORCHARD_QUALITY_DIRECTION === "lower" ? "lower" : "higher",
+    }) : generateRun(),
     [src, liveEvents],
   );
   const geom = useMemo(() => makeGeom(world), [world]);
@@ -215,7 +218,12 @@ export default function OrchardFlow() {
     const poll = async () => {
       try {
         const proxy = process.env.NEXT_PUBLIC_ORCHARD_EVENT_PROXY_URL ?? "http://127.0.0.1:1431";
-        const response = await fetch(`${proxy.replace(/\/$/, "")}/events?after=${after}`, { cache: "no-store" });
+        const viewerToken = process.env.NEXT_PUBLIC_ORCHARD_VIEWER_TOKEN;
+        if (!viewerToken) throw new Error("viewer capability unavailable");
+        const response = await fetch(`${proxy.replace(/\/$/, "")}/events?after=${after}`, {
+          cache: "no-store",
+          headers: { authorization: `Bearer ${viewerToken}` },
+        });
         if (!response.ok) throw new Error(`live source ${response.status}`);
         const payload = await response.json() as {
           events?: WorkflowEvent[];
