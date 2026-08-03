@@ -81,6 +81,40 @@ export {
   type ExperimentRequest,
   type ExperimentSubmitRequest,
 } from "./experiment-executor.js";
+export {
+  METHOD_LADDER_INPUT_SCHEMA,
+  METHOD_LADDER_RECOMMENDATION_SCHEMA,
+  OUTCOMES,
+  recommendMethod,
+  sha256 as sha256MethodLadderInput,
+  type MethodLadderInput,
+  type Outcome as MethodLadderOutcome,
+  type Recommendation as MethodLadderRecommendation,
+} from "./method-ladder/index.js";
+export {
+  BASELINE_FANOUT_SCHEMA,
+  GEPA_CONTROLLER_SCHEMA,
+  GEPA_VIZ_SCHEMA,
+  executeBaselineFanout,
+  idempotencyKey as outcomeExecutorIdempotencyKey,
+  planBaselineFanout,
+  runGepaHillclimb,
+  sha256 as sha256OutcomeExecutorInput,
+  type BaselineCheckpoint,
+  type BaselineInput,
+  type BaselinePlan,
+  type ExecutionAdapter,
+  type ExecutionResult,
+  type Fuse as OutcomeExecutorFuse,
+  type GepaCheckpoint,
+  type GepaEvaluation,
+  type GepaInput,
+  type GepaProposal,
+  type GepaRowReceipt,
+  type GepaVizManifest,
+  type Hooks as OutcomeExecutorHooks,
+  type StoredCall,
+} from "./outcome-executors/index.js";
 
 export const repoRoot = installedPackageRoot();
 

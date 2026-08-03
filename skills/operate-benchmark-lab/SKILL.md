@@ -78,6 +78,35 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
   never rejected a wrong answer has not been tested; do not regrade or
   calibrate against it.
 
+## Outcome-first replacement loop
+
+When the requested result is “meet or beat the incumbent” rather than merely
+“run this model,” operate one hash-bound decision loop:
+
+1. Bind each task, history, trajectory, final effects, and outcome contract to
+   one authoritative source execution. Do not optimize ambiguous or
+   reconstructed rows.
+2. Calibrate the verifier with a known-valid oracle and plausible wrong
+   sentinels, then calibrate difficulty to prove measurable dev headroom.
+3. Freeze immutable train, dev, and holdout boundaries. Optimize on train,
+   make method decisions from canonical dev receipts, and leave holdout
+   untouched until an explicitly authorized promotion evaluation.
+4. Measure the incumbent and candidate through the same canonical serving
+   contract. Preserve per-family scores, cost, latency, failures, and hashes;
+   aggregate-only evidence is insufficient for regression gates.
+5. Run GEPA only after those gates pass. Feed its canonical dev receipt into
+   the fail-closed method ladder to decide whether to continue GEPA or advance
+   to SFT, DPO, or GRPO within the remaining budget.
+6. Before any promotion claim, require serving parity, strict arm evidence,
+   protected-family no-regression, immutable artifacts, and an authorized
+   fresh holdout receipt. `target_met` on dev is a candidate-selection result,
+   not production evidence.
+
+The exact contracts, failure boundaries, and current executor integration
+status are in [`references/outcome-first-replacement-loop.md`](references/outcome-first-replacement-loop.md).
+The method-ladder decision contract is in
+[`references/method-ladder.md`](references/method-ladder.md).
+
 ## The lifecycle
 
 0. **Intake (dropped workloads).** When the user drops a folder or file into
