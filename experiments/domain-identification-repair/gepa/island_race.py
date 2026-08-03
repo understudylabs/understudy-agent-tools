@@ -161,25 +161,27 @@ def build_no_distinct_receipt(*, experiment_id, dev_sha, islands, distinct_promp
 
 def build_invalid_execution_receipt(*, experiment_id, dev_sha, islands,
                                     incomplete_branches, budget, manifest_path,
-                                    manifest_digest, publish_status, wall_clock_s):
+                                    manifest_digest, publish_status, wall_clock_s,
+                                    survivors=None, outcome=None, stop_reason=None):
     """Build terminal evidence for an incomplete island wave.
 
     This receipt deliberately contains no survivor, confirmation, or promotion
     result.  A later run may retry with a fresh immutable experiment id, but it
     must not reinterpret partial branch output as optimizer-quality evidence.
     """
-    return {
+    receipt = {
         "schema_version": "understudy.island_race_receipt.v1",
         "experiment_id": experiment_id,
         "state": "invalid_execution",
-        "stop_reason": "one or more scheduled branches lacked a completed receipt",
+        "stop_reason": (stop_reason or
+                        "one or more scheduled branches lacked a completed receipt"),
         "dev_split_sha256": dev_sha,
         "holdout_executed": False,
         "islands": islands,
         "incomplete_branches": list(incomplete_branches),
         "distinct_prompt_count": None,
         "stage2_executed": False,
-        "survivors": {},
+        "survivors": survivors or {},
         "confirmations": [],
         "selected_winner": None,
         "promotion_blocked": True,
@@ -191,6 +193,9 @@ def build_invalid_execution_receipt(*, experiment_id, dev_sha, islands,
         "cost_coverage": "out_of_band_clickhouse",
         "wall_clock_s": wall_clock_s,
     }
+    if outcome is not None:
+        receipt["outcome"] = outcome
+    return receipt
 
 
 class LiveManifest:
@@ -616,6 +621,26 @@ def main():
                           live=live, phase="stage2", episode_cap=args.stage2_episodes,
                           student_model=args.student_model, student_api_base=args.student_base_url,
                           student_api_key=student_api_key, student_headers=student_headers)
+
+    incomplete2 = incomplete_branch_ids(stage2_specs, stage2)
+    if incomplete2:
+        reason = ("scheduled Stage-2 survivors lacked completed receipts: "
+                  + ", ".join(incomplete2))
+        snapshot = live.stop(
+            state="invalid_execution", outcome="incomplete_stage2", reason=reason,
+            distinct_prompt_count=len(unique),
+        )
+        receipt = build_invalid_execution_receipt(
+            experiment_id=experiment_id, dev_sha=dev_sha, islands=stage1,
+            incomplete_branches=incomplete2, budget=budget.snapshot(),
+            manifest_path=manifest_path,
+            manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
+            publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
+            survivors=stage2, outcome="incomplete_stage2", stop_reason=reason,
+        )
+        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        print(json.dumps(receipt, indent=2))
+        return
 
     finalists = unique_ranked(stage2.values())[:2]
     confirmations = []

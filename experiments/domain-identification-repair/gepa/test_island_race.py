@@ -193,6 +193,41 @@ def main():
     check("invalid wave blocks stage2", invalid["stage2_executed"] is False)
     check("invalid wave blocks promotion", invalid["promotion_blocked"] is True)
     check("invalid wave keeps holdout sealed", invalid["holdout_executed"] is False)
+    stage2_specs = [
+        ("survivor-1", "exploit_a", 1, 0),
+        ("survivor-2", "exploit_b", 2, 1),
+    ]
+    stage2_records = {
+        "survivor-1": {"status": "failed", "abort_reason": "episode cap 28"},
+        "survivor-2": {"status": "failed", "abort_reason": "reflection cap 4"},
+    }
+    incomplete2 = incomplete_branch_ids(stage2_specs, stage2_records)
+    stage2_invalid = build_invalid_execution_receipt(
+        experiment_id="invalid-stage2-test", dev_sha="dev", islands={},
+        incomplete_branches=incomplete2, budget={},
+        manifest_path="manifest.json", manifest_digest="digest",
+        publish_status="graph-silent", wall_clock_s=1,
+        survivors=stage2_records, outcome="incomplete_stage2",
+        stop_reason="scheduled Stage-2 survivors lacked completed receipts: survivor-1, survivor-2",
+    )
+    check("failed Stage-2 survivors invalidate wave",
+          incomplete2 == ["survivor-1", "survivor-2"])
+    check("Stage-2 invalid execution state",
+          stage2_invalid["state"] == "invalid_execution")
+    check("Stage-2 blocks promotion and confirmation",
+          stage2_invalid["promotion_blocked"] is True
+          and stage2_invalid["stage2_executed"] is False
+          and stage2_invalid["selected_winner"] is None
+          and stage2_invalid["confirmations"] == [])
+    check("Stage-2 failure details are retained",
+          set(stage2_invalid["survivors"]) == {"survivor-1", "survivor-2"}
+          and "reflection cap 4" in stage2_invalid["survivors"]["survivor-2"]["abort_reason"])
+    normal_stage2 = {
+        "survivor-1": {"status": "completed"},
+        "survivor-2": {"status": "completed"},
+    }
+    check("completed Stage-2 remains eligible",
+          incomplete_branch_ids(stage2_specs, normal_stage2) == [])
     check("stage1 physical cap includes final full-valset evaluation",
           required_physical_episode_cap(12, 4) == 16)
     check("stage2 physical cap includes final full-valset evaluation",
