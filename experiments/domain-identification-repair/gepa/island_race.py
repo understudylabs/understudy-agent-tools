@@ -97,6 +97,17 @@ def incomplete_branch_ids(specs, records):
     ]
 
 
+def required_physical_episode_cap(max_metric_calls, valset_size):
+    """Conservative GEPA 0.1.4 physical cap for a logical metric budget.
+
+    The max-metric stopper is checked between iterations.  If the last
+    minibatch is accepted, GEPA evaluates the candidate on the full valset
+    before checking the stopper again, so physical calls may exceed the
+    logical budget by one complete valset.
+    """
+    return max_metric_calls + valset_size
+
+
 def classify_failure(rec):
     detail = str(rec.get("detail") or rec.get("abort_reason") or "unknown failure")[:240]
     lowered = detail.lower()
@@ -437,8 +448,10 @@ def main():
     parser.add_argument("--seed-prompt", required=True)
     parser.add_argument("--runs-root", default=str(Path.home() / ".di-runs"))
     parser.add_argument("--experiment-id", default="")
-    parser.add_argument("--stage1-episodes", type=int, default=12)
-    parser.add_argument("--stage2-episodes", type=int, default=24)
+    parser.add_argument("--stage1-episodes", type=int, default=16,
+                        help="physical episode cap; >= stage1 metric calls + screening valset size")
+    parser.add_argument("--stage2-episodes", type=int, default=28,
+                        help="physical episode cap; >= stage2 metric calls + screening valset size")
     parser.add_argument("--stage1-metric-calls", type=int, default=12)
     parser.add_argument("--stage2-metric-calls", type=int, default=24)
     parser.add_argument("--concurrency", type=int, default=4)
@@ -486,6 +499,14 @@ def main():
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
     subsets = stratified_screening_subsets(dev)
+    screening_size = len(subsets[0]["tasks"])
+    required_stage1 = required_physical_episode_cap(args.stage1_metric_calls, screening_size)
+    required_stage2 = required_physical_episode_cap(args.stage2_metric_calls, screening_size)
+    if args.stage1_episodes < required_stage1 or args.stage2_episodes < required_stage2:
+        raise FuseTripped(
+            "physical episode caps are below GEPA 0.1.4 worst-case accepted-candidate "
+            f"headroom: stage1>={required_stage1}, stage2>={required_stage2}"
+        )
     seed_canonical = json.loads(Path(args.wave1_seed_canonical).read_text())
     winner_canonical = json.loads(Path(args.wave1_winner_canonical).read_text())
     rank_protocol = em.make_protocol(method="canonical_rollout", split_sha256=dev_sha, samples_per_task=K)

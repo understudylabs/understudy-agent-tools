@@ -7,6 +7,7 @@ No holdout identifiers or production task ids appear in this file.
 """
 import re
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -60,6 +61,48 @@ def test_stdout_logger_survives_late_background_write():
         worker.join(timeout=1)
     check("all eight late logger threads finished", not any(worker.is_alive() for worker in workers))
     check("all eight late logger writes avoided closed streams", errors == [])
+
+
+def test_gepa_014_metric_budget_full_valset_headroom():
+    """A tied final proposal can overshoot the logical stopper by one valset."""
+    import gepa
+    from gepa.core.adapter import EvaluationBatch
+    from gepa.logging.logger import StdOutLogger
+
+    class SyntheticAdapter:
+        def __init__(self):
+            self.physical_calls = 0
+            self.proposals = 0
+
+        def evaluate(self, batch, candidate, capture_traces=False):
+            self.physical_calls += len(batch)
+            outputs = [{"item": item} for item in batch]
+            return EvaluationBatch(
+                outputs=outputs,
+                scores=[0.5] * len(batch),
+                trajectories=outputs if capture_traces else None,
+            )
+
+        def make_reflective_dataset(self, candidate, eval_batch, components_to_update):
+            return {"system_prompt": [{"Feedback": "synthetic tied mutation"}]}
+
+        def propose_new_texts(self, candidate, reflective_dataset, components_to_update):
+            self.proposals += 1
+            return {"system_prompt": f"synthetic-{self.proposals}"}
+
+    adapter = SyntheticAdapter()
+    result = gepa.optimize(
+        seed_candidate={"system_prompt": "synthetic-seed"},
+        trainset=list(range(8)), valset=list(range(4)), adapter=adapter,
+        max_metric_calls=12, reflection_minibatch_size=4,
+        candidate_selection_strategy="current_best",
+        acceptance_criterion="improvement_or_equal", frontier_type="instance",
+        skip_perfect_score=True, logger=StdOutLogger(),
+        run_dir=tempfile.mkdtemp(prefix="gepa-budget-boundary-"), seed=1,
+    )
+    check("GEPA 0.1.4 accepted tied candidate", len(result.candidates) >= 2)
+    check("logical budget 12 may consume 16 physical episodes", adapter.physical_calls == 16)
+    check("result reports the same 16 metric calls", result.total_metric_calls == 16)
 
 
 def new_budget():
@@ -647,6 +690,7 @@ def test_predictions_from_canonical_real_and_aligned():
 def main():
     tests = [
         test_stdout_logger_survives_late_background_write,
+        test_gepa_014_metric_budget_full_valset_headroom,
         test_global_cap_failure_leaves_branch_unchanged,
         test_branch_cap_failure_leaves_global_unchanged,
         test_32_concurrent_reservations_never_exceed_caps,

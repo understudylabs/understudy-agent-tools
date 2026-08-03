@@ -28,7 +28,7 @@ import island_race  # noqa: E402
 from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_invalid_execution_receipt,
     build_no_distinct_receipt, classify_failure, global_dedup_annotations,
-    incomplete_branch_ids, prompt_sha, unique_ranked,
+    incomplete_branch_ids, prompt_sha, required_physical_episode_cap, unique_ranked,
 )
 from turbo_race import acceptance_criterion_for_strategy, select_strategy_candidate  # noqa: E402
 
@@ -112,6 +112,10 @@ def main():
     check("invalid wave blocks stage2", invalid["stage2_executed"] is False)
     check("invalid wave blocks promotion", invalid["promotion_blocked"] is True)
     check("invalid wave keeps holdout sealed", invalid["holdout_executed"] is False)
+    check("stage1 physical cap includes final full-valset evaluation",
+          required_physical_episode_cap(12, 4) == 16)
+    check("stage2 physical cap includes final full-valset evaluation",
+          required_physical_episode_cap(24, 4) == 28)
     records = [
         {"status": "completed", "winner_prompt_sha256": "same", "screening_best_score": .7,
          "candidates_tried": 2, "wall_clock_s": 20, "branch_id": "a"},
