@@ -42,6 +42,18 @@
     .stream .ok { color: #4ade80; }
     .stream .bad { color: #f87171; }
     .failure { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+    .comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+    .model-lane { min-width: 0; display: grid; grid-template-columns: minmax(130px, 1.2fr) repeat(4, minmax(72px, .7fr)); gap: 10px; align-items: center; padding: 7px 9px; border: 1px solid #27272a; border-radius: 8px; background: rgba(24, 24, 27, .72); }
+    .model-lane--current { border-color: rgba(74, 222, 128, .35); }
+    .model-lane--invalid { border-color: rgba(248, 113, 113, .35); }
+    .model-name { min-width: 0; color: #f4f4f5; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .model-route { margin-top: 2px; color: #71717a; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lane-stat { min-width: 0; }
+    .lane-stat span { display: block; color: #71717a; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+    .lane-stat b { display: block; margin-top: 2px; color: #d4d4d8; font-size: 10px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lane-badge { display: inline-flex; margin-left: 6px; padding: 1px 5px; border-radius: 999px; font-size: 8px; letter-spacing: .06em; text-transform: uppercase; vertical-align: 1px; }
+    .lane-badge--current { color: #4ade80; background: rgba(20, 83, 45, .35); }
+    .lane-badge--invalid { color: #fca5a5; background: rgba(127, 29, 29, .35); }
     @keyframes pulse { 0%, 100% { background: rgba(255, 255, 255, .08); } 50% { background: rgba(255, 255, 255, .24); } }
     @media (max-width: 680px) {
       .card { padding: 12px; }
@@ -50,6 +62,8 @@
       .separator { display: none; }
       .metric-value { font-size: 19px; }
       .waves { gap: 5px; }
+      .comparison { grid-template-columns: 1fr; }
+      .model-lane { grid-template-columns: minmax(120px, 1.3fr) repeat(4, minmax(58px, .7fr)); }
     }
   </style>
 </head>
@@ -91,6 +105,7 @@
       </div>
 
       <div class="waves" id="waves"></div>
+      <div class="comparison" id="comparison" aria-label="Model run comparison"></div>
       <div class="progress" aria-label="Episode budget progress"><div class="progress-fill" id="progress-fill"></div></div>
       <div class="stream" aria-live="polite">
         <span>route <b id="serving-route">—</b></span>
@@ -114,6 +129,37 @@
     const scoreFor = (nodes, wave) => nodes
       .filter(node => node.wave === wave && node.rank_eligible && node.score != null)
       .reduce((best, node) => !best || node.score > best.score ? node : best, null);
+    const bestFor = nodes => nodes.filter(node => node.rank_eligible && node.score != null)
+      .reduce((best, node) => !best || node.score > best.score ? node : best, null);
+
+    function comparisonLane(manifest, kind) {
+      const totals = manifest?.totals || {};
+      const budget = totals.budget || {};
+      const nodes = Array.isArray(manifest?.nodes) ? manifest.nodes : [];
+      const best = bestFor(nodes);
+      const latency = totals.rollout_latency_s || {};
+      const failures = Array.isArray(totals.failure_events) ? totals.failure_events.length : Number(totals.islands_failed || 0);
+      const invalid = kind === "historical";
+      const el = document.createElement("div");
+      el.className = `model-lane ${invalid ? "model-lane--invalid" : "model-lane--current"}`;
+      const route = [totals.serving?.provider, totals.serving?.model].filter(Boolean).join(" · ") || "unknown route";
+      const badge = invalid
+        ? '<span class="lane-badge lane-badge--invalid">historical · invalid</span>'
+        : '<span class="lane-badge lane-badge--current">current</span>';
+      el.innerHTML = `<div><div class="model-name">${totals.serving?.model || manifest?.experiment || "model"}${badge}</div><div class="model-route">${route}</div></div>
+        <div class="lane-stat"><span>best dev</span><b>${pct(best?.score)}</b></div>
+        <div class="lane-stat"><span>episodes</span><b>${budget.stage_a_completed ?? 0}/${budget.max_total_episodes ?? "—"}</b></div>
+        <div class="lane-stat"><span>rollout p50</span><b>${latency.p50 == null ? "collecting" : duration(latency.p50)}</b></div>
+        <div class="lane-stat"><span>failures</span><b>${failures}</b></div>`;
+      return el;
+    }
+
+    function renderComparison(primary, secondary) {
+      const root = document.getElementById("comparison");
+      const lanes = [comparisonLane(primary, "current")];
+      if (secondary) lanes.push(comparisonLane(secondary, "historical"));
+      root.replaceChildren(...lanes);
+    }
 
     function render(manifest) {
       const nodes = Array.isArray(manifest.nodes) ? manifest.nodes : [];
@@ -139,7 +185,7 @@
       document.getElementById("elapsed").textContent = duration(manifest.totals?.wall_clock_s);
       document.getElementById("budget").textContent = cap ? `${completed}/${cap} episodes` : `${completed} episodes`;
       const holdout = document.getElementById("holdout");
-      holdout.textContent = manifest.holdout_untouched === true ? "holdout untouched" : "holdout unverified";
+      holdout.textContent = manifest.holdout_untouched === true ? "GEPA holdout not run" : "GEPA holdout unverified";
       holdout.style.color = manifest.holdout_untouched === true ? "#4ade80" : "#f87171";
       document.getElementById("started").textContent = pct(baseline?.score);
       document.getElementById("current").textContent = pct(best?.score);
@@ -206,11 +252,15 @@
 
     async function poll() {
       try {
-        const manifestResponse = await fetch("./experiment-manifest.json", { cache: "no-store" });
-        if (manifestResponse.ok) {
-          const manifest = await manifestResponse.json();
-          render(manifest);
-        }
+        const [manifestResponse, comparisonResponse] = await Promise.all([
+          fetch("./experiment-manifest.json", { cache: "no-store" }),
+          fetch("./experiment-manifest-nemotron.json", { cache: "no-store" }),
+        ]);
+        if (!manifestResponse.ok) throw new Error("primary manifest unavailable");
+        const manifest = await manifestResponse.json();
+        const comparison = comparisonResponse.ok ? await comparisonResponse.json() : null;
+        render(manifest);
+        renderComparison(manifest, comparison);
       } catch (_) { /* keep the last good frame */ }
       setTimeout(poll, 2000);
     }
