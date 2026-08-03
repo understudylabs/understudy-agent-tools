@@ -5,6 +5,7 @@ No providers, no network. Budget/subset/selection logic and the combined
 experiment manifest schema are exercised with synthetic, non-production data.
 No holdout identifiers or production task ids appear in this file.
 """
+import json
 import re
 import sys
 import tempfile
@@ -20,6 +21,7 @@ from turbo_race import (  # noqa: E402
     GlobalBudget,
     STAGE_B_EPISODES_PER_WINNER,
     build_final_manifest,
+    dense_state_transition_score,
     failure_family_curriculum,
     failure_family_screening_subsets,
     screening_family_scores,
@@ -41,6 +43,52 @@ def check(name, cond):
     if not cond:
         raise AssertionError(f"FAIL: {name}")
     print(f"  ok: {name}")
+
+
+def test_wave5_dense_transition_reward():
+    def assistant(tool, arguments):
+        return {"role": "assistant", "content": json.dumps({
+            "tool": tool, "arguments": arguments,
+        })}
+    clean = {
+        "score": 0.5, "forbidden_effects": 0,
+        "messages": [
+            assistant("api_fetch", {"method": "GET", "url": "/support/tickets"}),
+            {"role": "user", "content": "addressed unowned t-2 requester user@example.com"},
+            assistant("api_fetch", {"method": "GET", "url": "/support/contacts"}),
+            {"role": "user", "content": "accounts include example.com"},
+            assistant("api_fetch", {"method": "PATCH", "url": "/support/tickets/t-2",
+                                    "body": {"assignee": "none", "status": "unmatched"}}),
+            assistant("finish", {}),
+        ],
+    }
+    passive = {
+        "score": 0.0, "forbidden_effects": 0,
+        "messages": [
+            assistant("api_fetch", {"method": "GET", "url": "/support/tickets"}),
+            {"role": "user", "content": "addressed unowned t-2 requester user@example.com"},
+            assistant("finish", {}),
+        ],
+    }
+    wrong = dict(clean)
+    wrong["messages"] = list(clean["messages"])
+    wrong["messages"][4] = assistant(
+        "api_fetch", {"method": "PATCH", "url": "/support/tickets/t-9",
+                       "body": {"assignee": "none", "status": "unmatched"}},
+    )
+    clean_vector, clean_dense = dense_state_transition_score(clean)
+    passive_vector, passive_dense = dense_state_transition_score(passive)
+    wrong_vector, wrong_dense = dense_state_transition_score(wrong)
+    check("clean transition earns all dense milestones",
+          clean_vector == [1, 1, 1, 1, 1, 1] and clean_dense == 1.0)
+    check("passive finish trails clean transition", passive_dense < clean_dense)
+    check("wrong ticket fails closed despite later milestones",
+          wrong_vector == [0, 0, 0, 0, 0, 0] and wrong_dense == 0.0)
+    forbidden = dict(clean)
+    forbidden["forbidden_effects"] = 1
+    check("forbidden write fails dense reward",
+          dense_state_transition_score(forbidden)[1] == 0.0)
+    check("dense shaping does not alter canonical scalar", clean["score"] == 0.5)
 
 
 def test_stdout_logger_survives_late_background_write():
@@ -844,6 +892,7 @@ def test_predictions_from_canonical_real_and_aligned():
 
 def main():
     tests = [
+        test_wave5_dense_transition_reward,
         test_stdout_logger_survives_late_background_write,
         test_reflection_route_is_scoped_and_headered,
         test_gepa_014_metric_budget_full_valset_headroom,

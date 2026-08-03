@@ -61,6 +61,16 @@ WAVE4_STATE_TRANSITION_ISLAND_SPECS = (
     ("crossover-1", "state_transition_crossover", 1787561, 0),
     ("crossover-2", "state_transition_crossover", 1887561, 1),
 )
+WAVE5_DENSE_TRANSITION_ISLAND_SPECS = (
+    ("dense-1", "dense_state_transition", 2187561, 0),
+    ("dense-2", "dense_state_transition", 2287561, 1),
+    ("dense-3", "dense_state_transition", 2387561, 0),
+    ("dense-4", "dense_state_transition", 2487561, 1),
+    ("sequence-1", "explicit_dense_sequence", 2587561, 0),
+    ("sequence-2", "explicit_dense_sequence", 2687561, 1),
+    ("crossover-1", "dense_transition_crossover", 2787561, 0),
+    ("crossover-2", "dense_transition_crossover", 2887561, 1),
+)
 ISLAND_SPECS = LEGACY_ISLAND_SPECS
 
 
@@ -71,6 +81,8 @@ def island_specs_for_plan(plan):
         return WAVE3_ABSTAIN_ISLAND_SPECS
     if plan == "wave4-state-transition":
         return WAVE4_STATE_TRANSITION_ISLAND_SPECS
+    if plan == "wave5-dense-transition":
+        return WAVE5_DENSE_TRANSITION_ISLAND_SPECS
     raise ValueError(f"unknown island plan: {plan}")
 
 
@@ -85,6 +97,21 @@ def write_terminal_artifacts(out_dir, receipt, *record_groups, limit=64):
     rows = []
     for group in record_groups:
         for rec in (group or {}).values():
+            for dense_row in rec.get("screening_dense_rows") or []:
+                if float(dense_row.get("dense_score", 1)) >= 1 and float(
+                        dense_row.get("forbidden_effects", 0)) == 0:
+                    continue
+                rows.append({
+                    "task_id": dense_row.get("task_id"),
+                    "family": dense_row.get("family"),
+                    "score": dense_row.get("dense_score"),
+                    "dense_score": dense_row.get("dense_score"),
+                    "milestones": dense_row.get("milestones"),
+                    "malformed": dense_row.get("malformed"),
+                    "forbidden_effects": dense_row.get("forbidden_effects"),
+                    "steps": dense_row.get("steps"),
+                    "ended": dense_row.get("ended"),
+                })
             ledger = Path(rec.get("run_dir", "")) / "progress.jsonl"
             if not ledger.is_file():
                 continue
@@ -151,7 +178,7 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
                             "domain-id-direct-route",
                             "domain-id-lookalike-route",
                             "domain-id-parent-route",
-                        ), primary_reward_first=False):
+                        ), primary_reward_first=False, dense_transition=False):
     """Rank wave-3 representatives while rejecting perfect-family regressions."""
     eligible = []
     for rec in records:
@@ -168,16 +195,31 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
             continue
         if abstain_family not in selected:
             continue
-        if primary_reward_first and not isinstance(rec.get("screening_tiebreaks"), dict):
+        if (primary_reward_first and not isinstance(rec.get("screening_tiebreaks"), dict)
+                or dense_transition and not isinstance(rec.get("screening_dense_metrics"), dict)):
             continue
         eligible.append(rec)
     return sorted(
         eligible,
         key=lambda rec: (
             -float(rec.get("selected_screening_score", rec.get("screening_best_score", -1)))
-            if primary_reward_first else -float(rec["screening_by_family"][abstain_family]),
+            if primary_reward_first or dense_transition
+            else -float(rec["screening_by_family"][abstain_family]),
+            -float(rec["screening_dense_metrics"].get("unmatched_dense_mean", -1))
+            if dense_transition else 0,
+            float(rec["screening_dense_metrics"].get("forbidden_effects_mean", 1e9))
+            if dense_transition else 0,
+            -float(rec["screening_dense_metrics"].get("state_transition_partial_mean", -1))
+            if dense_transition else 0,
+            float(rec["screening_dense_metrics"].get("malformed_mean", 1e9))
+            if dense_transition else 0,
+            float(rec["screening_dense_metrics"].get("steps_mean", 1e9))
+            if dense_transition else 0,
+            float(rec["screening_dense_metrics"].get("latency_s_mean", 1e9))
+            if dense_transition else 0,
             -float(rec["screening_by_family"][abstain_family])
-            if primary_reward_first else -float(rec.get("screening_best_score", -1)),
+            if primary_reward_first and not dense_transition
+            else -float(rec.get("screening_best_score", -1)),
             float(rec["screening_tiebreaks"].get("forbidden_effects", 1e9))
             if primary_reward_first else 0,
             float(rec["screening_tiebreaks"].get("malformed", 1e9))
@@ -537,7 +579,7 @@ class LiveManifest:
             "holdout_executed": False,
             "serving": {"provider": self.provider, "model": self.model},
             "reflection": self.reflection,
-            "wave": getattr(self, "wave", None),
+            "wave": self.wave,
         }
         totals.update(terminal)
         manifest = em.build_manifest(
@@ -547,7 +589,7 @@ class LiveManifest:
             holdout_untouched=True,
         )
         manifest["reflection"] = self.reflection
-        manifest["wave"] = getattr(self, "wave", None)
+        manifest["wave"] = self.wave
         em.write_manifest(manifest, self.path)
         if self.mirror_path:
             em.write_manifest(manifest, self.mirror_path)
@@ -635,7 +677,9 @@ def main():
                         help="environment variable used by GEPA reflection calls; value is never persisted")
     parser.add_argument("--reflection-project", default="rehearsal")
     parser.add_argument("--reflection-workload", default="main")
-    parser.add_argument("--island-plan", choices=("legacy", "wave3-abstain", "wave4-state-transition"), default="legacy")
+    parser.add_argument("--island-plan", choices=(
+        "legacy", "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
+    ), default="legacy")
     parser.add_argument("--wave", type=int, default=1)
     parser.add_argument("--parent-run", default="")
     parser.add_argument("--parent-winner-sha", default="")
@@ -730,6 +774,10 @@ def main():
         "island_plan": args.island_plan,
         "target_score": args.target_score,
         "seed_prompt_sha256": prompt_sha(seed_prompt),
+        "strategies": sorted({strategy for _, strategy, _, _ in island_specs}),
+        "strategy_sha256": hashlib.sha256(
+            ",".join(sorted({strategy for _, strategy, _, _ in island_specs})).encode()
+        ).hexdigest(),
         "source_commit": subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=str(repo_root), check=True,
             text=True, capture_output=True,
@@ -737,11 +785,13 @@ def main():
     }
     dev_payload = call_json(args.sidecar, "/pool?split=dev")
     dev, dev_sha = dev_payload["tasks"], dev_payload["split_sha256"]
-    targeted_plan = args.island_plan in {"wave3-abstain", "wave4-state-transition"}
+    targeted_plan = args.island_plan in {
+        "wave3-abstain", "wave4-state-transition", "wave5-dense-transition",
+    }
     subsets = (
         failure_family_screening_subsets(
             train, args.failure_family, args.sentinels_per_family,
-        ) if args.island_plan == "wave4-state-transition"
+        ) if args.island_plan in {"wave4-state-transition", "wave5-dense-transition"}
         else train_screening_subsets(train) if args.island_plan == "wave3-abstain"
         else stratified_screening_subsets(dev)
     )
@@ -756,6 +806,29 @@ def main():
                 "malformed", "steps", "candidate_diversity", "latency",
             ],
             "canonical_scorer_modified": False,
+        }
+        wave_provenance["shaping_contract"] = shaping_contract
+        wave_provenance["shaping_contract_sha256"] = hashlib.sha256(
+            json.dumps(shaping_contract, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+    if args.island_plan == "wave5-dense-transition":
+        shaping_contract = {
+            "scope": "train_screening_only",
+            "primary": "authoritative_reward",
+            "dense_reward": "ordered_state_transition_milestones",
+            "milestones": [
+                "get_tickets", "resolve_addressed_requester_domain",
+                "get_accounts_or_contacts", "exact_character_for_character_comparison",
+                "patch_addressed_ticket", "finish_after_transition",
+            ],
+            "tie_breaks": [
+                "unmatched_family_dense_mean", "route_regression_guard",
+                "forbidden_effects_asc", "state_transition_partial_desc",
+                "malformed_asc", "steps_asc", "latency_asc",
+            ],
+            "fail_closed": "forbidden_or_wrong_ticket_patch_dense_reward_zero",
+            "canonical_scorer_modified": False,
+            "source_commit": wave_provenance["source_commit"],
         }
         wave_provenance["shaping_contract"] = shaping_contract
         wave_provenance["shaping_contract_sha256"] = hashlib.sha256(
@@ -849,6 +922,7 @@ def main():
         unique = family_aware_ranked(
             representatives,
             primary_reward_first=args.island_plan == "wave4-state-transition",
+            dense_transition=args.island_plan == "wave5-dense-transition",
         )
     if len(unique) < 2:
         if targeted_plan:

@@ -46,6 +46,7 @@ def check(label, condition):
 
 def test_graph_silent_publish():
     live = object.__new__(LiveManifest)
+    live.wave = None
     live._lock = threading.Lock()
     live.path = Path(tempfile.mkdtemp()) / "manifest.json"
     live.ingest_url = ""
@@ -117,6 +118,7 @@ def test_reflection_provenance_contains_name_not_secret():
 
 def test_completed_manifest_stamps_confirmation_totals():
     live = object.__new__(LiveManifest)
+    live.wave = None
     live._lock = threading.Lock()
     live.path = Path(tempfile.mkdtemp()) / "manifest.json"
     live.ingest_url = ""
@@ -332,6 +334,7 @@ def main():
         ],
         val_aggregate_scores=[.75, .70, .25],
         best_candidate={"system_prompt": "seed"},
+        best_idx=0,
     )
     explore, explore_score, explore_mode, explore_index = select_strategy_candidate(fake, "seed", "explore")
     check("explore retains a distinct near-best candidate",
@@ -353,6 +356,37 @@ def main():
           acceptance_criterion_for_strategy("failure_targeted") == "improvement_or_equal")
     check("conservative exploit uses strict GEPA best",
           acceptance_criterion_for_strategy("conservative_exploit") == "strict_improvement")
+    dense_records = []
+    for branch_id, dense_score in (("passive", 0.0), ("clean", 1.0)):
+        dense_records.append({
+            "branch_id": branch_id, "status": "completed",
+            "winner_prompt_sha256": branch_id,
+            "screening_subscores_available": True,
+            "screening_by_family": {
+                "domain-id-direct-route": 1.0,
+                "domain-id-lookalike-route": 1.0,
+                "domain-id-parent-route": 1.0,
+                "domain-id-unmatched-abstain": 0.5,
+            },
+            "seed_screening_by_family": {
+                "domain-id-direct-route": 1.0,
+                "domain-id-lookalike-route": 1.0,
+                "domain-id-parent-route": 1.0,
+                "domain-id-unmatched-abstain": 0.0,
+            },
+            "selected_screening_score": 0.5,
+            "screening_dense_metrics": {
+                "unmatched_dense_mean": dense_score,
+                "forbidden_effects_mean": 0.0,
+                "state_transition_partial_mean": dense_score,
+                "malformed_mean": 0.0, "steps_mean": 3.0, "latency_s_mean": 1.0,
+            },
+        })
+    dense_ranked = family_aware_ranked(
+        dense_records, dense_transition=True,
+    )
+    check("Wave-5 dense transition outranks passive finish",
+          [row["branch_id"] for row in dense_ranked] == ["clean", "passive"])
     stage2, stage2_score, stage2_mode, stage2_index = select_strategy_candidate(
         fake, "seed", "exploit_abstain-1",
     )

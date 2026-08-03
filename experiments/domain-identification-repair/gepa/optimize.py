@@ -525,6 +525,7 @@ class ContractAdapter:
         self.max_turns = max_turns
         self.malformed_tolerance = malformed_tolerance
         self.temperature = temperature
+        self.evaluation_summaries = {}
         self.propose_new_texts = None
         import litellm
         self.litellm = litellm
@@ -590,19 +591,22 @@ class ContractAdapter:
             "ended": ended,
             "steps": score["steps"],
             "forbidden_effects": forbidden,
+            "state_transition_partial": score.get("state_transition_partial", score["reward"]),
             "score": score["reward"],
         }
 
     def _attempt(self, task, system):
         """Run ONE physical episode. Return (status, latency, score, trace).
         status='success' on a scored rollout; 'timeout'/'429'/'5xx' for RETRYABLE
-        service pressure. Any other exception (scorer/schema/programming/auth/
+        service pressure. Every other exception (scorer/schema/programming/auth/
         harness bug) is re-raised with its original identity so it fails visibly.
         """
         t0 = time.perf_counter()
         try:
             sc, tr = self.rollout(task, system)
-            return "success", time.perf_counter() - t0, float(sc), tr
+            elapsed = time.perf_counter() - t0
+            tr["latency_s"] = elapsed
+            return "success", elapsed, float(sc), tr
         except Exception as exc:
             status = classify_error(exc)
             if status in TRANSIENT_STATUSES:
@@ -667,7 +671,7 @@ class ContractAdapter:
                 f"statuses={status},{status2}")
 
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            # Any worker exception (InvalidServicePressure or a re-raised
+            # A worker exception (InvalidServicePressure or a re-raised
             # non-transient error) propagates here, before aggregation.
             results = list(pool.map(run_job, jobs))
 
@@ -739,6 +743,7 @@ class ContractAdapter:
                     "ts": time.time(),
                 })
         trajectories = outputs if capture_traces else None
+        self.evaluation_summaries[chash] = outputs
         return EvaluationBatch(outputs=outputs, scores=mean_scores, trajectories=trajectories,
                                objective_scores=objective_scores)
 

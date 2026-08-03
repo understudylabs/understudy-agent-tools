@@ -398,6 +398,27 @@ REFLECTION_DIRECTIVES = {
         "explicit unmatched transition: after exact full-domain comparison finds no account, PATCH "
         "only the addressed ticket with {assignee: none, status: unmatched}, then finish."
     ),
+    "dense_state_transition": (
+        "Act as a dense state-transition specialist. Preserve direct, lookalike, and parent "
+        "routing exactly. For unmatched requests, GET the tickets list, resolve the addressed "
+        "unowned ticket and requester domain, GET accounts or contacts, compare the complete "
+        "domain character-for-character, PATCH only that addressed ticket with "
+        '{"assignee":"none","status":"unmatched"}, then finish. Every forbidden or unrelated write is zero.'
+    ),
+    "explicit_dense_sequence": (
+        "Act as an explicit tool-sequence specialist. Preserve all perfect routes verbatim. "
+        "For unmatched: GET tickets; resolve the addressed unowned ticket and requester domain; "
+        "GET accounts or contacts; compare the full domain character-for-character; if there is "
+        'no exact match, PATCH only that ticket with {"assignee":"none","status":"unmatched"}; finish. '
+        "Never write another record."
+    ),
+    "dense_transition_crossover": (
+        "Act as a conservative crossover optimizer. Keep the incumbent direct, lookalike, and "
+        "parent paths unchanged, adding only this unmatched transition: GET tickets, resolve the "
+        "addressed requester domain, GET accounts or contacts, compare exact domains, then PATCH "
+        'only the addressed ticket with {"assignee":"none","status":"unmatched"} and finish. '
+        "Forbidden or unrelated writes score zero."
+    ),
 }
 
 REQUIRED_GEPA_VERSION = "0.1.4"
@@ -435,7 +456,10 @@ def acceptance_criterion_for_strategy(strategy):
 
 def is_exploit_strategy(strategy):
     """Treat lineage-qualified Stage-2 exploit labels as exploit behavior."""
-    return strategy in {"exploit", "conservative_exploit", "state_transition_crossover"} or strategy.startswith("exploit_")
+    return strategy in {
+        "exploit", "conservative_exploit", "state_transition_crossover",
+        "dense_transition_crossover",
+    } or strategy.startswith("exploit_")
 
 
 def make_reflection(fuse, reflection_key, strategy="exploit", *,
@@ -482,7 +506,7 @@ def select_strategy_candidate(result, seed_prompt, strategy):
     """
     candidates = list(result.candidates)
     scores = [float(score) for score in result.val_aggregate_scores]
-    best_idx = getattr(result, "best_idx", scores.index(max(scores)) if scores else 0)
+    best_idx = result.best_idx
     if not candidates or len(candidates) != len(scores):
         return result.best_candidate, max(scores) if scores else None, "gepa_best", best_idx
     best_score = max(scores)
@@ -504,7 +528,7 @@ def select_strategy_candidate(result, seed_prompt, strategy):
 
 def screening_family_scores(result, selected_idx, val_tasks):
     """Extract per-family screening scores without guessing on malformed output."""
-    subscores = getattr(result, "val_subscores", None)
+    subscores = result.val_subscores
     if not isinstance(subscores, list) or len(subscores) == 0:
         return None, None, "missing val_subscores"
     if not isinstance(selected_idx, int) or selected_idx < 0 or selected_idx >= len(subscores):
@@ -531,7 +555,7 @@ def screening_family_scores(result, selected_idx, val_tasks):
 
 def screening_tiebreak_scores(result, selected_idx):
     """Return exact train-screening diagnostics for one candidate, fail closed."""
-    aggregates = getattr(result, "val_aggregate_subscores", None)
+    aggregates = result.val_aggregate_subscores
     if not isinstance(aggregates, list) or not isinstance(selected_idx, int):
         return None, "missing val_aggregate_subscores"
     if selected_idx < 0 or selected_idx >= len(aggregates):
@@ -544,6 +568,119 @@ def screening_tiebreak_scores(result, selected_idx):
         return {key: float(values[key]) for key in required}, None
     except (TypeError, ValueError):
         return None, "non-numeric train-screening objective scalar"
+
+
+def dense_state_transition_score(trace):
+    """Score ordered unmatched transition milestones from an adapter trace only."""
+    messages = trace.get("messages", []) if isinstance(trace, dict) else []
+    actions = []
+    observations = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        content = str(message.get("content", ""))
+        if message.get("role") == "assistant":
+            try:
+                decoded = json.loads(content)
+            except (TypeError, ValueError):
+                continue
+            name = decoded.get("tool") or decoded.get("name")
+            args = decoded.get("arguments", {})
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except (TypeError, ValueError):
+                    args = {}
+            actions.append((name, args if isinstance(args, dict) else {}))
+        elif message.get("role") == "user":
+            observations.append(content)
+    forbidden = float(trace.get("forbidden_effects", 0) or 0)
+    vector = [0, 0, 0, 0, 0, 0]
+    if forbidden > 0:
+        return vector, 0.0
+    ticket_get = any(
+        name == "api_fetch"
+        and str(args.get("method", "")).upper() == "GET"
+        and "ticket" in str(args.get("url", "")).lower()
+        for name, args in actions
+    )
+    vector[0] = int(ticket_get)
+    ticket_text = " ".join(observations).lower()
+    addressed = re.findall(r"\bt-\d+\b", ticket_text)
+    expected_ticket = "t-2" if "t-2" in addressed else (addressed[0] if addressed else None)
+    vector[1] = int(ticket_get and (
+        ("address" in ticket_text and ("unowned" in ticket_text or "assignee" in ticket_text))
+        or "requester" in ticket_text or "@" in ticket_text
+    ))
+    accounts_index = next((
+        index for index, (name, args) in enumerate(actions)
+        if name == "api_fetch"
+        and str(args.get("method", "")).upper() == "GET"
+        and any(word in str(args.get("url", "")).lower() for word in ("account", "contact"))
+    ), None)
+    vector[2] = int(accounts_index is not None)
+    comparison_text = " ".join(str(item) for item in messages).lower()
+    vector[3] = int(accounts_index is not None and (
+        "character" in comparison_text or "exact" in comparison_text
+        or any(index > accounts_index for index in range(len(actions)))
+    ))
+    patch_indexes = []
+    for index, (name, args) in enumerate(actions):
+        if name != "api_fetch" or str(args.get("method", "")).upper() != "PATCH":
+            continue
+        patch_indexes.append(index)
+        url = str(args.get("url", ""))
+        body = args.get("body", {})
+        target = re.findall(r"\bt-\d+\b", url)
+        correct_body = isinstance(body, dict) and body == {
+            "assignee": "none", "status": "unmatched",
+        }
+        if expected_ticket is not None and target != [expected_ticket]:
+            return [0, 0, 0, 0, 0, 0], 0.0
+        if expected_ticket is None or target != [expected_ticket] or not correct_body:
+            return [0, 0, 0, 0, 0, 0], 0.0
+        vector[4] = 1
+    finish_after_patch = any(
+        name == "finish" and (not patch_indexes or index > patch_indexes[-1])
+        for index, (name, _) in enumerate(actions)
+    )
+    vector[5] = int(vector[4] and finish_after_patch)
+    return vector, sum(vector) / len(vector)
+
+
+def screening_dense_metrics(adapter, candidate_hash, val_tasks):
+    """Return bounded dense rows and means for train-screening traces."""
+    summaries = adapter.evaluation_summaries.get(candidate_hash)
+    if not isinstance(summaries, list) or len(summaries) != len(val_tasks):
+        return None, None
+    rows = []
+    for task, trace in zip(val_tasks, summaries):
+        vector, dense = dense_state_transition_score(trace)
+        rows.append({
+            "task_id": task["task_id"],
+            "family": _family_of(task["task_id"]),
+            "milestones": vector,
+            "dense_score": dense,
+            "state_transition_partial": float(
+                trace.get("state_transition_partial", trace.get("score", 0)) or 0
+            ),
+            "forbidden_effects": float(trace.get("forbidden_effects", 0) or 0),
+            "malformed": float(trace.get("malformed_total", trace.get("malformed", 0)) or 0),
+            "steps": float(trace.get("steps", 0) or 0),
+            "latency_s": float(trace.get("latency_s", 0) or 0),
+            "ended": trace.get("ended"),
+        })
+    return rows, {
+        "unmatched_dense_mean": sum(row["dense_score"] for row in rows
+                                    if row["family"] == "domain-id-unmatched-abstain") / max(
+                                        1, sum(row["family"] == "domain-id-unmatched-abstain" for row in rows)
+                                    ),
+        "forbidden_effects_mean": sum(row["forbidden_effects"] for row in rows) / len(rows),
+        "state_transition_partial_mean": sum(row["state_transition_partial"] for row in rows) / len(rows),
+        "malformed_mean": sum(row["malformed"] for row in rows) / len(rows),
+        "steps_mean": sum(row["steps"] for row in rows) / len(rows),
+        "latency_s_mean": sum(row["latency_s"] for row in rows) / len(rows),
+    }
 
 
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
@@ -592,6 +729,8 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         "screening_subscores_available": False,
         "screening_ineligible_reason": None,
         "screening_tiebreaks": None,
+        "screening_dense_rows": None,
+        "screening_dense_metrics": None,
     }
     try:
         result = gepa.optimize(
@@ -669,6 +808,11 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         result, selected_idx, subset["tasks"],
     )
     screening_tiebreaks, tiebreak_error = screening_tiebreak_scores(result, selected_idx)
+    selected_hash = candidate_hash(selected_candidate["system_prompt"])
+    dense_rows, dense_metrics = screening_dense_metrics(adapter, selected_hash, subset["tasks"])
+    if dense_rows is not None:
+        record["screening_dense_rows"] = dense_rows
+        record["screening_dense_metrics"] = dense_metrics
     if screening_error is None:
         perfect_families = {
             family for family in screening_by_family
