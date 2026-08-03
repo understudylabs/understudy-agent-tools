@@ -319,7 +319,8 @@ class LiveManifest:
         em.write_manifest(manifest, self.path)
         if self.mirror_path:
             em.write_manifest(manifest, self.mirror_path)
-        status = em.publish_run_shaped(manifest, self.examples, self.ingest_url)
+        status = ("graph-silent" if not self.ingest_url
+                  else em.publish_run_shaped(manifest, self.examples, self.ingest_url))
         return {"manifest": str(self.path), "ingest": status, "totals": totals}
 
 

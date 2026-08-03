@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Provider-free unit tests for eight-island selection and failure evidence."""
 import sys
+import tempfile
+import threading
 import types
 from pathlib import Path
 
@@ -22,6 +24,7 @@ if "gepa" not in sys.modules:
     core.adapter = adapter
     gepa.core = core
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
+import island_race  # noqa: E402
 from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_no_distinct_receipt, classify_failure,
     global_dedup_annotations, prompt_sha, unique_ranked,
@@ -34,7 +37,57 @@ def check(label, condition):
         raise AssertionError(label)
 
 
+def test_graph_silent_publish():
+    live = object.__new__(LiveManifest)
+    live._lock = threading.Lock()
+    live.path = Path(tempfile.mkdtemp()) / "manifest.json"
+    live.ingest_url = ""
+    live.experiment_id = "synthetic"
+    live.dev_sha = "synthetic-dev"
+    live.examples = []
+    live.baseline_nodes = []
+    live.rank_protocol = {
+        "method": "canonical_rollout",
+        "scorer_version": "synthetic",
+        "rollout_contract": "synthetic",
+        "split_sha256": "synthetic-dev",
+        "samples_per_task": 3,
+    }
+    live.gepa_protocol = live.rank_protocol
+    live.budget = types.SimpleNamespace(snapshot=lambda: {})
+    live.started = 0
+    live.expected_total = 0
+    live.reference_lines = []
+    live.mirror_path = None
+    live.provider = "synthetic"
+    live.model = "synthetic"
+    live.records = {}
+    live.states = {}
+    live.terminal = {}
+
+    original_write = island_race.em.write_manifest
+    original_publish = island_race.em.publish_run_shaped
+    calls = []
+    island_race.em.write_manifest = lambda manifest, path: None
+    island_race.em.publish_run_shaped = lambda *args: calls.append(args)
+    try:
+        result = live.publish()
+        check("empty ingest is graph-silent", result["ingest"] == "graph-silent")
+        check("empty ingest does not publish", calls == [])
+
+        live.ingest_url = "http://synthetic.invalid/ingest"
+        island_race.em.publish_run_shaped = lambda *args: calls.append(args) or {"ok": True}
+        result = live.publish()
+        check("nonempty ingest publishes", result["ingest"] == {"ok": True})
+        check("nonempty ingest publishes once", len(calls) == 1)
+        check("nonempty ingest URL is preserved", calls[0][2] == "http://synthetic.invalid/ingest")
+    finally:
+        island_race.em.write_manifest = original_write
+        island_race.em.publish_run_shaped = original_publish
+
+
 def main():
+    test_graph_silent_publish()
     check("exactly eight islands", len(ISLAND_SPECS) == 8)
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
     check("two failure-targeted islands", sum(s[1] == "failure_targeted" for s in ISLAND_SPECS) == 2)
