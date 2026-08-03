@@ -215,7 +215,34 @@ while (normalized.length > 0) {
     .filter((row) => row.family === family)
     .sort((left, right) =>
       left.task_id.localeCompare(right.task_id) || left._line_index - right._line_index);
-  const dropRows = new Set(familyRows.slice(allowed).map((row) => row._line_index));
+  // Preserve task diversity while applying the family cap. Taking the first N
+  // lexicographically silently concentrated a capped family in the earliest
+  // task IDs (for example unmatched tasks 01-03) and discarded all evidence
+  // from later train tasks. Round-robin retention is deterministic and keeps
+  // the cap without turning task ordering into a training-data selector.
+  const rowsByTask = new Map();
+  for (const row of familyRows) {
+    const bucket = rowsByTask.get(row.task_id) ?? [];
+    bucket.push(row);
+    rowsByTask.set(row.task_id, bucket);
+  }
+  const retained = [];
+  const taskIds = [...rowsByTask.keys()].sort();
+  for (let round = 0; retained.length < allowed; round += 1) {
+    let added = 0;
+    for (const taskId of taskIds) {
+      const row = rowsByTask.get(taskId)[round];
+      if (!row) continue;
+      retained.push(row);
+      added += 1;
+      if (retained.length === allowed) break;
+    }
+    if (added === 0) break;
+  }
+  const retainedRows = new Set(retained.map((row) => row._line_index));
+  const dropRows = new Set(familyRows
+    .filter((row) => !retainedRows.has(row._line_index))
+    .map((row) => row._line_index));
   normalized.splice(0, normalized.length, ...normalized.filter((row) => !dropRows.has(row._line_index)));
   droppedForBalance += count - allowed;
   balanceCapped = true;

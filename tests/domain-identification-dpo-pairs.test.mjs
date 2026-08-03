@@ -170,5 +170,41 @@ describe("domain-identification DPO pair validation", () => {
     assert.ok(Object.values(capped.report.family_counts_final).every(
       (count) => count <= Math.floor(0.35 * capped.report.accepted),
     ));
+
+    const diverseSkew = [];
+    for (const taskId of [
+      "domain-id-unmatched-abstain-01",
+      "domain-id-unmatched-abstain-02",
+      "domain-id-unmatched-abstain-03",
+      "domain-id-unmatched-abstain-04",
+      "domain-id-unmatched-abstain-05",
+      "domain-id-unmatched-abstain-06",
+    ]) {
+      diverseSkew.push(pair(taskId, "unmatched-abstain", `${taskId}-a`));
+      diverseSkew.push(pair(taskId, "unmatched-abstain", `${taskId}-b`));
+    }
+    for (const family of ["direct-route", "lookalike-route", "parent-route"]) {
+      for (let task = 1; task <= 6; task += 1) {
+        const suffix = String(task).padStart(2, "0");
+        diverseSkew.push(pair(
+          `domain-id-${family}-${suffix}`, family, `diverse-${family}-${suffix}`,
+        ));
+      }
+    }
+    const diverse = runGate(diverseSkew);
+    assert.equal(diverse.result.status, 0);
+    const normalized = readFileSync(diverse.outPath, "utf8").trim()
+      .split("\n").map((line) => JSON.parse(line));
+    const retainedUnmatchedTasks = new Set(normalized
+      .filter((row) => row.family === "unmatched-abstain")
+      .map((row) => row.task_id));
+    assert.deepEqual([...retainedUnmatchedTasks].sort(), [
+      "domain-id-unmatched-abstain-01",
+      "domain-id-unmatched-abstain-02",
+      "domain-id-unmatched-abstain-03",
+      "domain-id-unmatched-abstain-04",
+      "domain-id-unmatched-abstain-05",
+      "domain-id-unmatched-abstain-06",
+    ]);
   });
 });
