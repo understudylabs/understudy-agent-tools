@@ -23,6 +23,7 @@ from turbo_race import (  # noqa: E402
     failure_family_curriculum,
     failure_family_screening_subsets,
     screening_family_scores,
+    screening_tiebreak_scores,
     screening_valset_hash,
     select_winner,
     stratified_screening_subsets,
@@ -476,6 +477,16 @@ def test_screening_family_scores_use_val_subscores_without_objectives():
     selected, seed, error = screening_family_scores(repeated, 1, repeated_tasks)
     check("family score averages repeated target rows rather than overwriting",
           error is None and selected["fam-abstain"] == .75 and seed["fam-abstain"] == .5)
+    objectives = types.SimpleNamespace(val_aggregate_subscores=[
+        {"authoritative_reward": .5, "forbidden_effects": 0, "malformed": 1, "steps": 4},
+        {"authoritative_reward": 1, "forbidden_effects": 0, "malformed": 0, "steps": 3},
+    ])
+    scalars, scalar_error = screening_tiebreak_scores(objectives, 1)
+    check("exact train-screening tie-break scalars are available for receipts",
+          scalar_error is None and scalars == {
+              "authoritative_reward": 1.0, "forbidden_effects": 0.0,
+              "malformed": 0.0, "steps": 3.0,
+          })
 
 
 # --------------------------------------------------------------------------

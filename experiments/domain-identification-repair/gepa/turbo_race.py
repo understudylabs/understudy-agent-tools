@@ -435,7 +435,7 @@ def acceptance_criterion_for_strategy(strategy):
 
 def is_exploit_strategy(strategy):
     """Treat lineage-qualified Stage-2 exploit labels as exploit behavior."""
-    return strategy in {"exploit", "conservative_exploit"} or strategy.startswith("exploit_")
+    return strategy in {"exploit", "conservative_exploit", "state_transition_crossover"} or strategy.startswith("exploit_")
 
 
 def make_reflection(fuse, reflection_key, strategy="exploit", *,
@@ -529,6 +529,23 @@ def screening_family_scores(result, selected_idx, val_tasks):
     return selected, seed, None
 
 
+def screening_tiebreak_scores(result, selected_idx):
+    """Return exact train-screening diagnostics for one candidate, fail closed."""
+    aggregates = getattr(result, "val_aggregate_subscores", None)
+    if not isinstance(aggregates, list) or not isinstance(selected_idx, int):
+        return None, "missing val_aggregate_subscores"
+    if selected_idx < 0 or selected_idx >= len(aggregates):
+        return None, "selected candidate objective index missing"
+    values = aggregates[selected_idx]
+    required = ("authoritative_reward", "forbidden_effects", "malformed", "steps")
+    if not isinstance(values, dict) or any(key not in values for key in required):
+        return None, "incomplete train-screening objective scalars"
+    try:
+        return {key: float(values[key]) for key in required}, None
+    except (TypeError, ValueError):
+        return None, "non-numeric train-screening objective scalar"
+
+
 def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
                runs_root, run_id, reflection_key, max_metric_calls, concurrency,
                spend_authorization_usd, results, results_lock, strategy="exploit",
@@ -574,6 +591,7 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         "perfect_family_min": None,
         "screening_subscores_available": False,
         "screening_ineligible_reason": None,
+        "screening_tiebreaks": None,
     }
     try:
         result = gepa.optimize(
@@ -650,6 +668,7 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
     screening_by_family, seed_screening_by_family, screening_error = screening_family_scores(
         result, selected_idx, subset["tasks"],
     )
+    screening_tiebreaks, tiebreak_error = screening_tiebreak_scores(result, selected_idx)
     if screening_error is None:
         perfect_families = {
             family for family in screening_by_family
@@ -667,6 +686,10 @@ def run_branch(*, bid, seed, subset, trainset, seed_prompt, sidecar, budget,
         })
     else:
         record["screening_ineligible_reason"] = screening_error
+    if tiebreak_error is None:
+        record["screening_tiebreaks"] = screening_tiebreaks
+    elif record["screening_ineligible_reason"] is None:
+        record["screening_ineligible_reason"] = tiebreak_error
     winner_prompt = selected_candidate["system_prompt"]
     (run_dir / "optimized-system-prompt.txt").write_text(winner_prompt.rstrip() + "\n")
     record.update({

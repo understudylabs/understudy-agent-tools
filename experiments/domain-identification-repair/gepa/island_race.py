@@ -77,6 +77,31 @@ def prompt_sha(text):
     return hashlib.sha256((text.rstrip() + "\n").encode()).hexdigest()
 
 
+def write_terminal_artifacts(out_dir, receipt, *record_groups, limit=64):
+    """Write the receipt plus a bounded, prompt-free failed-row handoff."""
+    out_dir = Path(out_dir)
+    (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    rows = []
+    for group in record_groups:
+        for rec in (group or {}).values():
+            ledger = Path(rec.get("run_dir", "")) / "progress.jsonl"
+            if not ledger.is_file():
+                continue
+            for line in ledger.read_text().splitlines():
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if item.get("kind") != "candidate_eval" or float(item.get("score", 1)) >= 1:
+                    continue
+                rows.append({key: item.get(key) for key in (
+                    "task_id", "score", "malformed", "forbidden_effects", "ended", "steps",
+                )})
+    summary = {"schema_version": "understudy.failed_rows_summary.v1",
+               "holdout_executed": False, "rows": rows[:limit], "truncated": len(rows) > limit}
+    (out_dir / "failed-rows-summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+
+
 def unique_ranked(records):
     """Best completed record per prompt hash, ordered by screening evidence.
 
@@ -142,6 +167,8 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
             continue
         if abstain_family not in selected:
             continue
+        if primary_reward_first and not isinstance(rec.get("screening_tiebreaks"), dict):
+            continue
         eligible.append(rec)
     return sorted(
         eligible,
@@ -150,6 +177,12 @@ def family_aware_ranked(records, *, abstain_family="domain-id-unmatched-abstain"
             if primary_reward_first else -float(rec["screening_by_family"][abstain_family]),
             -float(rec["screening_by_family"][abstain_family])
             if primary_reward_first else -float(rec.get("screening_best_score", -1)),
+            float(rec["screening_tiebreaks"].get("forbidden_effects", 1e9))
+            if primary_reward_first else 0,
+            float(rec["screening_tiebreaks"].get("malformed", 1e9))
+            if primary_reward_first else 0,
+            float(rec["screening_tiebreaks"].get("steps", 1e9))
+            if primary_reward_first else 0,
             -int(rec.get("candidates_tried", 0)),
             float(rec.get("wall_clock_s", 1e9)),
         ),
@@ -784,7 +817,7 @@ def main():
             manifest_digest=em.manifest_digest(json.loads(manifest_path.read_text())),
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
         ), reflection_provenance, wave_provenance)
-        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        write_terminal_artifacts(out_dir, receipt, stage1)
         print(json.dumps(receipt, indent=2))
         return
     dedup_annotations = global_dedup_annotations(stage1.values())
@@ -831,7 +864,7 @@ def main():
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
             stop_reason=reason,
         ), reflection_provenance, wave_provenance)
-        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        write_terminal_artifacts(out_dir, receipt, stage1)
         print(json.dumps(receipt, indent=2))
         return
     survivors = unique[:2]
@@ -877,7 +910,7 @@ def main():
             publish_status=snapshot["ingest"], wall_clock_s=round(time.time() - started),
             survivors=stage2, outcome="incomplete_stage2", stop_reason=reason,
         ), reflection_provenance, wave_provenance)
-        (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+        write_terminal_artifacts(out_dir, receipt, stage1, stage2)
         print(json.dumps(receipt, indent=2))
         return
 
@@ -948,7 +981,7 @@ def main():
         "cost_coverage": "out_of_band_clickhouse",
         "wall_clock_s": round(time.time() - started),
     }, reflection_provenance, wave_provenance)
-    (out_dir / "island-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    write_terminal_artifacts(out_dir, receipt, stage1, stage2)
     print(json.dumps(receipt, indent=2))
 
 

@@ -570,6 +570,13 @@ class ContractAdapter:
                 ended = "finish"
                 break
         score = call_json(self.sidecar, "/score", {"session": session})
+        forbidden = score.get("forbidden_effects", 0)
+        if isinstance(forbidden, (list, dict)):
+            forbidden = len(forbidden)
+        try:
+            forbidden = float(forbidden or 0)
+        except (TypeError, ValueError):
+            forbidden = 1.0
         if self.fuse is not None:
             self.fuse.complete_episode()
         return score["reward"], {
@@ -582,6 +589,7 @@ class ContractAdapter:
             "consecutive_malformed": consecutive_malformed,
             "ended": ended,
             "steps": score["steps"],
+            "forbidden_effects": forbidden,
             "score": score["reward"],
         }
 
@@ -671,7 +679,7 @@ class ContractAdapter:
         for ti, si, sc, tr in results:
             per_task.setdefault(ti, []).append((si, sc, tr))
 
-        outputs, mean_scores = [], []
+        outputs, mean_scores, objective_scores = [], [], []
         for ti, task in enumerate(batch):
             samples = sorted(per_task[ti], key=lambda x: x[0])  # by sample index
             sample_scores = [sc for _, sc, _ in samples]
@@ -681,6 +689,7 @@ class ContractAdapter:
             mal_list = [t["malformed_total"] for t in sample_traces]
             malformed_mean = sum(mal_list) / len(mal_list)
             steps_list = [t["steps"] for t in sample_traces]
+            forbidden_list = [float(t.get("forbidden_effects", 0)) for t in sample_traces]
             total_calls = sum(max(s, 0) for s in steps_list) + sum(mal_list)
             malformed_rate = (sum(mal_list) / total_calls) if total_calls else 0.0
             rep_idx, rep, sample_summary = summarize_samples(sample_traces)
@@ -702,6 +711,12 @@ class ContractAdapter:
             })
             outputs.append(agg)
             mean_scores.append(mean)
+            objective_scores.append({
+                "authoritative_reward": mean,
+                "malformed": malformed_mean,
+                "steps": sum(steps_list) / len(steps_list),
+                "forbidden_effects": sum(forbidden_list) / len(forbidden_list),
+            })
             if self.ledger is not None:
                 self.ledger.record({
                     "candidate_hash": chash,
@@ -714,12 +729,18 @@ class ContractAdapter:
                     "malformed_rate": malformed_rate,
                     "representative_sample": rep_idx,
                     "episode_count": len(sample_scores),
+                    "score": mean,
+                    "malformed": malformed_mean,
+                    "steps": sum(steps_list) / len(steps_list),
+                    "forbidden_effects": sum(forbidden_list) / len(forbidden_list),
+                    "ended": agg.get("ended"),
                     "concurrency": concurrency,
                     "batch_pressure": stats.summary(),
                     "ts": time.time(),
                 })
         trajectories = outputs if capture_traces else None
-        return EvaluationBatch(outputs=outputs, scores=mean_scores, trajectories=trajectories)
+        return EvaluationBatch(outputs=outputs, scores=mean_scores, trajectories=trajectories,
+                               objective_scores=objective_scores)
 
     def make_reflective_dataset(self, candidate, eval_batch, components_to_update):
         records = []

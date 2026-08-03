@@ -385,10 +385,12 @@ def main():
     reward_first = [
         {"branch_id": "higher-total", "status": "completed", "winner_prompt_sha256": "ht",
          "screening_subscores_available": True, "selected_screening_score": .9,
+         "screening_tiebreaks": {"forbidden_effects": 0, "malformed": 0, "steps": 3},
          "screening_by_family": {"abstain": .5, "direct": 1, "lookalike": 1, "parent": 1},
          "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
         {"branch_id": "higher-target", "status": "completed", "winner_prompt_sha256": "hf",
          "screening_subscores_available": True, "selected_screening_score": .8,
+         "screening_tiebreaks": {"forbidden_effects": 0, "malformed": 0, "steps": 3},
          "screening_by_family": {"abstain": 1, "direct": 1, "lookalike": 1, "parent": 1},
          "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
     ]
@@ -398,6 +400,31 @@ def main():
               perfect_families=("direct", "lookalike", "parent"),
               primary_reward_first=True,
           )[0]["branch_id"] == "higher-total")
+    patch_records = [
+        {"branch_id": "passive-finish", "status": "completed", "winner_prompt_sha256": "p0",
+         "screening_subscores_available": True, "selected_screening_score": .75,
+         "screening_tiebreaks": {"forbidden_effects": 0, "malformed": 0, "steps": 1},
+         "screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
+        {"branch_id": "required-patch", "status": "completed", "winner_prompt_sha256": "p1",
+         "screening_subscores_available": True, "selected_screening_score": 1,
+         "screening_tiebreaks": {"forbidden_effects": 0, "malformed": 0, "steps": 4},
+         "screening_by_family": {"abstain": 1, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
+        {"branch_id": "patch-plus-forbidden", "status": "completed", "winner_prompt_sha256": "pf",
+         "screening_subscores_available": True, "selected_screening_score": 1,
+         "screening_tiebreaks": {"forbidden_effects": 1, "malformed": 0, "steps": 5},
+         "screening_by_family": {"abstain": 1, "direct": 1, "lookalike": 1, "parent": 1},
+         "seed_screening_by_family": {"abstain": 0, "direct": 1, "lookalike": 1, "parent": 1}},
+    ]
+    patch_rank = family_aware_ranked(
+        patch_records, abstain_family="abstain",
+        perfect_families=("direct", "lookalike", "parent"), primary_reward_first=True,
+    )
+    check("required PATCH beats passive finish and forbidden-write tie",
+          [rec["branch_id"] for rec in patch_rank] == [
+              "required-patch", "patch-plus-forbidden", "passive-finish",
+          ])
     check("family guard fails closed below two eligible",
           len(family_aware_ranked(
               records[:1], abstain_family="abstain",
