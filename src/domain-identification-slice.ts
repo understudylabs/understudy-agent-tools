@@ -158,11 +158,29 @@ function ticket(
  * Unrelated accounts appended AFTER the addressed records so the listing a
  * policy must read through stays a dozen rows wide while target ids hold still.
  */
-function padAccounts(seeds: ContactSeed[], instance: number, extra: number): ContactSeed[] {
+function padAccounts(
+  seeds: ContactSeed[],
+  instance: number,
+  extra: number,
+  excludedDomains: string[] = [],
+): ContactSeed[] {
   const padded = [...seeds];
-  for (let index = 0; index < extra; index += 1) {
-    const domain = `${org(instance + seeds.length + index + 4)}.example.org`;
-    padded.push(account(`c-${padded.length + 1}`, domain, rep(index + 3)));
+  const occupiedDomains = new Set(
+    [
+      ...seeds.map((seed) => seed.email.split("@").at(-1)?.toLowerCase()),
+      ...excludedDomains.map((domain) => domain.toLowerCase()),
+    ],
+  );
+  let offset = 0;
+  while (padded.length < seeds.length + extra) {
+    const domain = `${org(instance + seeds.length + offset + 4)}.example.org`;
+    offset += 1;
+    // Padding is supposed to add unrelated accounts. Cycling through ORGS can
+    // otherwise re-introduce an exact domain already present in the authored
+    // case (including the deliberately unregistered abstain domain).
+    if (occupiedDomains.has(domain.toLowerCase())) continue;
+    occupiedDomains.add(domain.toLowerCase());
+    padded.push(account(`c-${padded.length + 1}`, domain, rep(offset + 2)));
   }
   return padded;
 }
@@ -311,7 +329,7 @@ const FAMILIES: SliceFamily[] = [
         account("c-1", `${label}.example.com`, rep(instance + 1)),
         account("c-2", `${label}-group.example.com`, rep(instance + 2)),
         account("c-3", `mail.${label}.example.com`, rep(instance + 3)),
-      ], instance, 4);
+      ], instance, 4, [unregistered]);
       const tickets = padTickets([
         ticket("t-1", DECOY_SUBJECTS[(instance + 9) % INSTANCES], `ops@${label}.example.com`, rep(instance + 1), "in_progress"),
         ticket("t-2", TICKET_SUBJECTS[(instance + 9) % INSTANCES], requester(instance + 9, unregistered), "pending"),
