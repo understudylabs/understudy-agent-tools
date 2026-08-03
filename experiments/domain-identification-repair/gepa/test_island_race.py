@@ -25,6 +25,7 @@ if "gepa" not in sys.modules:
     gepa.core = core
     sys.modules.update({"gepa": gepa, "gepa.core": core, "gepa.core.adapter": adapter})
 import island_race  # noqa: E402
+import experiment_manifest as em  # noqa: E402
 from island_race import (  # noqa: E402
     ISLAND_SPECS, LiveManifest, build_invalid_execution_receipt,
     build_no_distinct_receipt, classify_failure, global_dedup_annotations,
@@ -87,8 +88,88 @@ def test_graph_silent_publish():
         island_race.em.publish_run_shaped = original_publish
 
 
+def test_completed_manifest_stamps_confirmation_totals():
+    live = object.__new__(LiveManifest)
+    live._lock = threading.Lock()
+    live.path = Path(tempfile.mkdtemp()) / "manifest.json"
+    live.ingest_url = ""
+    live.experiment_id = "synthetic"
+    live.dev_sha = "synthetic-dev"
+    live.examples = []
+    live.rank_protocol = em.make_protocol(
+        method="canonical_rollout", split_sha256="synthetic-dev", samples_per_task=3,
+    )
+    live.gepa_protocol = em.make_protocol(
+        method="gepa_observed", split_sha256="synthetic-dev", samples_per_task=1,
+    )
+    live.baseline_nodes = [
+        em.make_node(
+            node_id="wave1-winner", label="Wave-1 winner", wave="wave1",
+            stage="completed", protocol=live.rank_protocol, score=0.5,
+            rank_eligible=True,
+        )
+    ]
+    live.budget = types.SimpleNamespace(snapshot=lambda: {
+        "branches": {
+            "survivor-1": {"episodes_completed": 24},
+            "survivor-2": {"episodes_completed": 28},
+        },
+        "stage_a_completed": 168,
+        "total_reflections": 2,
+    })
+    live.started = 0
+    live.expected_total = 232
+    live.reference_lines = []
+    live.mirror_path = None
+    live.provider = "synthetic"
+    live.model = "synthetic"
+    live.records = {
+        "survivor-1": {"status": "completed", "run_dir": "", "wall_clock_s": 1},
+        "survivor-2": {"status": "completed", "run_dir": "", "wall_clock_s": 1},
+    }
+    predictions = [{"prediction": {}, "score": 1.0}]
+    confirmations = [
+        {"branch_id": "survivor-1", "confirmed": True, "mean_score": 0.5,
+         "predictions": predictions},
+        {"branch_id": "survivor-2", "confirmed": True, "mean_score": 0.75,
+         "predictions": predictions},
+    ]
+    live.states = {
+        "survivor-1": {"status": "completed", "confirmation": confirmations[0]},
+        "survivor-2": {"status": "promoted", "confirmation": confirmations[1]},
+    }
+    live.terminal = {}
+    original_write = island_race.em.write_manifest
+    original_publish = island_race.em.publish_run_shaped
+    published = []
+    island_race.em.write_manifest = lambda manifest, path: published.append(manifest)
+    island_race.em.publish_run_shaped = lambda *args: None
+    try:
+        live.finalize_completed(
+            selected_winner=confirmations[1], confirmations=confirmations,
+        )
+        manifest = published[-1]
+        nodes = {node["node_id"]: node for node in manifest["nodes"]}
+        check("promoted winner carries confirmation score",
+              nodes["survivor-2"]["score"] == 0.75)
+        check("promoted winner is rank eligible",
+              nodes["survivor-2"]["rank_eligible"] is True)
+        check("completed finalist carries confirmation score",
+              nodes["survivor-1"]["score"] == 0.5)
+        check("completed manifest selects survivor-2",
+              manifest["totals"]["selected_winner"]["branch_id"] == "survivor-2")
+        check("completed manifest carries confirmations",
+              manifest["totals"]["confirmations"] == confirmations)
+        check("completed manifest marks stage2 executed",
+              manifest["totals"]["stage2_executed"] is True)
+    finally:
+        island_race.em.write_manifest = original_write
+        island_race.em.publish_run_shaped = original_publish
+
+
 def main():
     test_graph_silent_publish()
+    test_completed_manifest_stamps_confirmation_totals()
     check("exactly eight islands", len(ISLAND_SPECS) == 8)
     check("four explore islands", sum(s[1] == "explore" for s in ISLAND_SPECS) == 4)
     check("two failure-targeted islands", sum(s[1] == "failure_targeted" for s in ISLAND_SPECS) == 2)

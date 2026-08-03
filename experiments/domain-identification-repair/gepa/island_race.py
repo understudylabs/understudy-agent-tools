@@ -230,6 +230,16 @@ class LiveManifest:
             }
         return self.publish()
 
+    def finalize_completed(self, *, selected_winner, confirmations):
+        with self._lock:
+            self.terminal = {
+                "state": "completed",
+                "selected_winner": selected_winner,
+                "confirmations": list(confirmations),
+                "stage2_executed": True,
+            }
+        return self.publish()
+
     def update(self, node_id, **values):
         with self._lock:
             self.states.setdefault(node_id, {}).update(values)
@@ -262,7 +272,7 @@ class LiveManifest:
         protocol = self.gepa_protocol
         rank_eligible = False
         predictions = None
-        if status == "completed" and state.get("confirmation"):
+        if status in {"completed", "promoted"} and state.get("confirmation"):
             conf = state["confirmation"]
             score = conf.get("mean_score")
             protocol = self.rank_protocol
@@ -641,7 +651,9 @@ def main():
     if winner:
         live.update(winner["branch_id"], status="promoted", outcome="promoted_canonical_k3",
                     confirmation=winner)
-    snapshot = live.publish()
+    snapshot = live.finalize_completed(
+        selected_winner=winner, confirmations=confirmations,
+    )
     receipt = {
         "schema_version": "understudy.island_race_receipt.v1",
         "experiment_id": experiment_id,
