@@ -126,7 +126,7 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
     name: "dspy-gepa",
     schemaVersion: "understudy.dspy_gepa_adapter.v2",
     runtimeCommand: "dspy-gepa",
-    packages: ["dspy==3.3.0", "gepa[dspy]==0.1.1"],
+    packages: ["dspy==3.3.0", "gepa[dspy]==0.1.1", "cloudpickle==3.1.2"],
     providerCalls: true,
     requiresAuth: () => true,
     buildArgs: (repo, options) => {
@@ -248,7 +248,7 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
         "--log-dir",
         resolve(options.logDir ?? join(repo, optimizeDir, "dspy-gepa", "gepa-log")),
         "--track-stats",
-        options.trackStats === true ? "true" : "false",
+        "true",
       ];
       if (options.samples) {
         args.push("--samples", resolve(options.samples));

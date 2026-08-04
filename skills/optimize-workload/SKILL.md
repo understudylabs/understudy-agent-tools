@@ -120,7 +120,8 @@ validator kinds in [`reference.md`](reference.md):
    `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
    model-backed path is explicitly selected. `adapter run --adapter dspy-gepa
-   --execute` uses exact `dspy==3.3.0` and `gepa[dspy]==0.1.1` packages and
+   --execute` uses exact `dspy==3.3.0`, `gepa[dspy]==0.1.1`, and
+   `cloudpickle==3.1.2` packages and
    additionally requires separate student/reflection model names, an approved dollar cap, and explicit input
    and output token prices before it resolves the Understudy API key. It passes
    auth to the child process through environment only, disables client-side

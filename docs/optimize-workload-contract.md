@@ -149,7 +149,7 @@ Required behavior:
   train/dev rows only, exclude holdout rows, and write owner-only candidate,
   proof, and terminal run-state artifacts with reservation and attribution
   evidence. The attribution is not a provider-invoice claim. The runtime is
-  exactly `dspy==3.3.0` plus `gepa[dspy]==0.1.1`; it records and verifies both
+  exactly `dspy==3.3.0`, `gepa[dspy]==0.1.1`, and `cloudpickle==3.1.2`; it records and verifies all three
   installed versions before any model call.
 - Eval-input GEPA adapter: require `--execute`, read a local manifest with
   `rows`, `inputs`, or `inputs_path`, support exact-match label and tool-call

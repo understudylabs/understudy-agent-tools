@@ -151,7 +151,8 @@ GEPA execution is exposed through named adapters. The live DSPy adapter is
 exposed through
 `optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
 authenticated Understudy gateway key, passes it into the local `uv` runtime as
-environment, verifies exact `dspy==3.3.0` and `gepa[dspy]==0.1.1` installs,
+environment, verifies exact `dspy==3.3.0`, `gepa[dspy]==0.1.1`, and
+`cloudpickle==3.1.2` installs,
 configures separate student/reflection DSPy LMs, runs train/dev rows only,
 excludes holdout, and writes `.understudy/optimize-workload/candidate.json`
 plus `proof-packet.json`. Live execution requires `--budget-usd`,
