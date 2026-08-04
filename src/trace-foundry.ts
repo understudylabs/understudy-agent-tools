@@ -4,7 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { bumpVersion, classifyTaskChange, computeTaskContentHashes, validateBenchmarkManifest } from "./benchmark.js";
-import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readReviews, toPortablePath } from "./benchmark-artifacts.js";
+import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readJsonlFile, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 import { buildRejectionGuidance, loadGuidanceFile } from "./rejection-guidance.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
@@ -602,7 +602,9 @@ function writeJsonl(path: string, rows: Obj[]): void {
   writeFileSync(path, "", { mode: 0o600 });
   for (let i = 0; i < rows.length; i += 200) appendFileSync(path, rows.slice(i, i + 200).map((row) => JSON.stringify(row)).join("\n") + "\n");
 }
-function readJsonl(path: string): Obj[] { return existsSync(path) ? readFileSync(path, "utf8").split(/\r?\n/).filter(Boolean).map((line) => asObject(JSON.parse(line))) : []; }
+function readJsonl(path: string): Obj[] {
+  return readJsonlFile<unknown>(path).items.map(asObject);
+}
 function appendJsonl(path: string, rows: Obj[]): void { if (rows.length === 0) return; mkdirSync(resolve(path, ".."), { recursive: true }); appendFileSync(path, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", { mode: 0o600 }); }
 const pyName = (value: string): string => { const clean = value.replace(/[^A-Za-z0-9_]/g, "_"); return /^[A-Za-z_]/.test(clean) ? clean : `tool_${clean}`; };
 
