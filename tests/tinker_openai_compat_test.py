@@ -21,8 +21,22 @@ def test_chat_completion_preserves_tool_calls() -> None:
             "function": {"name": "create-task", "arguments": '{"title":"A"}'},
         }],
     }
-    payload = MODULE.build_chat_completion(message, 10, 4, "stop")
+    payload = MODULE.build_chat_completion(
+        message,
+        10,
+        4,
+        "stop",
+        model="cedar-test",
+        request_id="request-1",
+        created=123,
+    )
     assert payload["choices"][0]["message"] == message
+    assert payload["id"] == "chatcmpl-request-1"
+    assert payload["object"] == "chat.completion"
+    assert payload["created"] == 123
+    assert payload["model"] == "cedar-test"
+    assert payload["choices"][0]["index"] == 0
+    assert payload["usage"]["total_tokens"] == 14
 
 
 def test_parsed_tool_call_gets_stable_id_and_json_arguments() -> None:

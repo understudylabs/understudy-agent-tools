@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import time
 import uuid
 from typing import Any, Optional
 
@@ -155,6 +156,10 @@ def build_chat_completion(
     prompt_tokens: int,
     completion_tokens: int,
     finish_reason: str,
+    *,
+    model: str = "unknown",
+    request_id: Optional[str] = None,
+    created: Optional[int] = None,
 ) -> dict:
     """Build the /v1/chat/completions response body.
 
@@ -162,9 +167,15 @@ def build_chat_completion(
     object without a defined finish_reason is impossible here, which is exactly
     the undefined-variable (NameError) failure this module exists to prevent.
     """
+    completion_id = request_id or str(uuid.uuid4())
     return {
+        "id": f"chatcmpl-{completion_id}",
+        "object": "chat.completion",
+        "created": int(time.time()) if created is None else created,
+        "model": model,
         "choices": [
             {
+                "index": 0,
                 "message": message,
                 "finish_reason": finish_reason,
             }
@@ -172,5 +183,6 @@ def build_chat_completion(
         "usage": {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
         },
     }

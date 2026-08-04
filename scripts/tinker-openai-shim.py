@@ -226,7 +226,14 @@ class Handler(BaseHTTPRequestHandler):
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
             message = normalize_assistant_message(message, request_id)
-            payload = build_chat_completion(message, prompt_tokens, completion_tokens, finish_reason)
+            payload = build_chat_completion(
+                message,
+                prompt_tokens,
+                completion_tokens,
+                finish_reason,
+                model=requested_model,
+                request_id=request_id,
+            )
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
             log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])
