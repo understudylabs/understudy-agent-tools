@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, relative, resolve } from "node:path";
 
@@ -74,17 +74,35 @@ type AdapterRunOptions = {
   inputKeys?: string[];
   outputKeys?: string[];
   model?: string;
+  reflectionModel?: string;
   module?: string;
   maxMetricCalls?: string;
   splitKey?: string;
   trainSplit?: string;
   devSplit?: string;
   maxTokens?: string;
+  temperature?: string;
+  reasoningEffort?: string;
+  reflectionTemperature?: string;
+  reflectionReasoningEffort?: string;
   budgetUsd?: string;
   inputUsdPerMillion?: string;
   outputUsdPerMillion?: string;
   scoreObjective?: string;
   reflectionMinibatchSize?: string;
+  candidateSelectionStrategy?: string;
+  componentSelector?: string;
+  useMerge?: boolean;
+  maxMergeInvocations?: string;
+  numThreads?: string;
+  seed?: string;
+  logDir?: string;
+  trackStats?: boolean;
+  programBridge?: string;
+  programBridgeConfig?: string;
+  programProject?: string;
+  admissionOnly?: boolean;
+  admissionReceipt?: string;
 };
 
 type OptimizerAuth = {
@@ -106,20 +124,44 @@ type UvAdapterSpec = {
 const adapterRegistry: Record<string, UvAdapterSpec> = {
   "dspy-gepa": {
     name: "dspy-gepa",
-    schemaVersion: "understudy.dspy_gepa_adapter.v1",
+    schemaVersion: "understudy.dspy_gepa_adapter.v2",
     runtimeCommand: "dspy-gepa",
-    packages: ["gepa>=0.0.27,<0.1", "dspy>=3.0.0", "litellm>=1.0.0"],
+    packages: ["dspy==3.3.0", "gepa[dspy]==0.1.1"],
     providerCalls: true,
     requiresAuth: () => true,
     buildArgs: (repo, options) => {
-      if (!options.samples) {
-        throw new Error("--samples is required for dspy-gepa");
+      if (!options.programBridge && !options.samples) {
+        throw new Error("--samples is required for dspy-gepa unless --program-bridge is supplied");
       }
-      if (!options.inputKeys?.length || !options.outputKeys?.length) {
-        throw new Error("--input-keys and --output-keys are required for dspy-gepa");
+      if (options.programBridge && !options.programBridgeConfig) {
+        throw new Error("--program-bridge-config is required with --program-bridge");
+      }
+      if (options.programBridgeConfig && !options.programBridge) {
+        throw new Error("--program-bridge-config requires --program-bridge");
+      }
+      if (options.programProject && !options.programBridge) {
+        throw new Error("--program-project requires --program-bridge");
+      }
+      if (options.admissionOnly && options.admissionReceipt) {
+        throw new Error("--admission-only and --admission-receipt are mutually exclusive");
+      }
+      if ((options.admissionOnly || options.admissionReceipt) && !options.programBridge) {
+        throw new Error("--admission-only and --admission-receipt require --program-bridge");
+      }
+      if (options.programBridge && !options.admissionOnly && !options.admissionReceipt) {
+        throw new Error("bridge compilation requires --admission-receipt from a prior --admission-only run");
+      }
+      if (!options.programBridge && (!options.inputKeys?.length || !options.outputKeys?.length)) {
+        throw new Error("--input-keys and --output-keys are required for dspy-gepa unless --program-bridge is supplied");
+      }
+      if ((options.inputKeys?.length && !options.outputKeys?.length) || (!options.inputKeys?.length && options.outputKeys?.length)) {
+        throw new Error("--input-keys and --output-keys must be supplied together");
       }
       if (!options.model) {
         throw new Error("--model is required for dspy-gepa");
+      }
+      if (!options.reflectionModel) {
+        throw new Error("--reflection-model is required for dspy-gepa");
       }
       const budgetUsd = requiredPositiveNumber(options.budgetUsd, "--budget-usd");
       const inputUsdPerMillion = requiredNonNegativeNumber(
@@ -133,22 +175,40 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
       if (inputUsdPerMillion === 0 && outputUsdPerMillion === 0) {
         throw new Error("dspy-gepa requires a non-zero input or output price basis");
       }
-      return [
+      const temperature = requiredNonNegativeNumber(options.temperature ?? "0.1", "--temperature");
+      const reflectionTemperature = requiredNonNegativeNumber(
+        options.reflectionTemperature ?? "0.1",
+        "--reflection-temperature",
+      );
+      const reasoningEffort = options.reasoningEffort ?? "none";
+      const reflectionReasoningEffort = options.reflectionReasoningEffort ?? "none";
+      const reasoningEfforts = ["none", "minimal", "low", "medium", "high"];
+      if (!reasoningEfforts.includes(reasoningEffort)) {
+        throw new Error("--reasoning-effort must be none, minimal, low, medium, or high");
+      }
+      if (!reasoningEfforts.includes(reflectionReasoningEffort)) {
+        throw new Error("--reflection-reasoning-effort must be none, minimal, low, medium, or high");
+      }
+      const candidateSelectionStrategy = options.candidateSelectionStrategy ?? "pareto";
+      if (!["pareto", "current_best"].includes(candidateSelectionStrategy)) {
+        throw new Error("--candidate-selection-strategy must be pareto or current_best");
+      }
+      const componentSelector = options.componentSelector ?? "round_robin";
+      if (!["round_robin", "all"].includes(componentSelector)) {
+        throw new Error("--component-selector must be round_robin or all");
+      }
+      const args = [
         "dspy-gepa",
         "--repo",
         repo,
-        "--samples",
-        resolve(options.samples),
-        "--input-keys",
-        options.inputKeys.join(","),
-        "--output-keys",
-        options.outputKeys.join(","),
         "--module",
         options.module ?? "predict",
         "--model",
         options.model,
+        "--reflection-model",
+        options.reflectionModel,
         "--max-metric-calls",
-        options.maxMetricCalls ?? "3",
+        String(positiveInteger(options.maxMetricCalls ?? "3", "--max-metric-calls")),
         "--split-key",
         options.splitKey ?? "split",
         "--train-split",
@@ -156,14 +216,66 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
         "--dev-split",
         options.devSplit ?? "dev",
         "--max-tokens",
-        options.maxTokens ?? "256",
+        String(positiveInteger(options.maxTokens ?? "256", "--max-tokens")),
+        "--temperature",
+        String(temperature),
+        "--reasoning-effort",
+        reasoningEffort,
+        "--reflection-temperature",
+        String(reflectionTemperature),
+        "--reflection-reasoning-effort",
+        reflectionReasoningEffort,
         "--budget-usd",
         String(budgetUsd),
         "--input-usd-per-million",
         String(inputUsdPerMillion),
         "--output-usd-per-million",
         String(outputUsdPerMillion),
+        "--reflection-minibatch-size",
+        String(positiveInteger(options.reflectionMinibatchSize ?? "1", "--reflection-minibatch-size")),
+        "--candidate-selection-strategy",
+        candidateSelectionStrategy,
+        "--component-selector",
+        componentSelector,
+        "--use-merge",
+        options.useMerge === true ? "true" : "false",
+        "--max-merge-invocations",
+        String(nonNegativeInteger(options.maxMergeInvocations ?? "5", "--max-merge-invocations")),
+        "--num-threads",
+        String(positiveInteger(options.numThreads ?? "1", "--num-threads")),
+        "--seed",
+        String(integer(options.seed ?? "0", "--seed")),
+        "--log-dir",
+        resolve(options.logDir ?? join(repo, optimizeDir, "dspy-gepa", "gepa-log")),
+        "--track-stats",
+        options.trackStats === true ? "true" : "false",
       ];
+      if (options.samples) {
+        args.push("--samples", resolve(options.samples));
+      }
+      if (options.inputKeys?.length && options.outputKeys?.length) {
+        args.push("--input-keys", options.inputKeys.join(","), "--output-keys", options.outputKeys.join(","));
+      }
+      if (options.programBridge) {
+        const bridgePath = requireRegularFile(options.programBridge, "--program-bridge");
+        const bridgeConfigPath = requireBridgeConfig(options.programBridgeConfig!);
+        args.push(
+          "--program-bridge",
+          bridgePath,
+          "--program-bridge-config",
+          bridgeConfigPath,
+        );
+      }
+      if (options.programProject) {
+        args.push("--program-project", requireLockedUvProject(options.programProject));
+      }
+      if (options.admissionOnly) {
+        args.push("--admission-only");
+      }
+      if (options.admissionReceipt) {
+        args.push("--admission-receipt", requireRegularFile(options.admissionReceipt, "--admission-receipt"));
+      }
+      return args;
     },
   },
   "eval-input-gepa": {
@@ -283,6 +395,106 @@ function requiredNonNegativeNumber(value: string | undefined, flag: string): num
     throw new Error(`${flag} must be a non-negative number`);
   }
   return parsed;
+}
+
+function integer(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(`${flag} must be an integer`);
+  }
+  return parsed;
+}
+
+function positiveInteger(value: string, flag: string): number {
+  const parsed = integer(value, flag);
+  if (parsed <= 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function nonNegativeInteger(value: string, flag: string): number {
+  const parsed = integer(value, flag);
+  if (parsed < 0) {
+    throw new Error(`${flag} must be a non-negative integer`);
+  }
+  return parsed;
+}
+
+const secretKeyPattern = /(?:^|[_-])(api[_-]?key|authorization|password|secret|token)(?:$|[_-])/i;
+const secretValuePattern = /^(?:bearer\s+|sk-[A-Za-z0-9]|-----BEGIN [A-Z ]*PRIVATE KEY-----)/i;
+const envNamePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function requireRegularFile(pathInput: string, flag: string): string {
+  const path = resolve(pathInput);
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch {
+    throw new Error(`${flag} must point to an existing regular file`);
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error(`${flag} must point to a non-symlink regular file`);
+  }
+  return path;
+}
+
+function rejectBridgeConfigSecrets(value: unknown, path = "bridge_config"): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => rejectBridgeConfigSecrets(item, `${path}[${index}]`));
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = `${path}.${key}`;
+      if (/(?:_env|_env_var)$/i.test(key)) {
+        if (typeof child !== "string" || !envNamePattern.test(child)) {
+          throw new Error(`${childPath} must contain an environment variable name, not a credential`);
+        }
+      } else if (secretKeyPattern.test(key)) {
+        throw new Error(`${childPath} is a secret-bearing field; use an *_env variable name instead`);
+      }
+      rejectBridgeConfigSecrets(child, childPath);
+    }
+    return;
+  }
+  if (typeof value === "string" && secretValuePattern.test(value.trim())) {
+    throw new Error(`${path} appears to contain a credential`);
+  }
+}
+
+function requireBridgeConfig(pathInput: string): string {
+  const path = requireRegularFile(pathInput, "--program-bridge-config");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    throw new Error("--program-bridge-config must contain valid JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--program-bridge-config must contain a JSON object");
+  }
+  if ((parsed as { schema_version?: unknown }).schema_version !== "understudy.dspy_gepa_bridge_config.v1") {
+    throw new Error("--program-bridge-config schema_version must be understudy.dspy_gepa_bridge_config.v1");
+  }
+  rejectBridgeConfigSecrets(parsed);
+  return path;
+}
+
+function requireLockedUvProject(pathInput: string): string {
+  const path = resolve(pathInput);
+  let metadata;
+  try {
+    metadata = lstatSync(path);
+  } catch {
+    throw new Error("--program-project must point to an existing directory");
+  }
+  if (metadata.isSymbolicLink() || !metadata.isDirectory()) {
+    throw new Error("--program-project must point to a non-symlink directory");
+  }
+  requireRegularFile(join(path, "pyproject.toml"), "--program-project pyproject.toml");
+  requireRegularFile(join(path, "uv.lock"), "--program-project uv.lock");
+  return path;
 }
 
 export function optimizeWorkloadCheck(repoInput: string): GateResult {
@@ -446,7 +658,14 @@ export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, 
     env.UNDERSTUDY_GATEWAY_URL = auth.gatewayUrl;
     env.UNDERSTUDY_AUTH_SOURCE = auth.source;
   }
-  const out = runUvPython(repo, runtimePath, args, adapter.packages, env);
+  const out = runUvPython(
+    repo,
+    runtimePath,
+    args,
+    adapter.packages,
+    env,
+    options.programProject ? resolve(options.programProject) : undefined,
+  );
   freezeCandidateIntoActiveExperiment(repo, out);
   return out;
 }
@@ -521,10 +740,15 @@ function runUvPython(
   args: string[],
   packages: string[] = [],
   env: Record<string, string> = {},
+  programProject?: string,
 ): Record<string, unknown> {
-  const uvArgs = ["run", "--no-project"];
-  for (const pkg of packages) {
-    uvArgs.push("--with", pkg);
+  const uvArgs = programProject
+    ? ["run", "--project", programProject, "--locked"]
+    : ["run", "--no-project"];
+  if (!programProject) {
+    for (const pkg of packages) {
+      uvArgs.push("--with", pkg);
+    }
   }
   uvArgs.push("python", runtimePath, ...args);
   const result = spawnSync("uv", uvArgs, {
@@ -571,7 +795,10 @@ function parseJsonFromNoisyStdout(stdout: string): unknown {
 
 function writeOptimizerRuntime(repo: string): string {
   const runtimePath = join(repo, runtimeDir, "optimizer_runtime.py");
-  mkdirSync(join(repo, runtimeDir), { recursive: true });
-  writeFileSync(runtimePath, optimizerRuntimeSource, "utf8");
+  const directory = join(repo, runtimeDir);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  writeFileSync(runtimePath, optimizerRuntimeSource, { encoding: "utf8", mode: 0o600 });
+  chmodSync(runtimePath, 0o600);
   return runtimePath;
 }

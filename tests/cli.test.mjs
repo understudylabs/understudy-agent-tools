@@ -532,6 +532,456 @@ function withOptimizerFixtureRepo(fn) {
   }
 }
 
+function writePythonDistributionMetadata(root) {
+  for (const [name, version] of [["dspy", "3.3.0"], ["gepa", "0.1.1"]]) {
+    const metadataDir = join(root, `${name}-${version}.dist-info`);
+    mkdirSync(metadataDir, { recursive: true });
+    writeFileSync(
+      join(metadataDir, "METADATA"),
+      `Metadata-Version: 2.1\nName: ${name}\nVersion: ${version}\n`,
+      "utf8",
+    );
+  }
+}
+
+function writeDspyGepaBridgeStubs(root) {
+  const dspyRoot = join(root, "dspy");
+  const gepaRoot = join(dspyRoot, "teleprompt", "gepa");
+  mkdirSync(gepaRoot, { recursive: true });
+  writePythonDistributionMetadata(root);
+  const workloadMetadata = join(root, "fixture_workload-1.2.3.dist-info");
+  mkdirSync(workloadMetadata);
+  writeFileSync(
+    join(workloadMetadata, "METADATA"),
+    "Metadata-Version: 2.1\nName: fixture-workload\nVersion: 1.2.3\n",
+    "utf8",
+  );
+  writeFileSync(join(dspyRoot, "__init__.py"), `
+import json
+import os
+from types import SimpleNamespace
+
+configured_lm = None
+
+def configure(lm):
+    global configured_lm
+    configured_lm = lm
+
+class LM:
+    def __init__(self, model, max_tokens=None, num_retries=3, **kwargs):
+        self.model = model
+        self.kwargs = {"max_tokens": max_tokens}
+        self.num_retries = num_retries
+        self.api_base = kwargs.get("api_base")
+        with open(os.environ["MODEL_SENTINEL"], "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "model": model,
+                "api_base": self.api_base,
+                "temperature": kwargs.get("temperature"),
+                "reasoning_effort": kwargs.get("reasoning_effort"),
+                "num_retries": num_retries,
+            }) + "\\n")
+    def forward(self, prompt=None, messages=None, **kwargs):
+        if self.num_retries != 0:
+            raise AssertionError("retries were not disabled")
+        return SimpleNamespace(
+            usage={"prompt_tokens": 7, "completion_tokens": 3},
+            model=f"provider-returned/{self.model}",
+            _hidden_params={
+                "additional_headers": {"x-model-id": f"effective/{self.model}"},
+            },
+        )
+
+class GEPA:
+    def __init__(self, reflection_lm=None, **kwargs):
+        self.reflection_lm = reflection_lm
+        self.kwargs = kwargs
+        serializable = dict(kwargs)
+        serializable["metric_callable"] = callable(serializable.pop("metric"))
+        serializable["reflection_model"] = reflection_lm.model
+        with open(os.environ["GEPA_KWARGS_SENTINEL"], "w", encoding="utf-8") as handle:
+            json.dump(serializable, handle, sort_keys=True)
+    def compile(self, student, trainset=None, valset=None):
+        prediction = student.run()
+        feedback = self.kwargs["metric"](trainset[0], prediction)
+        if not hasattr(feedback, "score") or not hasattr(feedback, "feedback"):
+            raise AssertionError("metric did not return ScoreWithFeedback")
+        self.reflection_lm.forward(prompt="reflect")
+        return student
+`, "utf8");
+  writeFileSync(join(dspyRoot, "teleprompt", "__init__.py"), "", "utf8");
+  writeFileSync(join(gepaRoot, "__init__.py"), "", "utf8");
+  writeFileSync(join(gepaRoot, "gepa_utils.py"), `
+class ScoreWithFeedback:
+    def __init__(self, score, feedback):
+        self.score = score
+        self.feedback = feedback
+`, "utf8");
+}
+
+function writeDspyGepaProgramBridge(
+  path,
+  {
+    worldStateChanged = true,
+    validOracle = true,
+    reflectionPromptTokens = 1200,
+    mutationClaimed = true,
+    validRouteBinding = true,
+    validInputBundleBinding = true,
+    validEndpointBundleBinding = true,
+  } = {},
+) {
+  const passed = worldStateChanged ? "True" : "False";
+  const primeReceipt = validOracle ? `"${"b".repeat(64)}"` : "None";
+  const mutationClaimedPython = mutationClaimed ? "True" : "False";
+  const candidateHash = mutationClaimed ? "2".repeat(64) : "1".repeat(64);
+  const mutationOutcome = mutationClaimed ? "improved" : "non_improved";
+  const promotionEligible = mutationClaimed ? "True" : "False";
+  const reflectionRouteSha = validRouteBinding
+    ? 'runtime_routes["reflection"]["route_binding_sha256"]'
+    : `"${"0".repeat(64)}"`;
+  const inputBundleSha = validInputBundleBinding
+    ? 'bridge_config["input_bundle_sha256"]'
+    : `"${"0".repeat(64)}"`;
+  const endpointBundleSha = validEndpointBundleBinding
+    ? 'bridge_config["endpoint_bundle_sha256"]'
+    : `"${"0".repeat(64)}"`;
+  writeFileSync(path, `
+import json
+from types import SimpleNamespace
+from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
+
+def admit_understudy_dspy_gepa(context):
+    bridge_config = context["bridge_config"]
+    program_bridge = context["config"]["program_bridge"]
+    runtime_routes = context["config"]["inference"]["routes"]
+    package_receipt_sha256 = (
+        program_bridge["project"]["uv_lock_sha256"]
+        if program_bridge["project"] is not None
+        else context["config"]["packages"]["package_state_sha256"]
+    )
+    return {
+        "admitted": True,
+        "live_admission_required": True,
+        "bundle_validation": {
+            "network_calls_made": 0,
+            "input_bundle_sha256": ${inputBundleSha},
+            "executable_bundle_loaded": True,
+            "loaded_bundle_schema_version": bridge_config["endpoint_bundle_schema_version"],
+            "loaded_bundle_sha256": ${endpointBundleSha},
+            "required_bundle_fields_present": True,
+            "workload_adapter_sha256": program_bridge["sha256"],
+            "package_receipt_sha256": package_receipt_sha256,
+            "tool_schema_sha256": bridge_config["tool_schema_sha256"],
+            "package_versions": {"mcp": "fixture-1", "verifiers": "fixture-2"},
+            "typed_request_contract": {
+                "model_typed": True,
+                "messages_typed": True,
+                "tools_typed": True,
+                "sampling_typed": True,
+            },
+            "oracle_contract": {
+                "kind": "state_verifier",
+                "task_typed": True,
+                "initial_state_typed": True,
+                "assertion_identity_sha256": "${"a".repeat(64)}",
+                "prime_receipt_sha256": ${primeReceipt},
+                "reward_metric_binding_sha256": "${"c".repeat(64)}",
+                "is_continuation": False,
+            },
+            "tool_contract_probe": {
+                "wire_arguments_type": "string",
+                "arguments_json_valid": True,
+                "decoded_arguments_type": "object",
+                "wire_arguments_sha256": "${"c".repeat(64)}",
+                "request_semantic_sha256": "${"6".repeat(64)}",
+                "executed_semantic_sha256": "${"6".repeat(64)}",
+                "nested_string_arguments": {
+                    "body": {
+                        "wire_type": "string",
+                        "wire_sha256": "${"7".repeat(64)}",
+                        "decoded_semantic_sha256": "${"8".repeat(64)}",
+                        "executed_semantic_sha256": "${"8".repeat(64)}",
+                    },
+                },
+                "validation_exception_sha256": None,
+                "required_world_state_change": True,
+                "required_write_succeeded": True,
+                "world_state_changed": True,
+                "mutation_scope": "bounded_trajectory",
+            },
+            "context_window_gate": {
+                "source_prompt_sha256": "${"9".repeat(64)}",
+                "token_count_receipt_sha256": "${"0".repeat(64)}",
+                "source_prompt_tokens": 1000,
+                "max_tokens": 256,
+                "safety_margin": 128,
+                "source_context_limit": 4096,
+                "renderer": {"id": "fixture-renderer", "sha256": "${"f".repeat(64)}"},
+                "tokenizer": {"id": "fixture-tokenizer", "sha256": "${"1".repeat(64)}"},
+                "checkpoint": {"id": "fixture-checkpoint", "sha256": "${"2".repeat(64)}"},
+                "route": {
+                    "id": runtime_routes["student"]["route_id"],
+                    "sha256": runtime_routes["student"]["route_binding_sha256"],
+                },
+                "coverage": {
+                    "method": "all_admitted_tasks_and_eligible_routes",
+                    "admitted_task_ids_sha256": "${"e".repeat(64)}",
+                    "eligible_route_ids_sha256": "${"f".repeat(64)}",
+                    "admitted_task_count": 1,
+                    "covered_task_count": 1,
+                    "eligible_route_count": 1,
+                    "covered_route_count": 1,
+                    "complete_inventory_sha256": "${"1".repeat(64)}",
+                    "worst_case_row_sha256": "${"2".repeat(64)}",
+                },
+            },
+            "reflection_context_window_gate": {
+                "reflection_prompt_sha256": "${"3".repeat(64)}",
+                "token_count_receipt_sha256": "${"4".repeat(64)}",
+                "reflection_prompt_tokens": ${reflectionPromptTokens},
+                "max_tokens": 256,
+                "safety_margin": 128,
+                "reflection_context_limit": 8192,
+                "renderer": {"id": "fixture-reflection-renderer", "sha256": "${"5".repeat(64)}"},
+                "tokenizer": {"id": "fixture-reflection-tokenizer", "sha256": "${"6".repeat(64)}"},
+                "checkpoint": {"id": "fixture-reflection-checkpoint", "sha256": "${"7".repeat(64)}"},
+                "route": {
+                    "id": runtime_routes["reflection"]["route_id"],
+                    "sha256": ${reflectionRouteSha},
+                },
+                "coverage": {
+                    "method": "all_admitted_tasks_and_eligible_routes",
+                    "admitted_task_ids_sha256": "${"9".repeat(64)}",
+                    "eligible_route_ids_sha256": "${"0".repeat(64)}",
+                    "admitted_task_count": 1,
+                    "covered_task_count": 1,
+                    "eligible_route_count": 1,
+                    "covered_route_count": 1,
+                    "complete_inventory_sha256": "${"a".repeat(64)}",
+                    "worst_case_row_sha256": "${"b".repeat(64)}",
+                },
+            },
+            "trajectory_feedback_contract": {
+                "redacted": True,
+                "ordered_events": True,
+                "event_fields": [
+                    "sequence_index",
+                    "tool_or_method_category",
+                    "succeeded",
+                    "error_type",
+                    "mutation_observed",
+                    "stop_observed",
+                ],
+                "excluded_fields": ["arguments", "urls", "secrets", "answer_keys"],
+                "event_count": 2,
+                "full_native_trace_sha256": "${"c".repeat(64)}",
+                "redacted_feedback_sha256": "${"d".repeat(64)}",
+                "action_sequence_optimization_enabled": True,
+            },
+            "deployment_parity": {
+                "network_calls_made": 0,
+                "inline_messages_sha256": "${"3".repeat(64)}",
+                "loaded_bundle_messages_sha256": "${"3".repeat(64)}",
+                "inline_tools_sha256": "${"4".repeat(64)}",
+                "loaded_bundle_tools_sha256": "${"4".repeat(64)}",
+                "inline_sampling_sha256": "${"5".repeat(64)}",
+                "loaded_bundle_sampling_sha256": "${"5".repeat(64)}",
+                "duplicate_policy_injection": False,
+                "loaded_bundle_once": True,
+                "official_eval_outer_policy_present": False,
+            },
+            "candidate_mutation_contract": {
+                "enforcement_status": "declared_not_enforced",
+                "promotion_guarantee": False,
+                "contract_sha256": "${"e".repeat(64)}",
+                "materialize_before_evaluate": True,
+                "atomic_persistence": True,
+                "require_changed_hash": True,
+                "same_hash_quarantine": {
+                    "evaluated": False,
+                    "provider_calls": 0,
+                    "pareto_eligible": False,
+                    "promotion_eligible": False,
+                },
+                "partial_artifact_quarantine": True,
+                "crash_resume_quarantine": True,
+                "receipt_fields": [
+                    "candidate_hash",
+                    "parent_hash",
+                    "reflection_request_hash",
+                    "reflection_output_hash",
+                    "reflection_model",
+                    "reflection_sampling_hash",
+                    "checkpoint_hash",
+                    "config_hash",
+                    "evaluated_prompt_hash",
+                    "rendered_request_hash",
+                    "task_hash",
+                    "trace_hash",
+                    "world_progress_hash",
+                    "score",
+                ],
+            },
+        },
+        "workload_smoke": {
+            "calls": 1,
+            "nodes": 1,
+            "assertion_fraction": 1.0,
+            "world_state_changed": ${passed},
+        },
+    }
+
+def live_admit_understudy_dspy_gepa(context, program):
+    bundle_sha256 = context["admission"]["offline"]["bundle_validation"]["loaded_bundle_sha256"]
+    endpoint_cap = context["bridge_config"]["budget_allocation"]["endpoint_cap_usd"]
+    return {
+        "admitted": True,
+        "standard_verifiers": True,
+        "optimizer_started": False,
+        "episode_count": 1,
+        "fixed_task_id": "fixture-write-task",
+        "same_student_metric_path": True,
+        "preflight": {
+            "health_ok": True,
+            "models_loaded": True,
+            "bundle_loaded": True,
+            "loaded_bundle_sha256": bundle_sha256,
+        },
+        "call_count": 1,
+        "node_count": 1,
+        "read_count": 1,
+        "write_count": 1 if ${passed} else 0,
+        "assertion_fraction": 1.0 if ${passed} else 0.0,
+        "parser_failure": False,
+        "tool_argument_contract_ok": True,
+        "required_world_state_change": True,
+        "world_state_changed": ${passed},
+        "mutation_scope": "bounded_trajectory",
+        "endpoint_spend": {
+            "cap_usd": endpoint_cap,
+            "attributed_cost_usd": 0.01,
+            "usage_complete": True,
+            "actual_call_count": 1,
+        },
+    }
+
+class Component:
+    def __init__(self, instructions):
+        self.signature = SimpleNamespace(instructions=instructions)
+
+class MultiComponentProgram:
+    def __init__(self, student_lm):
+        self.student_lm = student_lm
+        self.actor = Component("actor prompt")
+        self.advisor = Component("advisor prompt")
+        self.router = Component("router prompt")
+    def run(self):
+        self.student_lm.forward(prompt="student")
+        return SimpleNamespace(answer="ok")
+    def dump_state(self, json_mode=False):
+        return {
+            "actor": self.actor.signature.instructions,
+            "advisor": self.advisor.signature.instructions,
+            "router": self.router.signature.instructions,
+        }
+
+def metric(gold, pred, trace=None, pred_name=None, pred_trace=None):
+    return ScoreWithFeedback(score=1.0, feedback="fixture passed")
+
+def export_candidate(program, export_dir, context):
+    (export_dir / "prompts.json").write_text(
+        json.dumps(program.dump_state(json_mode=True), sort_keys=True) + "\\n",
+        encoding="utf-8",
+    )
+    (export_dir / "deployment.json").write_text(
+        json.dumps({"format": "understudy-multicomponent-v1"}, sort_keys=True) + "\\n",
+        encoding="utf-8",
+    )
+    return {
+        "provenance": {
+            "input_bundle_sha256": "${"a".repeat(64)}",
+            "tool_schema_sha256": "${"b".repeat(64)}",
+        },
+        "continuation_parent": None,
+        "mutation_receipt": {
+            "mutation_claimed": ${mutationClaimedPython},
+            "outcome": "${mutationOutcome}",
+            "promotion_eligible": ${promotionEligible},
+            "parent_component_sha256": "${"1".repeat(64)}",
+            "candidate_component_sha256": "${candidateHash}",
+            "candidate_persistence_sha256": "${"3".repeat(64)}",
+            "optimizer_receipt_sha256": "${"4".repeat(64)}",
+            "reflection_receipt_sha256": "${"5".repeat(64)}",
+            "checkpoint_sha256": "${"6".repeat(64)}",
+            "evaluated_prompt_sha256": "${"7".repeat(64)}",
+            "checkpoint_evaluated_prompt_binding_sha256": "${"8".repeat(64)}",
+            "world_progress_sha256": "${"9".repeat(64)}",
+            "candidate_persisted_before_evaluation": True,
+            "atomic_persistence": True,
+            "optimizer_reflection_bound": True,
+            "checkpoint_evaluated_prompt_bound": True,
+            "world_progress_observed": True,
+        },
+    }
+
+def build_understudy_dspy_gepa(context):
+    try:
+        context["bridge_config"]["mutation"] = "forbidden"
+        raise AssertionError("bridge_config was mutable")
+    except TypeError:
+        pass
+    student = MultiComponentProgram(context["student_lm"])
+    return {
+        "student": student,
+        "trainset": [SimpleNamespace(answer="ok")],
+        "valset": [SimpleNamespace(answer="ok")],
+        "metric": metric,
+        "teacher": None,
+        "export_candidate": export_candidate,
+        "program_state": {"components": ["actor", "advisor", "router"]},
+        "holdout_count_excluded": 1,
+    }
+`, "utf8");
+}
+
+function writeDspyGepaBridgeConfig(path, overrides = {}) {
+  const payload = {
+    schema_version: "understudy.dspy_gepa_bridge_config.v1",
+    input_bundle_sha256: "a".repeat(64),
+    endpoint_bundle_schema_version: "understudy.fixture_endpoint_bundle.v1",
+    endpoint_bundle_sha256: "d".repeat(64),
+    tool_schema_sha256: "b".repeat(64),
+    workload_package_pins: { "fixture-workload": "1.2.3" },
+    api_key_env: "UNDERSTUDY_AUTOMATIONBENCH_SERVICE_TOKEN",
+    inference_routes: {
+      student: {
+        route_id: "fixture-understudy-student",
+        base_url: "http://127.0.0.1:9/v1",
+        api_key_env: "UNDERSTUDY_API_KEY",
+        requested_model: "student-deployment",
+        executed_model: "openai/student-deployment",
+      },
+      reflection: {
+        route_id: "fixture-fireworks-reflection",
+        base_url: "https://api.fireworks.ai/inference/v1",
+        api_key_env: "FIXTURE_FIREWORKS_API_KEY",
+        requested_model: "reflection-deployment",
+        executed_model: "openai/accounts/fireworks/models/reflection-deployment",
+      },
+    },
+    budget_allocation: {
+      campaign_approved_max_usd: 5000,
+      campaign_cap_usd: 3,
+      prior_experiment_spend_usd: 0.25,
+      optimizer_inference_cap_usd: 1,
+      endpoint_cap_usd: 1,
+    },
+    ...overrides,
+  };
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
 describe("understudy CLI", () => {
   it("prints the public spine", () => {
     const result = run(["spine"]);
@@ -1057,10 +1507,12 @@ describe("understudy CLI", () => {
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
       ]);
       assert.equal(result.status, 1);
       const payload = JSON.parse(result.stdout);
-      assert.equal(payload.schema_version, "understudy.dspy_gepa_adapter.v1");
+      assert.equal(payload.schema_version, "understudy.dspy_gepa_adapter.v2");
       assert.equal(payload.status, "blocked");
       assert.equal(payload.provider_calls, false);
       assert.equal(payload.optimizer_execution, false);
@@ -1084,6 +1536,8 @@ describe("understudy CLI", () => {
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
         "--execute",
       ]);
       assert.notEqual(result.status, 0);
@@ -1109,6 +1563,8 @@ describe("understudy CLI", () => {
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
         "--budget-usd",
         "1",
         "--input-usd-per-million",
@@ -1120,6 +1576,113 @@ describe("understudy CLI", () => {
       assert.notEqual(result.status, 0);
       assert.match(result.stderr, /non-zero input or output price basis/);
       assert.doesNotMatch(result.stderr, /login|gateway|api key|uv run/i);
+    }));
+
+  it("invokes the DSPy registry adapter with exact compatible packages and advanced flags", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const fakeBin = join(repo, "fake-bin");
+      const uvArgsPath = join(repo, "uv-args.txt");
+      mkdirSync(fakeBin);
+      writeFileSync(join(fakeBin, "uv"), `#!/bin/sh
+printf '%s\n' "$@" > "$UV_ARGS_SENTINEL"
+printf '%s\n' '{"schema_version":"fixture.uv.v1","status":"fixture-ok"}'
+`, { encoding: "utf8", mode: 0o755 });
+      const result = runWithEnv([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "student-deployment",
+        "--reflection-model",
+        "reflection-deployment",
+        "--budget-usd",
+        "1",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+        "--reflection-minibatch-size",
+        "2",
+        "--candidate-selection-strategy",
+        "pareto",
+        "--component-selector",
+        "all",
+        "--use-merge",
+        "--num-threads",
+        "1",
+        "--seed",
+        "42",
+        "--track-stats",
+        "--execute",
+      ], {
+        PATH: `${fakeBin}:${baseEnv.PATH}`,
+        UV_ARGS_SENTINEL: uvArgsPath,
+        UNDERSTUDY_API_KEY: "fixture-key",
+        UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const uvArgs = readFileSync(uvArgsPath, "utf8").trim().split("\n");
+      assert.deepEqual(uvArgs.slice(0, 6), [
+        "run",
+        "--no-project",
+        "--with",
+        "dspy==3.3.0",
+        "--with",
+        "gepa[dspy]==0.1.1",
+      ]);
+      const flagValue = (flag) => uvArgs[uvArgs.indexOf(flag) + 1];
+      assert.equal(flagValue("--model"), "student-deployment");
+      assert.equal(flagValue("--reflection-model"), "reflection-deployment");
+      assert.equal(flagValue("--reflection-minibatch-size"), "2");
+      assert.equal(flagValue("--candidate-selection-strategy"), "pareto");
+      assert.equal(flagValue("--component-selector"), "all");
+      assert.equal(flagValue("--use-merge"), "true");
+      assert.equal(flagValue("--num-threads"), "1");
+      assert.equal(flagValue("--seed"), "42");
+      assert.equal(flagValue("--track-stats"), "true");
+
+      const bridgePath = join(repo, "locked-bridge.py");
+      const bridgeConfigPath = join(repo, "locked-bridge-config.json");
+      const programProject = join(repo, "locked-project");
+      writeDspyGepaProgramBridge(bridgePath);
+      writeDspyGepaBridgeConfig(bridgeConfigPath);
+      mkdirSync(programProject);
+      writeFileSync(join(programProject, "pyproject.toml"), "[project]\nname='locked-fixture'\nversion='0.0.1'\n", "utf8");
+      writeFileSync(join(programProject, "uv.lock"), "version = 1\nrevision = 1\n", "utf8");
+      const lockedResult = runWithEnv([
+        "optimize-workload", "adapter", "run", "--repo", repo, "--adapter", "dspy-gepa",
+        "--program-bridge", bridgePath,
+        "--program-bridge-config", bridgeConfigPath,
+        "--program-project", programProject,
+        "--model", "student-deployment",
+        "--reflection-model", "reflection-deployment",
+        "--budget-usd", "1",
+        "--input-usd-per-million", "1",
+        "--output-usd-per-million", "2",
+        "--admission-only",
+        "--execute",
+      ], {
+        PATH: `${fakeBin}:${baseEnv.PATH}`,
+        UV_ARGS_SENTINEL: uvArgsPath,
+        UNDERSTUDY_API_KEY: "fixture-key",
+        UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+      });
+      assert.equal(lockedResult.status, 0, lockedResult.stderr);
+      const lockedUvArgs = readFileSync(uvArgsPath, "utf8").trim().split("\n");
+      assert.deepEqual(lockedUvArgs.slice(0, 5), [
+        "run", "--project", programProject, "--locked", "python",
+      ]);
+      assert.equal(lockedUvArgs.includes("--with"), false);
     }));
 
   it("preflights cumulative DSPy reservations without importing DSPy or calling a provider", { skip: !pythonAvailable }, () =>
@@ -1140,6 +1703,8 @@ describe("understudy CLI", () => {
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
       ]);
       assert.equal(scaffold.status, 1);
       const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
@@ -1199,12 +1764,15 @@ describe("understudy CLI", () => {
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
       ]);
       assert.equal(scaffold.status, 1);
       const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
       const stubDir = join(repo, "python-stubs");
       const sentinel = join(repo, "provider-was-called");
       mkdirSync(stubDir, { recursive: true });
+      writePythonDistributionMetadata(stubDir);
       writeFileSync(join(stubDir, "dspy.py"), `
 import os
 
@@ -1257,6 +1825,8 @@ class ChainOfThought(Predict):
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
         "--max-tokens",
         "256",
         "--budget-usd",
@@ -1309,6 +1879,8 @@ class ChainOfThought(Predict):
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
       ]);
       assert.equal(scaffold.status, 1);
       const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
@@ -1317,6 +1889,7 @@ class ChainOfThought(Predict):
       const gepaRoot = join(dspyRoot, "teleprompt", "gepa");
       const sentinel = join(repo, "provider-call-count");
       mkdirSync(gepaRoot, { recursive: true });
+      writePythonDistributionMetadata(stubRoot);
       writeFileSync(join(dspyRoot, "__init__.py"), `
 import copy
 import os
@@ -1358,6 +1931,8 @@ class Predict:
     def __call__(self, **kwargs):
         configured_lm.forward(prompt=str(kwargs))
         return SimpleNamespace(answer="a1")
+    def dump_state(self, json_mode=False):
+        return {"signature": "question -> answer"}
 
 class ChainOfThought(Predict):
     pass
@@ -1391,6 +1966,8 @@ class ScoreWithFeedback:
         "answer",
         "--model",
         "synthetic-deployment",
+        "--reflection-model",
+        "synthetic-reflection-deployment",
         "--max-metric-calls",
         "2",
         "--max-tokens",
@@ -1424,6 +2001,18 @@ class ScoreWithFeedback:
       assert.equal(payload.spend_evidence.provider_invoice_verified, false);
       assert.equal(payload.spend_evidence.attributed_cost_usd, 0.00004);
       assert.equal(payload.spend_evidence.entries.length, 2);
+      assert.equal(payload.route_bindings.student.route_id, "understudy-gateway");
+      assert.equal(payload.route_bindings.reflection.route_id, "understudy-gateway");
+      assert.equal(payload.route_bindings.student.requested_model, "synthetic-deployment");
+      assert.equal(payload.route_bindings.student.executed_model, "openai/synthetic-deployment");
+      assert.equal(
+        payload.spend_evidence.entries[0].response_identity.provider_returned_model.status,
+        "unavailable-from-response",
+      );
+      assert.equal(
+        payload.spend_evidence.entries[0].response_identity.effective_model_header.status,
+        "unavailable-from-response",
+      );
       assert.ok(
         payload.spend_evidence.attributed_cost_usd
           < payload.spend_evidence.reserved_upper_bound_usd,
@@ -1438,6 +2027,376 @@ class ScoreWithFeedback:
       const proof = JSON.parse(readFileSync(proofPath, "utf8"));
       assert.equal(proof.holdout_accessed_during_optimization, false);
       assert.equal(proof.spend_evidence.calls_completed, 2);
+    }));
+
+  it("runs an admitted multi-component DSPy bridge with exact GEPA flags and a canonical bundle", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo }) => {
+      const bridgePath = join(repo, "program-bridge.py");
+      const badBridgePath = join(repo, "bad-program-bridge.py");
+      const badOracleBridgePath = join(repo, "bad-oracle-program-bridge.py");
+      const reflectionOverflowBridgePath = join(repo, "reflection-overflow-program-bridge.py");
+      const badRouteBridgePath = join(repo, "bad-route-program-bridge.py");
+      const badInputBundleBridgePath = join(repo, "bad-input-bundle-program-bridge.py");
+      const badEndpointBundleBridgePath = join(repo, "bad-endpoint-bundle-program-bridge.py");
+      const noChangeBridgePath = join(repo, "no-change-program-bridge.py");
+      const bridgeConfigPath = join(repo, "program-bridge-config.json");
+      const stubRoot = join(repo, "bridge-python-stubs");
+      const programProject = join(repo, "locked-program-project");
+      const modelSentinel = join(repo, "bridge-models.jsonl");
+      const kwargsSentinel = join(repo, "gepa-kwargs.json");
+      const logDir = join(repo, ".understudy", "optimizer-checkpoints", "fixture-gepa");
+      writeDspyGepaBridgeStubs(stubRoot);
+      writeDspyGepaProgramBridge(bridgePath);
+      writeDspyGepaProgramBridge(badBridgePath, { worldStateChanged: false });
+      writeDspyGepaProgramBridge(badOracleBridgePath, { validOracle: false });
+      // Equality fails closed: 7808 + 256 + 128 == 8192.
+      writeDspyGepaProgramBridge(reflectionOverflowBridgePath, { reflectionPromptTokens: 7808 });
+      writeDspyGepaProgramBridge(badRouteBridgePath, { validRouteBinding: false });
+      writeDspyGepaProgramBridge(badInputBundleBridgePath, { validInputBundleBinding: false });
+      writeDspyGepaProgramBridge(badEndpointBundleBridgePath, { validEndpointBundleBinding: false });
+      writeDspyGepaProgramBridge(noChangeBridgePath, { mutationClaimed: false });
+      writeDspyGepaBridgeConfig(bridgeConfigPath);
+      mkdirSync(programProject);
+      writeFileSync(join(programProject, "pyproject.toml"), "[project]\nname='fixture-project'\nversion='0.0.1'\n", "utf8");
+      writeFileSync(join(programProject, "uv.lock"), "version = 1\nrevision = 1\n", "utf8");
+
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--program-bridge",
+        bridgePath,
+        "--program-bridge-config",
+        bridgeConfigPath,
+        "--program-project",
+        programProject,
+        "--model",
+        "student-deployment",
+        "--reflection-model",
+        "reflection-deployment",
+      ]);
+      assert.equal(scaffold.status, 1, scaffold.stderr);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const runtimeArgs = [
+        runtime,
+        "dspy-gepa",
+        "--repo",
+        repo,
+        "--program-bridge",
+        bridgePath,
+        "--program-bridge-config",
+        bridgeConfigPath,
+        "--program-project",
+        programProject,
+        "--model",
+        "student-deployment",
+        "--reflection-model",
+        "reflection-deployment",
+        "--max-metric-calls",
+        "7",
+        "--max-tokens",
+        "128",
+        "--budget-usd",
+        "1",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+        "--reflection-minibatch-size",
+        "2",
+        "--candidate-selection-strategy",
+        "pareto",
+        "--component-selector",
+        "all",
+        "--use-merge",
+        "true",
+        "--max-merge-invocations",
+        "4",
+        "--num-threads",
+        "1",
+        "--seed",
+        "42",
+        "--log-dir",
+        logDir,
+        "--track-stats",
+        "true",
+      ];
+      const runtimeEnv = {
+        ...baseEnv,
+        PYTHONPATH: stubRoot,
+        MODEL_SENTINEL: modelSentinel,
+        GEPA_KWARGS_SENTINEL: kwargsSentinel,
+        UNDERSTUDY_API_KEY: "fixture-key",
+        FIXTURE_FIREWORKS_API_KEY: "fixture-fireworks-key",
+        UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+        UNDERSTUDY_AUTH_SOURCE: "fixture",
+      };
+      const admission = spawnSync("python3", [...runtimeArgs, "--admission-only"], {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(admission.status, 0, admission.stderr || admission.stdout);
+      const admissionPayload = JSON.parse(admission.stdout);
+      assert.equal(admissionPayload.status, "admitted");
+      assert.equal(admissionPayload.optimizer_started, false);
+      assert.equal(admissionPayload.optimizer_provider_calls, false);
+      assert.equal(admissionPayload.endpoint_provider_calls, true);
+      assert.equal(admissionPayload.spend_evidence.calls_attempted, 0);
+      assert.equal(admissionPayload.route_bindings.student.requested_model, "student-deployment");
+      assert.equal(admissionPayload.route_bindings.student.executed_model, "openai/student-deployment");
+      assert.equal(admissionPayload.route_bindings.reflection.requested_model, "reflection-deployment");
+      assert.equal(
+        admissionPayload.route_bindings.reflection.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+      assert.equal(admissionPayload.route_bindings.student.credential_present, true);
+      assert.equal(admissionPayload.route_bindings.reflection.credential_present, true);
+      assert.equal("base_url" in admissionPayload.route_bindings.reflection, false);
+      const admissionReceipt = join(
+        repo,
+        ".understudy",
+        "optimize-workload",
+        "dspy-gepa",
+        "admission-receipt.json",
+      );
+      assert.equal(statSync(admissionReceipt).mode & 0o777, 0o600);
+      rmSync(modelSentinel);
+
+      const compileArgs = [...runtimeArgs, "--admission-receipt", admissionReceipt];
+      const result = spawnSync("python3", compileArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.dspy_gepa_adapter.v2");
+      assert.equal(payload.status, "candidate-created");
+      assert.equal(payload.model, "student-deployment");
+      assert.equal(payload.reflection_model, "reflection-deployment");
+      assert.equal(payload.holdout_count_excluded, 1);
+      assert.equal(payload.spend_evidence.calls_attempted, 2);
+
+      const models = readFileSync(modelSentinel, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      assert.deepEqual(models.map((item) => item.model), [
+        "openai/student-deployment",
+        "openai/accounts/fireworks/models/reflection-deployment",
+      ]);
+      assert.deepEqual(models.map((item) => item.api_base), [
+        "http://127.0.0.1:9/v1",
+        "https://api.fireworks.ai/inference/v1",
+      ]);
+      assert.deepEqual(models.map((item) => item.num_retries), [0, 0]);
+      const gepaKwargs = JSON.parse(readFileSync(kwargsSentinel, "utf8"));
+      assert.equal(gepaKwargs.max_metric_calls, 7);
+      assert.equal(gepaKwargs.reflection_minibatch_size, 2);
+      assert.equal(gepaKwargs.candidate_selection_strategy, "pareto");
+      assert.equal(gepaKwargs.component_selector, "all");
+      assert.equal(gepaKwargs.use_merge, true);
+      assert.equal(gepaKwargs.max_merge_invocations, 4);
+      assert.equal(gepaKwargs.num_threads, 1);
+      assert.equal(gepaKwargs.seed, 42);
+      assert.equal(gepaKwargs.track_stats, true);
+      assert.equal(gepaKwargs.track_best_outputs, true);
+      assert.equal(gepaKwargs.log_dir, realpathSync(logDir));
+      assert.equal(
+        gepaKwargs.reflection_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+
+      const runDir = join(repo, ".understudy", "optimize-workload", "dspy-gepa");
+      const packageState = JSON.parse(readFileSync(join(runDir, "package-state.json"), "utf8"));
+      assert.deepEqual(packageState.requested, ["dspy==3.3.0", "gepa[dspy]==0.1.1"]);
+      assert.deepEqual(packageState.actual, { dspy: "3.3.0", gepa: "0.1.1" });
+      assert.deepEqual(packageState.workload_actual, { "fixture-workload": "1.2.3" });
+      assert.equal(packageState.program_project.locked, true);
+      assert.equal(packageState.program_project.uv_lock_sha256.length, 64);
+      const config = JSON.parse(readFileSync(join(runDir, "config.json"), "utf8"));
+      assert.equal(config.gepa.num_threads, 1);
+      assert.equal(config.gepa.use_merge, true);
+      assert.equal(config.inference.routes.student.route_id, "fixture-understudy-student");
+      assert.equal(config.inference.routes.reflection.route_id, "fixture-fireworks-reflection");
+      assert.equal(config.inference.routes.student.requested_model, "student-deployment");
+      assert.equal(config.inference.routes.student.executed_model, "openai/student-deployment");
+      assert.equal(config.inference.routes.reflection.requested_model, "reflection-deployment");
+      assert.equal(
+        config.inference.routes.reflection.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+      const validation = config.admission.offline.bundle_validation;
+      assert.equal(validation.network_calls_made, 0);
+      assert.equal(validation.input_bundle_sha256, "a".repeat(64));
+      assert.equal(validation.loaded_bundle_sha256, "d".repeat(64));
+      assert.notEqual(validation.input_bundle_sha256, validation.loaded_bundle_sha256);
+      assert.equal(validation.loaded_bundle_schema_version, "understudy.fixture_endpoint_bundle.v1");
+      assert.equal(validation.oracle_contract.kind, "state_verifier");
+      assert.equal(validation.tool_contract_probe.decoded_arguments_type, "object");
+      assert.equal(validation.tool_contract_probe.world_state_changed, true);
+      assert.equal(validation.deployment_parity.duplicate_policy_injection, false);
+      assert.equal(validation.context_window_gate.source_context_limit, 4096);
+      assert.equal(validation.reflection_context_window_gate.reflection_context_limit, 8192);
+      assert.equal(validation.context_window_gate.route.id, config.inference.routes.student.route_id);
+      assert.equal(
+        validation.context_window_gate.route.sha256,
+        config.inference.routes.student.route_binding_sha256,
+      );
+      assert.equal(validation.reflection_context_window_gate.route.id, config.inference.routes.reflection.route_id);
+      assert.equal(
+        validation.reflection_context_window_gate.route.sha256,
+        config.inference.routes.reflection.route_binding_sha256,
+      );
+      assert.equal(validation.trajectory_feedback_contract.action_sequence_optimization_enabled, true);
+      assert.equal(config.admission.live.standard_verifiers, true);
+      assert.equal(config.admission.live.optimizer_started, false);
+      assert.equal(config.admission.live.episode_count, 1);
+      assert.equal(config.budget_allocation.optimizer_inference_cap_usd, 1);
+      assert.equal(config.budget_allocation.endpoint_cap_usd, 1);
+      assert.equal(config.budget_allocation.campaign_remaining_after_allocations_usd, 0.75);
+      const programState = JSON.parse(readFileSync(join(runDir, "program-state.json"), "utf8"));
+      assert.deepEqual(programState.bridge_state.components, ["actor", "advisor", "router"]);
+      assert.equal(programState.dspy_state.actor, "actor prompt");
+      const manifest = JSON.parse(readFileSync(join(runDir, "bundle-manifest.json"), "utf8"));
+      assert.equal(manifest.files.length, 2);
+      assert.equal(manifest.bundle_sha256, payload.bundle_sha256);
+      assert.equal(manifest.canonical_bundle_sha256, payload.canonical_bundle_sha256);
+      const canonical = JSON.stringify({
+        files: manifest.files.map((item) => ({ path: item.path, sha256: item.sha256, size_bytes: item.size_bytes })),
+        schema_version: "understudy.dspy_gepa_bundle_content.v1",
+      });
+      assert.equal(createHash("sha256").update(canonical).digest("hex"), manifest.bundle_sha256);
+      assert.equal(manifest.export_metadata.continuation_parent, null);
+      assert.equal(manifest.export_metadata.provenance.tool_schema_sha256, "b".repeat(64));
+      assert.equal(manifest.mutation_claimed, true);
+      assert.equal(manifest.outcome, "improved");
+      assert.deepEqual(manifest.route_bindings, config.inference.routes);
+
+      const spendEntries = payload.spend_evidence.entries;
+      assert.equal(spendEntries[0].configured_identity.role, "student");
+      assert.equal(spendEntries[0].configured_identity.requested_model, "student-deployment");
+      assert.equal(spendEntries[0].configured_identity.executed_model, "openai/student-deployment");
+      assert.equal(spendEntries[1].configured_identity.role, "reflection");
+      assert.equal(spendEntries[1].configured_identity.requested_model, "reflection-deployment");
+      assert.equal(
+        spendEntries[1].configured_identity.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+      assert.deepEqual(spendEntries[0].response_identity.provider_returned_model, {
+        status: "observed",
+        source: "response.model",
+        value: "provider-returned/openai/student-deployment",
+      });
+      assert.deepEqual(spendEntries[1].response_identity.effective_model_header, {
+        status: "observed",
+        header: "x-model-id",
+        value: "effective/openai/accounts/fireworks/models/reflection-deployment",
+      });
+
+      for (const artifact of [
+        "package-state.json",
+        "config.json",
+        "program-state.json",
+        "bundle-manifest.json",
+        "run-state.json",
+      ]) {
+        assert.equal(statSync(join(runDir, artifact)).mode & 0o777, 0o600);
+      }
+      assert.equal(statSync(runDir).mode & 0o777, 0o700);
+      assert.equal(statSync(logDir).mode & 0o777, 0o700);
+
+      rmSync(modelSentinel);
+      const mismatchedResumeArgs = [...compileArgs];
+      mismatchedResumeArgs[mismatchedResumeArgs.indexOf("42")] = "43";
+      const mismatchedResume = spawnSync("python3", mismatchedResumeArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(mismatchedResume.status, 6, mismatchedResume.stderr || mismatchedResume.stdout);
+      assert.equal(JSON.parse(mismatchedResume.stdout).reason, "resume-log-config-mismatch");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badOracleArgs = [...runtimeArgs, "--admission-only"];
+      badOracleArgs[badOracleArgs.indexOf(bridgePath)] = badOracleBridgePath;
+      badOracleArgs[badOracleArgs.indexOf(logDir)] = `${logDir}-bad-oracle`;
+      const badOracle = spawnSync("python3", badOracleArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(badOracle.status, 6, badOracle.stderr || badOracle.stdout);
+      assert.equal(JSON.parse(badOracle.stdout).reason, "state-verifier-oracle-contract-failed");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const reflectionOverflowArgs = [...runtimeArgs, "--admission-only"];
+      reflectionOverflowArgs[reflectionOverflowArgs.indexOf(bridgePath)] = reflectionOverflowBridgePath;
+      reflectionOverflowArgs[reflectionOverflowArgs.indexOf(logDir)] = `${logDir}-reflection-overflow`;
+      const reflectionOverflow = spawnSync("python3", reflectionOverflowArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(reflectionOverflow.status, 6, reflectionOverflow.stderr || reflectionOverflow.stdout);
+      assert.equal(JSON.parse(reflectionOverflow.stdout).reason, "reflection-renderer-context-window-overflow");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badRouteArgs = [...runtimeArgs, "--admission-only"];
+      badRouteArgs[badRouteArgs.indexOf(bridgePath)] = badRouteBridgePath;
+      badRouteArgs[badRouteArgs.indexOf(logDir)] = `${logDir}-bad-route`;
+      const badRoute = spawnSync("python3", badRouteArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(badRoute.status, 6, badRoute.stderr || badRoute.stdout);
+      assert.equal(JSON.parse(badRoute.stdout).reason, "reflection-route-binding-mismatch");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badInputBundleArgs = [...runtimeArgs, "--admission-only"];
+      badInputBundleArgs[badInputBundleArgs.indexOf(bridgePath)] = badInputBundleBridgePath;
+      badInputBundleArgs[badInputBundleArgs.indexOf(logDir)] = `${logDir}-bad-input-bundle`;
+      const badInputBundle = spawnSync("python3", badInputBundleArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(badInputBundle.status, 6, badInputBundle.stderr || badInputBundle.stdout);
+      assert.equal(JSON.parse(badInputBundle.stdout).reason, "input-bundle-sha256-mismatch");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badEndpointBundleArgs = [...runtimeArgs, "--admission-only"];
+      badEndpointBundleArgs[badEndpointBundleArgs.indexOf(bridgePath)] = badEndpointBundleBridgePath;
+      badEndpointBundleArgs[badEndpointBundleArgs.indexOf(logDir)] = `${logDir}-bad-endpoint-bundle`;
+      const badEndpointBundle = spawnSync("python3", badEndpointBundleArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(badEndpointBundle.status, 6, badEndpointBundle.stderr || badEndpointBundle.stdout);
+      assert.equal(
+        JSON.parse(badEndpointBundle.stdout).reason,
+        "loaded-endpoint-bundle-sha256-mismatch",
+      );
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badAdmissionArgs = [...runtimeArgs, "--admission-only"];
+      badAdmissionArgs[badAdmissionArgs.indexOf(bridgePath)] = badBridgePath;
+      badAdmissionArgs[badAdmissionArgs.indexOf(logDir)] = `${logDir}-bad-admission`;
+      const badAdmission = spawnSync("python3", badAdmissionArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(badAdmission.status, 6, badAdmission.stderr || badAdmission.stdout);
+      const badAdmissionPayload = JSON.parse(badAdmission.stdout);
+      assert.equal(badAdmissionPayload.status, "admission-blocked");
+      assert.equal(badAdmissionPayload.reason, "live-admission-required-world-state-change-failed");
+      assert.equal(badAdmissionPayload.provider_calls, false);
+      const badAdmissionModels = readFileSync(modelSentinel, "utf8").trim().split("\n");
+      assert.equal(badAdmissionModels.length, 2);
+      assert.equal(badAdmissionPayload.spend_evidence.calls_attempted, 0);
+
+      rmSync(modelSentinel);
+      const noChangeAdmissionArgs = [...runtimeArgs, "--admission-only"];
+      noChangeAdmissionArgs[noChangeAdmissionArgs.indexOf(bridgePath)] = noChangeBridgePath;
+      noChangeAdmissionArgs[noChangeAdmissionArgs.indexOf(logDir)] = `${logDir}-no-change`;
+      const noChangeAdmission = spawnSync("python3", noChangeAdmissionArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(noChangeAdmission.status, 0, noChangeAdmission.stderr || noChangeAdmission.stdout);
+      rmSync(modelSentinel);
+      const noChangeCompileArgs = [
+        ...noChangeAdmissionArgs.slice(0, -1),
+        "--admission-receipt",
+        admissionReceipt,
+      ];
+      const noChangeCompile = spawnSync("python3", noChangeCompileArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(noChangeCompile.status, 0, noChangeCompile.stderr || noChangeCompile.stdout);
+      const noChangeManifest = JSON.parse(readFileSync(join(runDir, "bundle-manifest.json"), "utf8"));
+      assert.equal(noChangeManifest.mutation_claimed, false);
+      assert.equal(noChangeManifest.outcome, "non_improved");
+      assert.equal(noChangeManifest.promotion_eligible, false);
     }));
 
   it("blocks a registry optimizer adapter unless execution is explicit", () =>
