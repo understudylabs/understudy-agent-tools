@@ -83,7 +83,8 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   if (opts.provider !== "anthropic" && opts.provider !== "openai") {
     throw new Error("Expected --provider anthropic|openai.");
   }
-  const auth = resolveAuth(opts.org);
+  const resolvedAuth = resolveAuth(opts.org);
+  const auth = { ...resolvedAuth, gatewayUrl: normalizeGatewayUrl(resolvedAuth.gatewayUrl) };
   const endpoint = opts.provider === "anthropic" ? "/v1/messages" : "/v1/chat/completions";
   const url = `${auth.gatewayUrl.replace(/\/+$/, "")}${endpoint}`;
   const maxTokens = parseMaxTokens(opts.maxTokens);
@@ -171,9 +172,19 @@ function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Rec
 }
 
 function resolveGatewayUrl(override?: string): string {
-  if (override) return override;
+  if (override) return normalizeGatewayUrl(override);
   const credentials = readCredentials();
-  return credentials?.gateway_url ?? process.env.UNDERSTUDY_GATEWAY_URL ?? DEFAULT_GATEWAY_URL;
+  return normalizeGatewayUrl(credentials?.gateway_url ?? process.env.UNDERSTUDY_GATEWAY_URL ?? DEFAULT_GATEWAY_URL);
+}
+
+function normalizeGatewayUrl(value: string): string {
+  const parsed = new URL(value);
+  if (parsed.pathname === "/v1" || parsed.pathname === "/v1/") {
+    parsed.pathname = "";
+    parsed.search = "";
+    parsed.hash = "";
+  }
+  return parsed.toString().replace(/\/$/, "");
 }
 
 function parseMaxTokens(value: string | undefined): number {
