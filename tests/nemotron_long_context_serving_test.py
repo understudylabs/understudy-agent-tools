@@ -7,6 +7,7 @@ import sys
 import tempfile
 import types
 import unittest
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 
@@ -26,6 +27,7 @@ def load(name, path):
 CONTRACT = load("nemotron_long_context_contract", SCRIPTS / "nemotron_long_context_contract.py")
 EXPORT = load("nemotron_long_context_export", SCRIPTS / "export-tinker-nemotron-long-context.py")
 PARITY = load("nemotron_long_context_parity", SCRIPTS / "nemotron-long-context-parity.py")
+CANARY = load("nemotron_serving_parity_canary", SCRIPTS / "nemotron-serving-parity-canary.py")
 
 PARITY_TOOLS = [{
     "type": "function",
@@ -96,6 +98,42 @@ def adapter(root: pathlib.Path, tensors: dict[str, list[int]], targets: list[str
 
 
 class NemotronLongContextServingTest(unittest.TestCase):
+    def test_canary_requires_readiness_before_any_inference_post(self):
+        opener = MagicMock()
+        opener.open.side_effect = urllib.error.HTTPError("https://serve/health", 503, "cold", {}, None)
+        receipt = CANARY.run([], "https://serve/v1/chat/completions", "https://serve/health", {}, opener=opener)
+        self.assertFalse(receipt["ready"])
+        self.assertEqual(receipt["inference_posts"], 0)
+        self.assertEqual(opener.open.call_count, 1)
+
+    def test_canary_exposes_redirect_and_suppresses_dependent_continuation(self):
+        class Response:
+            def __init__(self, status, body=b"{}"):
+                self.status = status
+                self.body = body
+            def read(self):
+                return self.body
+
+        opener = MagicMock()
+        opener.open.side_effect = [
+            Response(200),
+            urllib.error.HTTPError("https://serve/v1/chat/completions", 303, "redirect", {}, None),
+        ]
+        base = {
+            "model": "model",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS,
+            "sampling": PARITY_SAMPLING,
+            "expected_assistant_message": {"tool_calls": []},
+        }
+        rows = [{**base, "case_id": "first"}, {**base, "case_id": "continuation", "continuation_of": "first"}]
+        receipt = CANARY.run(rows, "https://serve/v1/chat/completions", "https://serve/health", {}, opener=opener)
+        self.assertEqual(receipt["inference_posts"], 1)
+        self.assertEqual(receipt["rows"][0]["outcome"], "transport_failure")
+        self.assertIsNone(receipt["rows"][0]["action_parity"])
+        self.assertEqual(receipt["rows"][1]["outcome"], "suppressed_parent_transport_failure")
+        self.assertEqual(opener.open.call_count, 2)
+
     def test_modal_merge_is_cpu_only_hash_bound_and_private(self):
         source = (SCRIPTS / "modal-nemotron-merge-export.py").read_text()
         self.assertIn("cpu=8", source)
