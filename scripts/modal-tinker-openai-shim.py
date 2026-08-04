@@ -1,7 +1,8 @@
 """Private multi-checkpoint Tinker sampling bridge for Understudy Gateway.
 
 Deploy with a Modal secret named understudy-tinker-serving containing
-TINKER_API_KEY, TINKER_SHIM_BEARER_TOKEN, and TINKER_MODEL_REGISTRY_JSON.
+TINKER_API_KEY and TINKER_MODEL_REGISTRY_JSON. Modal proxy authentication is
+required before requests reach the shim.
 """
 from __future__ import annotations
 
@@ -41,7 +42,7 @@ image = (
     max_containers=4,
 )
 @modal.concurrent(max_inputs=64)
-@modal.web_server(PORT, startup_timeout=10 * 60)
+@modal.web_server(PORT, startup_timeout=10 * 60, requires_proxy_auth=True)
 def serve() -> None:
     registry = json.loads(os.environ["TINKER_MODEL_REGISTRY_JSON"])
     if not isinstance(registry, dict) or not registry:
@@ -61,6 +62,7 @@ def serve() -> None:
             "nemotron3",
             "--host",
             "0.0.0.0",
+            "--trusted-proxy-auth",
             "--port",
             str(PORT),
             "--max-workers",

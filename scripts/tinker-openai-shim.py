@@ -55,13 +55,24 @@ model_group.add_argument(
 parser.add_argument("--tokenizer-model", help="Base model used for tokenization/rendering when --model-path is selected.")
 parser.add_argument("--renderer", required=True)
 parser.add_argument("--host", default="127.0.0.1")
+parser.add_argument(
+    "--trusted-proxy-auth",
+    action="store_true",
+    help="Allow a non-loopback bind without app bearer auth only behind an authenticated reverse proxy.",
+)
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
 parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
 args = parser.parse_args()
 service_token = os.environ.get("TINKER_SHIM_BEARER_TOKEN")
-if args.host not in {"127.0.0.1", "::1", "localhost"} and not service_token:
-    raise SystemExit("TINKER_SHIM_BEARER_TOKEN is required for non-loopback binds")
+if (
+    args.host not in {"127.0.0.1", "::1", "localhost"}
+    and not service_token
+    and not args.trusted_proxy_auth
+):
+    raise SystemExit(
+        "TINKER_SHIM_BEARER_TOKEN or --trusted-proxy-auth is required for non-loopback binds"
+    )
 request_timeout = 300
 log_path = os.environ.get("TINKER_SHIM_LOG", "/tmp/tinker-openai-shim.log")
 log_lock = threading.Lock()
