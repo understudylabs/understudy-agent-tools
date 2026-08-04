@@ -25,6 +25,7 @@ from __future__ import annotations
 import hmac
 import json
 import uuid
+from dataclasses import asdict, is_dataclass
 from typing import Any, Optional
 
 # Values tinker.types.StopReason may take.
@@ -72,14 +73,43 @@ def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     }
 
 
-def normalize_assistant_message(message: dict[str, Any], request_id: str) -> dict[str, Any]:
+def _typed_object(value: Any, *, label: str) -> dict[str, Any]:
+    """Project SDK model/dataclass objects onto a JSON-compatible mapping.
+
+    Tinker and renderer releases have returned both dictionaries and typed
+    ``ToolCall`` objects.  Normalize those dependency shapes explicitly rather
+    than assuming ``.get`` exists or serializing arbitrary private attributes.
+    """
+    if isinstance(value, dict):
+        return value
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        projected = model_dump(mode="json")
+    elif is_dataclass(value) and not isinstance(value, type):
+        projected = asdict(value)
+    else:
+        projected = {
+            field: getattr(value, field)
+            for field in ("role", "content", "tool_calls", "id", "type", "function", "name", "arguments")
+            if hasattr(value, field)
+        }
+    if not isinstance(projected, dict):
+        raise ValueError(f"{label} must normalize to an object")
+    return projected
+
+
+def normalize_assistant_message(message: Any, request_id: str) -> dict[str, Any]:
     """Return strict OpenAI assistant shape with stable tool-call IDs/arguments."""
+    message = _typed_object(message, label="assistant message")
     normalized = {"role": "assistant", "content": message.get("content") or ""}
     raw_calls = message.get("tool_calls") or []
+    if not isinstance(raw_calls, (list, tuple)):
+        raise ValueError("assistant tool_calls must be a list or tuple")
     if raw_calls:
         calls = []
         for index, raw in enumerate(raw_calls):
-            function = raw.get("function") or {}
+            raw = _typed_object(raw, label=f"tool call {index}")
+            function = _typed_object(raw.get("function") or {}, label=f"tool call {index} function")
             arguments = function.get("arguments", "{}")
             if isinstance(arguments, dict):
                 arguments = json.dumps(arguments, sort_keys=True)

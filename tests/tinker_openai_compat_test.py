@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -40,6 +41,70 @@ def test_parsed_tool_call_gets_stable_id_and_json_arguments() -> None:
     assert first == second
     assert first["tool_calls"][0]["id"].startswith("call_")
     assert first["tool_calls"][0]["function"]["arguments"] == '{"title": "A"}'
+
+
+def test_typed_sdk_tool_call_is_normalized_without_private_attributes() -> None:
+    @dataclass
+    class Function:
+        name: str
+        arguments: str
+        private_payload: str = "must-not-leak"
+
+    @dataclass
+    class ToolCall:
+        id: str
+        type: str
+        function: Function
+        private_payload: str = "must-not-leak"
+
+    @dataclass
+    class AssistantMessage:
+        role: str
+        content: str
+        tool_calls: list[ToolCall]
+        private_payload: str = "must-not-leak"
+
+    normalized = MODULE.normalize_assistant_message(
+        AssistantMessage(
+            role="assistant",
+            content="",
+            tool_calls=[ToolCall("call-typed", "function", Function("create-task", '{"title":"A"}'))],
+        ),
+        "request-typed",
+    )
+    assert normalized == {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{
+            "id": "call-typed",
+            "type": "function",
+            "function": {"name": "create-task", "arguments": '{"title":"A"}'},
+        }],
+    }
+    assert "private_payload" not in str(normalized)
+
+
+def test_pydantic_style_tool_call_is_normalized() -> None:
+    class Model:
+        def __init__(self, value):
+            self.value = value
+        def model_dump(self, *, mode):
+            assert mode == "json"
+            return self.value
+
+    message = Model({
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [Model({
+            "id": "call-model",
+            "type": "function",
+            "function": Model({"name": "lookup", "arguments": '{"x":1}'}),
+        })],
+    })
+    normalized = MODULE.normalize_assistant_message(message, "request-model")
+    assert normalized["tool_calls"][0]["function"] == {
+        "name": "lookup", "arguments": '{"x":1}',
+    }
 
 
 def test_context_overflow_is_not_mislabeled_as_retryable_provider_failure() -> None:
