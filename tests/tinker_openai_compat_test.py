@@ -72,3 +72,25 @@ def test_timeout_remains_a_retry_class_server_error() -> None:
     status, payload = MODULE.openai_error_response(TimeoutError("sampling timed out"))
     assert status == 504
     assert payload["error"]["code"] == "upstream_timeout"
+
+
+def test_malformed_chat_requests_fail_closed() -> None:
+    cases = (
+        (b"{", "valid UTF-8 JSON"),
+        (b"[]", "JSON object"),
+        (b'{"model":"cedar-test"}', "messages"),
+        (b'{"messages":{}}', "messages"),
+    )
+    for raw, expected in cases:
+        try:
+            MODULE.parse_chat_request(raw)
+        except MODULE.InvalidRequestError as error:
+            assert expected in str(error)
+            status, payload = MODULE.openai_error_response(error)
+            assert status == 400
+            assert payload["error"]["type"] == "invalid_request_error"
+            assert payload["error"]["code"] == "invalid_request"
+        else:
+            raise AssertionError(f"invalid request unexpectedly accepted: {raw!r}")
+
+    assert MODULE.parse_chat_request(b'{"messages":[]}') == {"messages": []}

@@ -39,11 +39,13 @@ from tinker_cookbook.renderers import get_renderer
 from tinker_cookbook.tokenizer_utils import get_tokenizer
 
 from tinker_openai_compat import (
+    InvalidRequestError,
     bearer_authorized,
     build_chat_completion,
     normalize_assistant_message,
     normalize_finish_reason,
     openai_error_response,
+    parse_chat_request,
 )
 from tinker_renderer_compat import renderer_messages, renderer_tools
 
@@ -198,8 +200,17 @@ class Handler(BaseHTTPRequestHandler):
             active_requests += 1
             in_flight = active_requests
         log_event("start", request_id=request_id, in_flight=in_flight)
-        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         try:
+            raw_content_length = self.headers.get("content-length")
+            if raw_content_length is None:
+                raise InvalidRequestError("content-length header is required")
+            try:
+                content_length = int(raw_content_length)
+            except ValueError as error:
+                raise InvalidRequestError("content-length header must be an integer") from error
+            if content_length < 0:
+                raise InvalidRequestError("content-length header must be non-negative")
+            body = parse_chat_request(self.rfile.read(content_length))
             requested_model = body.get("model")
             if requested_model is None and len(served_models) == 1:
                 requested_model = served_models[0]

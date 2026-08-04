@@ -35,6 +35,23 @@ _SAMPLER_LENGTH = "length"
 _CLEAN_TERMINATIONS = ("stop_sequence", "eos")
 
 
+class InvalidRequestError(ValueError):
+    """A bounded client request error that must be returned as HTTP 400."""
+
+
+def parse_chat_request(raw: bytes) -> dict[str, Any]:
+    """Decode and minimally validate an OpenAI chat-completions request."""
+    try:
+        body = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise InvalidRequestError("request body must be valid UTF-8 JSON") from error
+    if not isinstance(body, dict):
+        raise InvalidRequestError("request body must be a JSON object")
+    if not isinstance(body.get("messages"), list):
+        raise InvalidRequestError("messages must be a JSON array")
+    return body
+
+
 def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     """Map sampler failures without disguising deterministic client errors.
 
@@ -47,6 +64,14 @@ def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     detail = str(error)
     lowered = detail.lower()
     type_name = type(error).__name__
+    if isinstance(error, InvalidRequestError):
+        return 400, {
+            "error": {
+                "message": detail[:500],
+                "type": "invalid_request_error",
+                "code": "invalid_request",
+            }
+        }
     if type_name == "BadRequestError" or "exceeds the model's context window" in lowered:
         code = "context_length_exceeded" if "context window" in lowered else "invalid_request"
         return 400, {
