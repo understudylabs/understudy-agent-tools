@@ -2213,6 +2213,9 @@ class ScoreWithFeedback:
       const health = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", gatewayUrl], env, repo);
       assert.equal(health.status, 0, health.stderr);
       assert.equal(JSON.parse(health.stdout).ok, true);
+      const versionedHealth = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", `${gatewayUrl}/v1`], env, repo);
+      assert.equal(versionedHealth.status, 0, versionedHealth.stderr);
+      assert.equal(JSON.parse(versionedHealth.stdout).ok, true);
 
       const anthropic = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "anthropic", "--project", "rehearsal", "--workload", "classify", "--tag", "env=test", "--byok-env", "UPSTREAM_TEST_KEY"], env, repo);
       assert.equal(anthropic.status, 0, anthropic.stderr);
