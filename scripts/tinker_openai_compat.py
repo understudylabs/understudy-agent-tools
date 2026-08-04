@@ -79,21 +79,27 @@ def normalize_finish_reason(
 
 
 def build_chat_completion(
-    content: str,
+    message: dict,
     prompt_tokens: int,
     completion_tokens: int,
     finish_reason: str,
 ) -> dict:
-    """Build the /v1/chat/completions response body.
+    """Build the /v1/chat/completions response body without dropping tool calls.
 
     finish_reason is a required positional argument: constructing the choice
     object without a defined finish_reason is impossible here, which is exactly
     the undefined-variable (NameError) failure this module exists to prevent.
     """
+    choice_message = {
+        "role": "assistant",
+        "content": message.get("content", ""),
+    }
+    if message.get("tool_calls"):
+        choice_message["tool_calls"] = message["tool_calls"]
     return {
         "choices": [
             {
-                "message": {"role": "assistant", "content": content},
+                "message": choice_message,
                 "finish_reason": finish_reason,
             }
         ],
@@ -102,3 +108,29 @@ def build_chat_completion(
             "completion_tokens": completion_tokens,
         },
     }
+
+
+def renderer_messages(renderer, messages: list[dict], tools: list[dict]) -> list[dict]:
+    """Convert OpenAI chat messages into the renderer's lossless conversation."""
+    system_messages = [message for message in messages if message.get("role") == "system"]
+    conversation = [message for message in messages if message.get("role") != "system"]
+    system_content = "\n\n".join(
+        str(message.get("content") or "") for message in system_messages
+    )
+    tool_specs = [
+        tool["function"]
+        for tool in tools
+        if isinstance(tool, dict)
+        and tool.get("type") == "function"
+        and isinstance(tool.get("function"), dict)
+    ]
+    if tool_specs:
+        prefix = renderer.create_conversation_prefix_with_tools(
+            tool_specs,
+            system_prompt=system_content,
+        )
+    elif system_messages:
+        prefix = [{"role": "system", "content": system_content}]
+    else:
+        prefix = []
+    return [*prefix, *conversation]
