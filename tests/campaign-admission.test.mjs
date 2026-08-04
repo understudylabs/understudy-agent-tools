@@ -11,24 +11,22 @@ describe("campaign admission", () => {
     assert.equal(result.admission_only, true);
     assert.equal(result.compile_authorized, false);
     assert.equal(result.cumulative_spend_usd, 19);
-    assert.equal(result.tool_steps[0].raw_arguments_equal, false);
+    assert.equal(result.tool_steps[0].raw_arguments_equal, true);
     assert.equal(result.tool_steps[0].semantic_arguments_equal, true);
     assert.equal(result.tool_steps[0].mutation, true);
   });
 
-  it("whitespace changes alter raw arguments while preserving semantic equality", async () => {
+  it("rejects whitespace-only raw argument drift even when semantics match", async () => {
     const mod = await import("../dist/campaign-admission/index.js");
     const { manifest, artifacts } = baseManifest(mod);
     const response = JSON.parse(artifacts.response);
-    response.choices[0].message.tool_calls[0].function.arguments = '{"id":"alpha","status":"ready"}';
+    response.choices[0].message.tool_calls[0].function.arguments = '{ "id": "alpha", "status": "ready" }';
     const changed = Buffer.from(`${JSON.stringify(response)}\n`);
     const changedArtifacts = { ...artifacts, response: changed };
     manifest.transport_fingerprints = mod.fingerprintTransport(changedArtifacts);
-    manifest.tool_steps = mod.fingerprintToolSteps(changedArtifacts);
     const result = mod.validateCampaignAdmission(manifest, changedArtifacts);
-    assert.equal(result.admitted, true, result.errors.join("\n"));
-    assert.equal(result.tool_steps[0].raw_arguments_equal, true);
-    assert.equal(result.tool_steps[0].semantic_arguments_equal, true);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /raw argument mismatch/);
   });
 
   it("rejects executed argument changes, missing/duplicate IDs, and non-string arguments", async () => {
@@ -84,6 +82,15 @@ describe("campaign admission", () => {
     assert.match(result.errors.join("\n"), /prior spend plus new charges/);
   });
 
+  it("reserves campaign total for prior spend plus effective lane allocations", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    manifest.spend.prior_spend_usd = 11;
+    const result = mod.validateCampaignAdmission(manifest, artifacts);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /prior spend plus effective lane allocations/);
+  });
+
   it("fails payload parity and max-token overflow downgrades closed", async () => {
     const mod = await import("../dist/campaign-admission/index.js");
     const { manifest, artifacts } = baseManifest(mod);
@@ -91,5 +98,56 @@ describe("campaign admission", () => {
     const result = mod.validateCampaignAdmission(manifest, artifacts);
     assert.equal(result.admitted, false);
     assert.match(result.errors.join("\n"), /context_overflow/);
+  });
+
+  it("requires an executed overflow receipt with zero samples and tools", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    const overflow = JSON.parse(artifacts.overflowReceipt);
+    overflow.sample_calls = 1;
+    const changed = { ...artifacts, overflowReceipt: Buffer.from(`${JSON.stringify(overflow)}\n`) };
+    manifest.payload_parity.overflow_probe_receipt_sha256 = mod.sha256Bytes(changed.overflowReceipt);
+    const result = mod.validateCampaignAdmission(manifest, changed);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /did not fail before sampling and tool execution/);
+  });
+
+  it("rejects external interpreters, no-project argv, and changed installed distributions", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    for (const mutate of [
+      (receipt) => { receipt.argv.splice(2, 0, "--no-project"); },
+      (receipt) => { receipt.interpreter.path = "/usr/bin/python3"; },
+      (receipt) => { receipt.installed_distributions[0].version = "999"; receipt.installed_distributions_sha256 = mod.semanticJsonSha256(Buffer.from(JSON.stringify(receipt.installed_distributions)), "installed"); },
+    ]) {
+      const { manifest, artifacts } = baseManifest(mod);
+      const receipt = JSON.parse(artifacts.executionReceipt);
+      mutate(receipt);
+      const changed = { ...artifacts, executionReceipt: Buffer.from(`${JSON.stringify(receipt)}\n`) };
+      manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(changed.executionReceipt);
+      const result = mod.validateCampaignAdmission(manifest, changed);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /locked-project uv argv|cannot use --no-project|locked project Python|installed distributions/);
+    }
+  });
+
+  it("requires exact workload Verifiers version and commit pins without a global 0.2.1 constant", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    manifest.workload_contract.verifiers_version = "0.2.2.dev77";
+    const result = mod.validateCampaignAdmission(manifest, artifacts);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /version\/commit|lock inventory|workload contract/);
+    assert.deepEqual(mod.publishedSchemaErrors(manifest).filter((error) => error.includes("verifiers_version")), []);
+  });
+
+  it("rejects unbound executable bundles, candidate lineage, and context gates", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    manifest.endpoint_bundle.environment_sha256 = "e".repeat(64);
+    manifest.candidate_lineage.model_attestation_sha256 = "f".repeat(64);
+    manifest.context_gates.reflection_context_sha256 = manifest.context_gates.source_context_sha256;
+    const result = mod.validateCampaignAdmission(manifest, artifacts);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /endpoint bundle environment|model attestation|context gates/);
   });
 });

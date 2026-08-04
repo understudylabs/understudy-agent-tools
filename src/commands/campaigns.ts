@@ -23,8 +23,9 @@ export function registerCampaignsCommand(program: Command): void {
     .requiredOption("--execution-receipt <path>", "Generated locked-project execution receipt")
     .requiredOption("--before-state <path>", "Generated before-state artifact")
     .requiredOption("--after-state <path>", "Generated after-state artifact")
+    .requiredOption("--overflow-receipt <path>", "Generated oversized-request failure receipt")
     .requiredOption("--smoke-generator <path>", "Provider-free generator inside the locked project")
-    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; smokeGenerator: string }) => {
+    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; smokeGenerator: string }) => {
       try {
         const project = resolve(options.project);
         const manifest = JSON.parse(readFileSync(resolve(options.manifest), "utf8")) as Record<string, unknown>;
@@ -41,17 +42,13 @@ export function registerCampaignsCommand(program: Command): void {
         const declaredPins = JSON.stringify(environment.resolved_packages);
         const lockedPins = JSON.stringify(parseUvLockPins(readFileSync(lock, "utf8")));
         if (declaredPins !== lockedPins) throw new Error("resolved package pins do not exactly match uv.lock");
-        const python = execFileSync("uv", ["python", "find", String(environment.python_version)], { encoding: "utf8" }).trim();
-        const pythonVersion = execFileSync(python, ["-c", "import platform; print(platform.python_version())"], { encoding: "utf8" }).trim();
-        if (pythonVersion !== environment.python_version) throw new Error(`python version mismatch: expected ${String(environment.python_version)}, got ${pythonVersion}`);
-        if (fileSha256(python) !== environment.python_executable_sha256) throw new Error("python executable hash does not match manifest");
         const generator = resolve(options.smokeGenerator);
         if (generator !== join(project, "generate_smoke.py")) throw new Error("smoke generator must be generate_smoke.py inside the locked project");
-        const comparisons = [["trace.json", options.trace], ["execution-receipt.json", options.executionReceipt], ["before-state.json", options.beforeState], ["after-state.json", options.afterState]] as const;
+        const comparisons = [["trace.json", options.trace], ["execution-receipt.json", options.executionReceipt], ["before-state.json", options.beforeState], ["after-state.json", options.afterState], ["overflow-receipt.json", options.overflowReceipt]] as const;
         const expected = new Map(comparisons.map(([generated, supplied]) => [generated, readFileSync(resolve(supplied))]));
         execFileSync("uv", ["run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"], { cwd: project, stdio: "pipe" });
         for (const [generated] of comparisons) if (!readFileSync(join(project, "generated", generated)).equals(expected.get(generated)!)) throw new Error(`generated ${generated} differs from supplied fixture`);
-        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState) }));
+        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState), overflowReceipt: resolve(options.overflowReceipt) }));
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         if (!result.admitted) process.exitCode = 1;
       } catch (error) {

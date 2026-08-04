@@ -1,0 +1,11 @@
+{
+  "effective_max_tokens": 256,
+  "failed_before_sampling": true,
+  "failure": "OverlongPromptError",
+  "oversized_request_sha256": "a47b86e783052357b1268c9ce2b1d1943d197a330f7863a2c2c21664da05008a",
+  "requested_max_tokens": 256,
+  "sample_calls": 0,
+  "schema_version": "understudy.synthetic_overflow_probe.v1",
+  "tool_calls": 0,
+  "trajectory_steps": 0
+}

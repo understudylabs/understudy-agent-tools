@@ -16,6 +16,7 @@ export type TransportArtifacts = {
   executionReceipt: Buffer;
   beforeState: Buffer;
   afterState: Buffer;
+  overflowReceipt: Buffer;
 };
 
 export type TransportFingerprints = {
@@ -174,6 +175,7 @@ export function fingerprintToolSteps(artifacts: TransportArtifacts): ToolStepFin
     if (responseName !== executedCall.name || responseName !== executedResult.name) throw new Error(`tool name mismatch for call id hash ${sha256Bytes(Buffer.from(id))}`);
     const rawEqual = responseArguments.raw === executedCall.arguments.raw;
     const semanticEqual = responseArguments.semantic_sha256 === executedCall.arguments.semantic_sha256;
+    if (!rawEqual) throw new Error(`raw argument mismatch for call id hash ${sha256Bytes(Buffer.from(id))}`);
     if (!semanticEqual) throw new Error(`semantic argument mismatch for call id hash ${sha256Bytes(Buffer.from(id))}`);
     const resultRawSha = sha256Bytes(Buffer.from(executedResult.raw));
     return {
@@ -228,8 +230,15 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   if (Array.isArray(argv) && argv.includes("--no-project")) errors.push("synthetic smoke cannot use --no-project");
   const interpreter = object(receipt.interpreter);
   if (interpreter.implementation !== "CPython" || interpreter.version !== object(manifest.environment).python_version) errors.push("execution receipt interpreter does not match the admitted project");
-  if (receipt.resolved_package_inventory_sha256 !== object(manifest.environment).uv_lock_sha256) errors.push("execution receipt package inventory is not bound to uv.lock");
-  if (object(receipt.verifiers).version !== "0.2.1") errors.push("execution receipt did not run Verifiers 0.2.1");
+  if (interpreter.path_kind !== "project_relative" || typeof interpreter.path !== "string" || !/^\.venv\/bin\/python[0-9.]*$/.test(interpreter.path) || interpreter.executable_sha256 !== object(manifest.environment).python_executable_sha256) errors.push("execution receipt interpreter path/hash is not the locked project Python");
+  const installed = Array.isArray(receipt.installed_distributions) ? receipt.installed_distributions.map(object) : [];
+  const declared = Array.isArray(object(manifest.environment).resolved_packages) ? (object(manifest.environment).resolved_packages as unknown[]).map(object) : [];
+  const installedPairs = installed.map((pin) => `${pin.name}==${pin.version}`).sort();
+  const declaredPairs = new Set(declared.map((pin) => `${pin.name}==${pin.version}`));
+  if (installedPairs.some((pin) => !declaredPairs.has(pin))) errors.push("inside-project installed distributions contain a package outside the exact lock inventory");
+  if (receipt.installed_distributions_sha256 !== sha256Bytes(Buffer.from(canonicalize(installed)))) errors.push("installed distribution inventory hash is invalid");
+  if (receipt.installed_distributions_sha256 !== object(manifest.environment).installed_distributions_sha256) errors.push("inside-project installed distribution inventory does not match the manifest");
+  if (object(receipt.verifiers).version !== object(manifest.workload_contract).verifiers_version || object(receipt.verifiers).git_revision !== object(manifest.workload_contract).verifiers_git_revision) errors.push("execution receipt Verifiers version/commit does not match workload contract");
   if (receipt.trace_sha256 !== sha256Bytes(artifacts.trace)) errors.push("execution receipt does not bind the supplied trace");
   if (receipt.before_state_sha256 !== sha256Bytes(artifacts.beforeState) || receipt.after_state_sha256 !== sha256Bytes(artifacts.afterState)) errors.push("execution receipt does not bind before/after state");
   if (receipt.seed_candidate_sha256 !== smoke.seed_candidate_sha256 || receipt.mutated_candidate_sha256 !== smoke.mutated_candidate_sha256) errors.push("candidate hashes are not bound to generated inputs");
@@ -256,6 +265,11 @@ function validatePayloadParity(manifest: JsonObject, artifacts: TransportArtifac
   if (parity.tools_sha256 !== toolsHash || call.tools_sha256 !== toolsHash) errors.push("upstream tools payload parity failed");
   if (parity.sampling_sha256 !== samplingHash || call.sampling_sha256 !== samplingHash) errors.push("upstream sampling payload parity failed");
   if (parity.context_overflow_behavior !== "fail" || call.context_overflow_behavior !== "fail") errors.push("context overflow must fail rather than lower max_tokens");
+  let overflow: JsonObject = {};
+  try { overflow = object(JSON.parse(artifacts.overflowReceipt.toString("utf8"))); } catch { errors.push("overflow probe receipt must be valid JSON"); }
+  if (parity.overflow_probe_receipt_sha256 !== sha256Bytes(artifacts.overflowReceipt)) errors.push("overflow probe receipt hash does not match supplied evidence");
+  if (overflow.schema_version !== "understudy.synthetic_overflow_probe.v1" || overflow.failure !== "OverlongPromptError" || overflow.failed_before_sampling !== true || overflow.sample_calls !== 0 || overflow.tool_calls !== 0) errors.push("oversized probe did not fail before sampling and tool execution");
+  if (overflow.requested_max_tokens !== requestSampling.max_tokens || overflow.effective_max_tokens !== requestSampling.max_tokens) errors.push("overflow probe changed requested max_tokens");
   if (call.max_tokens !== requestSampling.max_tokens) errors.push("executed max_tokens differs from the requested payload");
   const workload = object(manifest.workload_contract);
   const candidateTags = (Array.isArray(requestMessages) ? requestMessages : []).flatMap((message) => {
@@ -274,7 +288,40 @@ function validatePayloadParity(manifest: JsonObject, artifacts: TransportArtifac
   if (workload.benchmark_prompt_sha256 !== sha256Bytes(Buffer.from(canonicalize(fixedMessages)))) errors.push("fixed benchmark prompt slot is not hash-bound independently of the candidate policy");
   if (workload.tool_schema_sha256 !== toolsHash) errors.push("workload tool schema hash does not match tools artifact");
   if (workload.package_inventory_sha256 !== object(manifest.environment).uv_lock_sha256) errors.push("workload package inventory hash does not match uv.lock");
-  if (workload.mcp_version !== "1.29.0" || !Array.isArray(object(manifest.environment).resolved_packages) || !(object(manifest.environment).resolved_packages as unknown[]).map(object).some((pin) => pin.name === "mcp" && pin.version === "1.29.0")) errors.push("MCP must be pinned to 1.29.0 in the exact lock inventory");
+  const pins = Array.isArray(object(manifest.environment).resolved_packages) ? (object(manifest.environment).resolved_packages as unknown[]).map(object) : [];
+  const verifierPin = pins.find((pin) => pin.name === "verifiers");
+  const mcpPin = pins.find((pin) => pin.name === "mcp");
+  if (!verifierPin || verifierPin.version !== workload.verifiers_version || verifierPin.git_revision !== workload.verifiers_git_revision) errors.push("Verifiers version/commit must exactly match the supplied lock inventory");
+  if (!mcpPin || mcpPin.version !== workload.mcp_version) errors.push("MCP version must exactly match the supplied lock inventory");
+}
+
+function validateBundles(manifest: JsonObject, errors: string[]): void {
+  const optimizer = object(manifest.optimizer_input);
+  const endpoint = object(manifest.endpoint_bundle);
+  const lineage = object(manifest.candidate_lineage);
+  const gates = object(manifest.context_gates);
+  for (const [path, value] of [
+    ["optimizer_input.input_bundle_sha256", optimizer.input_bundle_sha256],
+    ["endpoint_bundle.executable_bundle_sha256", endpoint.executable_bundle_sha256],
+    ["endpoint_bundle.environment_sha256", endpoint.environment_sha256],
+    ["endpoint_bundle.health_receipt_sha256", endpoint.health_receipt_sha256],
+    ["endpoint_bundle.model_attestation_sha256", endpoint.model_attestation_sha256],
+    ["candidate_lineage.parent_candidate_sha256", lineage.parent_candidate_sha256],
+    ["candidate_lineage.candidate_sha256", lineage.candidate_sha256],
+    ["candidate_lineage.prompt_sha256", lineage.prompt_sha256],
+    ["candidate_lineage.model_attestation_sha256", lineage.model_attestation_sha256],
+    ["candidate_lineage.checkpoint_sha256", lineage.checkpoint_sha256],
+    ["context_gates.source_context_sha256", gates.source_context_sha256],
+    ["context_gates.reflection_context_sha256", gates.reflection_context_sha256],
+  ] as [string, unknown][]) requireSha(errors, value, path);
+  if (endpoint.frozen !== true || endpoint.seed !== false) errors.push("endpoint executable bundle must be a frozen non-seed candidate");
+  if (endpoint.executable_bundle_sha256 === optimizer.input_bundle_sha256) errors.push("optimizer input bundle must be distinct from the executable endpoint bundle");
+  if (endpoint.environment_sha256 !== object(manifest.environment).uv_lock_sha256) errors.push("endpoint bundle environment does not match the admitted locked project");
+  if (endpoint.model_attestation_sha256 !== lineage.model_attestation_sha256) errors.push("endpoint model attestation does not match candidate lineage");
+  const expectedCandidate = sha256Bytes(Buffer.from(canonicalize({ parent_candidate_sha256: lineage.parent_candidate_sha256, prompt_sha256: lineage.prompt_sha256, model_attestation_sha256: lineage.model_attestation_sha256, checkpoint_sha256: lineage.checkpoint_sha256, executable_bundle_sha256: endpoint.executable_bundle_sha256 })));
+  if (lineage.candidate_sha256 !== expectedCandidate) errors.push("candidate mutation is not bound to parent, prompt, model, checkpoint, and executable bundle");
+  if (lineage.parent_candidate_sha256 === lineage.candidate_sha256) errors.push("candidate lineage is unchanged from its parent");
+  if (gates.source_context_present !== true || gates.reflection_context_present !== true || gates.source_context_sha256 === gates.reflection_context_sha256) errors.push("distinct source and reflection context gates are required");
 }
 
 function object(value: unknown): JsonObject {
@@ -298,6 +345,7 @@ function validateEnvironment(manifest: JsonObject, errors: string[]): void {
   if (typeof environment.uv_version !== "string" || !EXACT_VERSION.test(environment.uv_version)) errors.push("environment.uv_version must be exact");
   if (typeof environment.python_version !== "string" || !EXACT_VERSION.test(environment.python_version)) errors.push("environment.python_version must be exact");
   requireSha(errors, environment.python_executable_sha256, "environment.python_executable_sha256");
+  requireSha(errors, environment.installed_distributions_sha256, "environment.installed_distributions_sha256");
   if (typeof environment.container_image_digest !== "string" || !IMAGE_DIGEST.test(environment.container_image_digest)) errors.push("environment.container_image_digest must be an immutable sha256 digest");
 
   const pins = Array.isArray(environment.resolved_packages) ? environment.resolved_packages.map(object) : [];
@@ -319,7 +367,7 @@ function validateEnvironment(manifest: JsonObject, errors: string[]): void {
 function validateSmoke(manifest: JsonObject, traceBytes: Uint8Array, errors: string[]): void {
   const smoke = object(manifest.mutation_smoke);
   if (smoke.runtime !== "standard-verifiers") errors.push("mutation_smoke.runtime must equal standard-verifiers");
-  if (smoke.verifiers_version !== "0.2.1") errors.push("mutation_smoke.verifiers_version must equal 0.2.1");
+  if (smoke.verifiers_version !== object(manifest.workload_contract).verifiers_version) errors.push("mutation_smoke.verifiers_version must match workload contract");
   if (smoke.task_count !== 1) errors.push("mutation_smoke.task_count must equal 1");
   if (!(number(smoke.calls) !== null && Number(smoke.calls) > 0)) errors.push("mutation_smoke.calls must be > 0");
   if (!(number(smoke.nodes) !== null && Number(smoke.nodes) > 0)) errors.push("mutation_smoke.nodes must be > 0");
@@ -339,7 +387,7 @@ function validateSmoke(manifest: JsonObject, traceBytes: Uint8Array, errors: str
   const traces = Array.isArray(parsed) ? parsed : [parsed];
   if (traces.length !== 1) { errors.push("mutation smoke trace must contain exactly one task"); return; }
   const trace = object(traces[0]);
-  if (trace.runtime !== "standard-verifiers" || trace.verifiers_version !== "0.2.1") errors.push("mutation smoke trace is not standard-Verifiers 0.2.1 evidence");
+  if (trace.runtime !== "standard-verifiers" || trace.verifiers_version !== smoke.verifiers_version) errors.push("mutation smoke trace does not match the admitted standard-Verifiers version");
   const calls = Array.isArray(trace.calls) ? trace.calls : [];
   const nodes = Array.isArray(trace.nodes) ? trace.nodes.map(object) : [];
   if (calls.length !== smoke.calls || calls.length === 0) errors.push("mutation_smoke.calls does not match a non-empty trace calls array");
@@ -388,6 +436,7 @@ function validateSpend(manifest: JsonObject, errors: string[]): { effective: Rec
     }
   }
   for (const lane of SPEND_LANES) if (effective[lane] < -1e-9) errors.push(`authorized transfers overdraw ${lane} allocation`);
+  if (total !== null && Math.max(0, prior ?? 0) + SPEND_LANES.reduce((sum, lane) => sum + Math.max(0, effective[lane]), 0) > total + 1e-9) errors.push("prior spend plus effective lane allocations exceeds campaign total");
 
   const charged = Object.fromEntries(SPEND_LANES.map((lane) => [lane, 0])) as Record<SpendLane, number>;
   const chargeIds = new Set<string>();
@@ -429,10 +478,11 @@ export function validateCampaignAdmission(manifest: unknown, artifacts: Transpor
   validateSmoke(value, artifacts.trace, errors);
   validateExecutionReceipt(value, artifacts, errors);
   validatePayloadParity(value, artifacts, errors);
+  validateBundles(value, errors);
   const spend = validateSpend(value, errors);
   return { admission_only: true, compile_authorized: false, admitted: errors.length === 0, errors, fingerprints, tool_steps, effective_spend_caps_usd: spend.effective, cumulative_spend_usd: spend.cumulative };
 }
 
-export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string }): TransportArtifacts {
-  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState) };
+export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string }): TransportArtifacts {
+  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt) };
 }

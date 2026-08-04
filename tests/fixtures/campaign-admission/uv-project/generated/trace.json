@@ -13,6 +13,10 @@
     }
   ],
   "errors": [],
+  "execution": {
+    "tool_calls": 1,
+    "verifiers_trajectory_steps": 2
+  },
   "metrics": {
     "assertion_fraction": 1.0
   },
@@ -39,7 +43,7 @@
           {
             "arguments": "{\"id\":\"alpha\",\"status\":\"ready\"}",
             "id": "call-public-1",
-            "name": "world_toolset_set-record"
+            "name": "set-record"
           }
         ]
       },

@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-"""Generate the public one-task mutation receipt through pinned Verifiers."""
+"""Generate provider-free evidence by executing pinned Verifiers 0.2.1."""
 
 import argparse
 import asyncio
 import hashlib
+import importlib.metadata
 import json
+import os
 import platform
+import sys
+import time
 from pathlib import Path
 
 import verifiers as vf
+from datasets import Dataset
+from verifiers.clients import Client
+from verifiers.types import AssistantMessage, Response, ResponseMessage, ToolCall
 
 ARGV = ["uv", "run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"]
 SEED = "Only inspect the synthetic record."
@@ -17,8 +24,9 @@ MESSAGES = [
     {"role": "system", "content": f"{SEED}\n<candidate_policy>{CANDIDATE}</candidate_policy>"},
     {"role": "user", "content": "Set synthetic record alpha to ready."},
 ]
-TOOLS = [{"type": "function", "function": {"name": "set-record", "description": "Mutate a public synthetic record.", "parameters": {"type": "object", "additionalProperties": False, "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"enum": ["ready"]}}}}}]
 SAMPLING = {"max_tokens": 256, "temperature": 0}
+ARGUMENTS = '{"id":"alpha","status":"ready"}'
+CALL_ID = "call-public-1"
 
 
 def canonical(value):
@@ -33,67 +41,145 @@ def write_json(path, value):
     path.write_text(json.dumps(value, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
-async def generate(output):
-    before = {"records": {"alpha": {"status": "pending"}}}
-    after = {"records": {"alpha": {"status": "ready"}}}
-    arguments = '{"id":"alpha","status":"ready"}'
-    call_id = "call-public-1"
+class SyntheticClient(Client):
+    def __init__(self, *, overflow_limit=None):
+        super().__init__(object())
+        self.sample_calls = 0
+        self.overflow_limit = overflow_limit
 
-    def assertion_fraction(state):
-        return 1.0 if state["after_state"]["records"]["alpha"]["status"] == "ready" else 0.0
+    def setup_client(self, config):
+        return object()
 
-    state = {
-        "prompt": MESSAGES,
-        "completion": [{"role": "assistant", "tool_calls": [{"id": call_id, "name": "world_toolset_set-record", "arguments": arguments}]}],
-        "task": "public-synthetic-mutation-1",
-        "before_state": before,
-        "after_state": after,
+    async def to_native_tool(self, tool):
+        return tool
+
+    async def to_native_prompt(self, messages):
+        return messages, {}
+
+    async def get_native_response(self, prompt, model, sampling_args, tools=None, **kwargs):
+        raise AssertionError("the synthetic client overrides get_response")
+
+    async def raise_from_native_response(self, response):
+        return None
+
+    async def from_native_response(self, response):
+        return response
+
+    async def close(self):
+        return None
+
+    async def get_response(self, prompt, model, sampling_args, tools=None, **kwargs):
+        if self.overflow_limit is not None and len(canonical([m.model_dump() for m in prompt])) > self.overflow_limit:
+            raise vf.OverlongPromptError("synthetic context limit exceeded")
+        self.sample_calls += 1
+        if self.sample_calls == 1:
+            message = ResponseMessage(role="assistant", content=None, finish_reason="tool_calls", is_truncated=False, tool_calls=[ToolCall(id=CALL_ID, name="set-record", arguments=ARGUMENTS)])
+        else:
+            message = ResponseMessage(role="assistant", content="done", finish_reason="stop", is_truncated=False)
+        return Response(id=f"synthetic-{self.sample_calls}", created=0, model=model, usage=None, message=message)
+
+
+async def execute_mutation():
+    records = {"alpha": {"status": "pending"}}
+    tool_calls = 0
+
+    def set_record(id: str, status: str) -> str:
+        """Mutate a public synthetic record."""
+        nonlocal tool_calls
+        tool_calls += 1
+        before = records[id]["status"]
+        records[id]["status"] = status
+        return canonical({"ok": True, "applied": before != status, "before": before, "after": status})
+    set_record.__name__ = "set-record"
+
+    dataset = Dataset.from_list([{"prompt": MESSAGES, "answer": "ready"}])
+    env = vf.ToolEnv(tools=[set_record], dataset=dataset, max_turns=2, sampling_args=SAMPLING)
+    client = SyntheticClient()
+    before = {"records": json.loads(json.dumps(records))}
+    state = await env.rollout({"prompt": MESSAGES, "example_id": 0, "answer": "ready"}, client, "synthetic-local", SAMPLING)
+    after = {"records": json.loads(json.dumps(records))}
+    if tool_calls != 1 or before["records"]["alpha"]["status"] != "pending" or after["records"]["alpha"]["status"] != "ready":
+        raise RuntimeError("Verifiers ToolEnv did not execute the required state delta exactly once")
+    completion = state["trajectory"][0]["completion"][0]
+    result = state["trajectory"][1]["prompt"][-1]
+    return before, after, state, completion, result, tool_calls
+
+
+async def execute_overflow_probe():
+    tool_calls = 0
+
+    def set_record(id: str, status: str) -> str:
+        nonlocal tool_calls
+        tool_calls += 1
+        return canonical({"ok": True})
+    set_record.__name__ = "set-record"
+
+    oversized = [{"role": "user", "content": "x" * 4096}]
+    env = vf.ToolEnv(tools=[set_record], dataset=Dataset.from_list([{"prompt": oversized}]), max_turns=1, sampling_args=SAMPLING)
+    client = SyntheticClient(overflow_limit=128)
+    state = await env.rollout({"prompt": oversized, "example_id": 0}, client, "synthetic-local", SAMPLING)
+    failure = "OverlongPromptError" if state.get("prompt_too_long") else (type(state.get("error")).__name__ if state.get("error") else None)
+    if failure != "OverlongPromptError" or client.sample_calls != 0 or tool_calls != 0 or state["trajectory"]:
+        raise RuntimeError(f"oversized Verifiers probe did not fail before sampling/tool execution: failure={failure} samples={client.sample_calls} tools={tool_calls} trajectory={len(state['trajectory'])} error={state.get('error')!r}")
+    return {
+        "schema_version": "understudy.synthetic_overflow_probe.v1",
+        "failure": failure,
+        "failed_before_sampling": True,
+        "sample_calls": client.sample_calls,
+        "tool_calls": tool_calls,
+        "trajectory_steps": len(state["trajectory"]),
+        "oversized_request_sha256": sha_bytes(canonical(oversized).encode()),
+        "requested_max_tokens": SAMPLING["max_tokens"],
+        "effective_max_tokens": state["sampling_args"]["max_tokens"],
     }
-    rubric = vf.Rubric(funcs=[assertion_fraction])
-    await rubric.score_rollout(state)
-    assertion = state["metrics"]["assertion_fraction"]
-    if assertion != 1.0:
-        raise RuntimeError("pinned Verifiers rubric did not accept the synthetic mutation")
 
+
+async def generate(output):
+    before, after, state, completion, result, tool_calls = await execute_mutation()
+    overflow = await execute_overflow_probe()
     output.mkdir(parents=True, exist_ok=True)
-    before_path = output / "before-state.json"
-    after_path = output / "after-state.json"
-    trace_path = output / "trace.json"
+    before_path, after_path, trace_path = output / "before-state.json", output / "after-state.json", output / "trace.json"
     write_json(before_path, before)
     write_json(after_path, after)
+    write_json(output / "overflow-receipt.json", overflow)
+    tools = [{"type": "function", "function": {"name": "set-record", "description": "Mutate a public synthetic record.", "parameters": env_tool_schema()}}]
     trace = {
-        "runtime": "standard-verifiers",
-        "verifiers_version": vf.__version__,
-        "task": {"data": {"task_id": state["task"], "split": "train"}},
-        "rewards": {"assertion_fraction": assertion},
-        "metrics": {"assertion_fraction": assertion},
-        "errors": [],
-        "ok": True,
-        "calls": [{"node": 2, "model": "synthetic-local", "endpoint": "/chat/completions", "finish_reason": "tool_calls", "messages_sha256": sha_bytes(canonical(MESSAGES).encode()), "tools_sha256": sha_bytes(canonical(TOOLS).encode()), "sampling_sha256": sha_bytes(canonical(SAMPLING).encode()), "max_tokens": 256, "context_overflow_behavior": "fail"}],
+        "runtime": "standard-verifiers", "verifiers_version": vf.__version__,
+        "task": {"data": {"task_id": "public-synthetic-mutation-1", "split": "train"}},
+        "rewards": {"assertion_fraction": 1.0}, "metrics": {"assertion_fraction": 1.0}, "errors": [], "ok": True,
+        "calls": [{"node": 2, "model": "synthetic-local", "endpoint": "/chat/completions", "finish_reason": "tool_calls", "messages_sha256": sha_bytes(canonical(MESSAGES).encode()), "tools_sha256": sha_bytes(canonical(tools).encode()), "sampling_sha256": sha_bytes(canonical(SAMPLING).encode()), "max_tokens": 256, "context_overflow_behavior": "fail"}],
         "nodes": [
-            {"message": MESSAGES[0], "sampled": False},
-            {"parent": 0, "message": MESSAGES[1], "sampled": False},
-            {"parent": 1, "message": state["completion"][0], "sampled": True},
-            {"parent": 2, "message": {"role": "tool", "tool_call_id": call_id, "name": "world_toolset_set-record", "content": canonical({"ok": True, "applied": True, "before": "pending", "after": "ready"})}, "sampled": False},
+            {"message": MESSAGES[0], "sampled": False}, {"parent": 0, "message": MESSAGES[1], "sampled": False},
+            {"parent": 1, "message": completion.model_dump(exclude_none=True), "sampled": True},
+            {"parent": 2, "message": {**result.model_dump(exclude_none=True), "name": "world_toolset_set-record"}, "sampled": False},
         ],
+        "execution": {"verifiers_trajectory_steps": len(state["trajectory"]), "tool_calls": tool_calls},
     }
     write_json(trace_path, trace)
-
-    lock_path = Path("uv.lock")
+    installed = sorted(({"name": d.metadata["Name"].lower().replace("_", "-"), "version": d.version} for d in importlib.metadata.distributions()), key=lambda x: (x["name"], x["version"]))
+    executable = str(Path(sys.executable).absolute())
+    project_root = str(Path.cwd().resolve())
+    if not executable.startswith(str(Path(project_root, ".venv").absolute()) + os.sep):
+        raise RuntimeError("generator is not running inside the exact project .venv")
+    verifiers_dist = importlib.metadata.distribution("verifiers")
+    direct_url = json.loads(verifiers_dist.read_text("direct_url.json") or "{}")
+    verifiers_commit = direct_url.get("vcs_info", {}).get("commit_id")
+    if not isinstance(verifiers_commit, str) or len(verifiers_commit) != 40:
+        raise RuntimeError("installed Verifiers distribution lacks an exact git commit")
     receipt = {
-        "schema_version": "understudy.synthetic_verifiers_execution.v1",
-        "argv": ARGV,
-        "interpreter": {"implementation": platform.python_implementation(), "version": platform.python_version()},
-        "resolved_package_inventory_sha256": sha_bytes(lock_path.read_bytes()),
-        "verifiers": {"version": vf.__version__, "module": "verifiers"},
-        "seed_candidate_sha256": sha_bytes(SEED.encode()),
-        "mutated_candidate_sha256": sha_bytes(CANDIDATE.encode()),
-        "before_state_sha256": sha_bytes(before_path.read_bytes()),
-        "after_state_sha256": sha_bytes(after_path.read_bytes()),
-        "trace_sha256": sha_bytes(trace_path.read_bytes()),
-        "verified_state_delta": {"path": "/records/alpha/status", "before": "pending", "after": "ready"},
+        "schema_version": "understudy.synthetic_verifiers_execution.v1", "argv": ARGV,
+        "interpreter": {"implementation": platform.python_implementation(), "version": platform.python_version(), "path": str(Path(executable).relative_to(project_root)), "path_kind": "project_relative", "executable_sha256": sha_bytes(Path(executable).read_bytes())},
+        "installed_distributions": installed, "installed_distributions_sha256": sha_bytes(canonical(installed).encode()),
+        "verifiers": {"version": vf.__version__, "module": "verifiers", "git_revision": verifiers_commit},
+        "seed_candidate_sha256": sha_bytes(SEED.encode()), "mutated_candidate_sha256": sha_bytes(CANDIDATE.encode()),
+        "before_state_sha256": sha_bytes(before_path.read_bytes()), "after_state_sha256": sha_bytes(after_path.read_bytes()), "trace_sha256": sha_bytes(trace_path.read_bytes()),
+        "verified_state_delta": {"path": "/records/alpha/status", "before": "pending", "after": "ready", "independently_asserted": True},
     }
     write_json(output / "execution-receipt.json", receipt)
+
+
+def env_tool_schema():
+    return {"type": "object", "additionalProperties": False, "required": ["id", "status"], "properties": {"id": {"type": "string"}, "status": {"enum": ["ready"]}}}
 
 
 if __name__ == "__main__":
