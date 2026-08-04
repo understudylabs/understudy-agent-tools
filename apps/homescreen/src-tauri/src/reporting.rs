@@ -13,6 +13,7 @@
 //! carry the admin API's `x-understudy-request-id` support handle when we
 //! have one.
 
+use chrono::{Duration as ChronoDuration, SecondsFormat, Utc};
 use serde_json::{json, Value};
 
 use crate::creds;
@@ -172,6 +173,69 @@ pub async fn reporting_usage_summary(project_id: String, window: String) -> Resu
     })
 }
 
+fn monitoring_window_minutes(window: &str) -> Option<i64> {
+    match window {
+        "30m" => Some(30),
+        "1h" => Some(60),
+        "6h" => Some(360),
+        "12h" => Some(720),
+        "24h" => Some(1_440),
+        _ => None,
+    }
+}
+
+/// Customer-safe production snapshot. Routing and provider health are required;
+/// org-level spend context is best-effort so a billing outage never hides
+/// operational health.
+#[tauri::command]
+pub async fn reporting_snapshot(
+    project_id: String,
+    window: Option<String>,
+) -> Result<Value, String> {
+    crate::admin::validate_path_segment(&project_id)?;
+    let window = window.unwrap_or_else(|| "12h".to_string());
+    let minutes = monitoring_window_minutes(&window)
+        .ok_or_else(|| "Choose a monitoring window between 30 minutes and 24 hours.".to_string())?;
+    let api = AdminApi::resolve()?;
+    let now = Utc::now();
+    let from = (now - ChronoDuration::minutes(minutes))
+        .to_rfc3339_opts(SecondsFormat::Millis, true);
+    let to = now.to_rfc3339_opts(SecondsFormat::Millis, true);
+
+    let routing_path = format!("projects/{project_id}/routing-status");
+    let health_path = format!("projects/{project_id}/provider-health?window={window}");
+    let billing_path = format!("billing/summary?from={from}&to={to}");
+    let models_path = format!("billing/usage-by-model?from={from}&to={to}");
+    let (routing, health, billing, usage_by_model) = tokio::join!(
+        api.get_json(&routing_path),
+        api.get_json(&health_path),
+        api.get_json(&billing_path),
+        api.get_json(&models_path),
+    );
+
+    let routing = routing.map_err(|error| error.message)?;
+    let health = health.map_err(|error| error.message)?;
+    let mut warnings = Vec::new();
+    let billing = billing
+        .map_err(|error| warnings.push(format!("Spend summary: {}", error.message)))
+        .ok();
+    let usage_by_model = usage_by_model
+        .map_err(|error| warnings.push(format!("Model usage: {}", error.message)))
+        .ok();
+
+    Ok(json!({
+        "project_id": project_id,
+        "window": window,
+        "fetched_at": to,
+        "source": "understudy-admin-api",
+        "routing": routing,
+        "health": health,
+        "billing": billing,
+        "usage_by_model": usage_by_model,
+        "warnings": warnings,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,6 +273,25 @@ mod tests {
                 .await
                 .unwrap();
             assert!(is_rejected(&out), "{bad} should be rejected: {out:?}");
+        }
+    }
+
+    #[test]
+    fn monitoring_windows_are_bounded_and_explicit() {
+        assert_eq!(monitoring_window_minutes("30m"), Some(30));
+        assert_eq!(monitoring_window_minutes("12h"), Some(720));
+        assert_eq!(monitoring_window_minutes("24h"), Some(1_440));
+        assert_eq!(monitoring_window_minutes("25h"), None);
+        assert_eq!(monitoring_window_minutes("all"), None);
+    }
+
+    #[tokio::test]
+    async fn monitoring_snapshot_rejects_path_traversal() {
+        for bad in ["../secrets", "%2e%2e/escape", "proj?x=1", "proj/y"] {
+            let error = reporting_snapshot(bad.to_string(), Some("12h".to_string()))
+                .await
+                .unwrap_err();
+            assert!(error.contains("Path segment"), "{bad} should be rejected: {error}");
         }
     }
 }

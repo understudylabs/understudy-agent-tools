@@ -31,6 +31,7 @@ import { SetupPane } from "./components/SetupPane";
 import { SettingsPane } from "./components/SettingsPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
 import { ScopeBreadcrumb } from "./components/ScopeBreadcrumb";
+import { MonitorPane } from "./components/MonitorPane";
 import {
   Tooltip,
   TooltipContent,
@@ -266,6 +267,7 @@ export default function Page() {
       "workload-config",
       "project-summary",
       "project-reporting",
+      "production-monitor",
       "settings",
       "training-evals",
       "training-optimization",
@@ -438,6 +440,9 @@ export default function Page() {
         )}
         {pane === "project-reporting" && (
           <WorkloadsPane requestedWorkload={requestedWorkload} />
+        )}
+        {pane === "production-monitor" && (
+          <MonitorPane projectId={scope.projectId} onOpenAccount={() => setPane("account")} />
         )}
         {pane === "setup" && <SetupPane onNavigate={setPane} />}
         {pane === "settings" && <SettingsPane scope={scope} />}
