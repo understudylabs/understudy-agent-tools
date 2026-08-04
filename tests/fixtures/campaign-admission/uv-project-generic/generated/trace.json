@@ -75,6 +75,6 @@
       "task_id": "public-synthetic-mutation-1"
     }
   },
-  "verifiers_version": "0.2.1",
+  "verifiers_version": "0.2.2.dev77",
   "workload_id": "cedar-public-synthetic"
 }

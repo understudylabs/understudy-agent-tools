@@ -1,0 +1,83 @@
+{
+  "campaign_id": "public-synthetic-campaign",
+  "checkpoint": {
+    "campaign_id": "public-synthetic-campaign",
+    "checkpoint": "synthetic-checkpoint-v1",
+    "execution_id": "execution-public-1",
+    "request_id": "request-public-1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "executable_bundle": {
+    "campaign_id": "public-synthetic-campaign",
+    "checkpoint_sha256": "267de74365c7b4321821fb7924ff0598c6c7a69abc38fa11bb889755ac5c09af",
+    "environment_sha256": "be34de4d14a135dac01c2649f6447b4abebde8242ff51cbf6d8bba2835d7c8dd",
+    "execution_id": "execution-public-1",
+    "frozen": true,
+    "kind": "policy",
+    "model_attestation_sha256": "c889573d7bc391c0df3d5d3d4cfec9d7a4ec006b34e934eb6f19bf55ef3e6c87",
+    "policy": "Set record alpha to ready with set-record, then report success.",
+    "request_id": "request-public-1",
+    "schema_version": "understudy.policy.v1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "execution_id": "execution-public-1",
+  "health_receipt": {
+    "campaign_id": "public-synthetic-campaign",
+    "environment_sha256": "be34de4d14a135dac01c2649f6447b4abebde8242ff51cbf6d8bba2835d7c8dd",
+    "executable_bundle_sha256": "f6f7c7c57a2d5613bc2be3bfe23115bd97350c3839df87abcf266387bbdf3860",
+    "execution_id": "execution-public-1",
+    "model_attestation_sha256": "c889573d7bc391c0df3d5d3d4cfec9d7a4ec006b34e934eb6f19bf55ef3e6c87",
+    "request_id": "request-public-1",
+    "route": "synthetic-local",
+    "status": "healthy",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "lineage": {
+    "campaign_id": "public-synthetic-campaign",
+    "checkpoint_sha256": "267de74365c7b4321821fb7924ff0598c6c7a69abc38fa11bb889755ac5c09af",
+    "executable_bundle_sha256": "f6f7c7c57a2d5613bc2be3bfe23115bd97350c3839df87abcf266387bbdf3860",
+    "execution_id": "execution-public-1",
+    "health_receipt_sha256": "88fe5da7984fde75c1c8444e9fe525e991ceeeb2a387e4a006b2a560fa4eb85f",
+    "model_attestation_sha256": "c889573d7bc391c0df3d5d3d4cfec9d7a4ec006b34e934eb6f19bf55ef3e6c87",
+    "parent_candidate_sha256": "4dbee206fc073f8db3e50fad210ca48772e481ad31ee37f33e638bca91db1914",
+    "prompt_sha256": "6f71099eedf6d5b161ceea52fa0663b0c104b5729a77d3a5f4264967b5853808",
+    "request_id": "request-public-1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "model_attestation": {
+    "campaign_id": "public-synthetic-campaign",
+    "execution_id": "execution-public-1",
+    "model": "synthetic-local",
+    "provider": "provider-free",
+    "request_id": "request-public-1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "optimizer_input": {
+    "campaign_id": "public-synthetic-campaign",
+    "component": "actor",
+    "execution_id": "execution-public-1",
+    "kind": "optimizer-input",
+    "request_id": "request-public-1",
+    "source": "public-synthetic",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "reflection_context": {
+    "campaign_id": "public-synthetic-campaign",
+    "context": "public synthetic reflection evidence",
+    "execution_id": "execution-public-1",
+    "kind": "reflection",
+    "request_id": "request-public-1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "request_id": "request-public-1",
+  "schema_version": "understudy.synthetic_campaign_evidence.v1",
+  "source_context": {
+    "campaign_id": "public-synthetic-campaign",
+    "context": "public synthetic source evidence",
+    "execution_id": "execution-public-1",
+    "kind": "source",
+    "request_id": "request-public-1",
+    "workload_id": "cedar-public-synthetic"
+  },
+  "workload_id": "cedar-public-synthetic"
+}

@@ -17,6 +17,8 @@ export type TransportArtifacts = {
   beforeState: Buffer;
   afterState: Buffer;
   overflowReceipt: Buffer;
+  campaignEvidence: Buffer;
+  applicableLock: Buffer;
 };
 
 export type TransportFingerprints = {
@@ -225,6 +227,7 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   const smoke = object(manifest.mutation_smoke);
   if (smoke.execution_receipt_sha256 !== sha256Bytes(artifacts.executionReceipt)) errors.push("mutation_smoke.execution_receipt_sha256 does not match supplied receipt");
   if (receipt.schema_version !== "understudy.synthetic_verifiers_execution.v1") errors.push("synthetic execution receipt schema is invalid");
+  validateIdentity(manifest, receipt, "execution receipt", errors);
   const argv = receipt.argv;
   if (canonicalize(argv) !== canonicalize(["uv", "run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"])) errors.push("synthetic smoke must use exact locked-project uv argv");
   if (Array.isArray(argv) && argv.includes("--no-project")) errors.push("synthetic smoke cannot use --no-project");
@@ -232,16 +235,26 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   if (interpreter.implementation !== "CPython" || interpreter.version !== object(manifest.environment).python_version) errors.push("execution receipt interpreter does not match the admitted project");
   if (interpreter.path_kind !== "project_relative" || typeof interpreter.path !== "string" || !/^\.venv\/bin\/python[0-9.]*$/.test(interpreter.path) || interpreter.executable_sha256 !== object(manifest.environment).python_executable_sha256) errors.push("execution receipt interpreter path/hash is not the locked project Python");
   const installed = Array.isArray(receipt.installed_distributions) ? receipt.installed_distributions.map(object) : [];
+  const applicable = Array.isArray(receipt.applicable_locked_distributions) ? receipt.applicable_locked_distributions.map(object) : [];
+  let applicableArtifact: unknown = [];
+  try { applicableArtifact = JSON.parse(artifacts.applicableLock.toString("utf8")); } catch { errors.push("applicable lock artifact must be valid JSON"); }
   const declared = Array.isArray(object(manifest.environment).resolved_packages) ? (object(manifest.environment).resolved_packages as unknown[]).map(object) : [];
-  const installedPairs = installed.map((pin) => `${pin.name}==${pin.version}`).sort();
-  const declaredPairs = new Set(declared.map((pin) => `${pin.name}==${pin.version}`));
-  if (installedPairs.some((pin) => !declaredPairs.has(pin))) errors.push("inside-project installed distributions contain a package outside the exact lock inventory");
+  if (canonicalize(installed) !== canonicalize(applicable)) errors.push("installed distributions do not equal the exact applicable locked project inventory");
+  if (canonicalize(applicable) !== canonicalize(applicableArtifact)) errors.push("applicable locked distributions do not match the supplied uv-export artifact");
   if (receipt.installed_distributions_sha256 !== sha256Bytes(Buffer.from(canonicalize(installed)))) errors.push("installed distribution inventory hash is invalid");
+  if (receipt.applicable_locked_distributions_sha256 !== sha256Bytes(Buffer.from(canonicalize(applicable)))) errors.push("applicable locked distribution inventory hash is invalid");
+  if (receipt.applicable_lock_artifact_sha256 !== sha256Bytes(artifacts.applicableLock) || receipt.applicable_lock_artifact_sha256 !== object(manifest.environment).applicable_lock_artifact_sha256) errors.push("applicable lock artifact is not hash-bound to environment and receipt");
+  const exclusions = Array.isArray(receipt.lock_exclusions) ? receipt.lock_exclusions.map(object) : [];
+  if (typeof receipt.root_package_name !== "string" || !exclusions.some((item) => item.name === receipt.root_package_name && item.reason === "root-non-installable-no-emit-project") || !exclusions.some((item) => item.reason === "platform-marker-not-applicable")) errors.push("root/non-installable and platform lock exclusions must be explicit");
   if (receipt.installed_distributions_sha256 !== object(manifest.environment).installed_distributions_sha256) errors.push("inside-project installed distribution inventory does not match the manifest");
+  const installedVerifier = installed.find((pin) => pin.name === "verifiers");
+  const lockedVerifier = declared.find((pin) => pin.name === "verifiers");
+  if (!installedVerifier || !lockedVerifier || installedVerifier.version !== lockedVerifier.version || lockedVerifier.git_revision !== object(receipt.verifiers).git_revision) errors.push("installed Verifiers must match the exact locked version and VCS commit");
   if (object(receipt.verifiers).version !== object(manifest.workload_contract).verifiers_version || object(receipt.verifiers).git_revision !== object(manifest.workload_contract).verifiers_git_revision) errors.push("execution receipt Verifiers version/commit does not match workload contract");
   if (receipt.trace_sha256 !== sha256Bytes(artifacts.trace)) errors.push("execution receipt does not bind the supplied trace");
   if (receipt.before_state_sha256 !== sha256Bytes(artifacts.beforeState) || receipt.after_state_sha256 !== sha256Bytes(artifacts.afterState)) errors.push("execution receipt does not bind before/after state");
   if (receipt.seed_candidate_sha256 !== smoke.seed_candidate_sha256 || receipt.mutated_candidate_sha256 !== smoke.mutated_candidate_sha256) errors.push("candidate hashes are not bound to generated inputs");
+  if (receipt.assertion_rubric !== "verifiers.Rubric" || receipt.assertion_fraction !== smoke.assertion_fraction) errors.push("assertion_fraction is not bound to the executed standard-Verifiers Rubric receipt");
   const delta = object(receipt.verified_state_delta);
   if (delta.path !== "/records/alpha/status" || delta.before !== "pending" || delta.after !== "ready") errors.push("execution receipt does not verify the required state delta");
   if (object(object(before.records).alpha).status !== "pending" || object(object(after.records).alpha).status !== "ready") errors.push("before/after state artifacts do not contain the verified mutation");
@@ -253,6 +266,8 @@ function validatePayloadParity(manifest: JsonObject, artifacts: TransportArtifac
   try { request = object(JSON.parse(artifacts.request.toString("utf8"))); trace = object(JSON.parse(artifacts.trace.toString("utf8"))); }
   catch { errors.push("payload parity artifacts must be valid JSON"); return; }
   const parity = object(manifest.payload_parity);
+  validateIdentity(manifest, request, "request artifact", errors);
+  validateIdentity(manifest, trace, "execution trace", errors);
   const calls = Array.isArray(trace.calls) ? trace.calls.map(object) : [];
   const call = calls[0] ?? {};
   const requestMessages = request.messages;
@@ -268,6 +283,7 @@ function validatePayloadParity(manifest: JsonObject, artifacts: TransportArtifac
   let overflow: JsonObject = {};
   try { overflow = object(JSON.parse(artifacts.overflowReceipt.toString("utf8"))); } catch { errors.push("overflow probe receipt must be valid JSON"); }
   if (parity.overflow_probe_receipt_sha256 !== sha256Bytes(artifacts.overflowReceipt)) errors.push("overflow probe receipt hash does not match supplied evidence");
+  validateIdentity(manifest, overflow, "overflow receipt", errors);
   if (overflow.schema_version !== "understudy.synthetic_overflow_probe.v1" || overflow.failure !== "OverlongPromptError" || overflow.failed_before_sampling !== true || overflow.sample_calls !== 0 || overflow.tool_calls !== 0) errors.push("oversized probe did not fail before sampling and tool execution");
   if (overflow.requested_max_tokens !== requestSampling.max_tokens || overflow.effective_max_tokens !== requestSampling.max_tokens) errors.push("overflow probe changed requested max_tokens");
   if (call.max_tokens !== requestSampling.max_tokens) errors.push("executed max_tokens differs from the requested payload");
@@ -295,11 +311,23 @@ function validatePayloadParity(manifest: JsonObject, artifacts: TransportArtifac
   if (!mcpPin || mcpPin.version !== workload.mcp_version) errors.push("MCP version must exactly match the supplied lock inventory");
 }
 
-function validateBundles(manifest: JsonObject, errors: string[]): void {
+function validateIdentity(manifest: JsonObject, artifact: JsonObject, label: string, errors: string[]): void {
+  for (const field of ["campaign_id", "workload_id", "request_id", "execution_id"]) {
+    if (artifact[field] !== manifest[field]) errors.push(`${label} ${field} does not match admitted identity`);
+  }
+}
+
+function validateBundles(manifest: JsonObject, artifacts: TransportArtifacts, errors: string[]): void {
   const optimizer = object(manifest.optimizer_input);
   const endpoint = object(manifest.endpoint_bundle);
   const lineage = object(manifest.candidate_lineage);
   const gates = object(manifest.context_gates);
+  let evidence: JsonObject = {};
+  try { evidence = object(JSON.parse(artifacts.campaignEvidence.toString("utf8"))); } catch { errors.push("campaign evidence bundle must be valid JSON"); }
+  validateIdentity(manifest, evidence, "campaign evidence", errors);
+  const evidenceNames = ["optimizer_input", "executable_bundle", "health_receipt", "model_attestation", "checkpoint", "lineage", "source_context", "reflection_context"];
+  for (const name of evidenceNames) validateIdentity(manifest, object(evidence[name]), `campaign evidence ${name}`, errors);
+  const derived = Object.fromEntries(evidenceNames.map((name) => [name, sha256Bytes(Buffer.from(canonicalize(object(evidence[name]))))])) as Record<string, string>;
   for (const [path, value] of [
     ["optimizer_input.input_bundle_sha256", optimizer.input_bundle_sha256],
     ["endpoint_bundle.executable_bundle_sha256", endpoint.executable_bundle_sha256],
@@ -315,13 +343,26 @@ function validateBundles(manifest: JsonObject, errors: string[]): void {
     ["context_gates.reflection_context_sha256", gates.reflection_context_sha256],
   ] as [string, unknown][]) requireSha(errors, value, path);
   if (endpoint.frozen !== true || endpoint.seed !== false) errors.push("endpoint executable bundle must be a frozen non-seed candidate");
+  if (optimizer.input_bundle_sha256 !== derived.optimizer_input) errors.push("optimizer input hash is not derived from supplied immutable evidence");
+  if (endpoint.executable_bundle_sha256 !== derived.executable_bundle || endpoint.health_receipt_sha256 !== derived.health_receipt || endpoint.model_attestation_sha256 !== derived.model_attestation) errors.push("endpoint bundle hashes are not derived from supplied immutable evidence");
+  if (lineage.checkpoint_sha256 !== derived.checkpoint || gates.source_context_sha256 !== derived.source_context || gates.reflection_context_sha256 !== derived.reflection_context) errors.push("lineage/context hashes are not derived from supplied immutable evidence");
+  if (derived.lineage !== lineage.lineage_artifact_sha256) errors.push("candidate lineage artifact hash is not derived from supplied immutable evidence");
   if (endpoint.executable_bundle_sha256 === optimizer.input_bundle_sha256) errors.push("optimizer input bundle must be distinct from the executable endpoint bundle");
   if (endpoint.environment_sha256 !== object(manifest.environment).uv_lock_sha256) errors.push("endpoint bundle environment does not match the admitted locked project");
   if (endpoint.model_attestation_sha256 !== lineage.model_attestation_sha256) errors.push("endpoint model attestation does not match candidate lineage");
+  const executableEvidence = object(evidence.executable_bundle);
+  const healthEvidence = object(evidence.health_receipt);
+  if (executableEvidence.environment_sha256 !== endpoint.environment_sha256 || executableEvidence.model_attestation_sha256 !== endpoint.model_attestation_sha256 || executableEvidence.checkpoint_sha256 !== lineage.checkpoint_sha256 || executableEvidence.frozen !== true) errors.push("executable artifact does not match endpoint environment/model/checkpoint attestation");
+  if (healthEvidence.status !== "healthy" || healthEvidence.executable_bundle_sha256 !== endpoint.executable_bundle_sha256 || healthEvidence.environment_sha256 !== endpoint.environment_sha256 || healthEvidence.model_attestation_sha256 !== endpoint.model_attestation_sha256) errors.push("health artifact does not attest the admitted executable endpoint");
+  if (object(evidence.lineage).parent_candidate_sha256 !== lineage.parent_candidate_sha256 || object(evidence.lineage).prompt_sha256 !== lineage.prompt_sha256 || object(evidence.lineage).model_attestation_sha256 !== lineage.model_attestation_sha256 || object(evidence.lineage).checkpoint_sha256 !== lineage.checkpoint_sha256 || object(evidence.lineage).executable_bundle_sha256 !== endpoint.executable_bundle_sha256 || object(evidence.lineage).health_receipt_sha256 !== endpoint.health_receipt_sha256) errors.push("candidate lineage claims do not match supplied lineage artifact");
   const expectedCandidate = sha256Bytes(Buffer.from(canonicalize({ parent_candidate_sha256: lineage.parent_candidate_sha256, prompt_sha256: lineage.prompt_sha256, model_attestation_sha256: lineage.model_attestation_sha256, checkpoint_sha256: lineage.checkpoint_sha256, executable_bundle_sha256: endpoint.executable_bundle_sha256 })));
   if (lineage.candidate_sha256 !== expectedCandidate) errors.push("candidate mutation is not bound to parent, prompt, model, checkpoint, and executable bundle");
   if (lineage.parent_candidate_sha256 === lineage.candidate_sha256) errors.push("candidate lineage is unchanged from its parent");
   if (gates.source_context_present !== true || gates.reflection_context_present !== true || gates.source_context_sha256 === gates.reflection_context_sha256) errors.push("distinct source and reflection context gates are required");
+  if (object(evidence.source_context).kind !== "source" || object(evidence.reflection_context).kind !== "reflection") errors.push("source/reflection context artifacts have invalid kinds");
+  let overflow: JsonObject = {};
+  try { overflow = object(JSON.parse(artifacts.overflowReceipt.toString("utf8"))); } catch { /* reported elsewhere */ }
+  if (overflow.executable_bundle_sha256 !== endpoint.executable_bundle_sha256) errors.push("overflow probe is not bound to the admitted executable endpoint bundle");
 }
 
 function object(value: unknown): JsonObject {
@@ -346,6 +387,7 @@ function validateEnvironment(manifest: JsonObject, errors: string[]): void {
   if (typeof environment.python_version !== "string" || !EXACT_VERSION.test(environment.python_version)) errors.push("environment.python_version must be exact");
   requireSha(errors, environment.python_executable_sha256, "environment.python_executable_sha256");
   requireSha(errors, environment.installed_distributions_sha256, "environment.installed_distributions_sha256");
+  requireSha(errors, environment.applicable_lock_artifact_sha256, "environment.applicable_lock_artifact_sha256");
   if (typeof environment.container_image_digest !== "string" || !IMAGE_DIGEST.test(environment.container_image_digest)) errors.push("environment.container_image_digest must be an immutable sha256 digest");
 
   const pins = Array.isArray(environment.resolved_packages) ? environment.resolved_packages.map(object) : [];
@@ -359,9 +401,7 @@ function validateEnvironment(manifest: JsonObject, errors: string[]): void {
     if (typeof pin.version !== "string" || !EXACT_VERSION.test(pin.version)) errors.push(`${prefix}.version must be exact`);
     if (pin.git_revision !== null && pin.git_revision !== undefined && (typeof pin.git_revision !== "string" || !GIT_REVISION.test(pin.git_revision))) errors.push(`${prefix}.git_revision must be a full 40-character commit`);
   }
-  if (!pins.some((pin) => pin.name === "verifiers" && pin.version === "0.2.1" && typeof pin.git_revision === "string" && GIT_REVISION.test(pin.git_revision))) {
-    errors.push("environment.resolved_packages must pin verifiers 0.2.1 to a full git revision");
-  }
+  if (!pins.some((pin) => pin.name === "verifiers" && typeof pin.version === "string" && EXACT_VERSION.test(pin.version) && typeof pin.git_revision === "string" && GIT_REVISION.test(pin.git_revision))) errors.push("environment.resolved_packages must pin Verifiers to an exact version and full git revision");
 }
 
 function validateSmoke(manifest: JsonObject, traceBytes: Uint8Array, errors: string[]): void {
@@ -478,11 +518,11 @@ export function validateCampaignAdmission(manifest: unknown, artifacts: Transpor
   validateSmoke(value, artifacts.trace, errors);
   validateExecutionReceipt(value, artifacts, errors);
   validatePayloadParity(value, artifacts, errors);
-  validateBundles(value, errors);
+  validateBundles(value, artifacts, errors);
   const spend = validateSpend(value, errors);
   return { admission_only: true, compile_authorized: false, admitted: errors.length === 0, errors, fingerprints, tool_steps, effective_spend_caps_usd: spend.effective, cumulative_spend_usd: spend.cumulative };
 }
 
-export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string }): TransportArtifacts {
-  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt) };
+export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string }): TransportArtifacts {
+  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt), campaignEvidence: readFileSync(paths.campaignEvidence), applicableLock: readFileSync(paths.applicableLock) };
 }

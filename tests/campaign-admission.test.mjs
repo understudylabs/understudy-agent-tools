@@ -140,6 +140,15 @@ describe("campaign admission", () => {
     assert.deepEqual(mod.publishedSchemaErrors(manifest).filter((error) => error.includes("verifiers_version")), []);
   });
 
+  it("admits a genuinely different locked Verifiers 0.2.2.dev77 fixture", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod, "uv-project-generic");
+    assert.equal(manifest.workload_contract.verifiers_version, "0.2.2.dev77");
+    assert.equal(manifest.workload_contract.verifiers_git_revision, "61e7394d45109d142deec768c3c459ab98111e91");
+    const result = mod.validateCampaignAdmission(manifest, artifacts);
+    assert.equal(result.admitted, true, result.errors.join("\n"));
+  });
+
   it("rejects unbound executable bundles, candidate lineage, and context gates", async () => {
     const mod = await import("../dist/campaign-admission/index.js");
     const { manifest, artifacts } = baseManifest(mod);
@@ -149,5 +158,71 @@ describe("campaign admission", () => {
     const result = mod.validateCampaignAdmission(manifest, artifacts);
     assert.equal(result.admitted, false);
     assert.match(result.errors.join("\n"), /endpoint bundle environment|model attestation|context gates/);
+  });
+
+  it("rejects campaign and workload identity substitution across immutable evidence", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    for (const field of ["campaign_id", "workload_id"]) {
+      const { manifest, artifacts } = baseManifest(mod);
+      manifest[field] = `substituted-${field}`;
+      const result = mod.validateCampaignAdmission(manifest, artifacts);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), new RegExp(`${field} does not match admitted identity`));
+    }
+  });
+
+  it("rejects arbitrary bundle and context hashes not derived from supplied artifacts", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    manifest.optimizer_input.input_bundle_sha256 = "e".repeat(64);
+    manifest.endpoint_bundle.health_receipt_sha256 = "f".repeat(64);
+    manifest.context_gates.source_context_sha256 = "1".repeat(64);
+    const result = mod.validateCampaignAdmission(manifest, artifacts);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /not derived from supplied immutable evidence/);
+  });
+
+  it("rejects omitted installed packages and missing Verifiers after receipt rehash", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    for (const packageName of ["aiofiles", "verifiers"]) {
+      const { manifest, artifacts } = baseManifest(mod);
+      const receipt = JSON.parse(artifacts.executionReceipt);
+      receipt.installed_distributions = receipt.installed_distributions.filter((item) => item.name !== packageName);
+      receipt.installed_distributions_sha256 = mod.semanticJsonSha256(Buffer.from(JSON.stringify(receipt.installed_distributions)), "installed");
+      manifest.environment.installed_distributions_sha256 = receipt.installed_distributions_sha256;
+      const changed = { ...artifacts, executionReceipt: Buffer.from(`${JSON.stringify(receipt)}\n`) };
+      manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(changed.executionReceipt);
+      const result = mod.validateCampaignAdmission(manifest, changed);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /exact applicable locked project inventory|installed Verifiers/);
+    }
+  });
+
+  it("rejects mismatched runtime and fabricated assertion metrics after artifact rehash", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    {
+      const { manifest, artifacts } = baseManifest(mod);
+      const trace = JSON.parse(artifacts.trace);
+      trace.verifiers_version = "9.9.9";
+      const changed = { ...artifacts, trace: Buffer.from(`${JSON.stringify(trace)}\n`) };
+      manifest.transport_fingerprints = mod.fingerprintTransport(changed);
+      manifest.mutation_smoke.trace_artifact_sha256 = mod.sha256Bytes(changed.trace);
+      const result = mod.validateCampaignAdmission(manifest, changed);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /does not match the admitted standard-Verifiers version|does not bind the supplied trace/);
+    }
+    {
+      const { manifest, artifacts } = baseManifest(mod);
+      const trace = JSON.parse(artifacts.trace);
+      trace.metrics.assertion_fraction = 0.5;
+      trace.rewards.assertion_fraction = 0.5;
+      const changed = { ...artifacts, trace: Buffer.from(`${JSON.stringify(trace)}\n`) };
+      manifest.transport_fingerprints = mod.fingerprintTransport(changed);
+      manifest.mutation_smoke.trace_artifact_sha256 = mod.sha256Bytes(changed.trace);
+      manifest.mutation_smoke.assertion_fraction = 0.5;
+      const result = mod.validateCampaignAdmission(manifest, changed);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /standard-Verifiers Rubric receipt|does not bind the supplied trace/);
+    }
   });
 });

@@ -7,11 +7,11 @@ import { it } from "node:test";
 import { baseManifest } from "./helpers/campaign-admission-fixture.mjs";
 
 const fixture = resolve("tests/fixtures/campaign-admission");
-it("campaigns admit reruns the exact locked generator and verifies its bytes", async (t) => {
+for (const projectName of ["uv-project", "uv-project-generic"]) it(`campaigns admit reruns the exact locked ${projectName} generator and verifies its bytes`, async (t) => {
   if (spawnSync("uv", ["--version"]).status !== 0) return t.skip("uv is unavailable");
   const mod = await import("../dist/campaign-admission/index.js");
-  const { manifest } = baseManifest(mod);
-  const project = join(fixture, "uv-project");
+  const { manifest } = baseManifest(mod, projectName);
+  const project = join(fixture, projectName);
   manifest.environment.uv_version = execFileSync("uv", ["--version"], { encoding: "utf8" }).trim().match(/^uv\s+(\S+)/)[1];
   const generated = join(project, "generated");
   const temp = mkdtempSync(join(tmpdir(), "campaign-admission-cli-"));
@@ -23,6 +23,8 @@ it("campaigns admit reruns the exact locked generator and verifies its bytes", a
       "--trace", join(generated, "trace.json"), "--execution-receipt", join(generated, "execution-receipt.json"),
       "--before-state", join(generated, "before-state.json"), "--after-state", join(generated, "after-state.json"),
       "--overflow-receipt", join(generated, "overflow-receipt.json"),
+      "--campaign-evidence", join(generated, "campaign-evidence.json"),
+      "--applicable-lock", join(generated, "applicable-lock.json"),
       "--smoke-generator", join(project, "generate_smoke.py")];
     const run = spawnSync("node", args, { encoding: "utf8", timeout: 30_000 });
     assert.equal(run.status, 0, `${run.stderr}\n${run.stdout}`);

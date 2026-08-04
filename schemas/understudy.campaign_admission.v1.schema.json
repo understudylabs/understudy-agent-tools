@@ -5,10 +5,13 @@
   "description": "Public, fail-closed campaign admission evidence. References and hashes only; never embeds customer prompts, traces, credentials, or answer keys.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "campaign_id", "environment", "transport_fingerprints", "tool_steps", "payload_parity", "workload_contract", "optimizer_input", "endpoint_bundle", "candidate_lineage", "context_gates", "mutation_smoke", "spend"],
+  "required": ["schema_version", "campaign_id", "workload_id", "request_id", "execution_id", "environment", "transport_fingerprints", "tool_steps", "payload_parity", "workload_contract", "optimizer_input", "endpoint_bundle", "candidate_lineage", "context_gates", "mutation_smoke", "spend"],
   "properties": {
     "schema_version": { "const": "understudy.campaign_admission.v1" },
     "campaign_id": { "type": "string", "minLength": 1 },
+    "workload_id": { "type": "string", "minLength": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "execution_id": { "type": "string", "minLength": 1 },
     "environment": { "$ref": "#/$defs/environment" },
     "transport_fingerprints": { "$ref": "#/$defs/fingerprints" },
     "tool_steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tool_step" } },
@@ -27,7 +30,7 @@
     "exact_version": { "type": "string", "pattern": "^[0-9][0-9A-Za-z.!+_-]*$" },
     "environment": {
       "type": "object", "additionalProperties": false,
-      "required": ["pyproject_sha256", "uv_lock_sha256", "uv_lock_check_command", "uv_lock_check_exit_code", "uv_version", "python_version", "python_executable_sha256", "installed_distributions_sha256", "resolved_packages", "container_image_digest"],
+      "required": ["pyproject_sha256", "uv_lock_sha256", "uv_lock_check_command", "uv_lock_check_exit_code", "uv_version", "python_version", "python_executable_sha256", "installed_distributions_sha256", "applicable_lock_artifact_sha256", "resolved_packages", "container_image_digest"],
       "properties": {
         "pyproject_sha256": { "$ref": "#/$defs/sha256" },
         "uv_lock_sha256": { "$ref": "#/$defs/sha256" },
@@ -37,6 +40,7 @@
         "python_version": { "$ref": "#/$defs/exact_version" },
         "python_executable_sha256": { "$ref": "#/$defs/sha256" },
         "installed_distributions_sha256": { "$ref": "#/$defs/sha256" },
+        "applicable_lock_artifact_sha256": { "$ref": "#/$defs/sha256" },
         "container_image_digest": { "$ref": "#/$defs/image_digest" },
         "resolved_packages": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/package_pin" } }
       }
@@ -81,7 +85,7 @@
     },
     "optimizer_input": { "type": "object", "additionalProperties": false, "required": ["input_bundle_sha256"], "properties": { "input_bundle_sha256": { "$ref": "#/$defs/sha256" } } },
     "endpoint_bundle": { "type": "object", "additionalProperties": false, "required": ["bundle_kind", "schema_version", "executable_bundle_sha256", "environment_sha256", "health_receipt_sha256", "model_attestation_sha256", "frozen", "seed"], "properties": { "bundle_kind": { "enum": ["policy", "checkpoint"] }, "schema_version": { "type": "string", "minLength": 1 }, "executable_bundle_sha256": { "$ref": "#/$defs/sha256" }, "environment_sha256": { "$ref": "#/$defs/sha256" }, "health_receipt_sha256": { "$ref": "#/$defs/sha256" }, "model_attestation_sha256": { "$ref": "#/$defs/sha256" }, "frozen": { "const": true }, "seed": { "const": false } } },
-    "candidate_lineage": { "type": "object", "additionalProperties": false, "required": ["parent_candidate_sha256", "candidate_sha256", "prompt_sha256", "model_attestation_sha256", "checkpoint_sha256"], "properties": { "parent_candidate_sha256": { "$ref": "#/$defs/sha256" }, "candidate_sha256": { "$ref": "#/$defs/sha256" }, "prompt_sha256": { "$ref": "#/$defs/sha256" }, "model_attestation_sha256": { "$ref": "#/$defs/sha256" }, "checkpoint_sha256": { "$ref": "#/$defs/sha256" } } },
+    "candidate_lineage": { "type": "object", "additionalProperties": false, "required": ["parent_candidate_sha256", "candidate_sha256", "prompt_sha256", "model_attestation_sha256", "checkpoint_sha256", "lineage_artifact_sha256"], "properties": { "parent_candidate_sha256": { "$ref": "#/$defs/sha256" }, "candidate_sha256": { "$ref": "#/$defs/sha256" }, "prompt_sha256": { "$ref": "#/$defs/sha256" }, "model_attestation_sha256": { "$ref": "#/$defs/sha256" }, "checkpoint_sha256": { "$ref": "#/$defs/sha256" }, "lineage_artifact_sha256": { "$ref": "#/$defs/sha256" } } },
     "context_gates": { "type": "object", "additionalProperties": false, "required": ["source_context_sha256", "reflection_context_sha256", "source_context_present", "reflection_context_present"], "properties": { "source_context_sha256": { "$ref": "#/$defs/sha256" }, "reflection_context_sha256": { "$ref": "#/$defs/sha256" }, "source_context_present": { "const": true }, "reflection_context_present": { "const": true } } },
     "mutation_smoke": {
       "type": "object", "additionalProperties": false,

@@ -1,7 +1,7 @@
 {
   "campaign_id": "public-synthetic-campaign",
   "effective_max_tokens": 256,
-  "executable_bundle_sha256": "f6f7c7c57a2d5613bc2be3bfe23115bd97350c3839df87abcf266387bbdf3860",
+  "executable_bundle_sha256": "c2c8a323b8015162a33344491ba882c67e5fe2e3b6089b0ff3769ae3a0862d00",
   "execution_id": "execution-public-1",
   "failed_before_sampling": true,
   "failure": "OverlongPromptError",

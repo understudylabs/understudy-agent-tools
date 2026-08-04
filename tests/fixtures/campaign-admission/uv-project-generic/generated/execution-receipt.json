@@ -1,6 +1,6 @@
 {
   "after_state_sha256": "578c4dc9e95cf9ef87e1ccd5f2236a61cc2faf0a120d16f52f871643f3675a34",
-  "applicable_lock_artifact_sha256": "3db856f8e925ea98bf9f61c4b550bf8b2cb2159495426505145da69460e4d1ec",
+  "applicable_lock_artifact_sha256": "068760dfb2d550852f70a0c759e4af1f5fec30577b510ecc1571c8136fd4fdf6",
   "applicable_locked_distributions": [
     {
       "name": "aiofiles",
@@ -304,7 +304,7 @@
     },
     {
       "name": "renderers",
-      "version": "0.1.8"
+      "version": "0.1.9.dev10"
     },
     {
       "name": "requests",
@@ -404,7 +404,7 @@
     },
     {
       "name": "verifiers",
-      "version": "0.2.1"
+      "version": "0.2.2.dev77"
     },
     {
       "name": "websockets",
@@ -419,7 +419,7 @@
       "version": "1.24.5"
     }
   ],
-  "applicable_locked_distributions_sha256": "d1693d46acb2bd255e700e847358bdabc19b35879a8ff187ed038e6dee6b5d01",
+  "applicable_locked_distributions_sha256": "46ff9d184de9cd214ede0519d4b7ddd84ad273c013ff5ffa8263213e5de86367",
   "argv": [
     "uv",
     "run",
@@ -739,7 +739,7 @@
     },
     {
       "name": "renderers",
-      "version": "0.1.8"
+      "version": "0.1.9.dev10"
     },
     {
       "name": "requests",
@@ -839,7 +839,7 @@
     },
     {
       "name": "verifiers",
-      "version": "0.2.1"
+      "version": "0.2.2.dev77"
     },
     {
       "name": "websockets",
@@ -854,7 +854,7 @@
       "version": "1.24.5"
     }
   ],
-  "installed_distributions_sha256": "d1693d46acb2bd255e700e847358bdabc19b35879a8ff187ed038e6dee6b5d01",
+  "installed_distributions_sha256": "46ff9d184de9cd214ede0519d4b7ddd84ad273c013ff5ffa8263213e5de86367",
   "interpreter": {
     "executable_sha256": "a395f264e5612a2819662ed3e37fd30d39ed61179b98e5f86c3c783a008d8623",
     "implementation": "CPython",
@@ -864,7 +864,7 @@
   },
   "lock_exclusions": [
     {
-      "name": "understudy-campaign-admission-smoke",
+      "name": "understudy-campaign-admission-generic-smoke",
       "reason": "root-non-installable-no-emit-project"
     },
     {
@@ -873,10 +873,10 @@
   ],
   "mutated_candidate_sha256": "0ba2e4298634b3771db51d77ffca15af1c7e731fc15c290b60ab5c44097c1f6c",
   "request_id": "request-public-1",
-  "root_package_name": "understudy-campaign-admission-smoke",
+  "root_package_name": "understudy-campaign-admission-generic-smoke",
   "schema_version": "understudy.synthetic_verifiers_execution.v1",
   "seed_candidate_sha256": "4dbee206fc073f8db3e50fad210ca48772e481ad31ee37f33e638bca91db1914",
-  "trace_sha256": "fce8b5fcb3c4e6ee75d154342aa679f1a15d842e1ecfb47fd532014100cd3353",
+  "trace_sha256": "4d47c8afd537dd8377d8b349ca7b67900f7b2d3fd2e406606c07bc57204b5938",
   "verified_state_delta": {
     "after": "ready",
     "before": "pending",
@@ -884,9 +884,9 @@
     "path": "/records/alpha/status"
   },
   "verifiers": {
-    "git_revision": "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+    "git_revision": "61e7394d45109d142deec768c3c459ab98111e91",
     "module": "verifiers",
-    "version": "0.2.1"
+    "version": "0.2.2.dev77"
   },
   "workload_id": "cedar-public-synthetic"
 }

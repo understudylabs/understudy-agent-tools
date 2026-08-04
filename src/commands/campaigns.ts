@@ -24,8 +24,10 @@ export function registerCampaignsCommand(program: Command): void {
     .requiredOption("--before-state <path>", "Generated before-state artifact")
     .requiredOption("--after-state <path>", "Generated after-state artifact")
     .requiredOption("--overflow-receipt <path>", "Generated oversized-request failure receipt")
+    .requiredOption("--campaign-evidence <path>", "Generated immutable campaign evidence bundle")
+    .requiredOption("--applicable-lock <path>", "Generated platform-applicable uv lock inventory")
     .requiredOption("--smoke-generator <path>", "Provider-free generator inside the locked project")
-    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; smokeGenerator: string }) => {
+    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string; smokeGenerator: string }) => {
       try {
         const project = resolve(options.project);
         const manifest = JSON.parse(readFileSync(resolve(options.manifest), "utf8")) as Record<string, unknown>;
@@ -44,11 +46,11 @@ export function registerCampaignsCommand(program: Command): void {
         if (declaredPins !== lockedPins) throw new Error("resolved package pins do not exactly match uv.lock");
         const generator = resolve(options.smokeGenerator);
         if (generator !== join(project, "generate_smoke.py")) throw new Error("smoke generator must be generate_smoke.py inside the locked project");
-        const comparisons = [["trace.json", options.trace], ["execution-receipt.json", options.executionReceipt], ["before-state.json", options.beforeState], ["after-state.json", options.afterState], ["overflow-receipt.json", options.overflowReceipt]] as const;
+        const comparisons = [["trace.json", options.trace], ["execution-receipt.json", options.executionReceipt], ["before-state.json", options.beforeState], ["after-state.json", options.afterState], ["overflow-receipt.json", options.overflowReceipt], ["campaign-evidence.json", options.campaignEvidence], ["applicable-lock.json", options.applicableLock]] as const;
         const expected = new Map(comparisons.map(([generated, supplied]) => [generated, readFileSync(resolve(supplied))]));
         execFileSync("uv", ["run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"], { cwd: project, stdio: "pipe" });
         for (const [generated] of comparisons) if (!readFileSync(join(project, "generated", generated)).equals(expected.get(generated)!)) throw new Error(`generated ${generated} differs from supplied fixture`);
-        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState), overflowReceipt: resolve(options.overflowReceipt) }));
+        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState), overflowReceipt: resolve(options.overflowReceipt), campaignEvidence: resolve(options.campaignEvidence), applicableLock: resolve(options.applicableLock) }));
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         if (!result.admitted) process.exitCode = 1;
       } catch (error) {
