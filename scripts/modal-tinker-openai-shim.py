@@ -1,8 +1,9 @@
 """Private multi-checkpoint Tinker sampling bridge for Understudy Gateway.
 
-Deploy with a Modal secret named understudy-tinker-serving-seed37 containing
-TINKER_API_KEY and TINKER_MODEL_REGISTRY_JSON. Modal proxy authentication is
-required before requests reach the shim.
+Deploy with a Modal secret containing TINKER_API_KEY and
+TINKER_MODEL_REGISTRY_JSON. Set TINKER_SERVING_APP_NAME and
+TINKER_SERVING_SECRET_NAME at deploy time to isolate checkpoint lineages.
+Modal proxy authentication is required before requests reach the shim.
 """
 from __future__ import annotations
 
@@ -13,9 +14,13 @@ from pathlib import Path
 
 import modal
 
-APP_NAME = "understudy-tinker-cedar-seed37-serving"
+APP_NAME = os.environ.get(
+    "TINKER_SERVING_APP_NAME", "understudy-tinker-cedar-seed37-serving"
+)
 PORT = 8099
-SECRET_NAME = "understudy-tinker-serving-seed37"
+SECRET_NAME = os.environ.get(
+    "TINKER_SERVING_SECRET_NAME", "understudy-tinker-serving-seed37"
+)
 BASE_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 TINKER_VERSION = "0.24.0"
 COOKBOOK_VERSION = "0.5.3"
