@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 export const CAMPAIGN_ADMISSION_SCHEMA_VERSION = "understudy.campaign_admission.v1" as const;
 export const SPEND_LANES = ["optimizer", "endpoint", "training"] as const;
@@ -19,7 +20,6 @@ export type TransportArtifacts = {
   overflowReceipt: Buffer;
   campaignEvidence: Buffer;
   applicableLock: Buffer;
-  trustedGenerator: Buffer;
 };
 
 export type TransportFingerprints = {
@@ -63,6 +63,8 @@ export type AdmissionResult = {
 export type ResolvedPackagePin = { name: string; version: string; git_revision?: string };
 
 const SHA256 = /^[a-f0-9]{64}$/;
+const TRUSTED_GENERATOR_PATH = fileURLToPath(new URL("../../runtime-assets/campaign-admission/trusted-generator.txt", import.meta.url));
+const trustedGeneratorBytes = (): Buffer => readFileSync(TRUSTED_GENERATOR_PATH);
 // Exact PEP 440-ish resolved versions may have one or two numeric segments,
 // epochs, post releases, or local suffixes; specifier operators/wildcards do
 // not belong in an attested resolved lock.
@@ -228,7 +230,7 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   const smoke = object(manifest.mutation_smoke);
   if (smoke.execution_receipt_sha256 !== sha256Bytes(artifacts.executionReceipt)) errors.push("mutation_smoke.execution_receipt_sha256 does not match supplied receipt");
   if (receipt.schema_version !== "understudy.synthetic_verifiers_execution.v1") errors.push("synthetic execution receipt schema is invalid");
-  if (receipt.trusted_generator_version !== "understudy.agent_tools.campaign_admission_generator.v1" || receipt.trusted_generator_sha256 !== sha256Bytes(artifacts.trustedGenerator) || receipt.trusted_generator_sha256 !== object(manifest.environment).trusted_generator_sha256) errors.push("execution evidence is not derived by the trusted agent-tools generator");
+  if (receipt.trusted_generator_version !== "understudy.agent_tools.campaign_admission_generator.v1" || receipt.trusted_generator_sha256 !== sha256Bytes(trustedGeneratorBytes()) || receipt.trusted_generator_sha256 !== object(manifest.environment).trusted_generator_sha256) errors.push("execution evidence is not derived by the packaged trusted agent-tools generator");
   validateIdentity(manifest, receipt, "execution receipt", errors);
   const argv = receipt.argv;
   if (canonicalize(argv) !== canonicalize(["uv", "run", "--project", "<LOCKED_PROJECT>", "--locked", "python", "<TRUSTED_AGENT_TOOLS_GENERATOR>", "--output", "<GENERATED_EVIDENCE>"])) errors.push("synthetic smoke must use the exact locked-project trusted-generator argv");
@@ -257,6 +259,7 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   if (receipt.before_state_sha256 !== sha256Bytes(artifacts.beforeState) || receipt.after_state_sha256 !== sha256Bytes(artifacts.afterState)) errors.push("execution receipt does not bind before/after state");
   if (receipt.seed_candidate_sha256 !== smoke.seed_candidate_sha256 || receipt.mutated_candidate_sha256 !== smoke.mutated_candidate_sha256) errors.push("candidate hashes are not bound to generated inputs");
   if (receipt.assertion_rubric !== "verifiers.Rubric" || receipt.assertion_fraction !== smoke.assertion_fraction) errors.push("assertion_fraction is not bound to the executed standard-Verifiers Rubric receipt");
+  if (receipt.schema_version === "understudy.synthetic_verifiers_execution.v1" && receipt.assertion_fraction !== 1) errors.push("trusted synthetic admission rubric must independently pass at 1.0");
   const delta = object(receipt.verified_state_delta);
   if (delta.path !== "/records/alpha/status" || delta.before !== "pending" || delta.after !== "ready") errors.push("execution receipt does not verify the required state delta");
   if (object(object(before.records).alpha).status !== "pending" || object(object(after.records).alpha).status !== "ready") errors.push("before/after state artifacts do not contain the verified mutation");
@@ -526,6 +529,6 @@ export function validateCampaignAdmission(manifest: unknown, artifacts: Transpor
   return { admission_only: true, compile_authorized: false, admitted: errors.length === 0, errors, fingerprints, tool_steps, effective_spend_caps_usd: spend.effective, cumulative_spend_usd: spend.cumulative };
 }
 
-export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string; trustedGenerator: string }): TransportArtifacts {
-  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt), campaignEvidence: readFileSync(paths.campaignEvidence), applicableLock: readFileSync(paths.applicableLock), trustedGenerator: readFileSync(paths.trustedGenerator) };
+export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string }): TransportArtifacts {
+  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt), campaignEvidence: readFileSync(paths.campaignEvidence), applicableLock: readFileSync(paths.applicableLock) };
 }

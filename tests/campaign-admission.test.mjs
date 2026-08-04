@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { baseManifest } from "./helpers/campaign-admission-fixture.mjs";
 
@@ -14,6 +17,70 @@ describe("campaign admission", () => {
     assert.equal(result.tool_steps[0].raw_arguments_equal, true);
     assert.equal(result.tool_steps[0].semantic_arguments_equal, true);
     assert.equal(result.tool_steps[0].mutation, true);
+  });
+
+  it("rejects direct-library trusted-generator byte and path substitution", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const fake = Buffer.from("coherent but untrusted generator\n");
+    const fakeHash = mod.sha256Bytes(fake);
+    {
+      const { manifest, artifacts } = baseManifest(mod);
+      const receipt = JSON.parse(artifacts.executionReceipt);
+      receipt.trusted_generator_sha256 = fakeHash;
+      const changed = { ...artifacts, trustedGenerator: fake, executionReceipt: Buffer.from(`${JSON.stringify(receipt)}\n`) };
+      manifest.environment.trusted_generator_sha256 = fakeHash;
+      manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(changed.executionReceipt);
+      const result = mod.validateCampaignAdmission(manifest, changed);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /packaged trusted agent-tools generator/);
+    }
+    const temporary = mkdtempSync(join(tmpdir(), "campaign-admission-substitution-"));
+    try {
+      const fakePath = join(temporary, "generator.txt");
+      writeFileSync(fakePath, fake);
+      const fixture = resolve("tests/fixtures/campaign-admission");
+      const paths = {
+        request: join(fixture, "request.json"), response: join(fixture, "response.json"), tools: join(fixture, "tools.json"),
+        trace: join(fixture, "uv-project/generated/trace.json"), executionReceipt: join(fixture, "uv-project/generated/execution-receipt.json"),
+        beforeState: join(fixture, "uv-project/generated/before-state.json"), afterState: join(fixture, "uv-project/generated/after-state.json"),
+        overflowReceipt: join(fixture, "uv-project/generated/overflow-receipt.json"), campaignEvidence: join(fixture, "uv-project/generated/campaign-evidence.json"),
+        applicableLock: join(fixture, "uv-project/generated/applicable-lock.json"), trustedGenerator: fakePath,
+      };
+      const artifacts = mod.readTransportArtifacts(paths);
+      assert.equal(Object.hasOwn(artifacts, "trustedGenerator"), false);
+      const { manifest } = baseManifest(mod);
+      const receipt = JSON.parse(artifacts.executionReceipt);
+      receipt.trusted_generator_sha256 = fakeHash;
+      artifacts.executionReceipt = Buffer.from(`${JSON.stringify(receipt)}\n`);
+      manifest.environment.trusted_generator_sha256 = fakeHash;
+      manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(artifacts.executionReceipt);
+      const result = mod.validateCampaignAdmission(manifest, artifacts);
+      assert.equal(result.admitted, false);
+      assert.match(result.errors.join("\n"), /packaged trusted agent-tools generator/);
+    } finally {
+      rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects coherent direct-library fabrication of metric, manifest, and receipt", async () => {
+    const mod = await import("../dist/campaign-admission/index.js");
+    const { manifest, artifacts } = baseManifest(mod);
+    const trace = JSON.parse(artifacts.trace);
+    trace.metrics.assertion_fraction = 0.5;
+    trace.rewards.assertion_fraction = 0.5;
+    const changed = { ...artifacts, trace: Buffer.from(`${JSON.stringify(trace)}\n`) };
+    const receipt = JSON.parse(artifacts.executionReceipt);
+    receipt.assertion_fraction = 0.5;
+    receipt.trace_sha256 = mod.sha256Bytes(changed.trace);
+    changed.executionReceipt = Buffer.from(`${JSON.stringify(receipt)}\n`);
+    manifest.transport_fingerprints = mod.fingerprintTransport(changed);
+    manifest.tool_steps = mod.fingerprintToolSteps(changed);
+    manifest.mutation_smoke.assertion_fraction = 0.5;
+    manifest.mutation_smoke.trace_artifact_sha256 = mod.sha256Bytes(changed.trace);
+    manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(changed.executionReceipt);
+    const result = mod.validateCampaignAdmission(manifest, changed);
+    assert.equal(result.admitted, false);
+    assert.match(result.errors.join("\n"), /trusted synthetic admission rubric must independently pass at 1\.0/);
   });
 
   it("rejects whitespace-only raw argument drift even when semantics match", async () => {

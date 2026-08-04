@@ -52,7 +52,7 @@ export function registerCampaignsCommand(program: Command): void {
         const generatedDir = mkdtempSync(join(tmpdir(), "understudy-trusted-admission-"));
         execFileSync("uv", ["run", "--project", project, "--locked", "python", generator, "--output", generatedDir], { cwd: project, stdio: "pipe" });
         for (const [generated] of comparisons) if (!readFileSync(join(generatedDir, generated)).equals(expected.get(generated)!)) throw new Error(`trusted agent-tools derivation rejects supplied ${generated}`);
-        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState), overflowReceipt: resolve(options.overflowReceipt), campaignEvidence: resolve(options.campaignEvidence), applicableLock: resolve(options.applicableLock), trustedGenerator: generator }));
+        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState), overflowReceipt: resolve(options.overflowReceipt), campaignEvidence: resolve(options.campaignEvidence), applicableLock: resolve(options.applicableLock) }));
         rmSync(generatedDir, { recursive: true, force: true });
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         if (!result.admitted) process.exitCode = 1;
