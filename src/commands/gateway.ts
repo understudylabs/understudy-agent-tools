@@ -159,7 +159,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   process.stdout.write(`workload ${payload.workload ?? "(none)"}\n`);
   process.stdout.write(`request_id ${requestId ?? "(none)"}\n`);
   process.stdout.write(`latency_ms ${latencyMs}\n`);
-  process.stdout.write(`${res.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
+  process.stdout.write(`${payload.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
 }
 
 function streamResponseKind(text: string, contentType: string): "stream" | "stream_protocol_mismatch" {

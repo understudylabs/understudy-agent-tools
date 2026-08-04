@@ -2255,6 +2255,9 @@ class ScoreWithFeedback:
       const mismatched = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai"], env, repo);
       assert.notEqual(mismatched.status, 0);
       assert.equal(JSON.parse(mismatched.stdout).response_kind, "stream_protocol_mismatch");
+      const humanMismatch = await runWithEnvAsync(["gateway", "probe", "--provider", "openai"], env, repo);
+      assert.notEqual(humanMismatch.status, 0);
+      assert.match(humanMismatch.stdout, /response failed/);
       state.probeStreamProtocolMismatch = false;
 
       const gpt5 = await runWithEnvAsync([
