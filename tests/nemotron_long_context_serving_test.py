@@ -164,6 +164,41 @@ class NemotronLongContextServingTest(unittest.TestCase):
         self.assertEqual([item["status"] for item in receipt["readiness"]], [303, 200])
         self.assertEqual(receipt["inference_posts"], 1)
 
+    def test_canary_retains_redacted_shape_for_malformed_response(self):
+        class Response:
+            def __init__(self, status, body=b"{}"):
+                self.status = status
+                self.body = body
+            def read(self):
+                return self.body
+
+        malformed = {
+            "choices": [{"message": ["secret-generated-content"], "finish_reason": "stop"}],
+            "usage": {"completion_tokens": 7, "private_extension": "secret"},
+            "provider_private": "secret",
+        }
+        body = json.dumps(malformed).encode()
+        opener = MagicMock()
+        opener.open.side_effect = [Response(200), Response(200, body)]
+        row = {
+            "case_id": "continuation", "model": "model",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS, "sampling": PARITY_SAMPLING,
+            "expected_assistant_message": {"tool_calls": []},
+        }
+        receipt = CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "d" * 64, opener=opener)
+        result = receipt["rows"][0]
+        self.assertEqual(result["outcome"], "malformed_response")
+        self.assertEqual(result["parse_error_type"], "AttributeError")
+        self.assertEqual(result["body_bytes"], len(body))
+        self.assertRegex(result["body_sha256"], r"^[a-f0-9]{64}$")
+        self.assertEqual(result["response_shape"]["top_level_keys"], ["choices", "provider_private", "usage"])
+        self.assertEqual(result["response_shape"]["message_type"], "list")
+        self.assertEqual(result["response_shape"]["usage_value_types"], {
+            "completion_tokens": "int", "private_extension": "str",
+        })
+        self.assertNotIn("secret", json.dumps(result))
+
     def test_modal_merge_is_cpu_only_hash_bound_and_private(self):
         source = (SCRIPTS / "modal-nemotron-merge-export.py").read_text()
         self.assertIn("cpu=8", source)

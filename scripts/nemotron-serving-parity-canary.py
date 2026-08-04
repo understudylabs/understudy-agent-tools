@@ -50,6 +50,44 @@ def _sha256(value):
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _body_sha256(body):
+    return hashlib.sha256(body).hexdigest()
+
+
+def _response_shape(response):
+    """Retain response structure without retaining model-generated values."""
+    shape = {"top_level_type": type(response).__name__}
+    if not isinstance(response, dict):
+        return shape
+    shape["top_level_keys"] = sorted(response)
+    choices = response.get("choices")
+    shape["choices_type"] = type(choices).__name__
+    shape["choices_count"] = len(choices) if isinstance(choices, list) else None
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        shape["choice_0_type"] = type(choice).__name__
+        if isinstance(choice, dict):
+            shape["choice_0_keys"] = sorted(choice)
+            shape["finish_reason_type"] = type(choice.get("finish_reason")).__name__
+            shape["finish_reason"] = choice.get("finish_reason") if choice.get("finish_reason") in {
+                None, "stop", "length", "tool_calls", "content_filter",
+            } else "other"
+            message = choice.get("message")
+            shape["message_type"] = type(message).__name__
+            if isinstance(message, dict):
+                shape["message_keys"] = sorted(message)
+                shape["content_type"] = type(message.get("content")).__name__
+                tool_calls = message.get("tool_calls")
+                shape["tool_calls_type"] = type(tool_calls).__name__
+                shape["tool_calls_count"] = len(tool_calls) if isinstance(tool_calls, list) else None
+    usage = response.get("usage")
+    shape["usage_type"] = type(usage).__name__
+    if isinstance(usage, dict):
+        shape["usage_keys"] = sorted(usage)
+        shape["usage_value_types"] = {key: type(value).__name__ for key, value in sorted(usage.items())}
+    return shape
+
+
 def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, readiness_attempts=3, opener=None):
     if len(artifact_sha256) != 64 or any(character not in "0123456789abcdef" for character in artifact_sha256):
         raise ValueError("artifact sha256 must be lowercase hex")
@@ -105,6 +143,10 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
         )
         status, body, latency = _request(opener, request, timeout)
         posts += 1
+        body_sha256 = _body_sha256(body)
+        body_bytes = len(body)
+        response_shape = None
+        parse_error_type = None
         if status != 200:
             outcome = "transport_failure"
             action_parity = None
@@ -113,6 +155,7 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
         else:
             try:
                 response = json.loads(body)
+                response_shape = _response_shape(response)
                 choice = response["choices"][0]
                 actual = _tool_calls(choice["message"])
                 expected = _tool_calls(row["expected_assistant_message"])
@@ -120,11 +163,12 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
                 completion_tokens = response.get("usage", {}).get("completion_tokens")
                 action_parity = actual == expected and finish_reason != "length"
                 outcome = "action_match" if action_parity else "action_mismatch"
-            except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+            except (AttributeError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
                 outcome = "malformed_response"
                 action_parity = False
                 finish_reason = None
                 completion_tokens = None
+                parse_error_type = type(error).__name__
         outcomes[case_id] = outcome
         receipt_rows.append({
             "case_id": case_id,
@@ -134,6 +178,10 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
             "action_parity": action_parity,
             "finish_reason": finish_reason,
             "completion_tokens": completion_tokens,
+            "body_bytes": body_bytes,
+            "body_sha256": body_sha256,
+            "response_shape": response_shape,
+            "parse_error_type": parse_error_type,
         })
     return {
         "ready": True,
