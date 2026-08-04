@@ -88,6 +88,10 @@ def log_event(event, **fields):
     with log_lock:
         with open(log_path, "a", encoding="utf-8") as stream:
             stream.write(json.dumps(record) + "\n")
+    # Modal's durable app logs are the only operator-visible surface for this
+    # web-server process. Records contain request ids and bounded error types,
+    # never prompts, tool arguments, credentials, or response text.
+    print(json.dumps(record, sort_keys=True), flush=True)
 
 
 service = tinker.ServiceClient(_client_config={"use_pyqwest_transport": False})
