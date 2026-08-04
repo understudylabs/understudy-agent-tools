@@ -103,6 +103,23 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
     case_ids = [row.get("case_id") for row in rows]
     if not case_ids or any(not isinstance(case_id, str) for case_id in case_ids) or len(set(case_ids)) != len(case_ids):
         raise ValueError("canary needs non-empty rows with unique case ids")
+    required_types = {
+        "model": str,
+        "messages": list,
+        "tools": list,
+        "sampling": dict,
+        "expected_assistant_message": dict,
+    }
+    for row in rows:
+        for field, expected_type in required_types.items():
+            if not isinstance(row.get(field), expected_type):
+                raise ValueError(f"case {row['case_id']} needs {field} as {expected_type.__name__}")
+        expected_hash = row.get("expected_assistant_message_sha256")
+        if expected_hash is not None and expected_hash != _sha256(row["expected_assistant_message"]):
+            raise ValueError(f"case {row['case_id']} expected assistant message hash mismatch")
+        parent = row.get("continuation_of")
+        if parent is not None and parent not in case_ids:
+            raise ValueError(f"case {row['case_id']} references unknown continuation parent")
     bundle_sha256 = _sha256(rows)
     opener = opener or urllib.request.build_opener(NoRedirect())
     if readiness_attempts < 1:

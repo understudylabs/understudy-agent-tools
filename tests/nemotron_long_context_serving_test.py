@@ -101,11 +101,35 @@ class NemotronLongContextServingTest(unittest.TestCase):
     def test_canary_requires_readiness_before_any_inference_post(self):
         opener = MagicMock()
         opener.open.side_effect = urllib.error.HTTPError("https://serve/health", 503, "cold", {}, None)
-        rows = [{"case_id": "first"}]
+        rows = [{
+            "case_id": "first", "model": "model", "messages": [], "tools": [],
+            "sampling": {}, "expected_assistant_message": {},
+        }]
         receipt = CANARY.run(rows, "https://serve/v1/chat/completions", "https://serve/health", {}, "a" * 64, readiness_attempts=1, opener=opener)
         self.assertFalse(receipt["ready"])
         self.assertEqual(receipt["inference_posts"], 0)
         self.assertEqual(opener.open.call_count, 1)
+
+    def test_canary_rejects_hash_only_expected_message_before_network(self):
+        opener = MagicMock()
+        row = {
+            "case_id": "continuation", "model": "model", "messages": [], "tools": [],
+            "sampling": {}, "expected_assistant_message_sha256": "e" * 64,
+        }
+        with self.assertRaisesRegex(ValueError, "expected_assistant_message as dict"):
+            CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "e" * 64, opener=opener)
+        opener.open.assert_not_called()
+
+    def test_canary_rejects_expected_message_hash_mismatch_before_network(self):
+        opener = MagicMock()
+        row = {
+            "case_id": "first", "model": "model", "messages": [], "tools": [],
+            "sampling": {}, "expected_assistant_message": {},
+            "expected_assistant_message_sha256": "f" * 64,
+        }
+        with self.assertRaisesRegex(ValueError, "expected assistant message hash mismatch"):
+            CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "f" * 64, opener=opener)
+        opener.open.assert_not_called()
 
     def test_canary_exposes_redirect_and_suppresses_dependent_continuation(self):
         class Response:
