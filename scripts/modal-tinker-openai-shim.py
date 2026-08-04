@@ -17,16 +17,16 @@ APP_NAME = "understudy-tinker-checkpoint-serving"
 PORT = 8099
 SECRET_NAME = "understudy-tinker-serving"
 BASE_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
-TINKER_COMMIT = "3eb9e87d52efacede992931b1bb51d000b0c70ed"
-COOKBOOK_COMMIT = "0b5c01eaee49bdb0d476f4f383e1c0fb9aced590"
+TINKER_VERSION = "0.24.0"
+COOKBOOK_VERSION = "0.5.3"
 
 app = modal.App(APP_NAME)
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git")
     .pip_install(
-        f"tinker @ git+https://github.com/thinking-machines-lab/tinker.git@{TINKER_COMMIT}",
-        f"tinker-cookbook @ git+https://github.com/thinking-machines-lab/tinker-cookbook.git@{COOKBOOK_COMMIT}",
+        f"tinker=={TINKER_VERSION}",
+        f"tinker-cookbook=={COOKBOOK_VERSION}",
         "httpx>=0.27,<1",
     )
     .add_local_file("scripts/tinker-openai-shim.py", "/opt/understudy/tinker-openai-shim.py")
