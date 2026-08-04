@@ -45,6 +45,35 @@ def _tool_calls(message):
     return normalized
 
 
+def _validate_wire_tool_calls(message, *, label):
+    """Reject dependency-coerced tool calls before any provider request.
+
+    OpenAI-compatible tool arguments are JSON *strings* on the wire.  Keeping
+    that distinction explicit prevents framework-specific schema coercion from
+    silently changing a frozen continuation fixture before it is compared.
+    """
+    tool_calls = message.get("tool_calls", [])
+    if not isinstance(tool_calls, list):
+        raise ValueError(f"{label} tool_calls must be a list")
+    for index, call in enumerate(tool_calls):
+        if not isinstance(call, dict):
+            raise ValueError(f"{label} tool call {index} must be a dict")
+        function = call.get("function")
+        if not isinstance(function, dict):
+            raise ValueError(f"{label} tool call {index} function must be a dict")
+        if not isinstance(function.get("name"), str):
+            raise ValueError(f"{label} tool call {index} function name must be a string")
+        arguments = function.get("arguments")
+        if not isinstance(arguments, str):
+            raise ValueError(f"{label} tool call {index} arguments must remain a JSON string")
+        try:
+            decoded = json.loads(arguments)
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{label} tool call {index} arguments must contain valid JSON") from error
+        if not isinstance(decoded, dict):
+            raise ValueError(f"{label} tool call {index} arguments JSON must decode to an object")
+
+
 def _sha256(value):
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -117,6 +146,18 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
         expected_hash = row.get("expected_assistant_message_sha256")
         if expected_hash is not None and expected_hash != _sha256(row["expected_assistant_message"]):
             raise ValueError(f"case {row['case_id']} expected assistant message hash mismatch")
+        _validate_wire_tool_calls(
+            row["expected_assistant_message"],
+            label=f"case {row['case_id']} expected assistant message",
+        )
+        for index, message in enumerate(row["messages"]):
+            if not isinstance(message, dict):
+                raise ValueError(f"case {row['case_id']} message {index} must be a dict")
+            if "tool_calls" in message:
+                _validate_wire_tool_calls(
+                    message,
+                    label=f"case {row['case_id']} message {index}",
+                )
         parent = row.get("continuation_of")
         if parent is not None and parent not in case_ids:
             raise ValueError(f"case {row['case_id']} references unknown continuation parent")

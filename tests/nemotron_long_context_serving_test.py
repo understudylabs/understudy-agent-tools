@@ -131,6 +131,57 @@ class NemotronLongContextServingTest(unittest.TestCase):
             CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "f" * 64, opener=opener)
         opener.open.assert_not_called()
 
+    def test_canary_rejects_dependency_coerced_tool_arguments_before_network(self):
+        opener = MagicMock()
+        row = {
+            "case_id": "continuation", "model": "model",
+            "messages": [{
+                "role": "assistant",
+                "tool_calls": [{
+                    "id": "call-1", "type": "function",
+                    "function": {"name": "lookup", "arguments": {"x": 1}},
+                }],
+            }],
+            "tools": PARITY_TOOLS, "sampling": PARITY_SAMPLING,
+            "expected_assistant_message": {"tool_calls": []},
+        }
+        with self.assertRaisesRegex(ValueError, "arguments must remain a JSON string"):
+            CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "f" * 64, opener=opener)
+        opener.open.assert_not_called()
+
+    def test_canary_accepts_wire_string_tool_arguments_without_coercion(self):
+        class Response:
+            status = 200
+            def __init__(self, body=b"{}"):
+                self.body = body
+            def read(self):
+                return self.body
+
+        expected = {
+            "tool_calls": [{
+                "id": "call-2", "type": "function",
+                "function": {"name": "lookup", "arguments": "{\"x\":1}"},
+            }],
+        }
+        body = json.dumps({
+            "choices": [{"message": expected, "finish_reason": "tool_calls"}],
+            "usage": {"completion_tokens": 1},
+        }).encode()
+        opener = MagicMock()
+        opener.open.side_effect = [Response(), Response(body)]
+        row = {
+            "case_id": "continuation", "model": "model",
+            "messages": [{"role": "assistant", **expected}],
+            "tools": PARITY_TOOLS, "sampling": PARITY_SAMPLING,
+            "expected_assistant_message": expected,
+        }
+        receipt = CANARY.run(
+            [row], "https://serve/v1/chat/completions", "https://serve/health", {},
+            "f" * 64, readiness_attempts=1, opener=opener,
+        )
+        self.assertTrue(receipt["passed"])
+        self.assertEqual(receipt["inference_posts"], 1)
+
     def test_canary_exposes_redirect_and_suppresses_dependent_continuation(self):
         class Response:
             def __init__(self, status, body=b"{}"):
