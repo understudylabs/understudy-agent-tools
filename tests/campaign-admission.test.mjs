@@ -126,7 +126,7 @@ describe("campaign admission", () => {
       manifest.mutation_smoke.execution_receipt_sha256 = mod.sha256Bytes(changed.executionReceipt);
       const result = mod.validateCampaignAdmission(manifest, changed);
       assert.equal(result.admitted, false);
-      assert.match(result.errors.join("\n"), /locked-project uv argv|cannot use --no-project|locked project Python|installed distributions/);
+      assert.match(result.errors.join("\n"), /locked-project trusted-generator argv|cannot use --no-project|locked project Python|installed distributions/);
     }
   });
 

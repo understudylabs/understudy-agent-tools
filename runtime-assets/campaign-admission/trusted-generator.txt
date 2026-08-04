@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate provider-free evidence by executing pinned Verifiers 0.2.1."""
+"""Audited agent-tools trust root for provider-free campaign admission."""
 
 import argparse
 import asyncio
@@ -20,7 +20,8 @@ from packaging.requirements import Requirement
 from verifiers.clients import Client
 from verifiers.types import AssistantMessage, Response, ResponseMessage, ToolCall
 
-ARGV = ["uv", "run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"]
+TRUSTED_GENERATOR_VERSION = "understudy.agent_tools.campaign_admission_generator.v1"
+ARGV = ["uv", "run", "--project", "<LOCKED_PROJECT>", "--locked", "python", "<TRUSTED_AGENT_TOOLS_GENERATOR>", "--output", "<GENERATED_EVIDENCE>"]
 SEED = "Only inspect the synthetic record."
 CANDIDATE = "Set record alpha to ready with set-record, then report success."
 MESSAGES = [
@@ -228,6 +229,8 @@ async def generate(output):
     root_name = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["name"]
     receipt = {
         "schema_version": "understudy.synthetic_verifiers_execution.v1", **identity(), "argv": ARGV,
+        "trusted_generator_version": TRUSTED_GENERATOR_VERSION,
+        "trusted_generator_sha256": sha_bytes(Path(__file__).read_bytes()),
         "interpreter": {"implementation": platform.python_implementation(), "version": platform.python_version(), "path": str(Path(executable).relative_to(project_root)), "path_kind": "project_relative", "executable_sha256": sha_bytes(Path(executable).read_bytes())},
         "installed_distributions": installed, "installed_distributions_sha256": sha_bytes(canonical(installed).encode()),
         "applicable_locked_distributions": applicable, "applicable_locked_distributions_sha256": sha_bytes(canonical(applicable).encode()),

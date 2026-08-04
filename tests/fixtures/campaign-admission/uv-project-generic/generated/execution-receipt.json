@@ -424,12 +424,12 @@
     "uv",
     "run",
     "--project",
-    ".",
+    "<LOCKED_PROJECT>",
     "--locked",
     "python",
-    "generate_smoke.py",
+    "<TRUSTED_AGENT_TOOLS_GENERATOR>",
     "--output",
-    "generated"
+    "<GENERATED_EVIDENCE>"
   ],
   "assertion_fraction": 1.0,
   "assertion_rubric": "verifiers.Rubric",
@@ -877,6 +877,8 @@
   "schema_version": "understudy.synthetic_verifiers_execution.v1",
   "seed_candidate_sha256": "4dbee206fc073f8db3e50fad210ca48772e481ad31ee37f33e638bca91db1914",
   "trace_sha256": "4d47c8afd537dd8377d8b349ca7b67900f7b2d3fd2e406606c07bc57204b5938",
+  "trusted_generator_sha256": "e49c99e33cdaaa9b82198acf2d2b342000b3e1fbaf824add561bf0e9f8d7363e",
+  "trusted_generator_version": "understudy.agent_tools.campaign_admission_generator.v1",
   "verified_state_delta": {
     "after": "ready",
     "before": "pending",

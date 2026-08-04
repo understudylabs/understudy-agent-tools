@@ -19,6 +19,7 @@ export type TransportArtifacts = {
   overflowReceipt: Buffer;
   campaignEvidence: Buffer;
   applicableLock: Buffer;
+  trustedGenerator: Buffer;
 };
 
 export type TransportFingerprints = {
@@ -227,9 +228,10 @@ function validateExecutionReceipt(manifest: JsonObject, artifacts: TransportArti
   const smoke = object(manifest.mutation_smoke);
   if (smoke.execution_receipt_sha256 !== sha256Bytes(artifacts.executionReceipt)) errors.push("mutation_smoke.execution_receipt_sha256 does not match supplied receipt");
   if (receipt.schema_version !== "understudy.synthetic_verifiers_execution.v1") errors.push("synthetic execution receipt schema is invalid");
+  if (receipt.trusted_generator_version !== "understudy.agent_tools.campaign_admission_generator.v1" || receipt.trusted_generator_sha256 !== sha256Bytes(artifacts.trustedGenerator) || receipt.trusted_generator_sha256 !== object(manifest.environment).trusted_generator_sha256) errors.push("execution evidence is not derived by the trusted agent-tools generator");
   validateIdentity(manifest, receipt, "execution receipt", errors);
   const argv = receipt.argv;
-  if (canonicalize(argv) !== canonicalize(["uv", "run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"])) errors.push("synthetic smoke must use exact locked-project uv argv");
+  if (canonicalize(argv) !== canonicalize(["uv", "run", "--project", "<LOCKED_PROJECT>", "--locked", "python", "<TRUSTED_AGENT_TOOLS_GENERATOR>", "--output", "<GENERATED_EVIDENCE>"])) errors.push("synthetic smoke must use the exact locked-project trusted-generator argv");
   if (Array.isArray(argv) && argv.includes("--no-project")) errors.push("synthetic smoke cannot use --no-project");
   const interpreter = object(receipt.interpreter);
   if (interpreter.implementation !== "CPython" || interpreter.version !== object(manifest.environment).python_version) errors.push("execution receipt interpreter does not match the admitted project");
@@ -388,6 +390,7 @@ function validateEnvironment(manifest: JsonObject, errors: string[]): void {
   requireSha(errors, environment.python_executable_sha256, "environment.python_executable_sha256");
   requireSha(errors, environment.installed_distributions_sha256, "environment.installed_distributions_sha256");
   requireSha(errors, environment.applicable_lock_artifact_sha256, "environment.applicable_lock_artifact_sha256");
+  requireSha(errors, environment.trusted_generator_sha256, "environment.trusted_generator_sha256");
   if (typeof environment.container_image_digest !== "string" || !IMAGE_DIGEST.test(environment.container_image_digest)) errors.push("environment.container_image_digest must be an immutable sha256 digest");
 
   const pins = Array.isArray(environment.resolved_packages) ? environment.resolved_packages.map(object) : [];
@@ -523,6 +526,6 @@ export function validateCampaignAdmission(manifest: unknown, artifacts: Transpor
   return { admission_only: true, compile_authorized: false, admitted: errors.length === 0, errors, fingerprints, tool_steps, effective_spend_caps_usd: spend.effective, cumulative_spend_usd: spend.cumulative };
 }
 
-export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string }): TransportArtifacts {
-  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt), campaignEvidence: readFileSync(paths.campaignEvidence), applicableLock: readFileSync(paths.applicableLock) };
+export function readTransportArtifacts(paths: { request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; overflowReceipt: string; campaignEvidence: string; applicableLock: string; trustedGenerator: string }): TransportArtifacts {
+  return { request: readFileSync(paths.request), response: readFileSync(paths.response), tools: readFileSync(paths.tools), trace: readFileSync(paths.trace), executionReceipt: readFileSync(paths.executionReceipt), beforeState: readFileSync(paths.beforeState), afterState: readFileSync(paths.afterState), overflowReceipt: readFileSync(paths.overflowReceipt), campaignEvidence: readFileSync(paths.campaignEvidence), applicableLock: readFileSync(paths.applicableLock), trustedGenerator: readFileSync(paths.trustedGenerator) };
 }
