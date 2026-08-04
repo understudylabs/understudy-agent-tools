@@ -2899,6 +2899,22 @@ class ScoreWithFeedback:
         "rehearsal",
       ], env, repo);
       assert.notEqual(missing.status, 0);
+
+      const wrongSchema = join(cardDir, "wrong-schema.json");
+      writeFileSync(wrongSchema, `${JSON.stringify({
+        schema_version: "other.workload_card.v1",
+        workload_name: "support_triage",
+      })}\n`);
+      const invalidSchema = await runWithEnvAsync([
+        "workloads",
+        "create",
+        "--from-card",
+        wrongSchema,
+        "--project",
+        "rehearsal",
+      ], env, repo);
+      assert.notEqual(invalidSchema.status, 0);
+      assert.match(`${invalidSchema.stderr}${invalidSchema.stdout}`, /schema_version|workload_card/i);
       assert.match(`${missing.stderr}${missing.stdout}`, /missing-card|ENOENT|not found|unreadable|Could not read/i);
     });
   });

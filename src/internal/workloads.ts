@@ -143,6 +143,7 @@ export function parseTrafficPct(value: string | number | undefined, fallback = 1
 }
 
 const WorkloadCardNameSchema = z.object({
+  schema_version: z.literal("understudy.workload_card.v1"),
   workload_id: z.string().optional().nullable(),
   workload_name: z.string().optional().nullable(),
 }).passthrough();
