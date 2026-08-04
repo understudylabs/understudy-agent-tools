@@ -28,7 +28,13 @@ def main() -> None:
     }]
     messages = [
         {"role": "system", "content": "Operate Cedar faithfully."},
-        {"role": "user", "content": "Create task A."},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Create task "},
+                {"type": "input_text", "text": "A."},
+            ],
+        },
         {
             "role": "assistant",
             "content": "",
@@ -50,6 +56,16 @@ def main() -> None:
     assert "Create task A." in decoded
     assert "<tool_response>" in decoded
     assert '{"success":true}' in decoded
+
+    try:
+        renderer_messages([{
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "private"}}],
+        }])
+    except ValueError as error:
+        assert "only text/input_text" in str(error)
+    else:
+        raise AssertionError("non-text content must fail closed")
 
     sampled = tokenizer.encode(
         "<tool_call>\n<function=create-task>\n<parameter=title>\nA\n"
