@@ -48,6 +48,10 @@ parser = argparse.ArgumentParser()
 model_group = parser.add_mutually_exclusive_group(required=True)
 model_group.add_argument("--base-model")
 model_group.add_argument("--model-path", help="Tinker sampler-state/checkpoint path returned by save_weights_for_sampler().")
+model_group.add_argument(
+    "--model-registry-file",
+    help="JSON object mapping public model aliases to Tinker checkpoint paths.",
+)
 parser.add_argument("--tokenizer-model", help="Base model used for tokenization/rendering when --model-path is selected.")
 parser.add_argument("--renderer", required=True)
 parser.add_argument("--host", default="127.0.0.1")
@@ -73,27 +77,37 @@ def log_event(event, **fields):
 
 
 service = tinker.ServiceClient(_client_config={"use_pyqwest_transport": False})
-sampler = (
-    service.create_sampling_client(model_path=args.model_path)
-    if args.model_path
-    else service.create_sampling_client(base_model=args.base_model)
-)
+if args.model_registry_file:
+    registry = json.loads(open(args.model_registry_file, encoding="utf-8").read())
+    if not isinstance(registry, dict) or not registry or not all(
+        isinstance(alias, str) and alias and isinstance(path, str) and path
+        for alias, path in registry.items()
+    ):
+        raise SystemExit("--model-registry-file must contain a non-empty string-to-string JSON object")
+    samplers = {
+        alias: service.create_sampling_client(model_path=path)
+        for alias, path in registry.items()
+    }
+elif args.model_path:
+    samplers = {args.model_path: service.create_sampling_client(model_path=args.model_path)}
+else:
+    samplers = {args.base_model: service.create_sampling_client(base_model=args.base_model)}
 tokenizer_model = args.tokenizer_model or args.base_model
 if not tokenizer_model:
-    raise SystemExit("--tokenizer-model is required with --model-path")
+    raise SystemExit("--tokenizer-model is required with checkpoint paths")
 renderer = get_renderer(args.renderer, get_tokenizer(tokenizer_model))
 pool = ThreadPoolExecutor(max_workers=args.max_workers)
-served_model = args.model_path or args.base_model
+served_models = sorted(samplers)
 
 
-def sample(messages, temperature, max_tokens):
+def sample(model, messages, temperature, max_tokens):
     prompt = renderer.build_generation_prompt([{"role": m["role"], "content": m["content"]} for m in messages])
     params = tinker.types.SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
         stop=renderer.get_stop_sequences(),
     )
-    result = sampler.sample(prompt=prompt, sampling_params=params, num_samples=1).result()
+    result = samplers[model].sample(prompt=prompt, sampling_params=params, num_samples=1).result()
     sequence = result.sequences[0]
     tokens = sequence.tokens
     message, termination = renderer.parse_response(tokens)
@@ -138,10 +152,13 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(401, {"error": {"message": "unauthorized", "type": "authentication_error"}})
             return
         if self.path == "/health":
-            self._send_json(200, {"status": "ok", "model": served_model})
+            self._send_json(200, {"status": "ok", "models": served_models})
             return
         if self.path == "/v1/models":
-            self._send_json(200, {"object": "list", "data": [{"id": served_model, "object": "model"}]})
+            self._send_json(
+                200,
+                {"object": "list", "data": [{"id": model, "object": "model"} for model in served_models]},
+            )
             return
         self._send_json(404, {"error": {"message": "not found", "type": "invalid_request_error"}})
 
@@ -161,10 +178,20 @@ class Handler(BaseHTTPRequestHandler):
         log_event("start", request_id=request_id, in_flight=in_flight)
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         try:
+            requested_model = body.get("model")
+            if requested_model is None and len(served_models) == 1:
+                requested_model = served_models[0]
+            if requested_model not in samplers:
+                self._send_json(
+                    400,
+                    {"error": {"message": "unknown model", "type": "invalid_request_error"}},
+                )
+                return
             for attempt in range(2):
                 try:
                     content, prompt_tokens, completion_tokens, finish_reason = pool.submit(
                         sample,
+                        requested_model,
                         body["messages"],
                         float(body.get("temperature", 0.0)),
                         int(body.get("max_tokens", args.max_tokens)),
@@ -190,5 +217,5 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(status, payload)
 
 
-print(f"tinker shim on {args.host}:{args.port} for {served_model} ({args.renderer})", flush=True)
+print(f"tinker shim on {args.host}:{args.port} for {served_models} ({args.renderer})", flush=True)
 ThreadingHTTPServer((args.host, args.port), Handler).serve_forever()
