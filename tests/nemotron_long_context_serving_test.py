@@ -27,6 +27,22 @@ CONTRACT = load("nemotron_long_context_contract", SCRIPTS / "nemotron_long_conte
 EXPORT = load("nemotron_long_context_export", SCRIPTS / "export-tinker-nemotron-long-context.py")
 PARITY = load("nemotron_long_context_parity", SCRIPTS / "nemotron-long-context-parity.py")
 
+PARITY_TOOLS = [{
+    "type": "function",
+    "function": {
+        "name": "lookup",
+        "description": "Lookup a value",
+        "parameters": {"type": "object", "properties": {"x": {"type": "integer"}}},
+    },
+}]
+PARITY_SAMPLING = {
+    "temperature": 0,
+    "top_p": None,
+    "max_tokens": 4096,
+    "tool_choice": "auto",
+    "chat_template_kwargs": {"enable_thinking": True},
+}
+
 
 def identity_decorator(*_args, **_kwargs):
     return lambda function: function
@@ -232,7 +248,9 @@ class NemotronLongContextServingTest(unittest.TestCase):
         ]
         row = {
             "case_id": "case-1", "messages": messages, "input_tokens": 130000,
+            "tools": PARITY_TOOLS, "sampling": PARITY_SAMPLING,
             "truncated": False, "finish_reason": "tool_calls",
+            "completion_tokens": 42,
             "assistant_message": {"tool_calls": [{"function": {"name": "lookup", "arguments": "{\"x\":1}"}}]},
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -243,11 +261,15 @@ class NemotronLongContextServingTest(unittest.TestCase):
             receipt = PARITY.score(left, right, "a" * 64)
         self.assertTrue(receipt["passed"])
         self.assertTrue(receipt["messages_preserved"])
+        self.assertTrue(receipt["tools_preserved"])
+        self.assertTrue(receipt["sampling_contract_preserved"])
         self.assertFalse(receipt["truncation_observed"])
+        self.assertFalse(receipt["generation_truncation_observed"])
 
     def test_parity_rejects_truncation_or_changed_messages(self):
         base = {
             "case_id": "case-1", "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS, "sampling": PARITY_SAMPLING,
             "input_tokens": 12, "truncated": False, "finish_reason": "stop", "assistant_message": {},
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -257,6 +279,55 @@ class NemotronLongContextServingTest(unittest.TestCase):
             right.write_text(json.dumps(changed) + "\n")
             with self.assertRaisesRegex(ValueError, "messages changed"):
                 PARITY.score(left, right, "b" * 64)
+
+    def test_parity_rejects_output_cap_truncation(self):
+        row = {
+            "case_id": "case-1",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS,
+            "sampling": {**PARITY_SAMPLING, "max_tokens": 256},
+            "input_tokens": 12,
+            "completion_tokens": 256,
+            "truncated": False,
+            "finish_reason": "length",
+            "assistant_message": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            left, right = root / "a", root / "b"
+            line = json.dumps(row) + "\n"
+            left.write_text(line); right.write_text(line)
+            receipt = PARITY.score(left, right, "c" * 64)
+        self.assertFalse(receipt["passed"])
+        self.assertTrue(receipt["generation_truncation_observed"])
+
+    def test_parity_rejects_changed_tools_or_sampling(self):
+        base = {
+            "case_id": "case-1",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS,
+            "sampling": PARITY_SAMPLING,
+            "input_tokens": 12,
+            "truncated": False,
+            "finish_reason": "stop",
+            "assistant_message": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            left, right = root / "a", root / "b"
+            left.write_text(json.dumps(base) + "\n")
+            changed_tools = {**base, "tools": [*PARITY_TOOLS, {
+                "type": "function",
+                "function": {"name": "other", "parameters": {"type": "object"}},
+            }]}
+            right.write_text(json.dumps(changed_tools) + "\n")
+            with self.assertRaisesRegex(ValueError, "tool catalog changed"):
+                PARITY.score(left, right, "d" * 64)
+
+            changed_sampling = {**base, "sampling": {**PARITY_SAMPLING, "max_tokens": 256}}
+            right.write_text(json.dumps(changed_sampling) + "\n")
+            with self.assertRaisesRegex(ValueError, "sampling contract changed"):
+                PARITY.score(left, right, "e" * 64)
 
 
 if __name__ == "__main__":
