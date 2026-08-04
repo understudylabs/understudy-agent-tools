@@ -76,7 +76,11 @@ def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
         code = "context_length_exceeded" if "context window" in lowered else "invalid_request"
         return 400, {
             "error": {
-                "message": detail[:500],
+                "message": (
+                    "request exceeds the model context window"
+                    if code == "context_length_exceeded"
+                    else "upstream rejected the request"
+                ),
                 "type": "invalid_request_error",
                 "code": code,
             }
@@ -84,14 +88,14 @@ def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     if isinstance(error, TimeoutError):
         return 504, {
             "error": {
-                "message": detail[:500],
+                "message": "upstream sampling timed out",
                 "type": "server_error",
                 "code": "upstream_timeout",
             }
         }
     return 500, {
         "error": {
-            "message": f"{type_name}: {detail}"[:500],
+            "message": "upstream sampling failed",
             "type": "server_error",
             "code": "upstream_error",
         }

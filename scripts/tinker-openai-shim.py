@@ -70,13 +70,18 @@ parser.add_argument("--max-tokens", type=int, default=512)
 parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
 args = parser.parse_args()
 service_token = os.environ.get("TINKER_SHIM_BEARER_TOKEN")
+trusted_modal_proxy = (
+    args.trusted_proxy_auth
+    and os.environ.get("TINKER_TRUSTED_PROXY_AUTH") == "modal"
+    and bool(os.environ.get("MODAL_TASK_ID"))
+)
 if (
     args.host not in {"127.0.0.1", "::1", "localhost"}
     and not service_token
-    and not args.trusted_proxy_auth
+    and not trusted_modal_proxy
 ):
     raise SystemExit(
-        "TINKER_SHIM_BEARER_TOKEN or --trusted-proxy-auth is required for non-loopback binds"
+        "TINKER_SHIM_BEARER_TOKEN or an attested Modal proxy runtime is required for non-loopback binds"
     )
 request_timeout = 300
 log_path = os.environ.get("TINKER_SHIM_LOG", "/tmp/tinker-openai-shim.log")
@@ -237,6 +242,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
             message = normalize_assistant_message(message, request_id)
+            if message.get("tool_calls"):
+                finish_reason = "tool_calls"
             payload = build_chat_completion(
                 message,
                 prompt_tokens,
@@ -247,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
-            log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])
+            log_event("error", request_id=request_id, error=type(error).__name__)
             status, payload = openai_error_response(error)
         finally:
             elapsed = time.monotonic() - started

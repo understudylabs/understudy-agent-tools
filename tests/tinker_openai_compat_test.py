@@ -39,6 +39,16 @@ def test_chat_completion_preserves_tool_calls() -> None:
     assert payload["usage"]["total_tokens"] == 14
 
 
+def test_tool_call_finish_reason_is_supported() -> None:
+    payload = MODULE.build_chat_completion(
+        {"role": "assistant", "content": "", "tool_calls": []},
+        1,
+        1,
+        "tool_calls",
+    )
+    assert payload["choices"][0]["finish_reason"] == "tool_calls"
+
+
 def test_parsed_tool_call_gets_stable_id_and_json_arguments() -> None:
     parsed = {
         "role": "assistant",
@@ -66,12 +76,24 @@ def test_context_overflow_is_not_mislabeled_as_retryable_provider_failure() -> N
     assert status == 400
     assert payload["error"]["type"] == "invalid_request_error"
     assert payload["error"]["code"] == "context_length_exceeded"
+    assert "Prompt length" not in payload["error"]["message"]
 
 
 def test_timeout_remains_a_retry_class_server_error() -> None:
     status, payload = MODULE.openai_error_response(TimeoutError("sampling timed out"))
     assert status == 504
     assert payload["error"]["code"] == "upstream_timeout"
+
+
+def test_upstream_error_details_are_redacted() -> None:
+    status, payload = MODULE.openai_error_response(
+        RuntimeError("https://private.invalid tinker://private secret-header")
+    )
+    assert status == 500
+    rendered = str(payload)
+    assert "private.invalid" not in rendered
+    assert "tinker://" not in rendered
+    assert "secret-header" not in rendered
 
 
 def test_malformed_chat_requests_fail_closed() -> None:

@@ -41,6 +41,10 @@ def main() -> None:
         unknown = MODULE.assess(config(root, ["q_proj"]), "vllm-nemotron-h", "some/other-model")
         assert unknown["compatibility"] == "unknown"
         assert unknown["faithful"] is False
+        missing = MODULE.assess(config(root, None), "vllm-nemotron-h", MODEL)
+        assert missing["compatibility"] == "incompatible"
+        assert missing["unsupported_target_modules"] == ["missing_or_invalid"]
+        assert "missing or invalid" in missing["reason"]
     print("ALL ADAPTER SERVING COMPAT TESTS PASSED")
 
 

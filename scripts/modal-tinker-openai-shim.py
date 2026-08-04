@@ -71,5 +71,5 @@ def serve() -> None:
             "--max-tokens",
             "2048",
         ],
-        env=os.environ.copy(),
+        env={**os.environ, "TINKER_TRUSTED_PROXY_AUTH": "modal"},
     )

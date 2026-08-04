@@ -29,7 +29,7 @@ def _normalize_targets(value: object) -> tuple[list[str], str | None]:
         targets = sorted(set(value))
         wildcard = next((item for item in targets if item in {"all-linear", "all_linear"}), None)
         return targets, wildcard
-    return [], "missing_or_invalid"
+    return [], None
 
 
 def assess(config_path: Path, runtime: str, base_model: str) -> dict:
