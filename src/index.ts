@@ -127,12 +127,15 @@ export {
   semanticJsonSha256,
   sha256Bytes as sha256CampaignAdmissionBytes,
   validateCampaignAdmission,
+  validateStrictPromotion,
   type AdmissionResult,
   type SpendLane,
   type TransportArtifacts,
   type TransportFingerprints,
   type ToolStepFingerprint,
   type ResolvedPackagePin,
+  type StrictPromotionArtifacts,
+  type StrictPromotionResult,
 } from "./campaign-admission/index.js";
 
 export const repoRoot = installedPackageRoot();

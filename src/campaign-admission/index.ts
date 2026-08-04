@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
+export { validateStrictPromotion, type StrictPromotionArtifacts, type StrictPromotionResult } from "./strict-promotion.js";
+
 export const CAMPAIGN_ADMISSION_SCHEMA_VERSION = "understudy.campaign_admission.v1" as const;
 export const SPEND_LANES = ["optimizer", "endpoint", "training"] as const;
 
