@@ -63,6 +63,7 @@ def test_generation_args_are_bounded():
         ("boolean max_tokens rejected", {"messages": [], "max_tokens": True}),
         ("invalid temperature rejected", {"messages": [], "temperature": 3}),
         ("invalid tools rejected", {"messages": [], "tools": {}}),
+        ("streaming rejected", {"messages": [], "stream": True}),
     ):
         try:
             validated_generation_args(body, configured_max_tokens=512)

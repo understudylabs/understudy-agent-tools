@@ -129,9 +129,12 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   });
   const latencyMs = Date.now() - started;
   const text = await res.text();
+  const contentType = res.headers.get("content-type") ?? "";
+  const responseKindValue = opts.stream ? streamResponseKind(text, contentType) : responseKind(text);
+  const protocolOk = !opts.stream || responseKindValue === "stream";
   const requestId = res.headers.get("x-understudy-request-id");
   const payload = {
-    ok: res.ok,
+    ok: res.ok && protocolOk,
     status: res.status,
     provider: opts.provider,
     endpoint,
@@ -141,9 +144,9 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
     project: opts.project ?? null,
     workload: opts.workload ?? null,
     byok: Boolean(opts.byokEnv),
-    response_kind: opts.stream ? "stream" : responseKind(text),
+    response_kind: responseKindValue,
   };
-  if (!res.ok) process.exitCode = 1;
+  if (!payload.ok) process.exitCode = 1;
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return;
@@ -157,6 +160,13 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   process.stdout.write(`request_id ${requestId ?? "(none)"}\n`);
   process.stdout.write(`latency_ms ${latencyMs}\n`);
   process.stdout.write(`${res.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
+}
+
+function streamResponseKind(text: string, contentType: string): "stream" | "stream_protocol_mismatch" {
+  const isEventStream = contentType.toLowerCase().includes("text/event-stream");
+  const hasDataFrame = /(^|\n)data:/.test(text);
+  const hasDone = /(^|\n)data:\s*\[DONE\](\r?\n|$)/.test(text);
+  return isEventStream && hasDataFrame && hasDone ? "stream" : "stream_protocol_mismatch";
 }
 
 function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Record<string, unknown> {

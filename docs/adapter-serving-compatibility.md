@@ -22,3 +22,8 @@ Use one of two truthful paths:
 
 The preflight emits a JSON receipt and exits non-zero for incompatible or
 unknown combinations. Unknown is deliberately not equivalent to compatible.
+
+The Tinker shim is intentionally buffered and rejects `stream: true`. Gateway
+health or parity probes for this route must pass `--no-stream`; a streaming
+probe is valid only when the response is real `text/event-stream` framing that
+terminates with `[DONE]`.

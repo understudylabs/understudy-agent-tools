@@ -50,6 +50,8 @@ def parse_openai_request_body(raw: bytes, *, max_bytes: int) -> dict[str, Any]:
 
 def validated_generation_args(body: dict[str, Any], *, configured_max_tokens: int) -> tuple[float, int]:
     """Validate caller-controlled sampling values against the serving cap."""
+    if body.get("stream", False) is not False:
+        raise ValueError("streaming is not supported by this buffered serving contract")
     if not isinstance(body.get("messages"), list):
         raise ValueError("messages must be a list")
     if "tools" in body and not isinstance(body.get("tools"), list):

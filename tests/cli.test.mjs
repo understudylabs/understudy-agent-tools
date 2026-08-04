@@ -167,6 +167,7 @@ async function withHostedFixture(fn) {
     ],
     transientCaptureFailures: new Map([["req_retry", 1]]),
     captureAuthorizationFailure: false,
+    probeStreamProtocolMismatch: false,
   };
 
   const server = createServer(async (req, res) => {
@@ -184,6 +185,10 @@ async function withHostedFixture(fn) {
     const sendBytes = (status, value, headers = {}) => {
       res.writeHead(status, { "content-type": "application/x-ndjson", ...headers });
       res.end(value);
+    };
+    const sendStream = (headers = {}) => {
+      res.writeHead(200, { "content-type": "text/event-stream", ...headers });
+      res.end('data: {"choices":[]}\n\ndata: [DONE]\n\n');
     };
 
     if (req.method === "GET" && url.pathname === "/healthz") return send(200, { ok: true });
@@ -298,7 +303,12 @@ async function withHostedFixture(fn) {
       });
     }
     if (req.method === "GET" && url.pathname === "/eval-capture-req_123") return sendBytes(200, rawCapture);
-    if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
+    if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) {
+      if (body?.stream && !state.probeStreamProtocolMismatch) {
+        return sendStream({ "x-understudy-request-id": "req_probe" });
+      }
+      return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
+    }
     return send(404, { message: `${req.method} ${url.pathname}` });
   });
 
@@ -2208,7 +2218,7 @@ class ScoreWithFeedback:
   });
 
   it("runs gateway health and probes without printing secrets", async () => {
-    await withHostedFixture(async ({ home, repo, gatewayUrl, requests }) => {
+    await withHostedFixture(async ({ home, repo, gatewayUrl, requests, state }) => {
       const env = { HOME: home, USERPROFILE: home, UPSTREAM_TEST_KEY: "provider_secret_value" };
       const health = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", gatewayUrl], env, repo);
       assert.equal(health.status, 0, health.stderr);
@@ -2240,6 +2250,12 @@ class ScoreWithFeedback:
       assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
       assert.equal(openaiRequest.body.stream, true);
       assert.equal(openaiRequest.body.max_tokens, 8);
+
+      state.probeStreamProtocolMismatch = true;
+      const mismatched = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai"], env, repo);
+      assert.notEqual(mismatched.status, 0);
+      assert.equal(JSON.parse(mismatched.stdout).response_kind, "stream_protocol_mismatch");
+      state.probeStreamProtocolMismatch = false;
 
       const gpt5 = await runWithEnvAsync([
         "--json", "gateway", "probe", "--provider", "openai", "--model", "gpt-5.4-mini",
