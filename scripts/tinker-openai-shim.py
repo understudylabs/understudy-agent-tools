@@ -43,6 +43,7 @@ from tinker_openai_compat import (
     build_chat_completion,
     normalize_assistant_message,
     normalize_finish_reason,
+    openai_error_response,
 )
 from tinker_renderer_compat import renderer_messages, renderer_tools
 
@@ -225,8 +226,7 @@ class Handler(BaseHTTPRequestHandler):
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
             log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])
-            payload = {"error": f"{type(error).__name__}: {error}"}
-            status = 500
+            status, payload = openai_error_response(error)
         finally:
             elapsed = time.monotonic() - started
             with active_lock:

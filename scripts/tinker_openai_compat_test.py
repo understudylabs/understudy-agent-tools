@@ -14,6 +14,7 @@ from tinker_openai_compat import (
     build_chat_completion,
     normalize_assistant_message,
     normalize_finish_reason,
+    openai_error_response,
 )
 
 
@@ -128,6 +129,20 @@ def test_parsed_tool_call_gets_stable_openai_shape():
     )
 
 
+def test_error_mapping_preserves_context_overflow_semantics():
+    class BadRequestError(Exception):
+        pass
+
+    status, payload = openai_error_response(
+        BadRequestError("Prompt length plus max_tokens exceeds the model's context window")
+    )
+    check("context overflow is HTTP 400", status == 400)
+    check("context overflow has stable code", payload["error"]["code"] == "context_length_exceeded")
+    status, payload = openai_error_response(TimeoutError("sampling timed out"))
+    check("timeout is HTTP 504", status == 504)
+    check("timeout is retry-class server error", payload["error"]["type"] == "server_error")
+
+
 def main():
     tests = [
         test_upstream_stop,
@@ -139,6 +154,7 @@ def main():
         test_payload_requires_defined_finish_reason,
         test_bearer_auth_is_fail_closed,
         test_parsed_tool_call_gets_stable_openai_shape,
+        test_error_mapping_preserves_context_overflow_semantics,
     ]
     for t in tests:
         print(t.__name__)

@@ -34,6 +34,44 @@ _SAMPLER_LENGTH = "length"
 _CLEAN_TERMINATIONS = ("stop_sequence", "eos")
 
 
+def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
+    """Map sampler failures without disguising deterministic client errors.
+
+    Tinker raises ``BadRequestError`` for prompt-plus-generation context-window
+    overflow. Returning 500 for that condition made the Gateway and evaluator
+    treat deterministic, model-incompatible requests as retryable provider
+    pressure. Keep the response bounded and OpenAI-shaped while preserving the
+    actionable error class.
+    """
+    detail = str(error)
+    lowered = detail.lower()
+    type_name = type(error).__name__
+    if type_name == "BadRequestError" or "exceeds the model's context window" in lowered:
+        code = "context_length_exceeded" if "context window" in lowered else "invalid_request"
+        return 400, {
+            "error": {
+                "message": detail[:500],
+                "type": "invalid_request_error",
+                "code": code,
+            }
+        }
+    if isinstance(error, TimeoutError):
+        return 504, {
+            "error": {
+                "message": detail[:500],
+                "type": "server_error",
+                "code": "upstream_timeout",
+            }
+        }
+    return 500, {
+        "error": {
+            "message": f"{type_name}: {detail}"[:500],
+            "type": "server_error",
+            "code": "upstream_error",
+        }
+    }
+
+
 def normalize_assistant_message(message: dict[str, Any], request_id: str) -> dict[str, Any]:
     """Return strict OpenAI assistant shape with stable tool-call IDs/arguments."""
     normalized = {"role": "assistant", "content": message.get("content") or ""}

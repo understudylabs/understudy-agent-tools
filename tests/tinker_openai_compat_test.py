@@ -40,3 +40,21 @@ def test_parsed_tool_call_gets_stable_id_and_json_arguments() -> None:
     assert first == second
     assert first["tool_calls"][0]["id"].startswith("call_")
     assert first["tool_calls"][0]["function"]["arguments"] == '{"title": "A"}'
+
+
+def test_context_overflow_is_not_mislabeled_as_retryable_provider_failure() -> None:
+    class BadRequestError(Exception):
+        pass
+
+    status, payload = MODULE.openai_error_response(
+        BadRequestError("Prompt length plus max_tokens exceeds the model's context window")
+    )
+    assert status == 400
+    assert payload["error"]["type"] == "invalid_request_error"
+    assert payload["error"]["code"] == "context_length_exceeded"
+
+
+def test_timeout_remains_a_retry_class_server_error() -> None:
+    status, payload = MODULE.openai_error_response(TimeoutError("sampling timed out"))
+    assert status == 504
+    assert payload["error"]["code"] == "upstream_timeout"
