@@ -1,0 +1,16 @@
+{
+  "runtime": "standard-verifiers",
+  "verifiers_version": "0.2.1",
+  "task": { "data": { "task_id": "public-synthetic-mutation-1", "split": "train" } },
+  "rewards": { "assertion_fraction": 1.0 },
+  "metrics": { "assertion_fraction": 1.0 },
+  "errors": [],
+  "ok": true,
+  "calls": [{ "node": 2, "model": "synthetic-local", "endpoint": "/chat/completions", "finish_reason": "tool_calls" }],
+  "nodes": [
+    { "message": { "role": "system", "content": "Operate only on the public synthetic record." }, "sampled": false },
+    { "parent": 0, "message": { "role": "user", "content": "Set synthetic record alpha to ready." }, "sampled": false },
+    { "parent": 1, "message": { "role": "assistant", "tool_calls": [{ "id": "call-public-1", "name": "world_toolset_set-record", "arguments": "{\"id\":\"alpha\",\"status\":\"ready\"}" }] }, "sampled": true },
+    { "parent": 2, "message": { "role": "tool", "tool_call_id": "call-public-1", "name": "world_toolset_set-record", "content": "{\"ok\":true,\"applied\":true}" }, "sampled": false }
+  ]
+}

@@ -59,6 +59,7 @@ import { registerInstrumentCommand } from "./commands/instrument.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
+import { registerCampaignsCommand } from "./commands/campaigns.js";
 import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
@@ -115,6 +116,21 @@ export {
   type Hooks as OutcomeExecutorHooks,
   type StoredCall,
 } from "./outcome-executors/index.js";
+export {
+  CAMPAIGN_ADMISSION_SCHEMA_VERSION,
+  SPEND_LANES,
+  fingerprintTransport,
+  parseUvLockPins,
+  readTransportArtifacts,
+  semanticJsonSha256,
+  sha256Bytes as sha256CampaignAdmissionBytes,
+  validateCampaignAdmission,
+  type AdmissionResult,
+  type SpendLane,
+  type TransportArtifacts,
+  type TransportFingerprints,
+  type ResolvedPackagePin,
+} from "./campaign-admission/index.js";
 
 export const repoRoot = installedPackageRoot();
 
@@ -920,6 +936,7 @@ export function buildProgram(): Command {
   registerRuntimeCommand(program);
   registerTrustCommand(program);
   registerTrainingCommand(program);
+  registerCampaignsCommand(program);
 
   const understand = program
     .command("capture-evidence")
