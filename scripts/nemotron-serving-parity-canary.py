@@ -80,6 +80,15 @@ def _response_shape(response):
                 tool_calls = message.get("tool_calls")
                 shape["tool_calls_type"] = type(tool_calls).__name__
                 shape["tool_calls_count"] = len(tool_calls) if isinstance(tool_calls, list) else None
+                if isinstance(tool_calls, list) and tool_calls:
+                    call = tool_calls[0]
+                    shape["tool_call_0_type"] = type(call).__name__
+                    if isinstance(call, dict):
+                        shape["tool_call_0_keys"] = sorted(call)
+                        function = call.get("function")
+                        shape["tool_call_0_function_type"] = type(function).__name__
+                        if isinstance(function, dict):
+                            shape["tool_call_0_function_keys"] = sorted(function)
     usage = response.get("usage")
     shape["usage_type"] = type(usage).__name__
     if isinstance(usage, dict):
@@ -147,6 +156,7 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
         body_bytes = len(body)
         response_shape = None
         parse_error_type = None
+        parse_error_stage = None
         if status != 200:
             outcome = "transport_failure"
             action_parity = None
@@ -157,8 +167,11 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
                 response = json.loads(body)
                 response_shape = _response_shape(response)
                 choice = response["choices"][0]
+                parse_error_stage = "actual_tool_calls"
                 actual = _tool_calls(choice["message"])
+                parse_error_stage = "expected_tool_calls"
                 expected = _tool_calls(row["expected_assistant_message"])
+                parse_error_stage = "comparison"
                 finish_reason = choice.get("finish_reason")
                 completion_tokens = response.get("usage", {}).get("completion_tokens")
                 action_parity = actual == expected and finish_reason != "length"
@@ -182,6 +195,7 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
             "body_sha256": body_sha256,
             "response_shape": response_shape,
             "parse_error_type": parse_error_type,
+            "parse_error_stage": parse_error_stage if parse_error_type else None,
         })
     return {
         "ready": True,

@@ -190,6 +190,7 @@ class NemotronLongContextServingTest(unittest.TestCase):
         result = receipt["rows"][0]
         self.assertEqual(result["outcome"], "malformed_response")
         self.assertEqual(result["parse_error_type"], "AttributeError")
+        self.assertEqual(result["parse_error_stage"], "actual_tool_calls")
         self.assertEqual(result["body_bytes"], len(body))
         self.assertRegex(result["body_sha256"], r"^[a-f0-9]{64}$")
         self.assertEqual(result["response_shape"]["top_level_keys"], ["choices", "provider_private", "usage"])
@@ -198,6 +199,23 @@ class NemotronLongContextServingTest(unittest.TestCase):
             "completion_tokens": "int", "private_extension": "str",
         })
         self.assertNotIn("secret", json.dumps(result))
+
+    def test_canary_shape_records_tool_call_structure_without_values(self):
+        message = {
+            "content": None,
+            "tool_calls": [{
+                "id": "secret-id",
+                "type": "function",
+                "function": {"name": "secret-name", "arguments": "secret-arguments"},
+            }],
+        }
+        shape = CANARY._response_shape({
+            "choices": [{"message": message, "finish_reason": "tool_calls"}],
+            "usage": {"completion_tokens": 1},
+        })
+        self.assertEqual(shape["tool_call_0_keys"], ["function", "id", "type"])
+        self.assertEqual(shape["tool_call_0_function_keys"], ["arguments", "name"])
+        self.assertNotIn("secret", json.dumps(shape))
 
     def test_modal_merge_is_cpu_only_hash_bound_and_private(self):
         source = (SCRIPTS / "modal-nemotron-merge-export.py").read_text()
