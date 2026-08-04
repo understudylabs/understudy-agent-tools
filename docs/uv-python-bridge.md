@@ -47,6 +47,12 @@ and a deployable export callback. See
 [`optimize-workload-contract.md`](optimize-workload-contract.md) for the full
 admission and canonical bundle contract.
 
+The bridge may declare independent student/reflection route base URLs and
+credential environment-variable names. The generated runtime executes those
+bindings and receipts both configured and response-exposed model identity. Its
+admission contract separately binds typed optimizer rows and the endpoint's
+loaded executable bundle; one hash is never used as proof of the other.
+
 Optimizer pins are generic adapter pins. Workload packages are accepted only
 from the workload's exact `pyproject.toml`/`uv.lock` and explicit distribution
 pins. The adapter never infers that one workload's verifier/MCP version is valid

@@ -152,7 +152,7 @@ exposed through
 `optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
 authenticated Understudy gateway key, passes it into the local `uv` runtime as
 environment, verifies exact `dspy==3.3.0` and `gepa[dspy]==0.1.1` installs,
-configures separate student/reflection DSPy LMs against the gateway, runs train/dev rows only,
+configures separate student/reflection DSPy LMs, runs train/dev rows only,
 excludes holdout, and writes `.understudy/optimize-workload/candidate.json`
 plus `proof-packet.json`. Live execution requires `--budget-usd`,
 `--input-usd-per-million`, and `--output-usd-per-million` before auth is
@@ -167,6 +167,15 @@ before provider execution. Missing usage, usage beyond the reservation, or a
 next call that could cross the cap produces an owner-only terminal run state
 instead of continuing. Recorded cost is attribution under the supplied token
 prices, not the provider's final bill.
+
+Program bridges may bind student and reflection to independent credential-free
+base URLs and credential environment-variable names. Missing role mappings use
+the Understudy Gateway. Receipts distinguish the CLI-requested alias, exact
+executed DSPy/LiteLLM model, and any provider response identity actually
+exposed; they do not infer ZDR from the route. Admission also keeps typed
+provider-free input rows (`input_bundle_sha256`) distinct from the endpoint's
+loaded executable policy (`endpoint_bundle_schema_version` and
+`endpoint_bundle_sha256`).
 
 For a program bridge, `--admission-only` runs offline admission plus one live
 canary and exits before GEPA; compilation separately requires the exact

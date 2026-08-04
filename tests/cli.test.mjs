@@ -572,12 +572,25 @@ class LM:
         self.model = model
         self.kwargs = {"max_tokens": max_tokens}
         self.num_retries = num_retries
+        self.api_base = kwargs.get("api_base")
         with open(os.environ["MODEL_SENTINEL"], "a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"model": model, "num_retries": num_retries}) + "\\n")
+            handle.write(json.dumps({
+                "model": model,
+                "api_base": self.api_base,
+                "temperature": kwargs.get("temperature"),
+                "reasoning_effort": kwargs.get("reasoning_effort"),
+                "num_retries": num_retries,
+            }) + "\\n")
     def forward(self, prompt=None, messages=None, **kwargs):
         if self.num_retries != 0:
             raise AssertionError("retries were not disabled")
-        return SimpleNamespace(usage={"prompt_tokens": 7, "completion_tokens": 3})
+        return SimpleNamespace(
+            usage={"prompt_tokens": 7, "completion_tokens": 3},
+            model=f"provider-returned/{self.model}",
+            _hidden_params={
+                "additional_headers": {"x-model-id": f"effective/{self.model}"},
+            },
+        )
 
 class GEPA:
     def __init__(self, reflection_lm=None, **kwargs):
@@ -613,6 +626,9 @@ function writeDspyGepaProgramBridge(
     validOracle = true,
     reflectionPromptTokens = 1200,
     mutationClaimed = true,
+    validRouteBinding = true,
+    validInputBundleBinding = true,
+    validEndpointBundleBinding = true,
   } = {},
 ) {
   const passed = worldStateChanged ? "True" : "False";
@@ -621,6 +637,15 @@ function writeDspyGepaProgramBridge(
   const candidateHash = mutationClaimed ? "2".repeat(64) : "1".repeat(64);
   const mutationOutcome = mutationClaimed ? "improved" : "non_improved";
   const promotionEligible = mutationClaimed ? "True" : "False";
+  const reflectionRouteSha = validRouteBinding
+    ? 'runtime_routes["reflection"]["route_binding_sha256"]'
+    : `"${"0".repeat(64)}"`;
+  const inputBundleSha = validInputBundleBinding
+    ? 'bridge_config["input_bundle_sha256"]'
+    : `"${"0".repeat(64)}"`;
+  const endpointBundleSha = validEndpointBundleBinding
+    ? 'bridge_config["endpoint_bundle_sha256"]'
+    : `"${"0".repeat(64)}"`;
   writeFileSync(path, `
 import json
 from types import SimpleNamespace
@@ -629,6 +654,7 @@ from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
 def admit_understudy_dspy_gepa(context):
     bridge_config = context["bridge_config"]
     program_bridge = context["config"]["program_bridge"]
+    runtime_routes = context["config"]["inference"]["routes"]
     package_receipt_sha256 = (
         program_bridge["project"]["uv_lock_sha256"]
         if program_bridge["project"] is not None
@@ -639,9 +665,10 @@ def admit_understudy_dspy_gepa(context):
         "live_admission_required": True,
         "bundle_validation": {
             "network_calls_made": 0,
-            "input_bundle_sha256": bridge_config["input_bundle_sha256"],
+            "input_bundle_sha256": ${inputBundleSha},
             "executable_bundle_loaded": True,
-            "loaded_bundle_sha256": bridge_config["input_bundle_sha256"],
+            "loaded_bundle_schema_version": bridge_config["endpoint_bundle_schema_version"],
+            "loaded_bundle_sha256": ${endpointBundleSha},
             "required_bundle_fields_present": True,
             "workload_adapter_sha256": program_bridge["sha256"],
             "package_receipt_sha256": package_receipt_sha256,
@@ -693,7 +720,10 @@ def admit_understudy_dspy_gepa(context):
                 "renderer": {"id": "fixture-renderer", "sha256": "${"f".repeat(64)}"},
                 "tokenizer": {"id": "fixture-tokenizer", "sha256": "${"1".repeat(64)}"},
                 "checkpoint": {"id": "fixture-checkpoint", "sha256": "${"2".repeat(64)}"},
-                "route": {"id": "fixture-route", "sha256": "${"d".repeat(64)}"},
+                "route": {
+                    "id": runtime_routes["student"]["route_id"],
+                    "sha256": runtime_routes["student"]["route_binding_sha256"],
+                },
                 "coverage": {
                     "method": "all_admitted_tasks_and_eligible_routes",
                     "admitted_task_ids_sha256": "${"e".repeat(64)}",
@@ -716,7 +746,10 @@ def admit_understudy_dspy_gepa(context):
                 "renderer": {"id": "fixture-reflection-renderer", "sha256": "${"5".repeat(64)}"},
                 "tokenizer": {"id": "fixture-reflection-tokenizer", "sha256": "${"6".repeat(64)}"},
                 "checkpoint": {"id": "fixture-reflection-checkpoint", "sha256": "${"7".repeat(64)}"},
-                "route": {"id": "fixture-reflection-route", "sha256": "${"8".repeat(64)}"},
+                "route": {
+                    "id": runtime_routes["reflection"]["route_id"],
+                    "sha256": ${reflectionRouteSha},
+                },
                 "coverage": {
                     "method": "all_admitted_tasks_and_eligible_routes",
                     "admitted_task_ids_sha256": "${"9".repeat(64)}",
@@ -800,7 +833,7 @@ def admit_understudy_dspy_gepa(context):
     }
 
 def live_admit_understudy_dspy_gepa(context, program):
-    bundle_sha256 = context["admission"]["offline"]["bundle_validation"]["input_bundle_sha256"]
+    bundle_sha256 = context["admission"]["offline"]["bundle_validation"]["loaded_bundle_sha256"]
     endpoint_cap = context["bridge_config"]["budget_allocation"]["endpoint_cap_usd"]
     return {
         "admitted": True,
@@ -916,9 +949,27 @@ function writeDspyGepaBridgeConfig(path, overrides = {}) {
   const payload = {
     schema_version: "understudy.dspy_gepa_bridge_config.v1",
     input_bundle_sha256: "a".repeat(64),
+    endpoint_bundle_schema_version: "understudy.fixture_endpoint_bundle.v1",
+    endpoint_bundle_sha256: "d".repeat(64),
     tool_schema_sha256: "b".repeat(64),
     workload_package_pins: { "fixture-workload": "1.2.3" },
     api_key_env: "UNDERSTUDY_AUTOMATIONBENCH_SERVICE_TOKEN",
+    inference_routes: {
+      student: {
+        route_id: "fixture-understudy-student",
+        base_url: "http://127.0.0.1:9/v1",
+        api_key_env: "UNDERSTUDY_API_KEY",
+        requested_model: "student-deployment",
+        executed_model: "openai/student-deployment",
+      },
+      reflection: {
+        route_id: "fixture-fireworks-reflection",
+        base_url: "https://api.fireworks.ai/inference/v1",
+        api_key_env: "FIXTURE_FIREWORKS_API_KEY",
+        requested_model: "reflection-deployment",
+        executed_model: "openai/accounts/fireworks/models/reflection-deployment",
+      },
+    },
     budget_allocation: {
       campaign_approved_max_usd: 5000,
       campaign_cap_usd: 3,
@@ -1950,6 +2001,18 @@ class ScoreWithFeedback:
       assert.equal(payload.spend_evidence.provider_invoice_verified, false);
       assert.equal(payload.spend_evidence.attributed_cost_usd, 0.00004);
       assert.equal(payload.spend_evidence.entries.length, 2);
+      assert.equal(payload.route_bindings.student.route_id, "understudy-gateway");
+      assert.equal(payload.route_bindings.reflection.route_id, "understudy-gateway");
+      assert.equal(payload.route_bindings.student.requested_model, "synthetic-deployment");
+      assert.equal(payload.route_bindings.student.executed_model, "openai/synthetic-deployment");
+      assert.equal(
+        payload.spend_evidence.entries[0].response_identity.provider_returned_model.status,
+        "unavailable-from-response",
+      );
+      assert.equal(
+        payload.spend_evidence.entries[0].response_identity.effective_model_header.status,
+        "unavailable-from-response",
+      );
       assert.ok(
         payload.spend_evidence.attributed_cost_usd
           < payload.spend_evidence.reserved_upper_bound_usd,
@@ -1972,6 +2035,9 @@ class ScoreWithFeedback:
       const badBridgePath = join(repo, "bad-program-bridge.py");
       const badOracleBridgePath = join(repo, "bad-oracle-program-bridge.py");
       const reflectionOverflowBridgePath = join(repo, "reflection-overflow-program-bridge.py");
+      const badRouteBridgePath = join(repo, "bad-route-program-bridge.py");
+      const badInputBundleBridgePath = join(repo, "bad-input-bundle-program-bridge.py");
+      const badEndpointBundleBridgePath = join(repo, "bad-endpoint-bundle-program-bridge.py");
       const noChangeBridgePath = join(repo, "no-change-program-bridge.py");
       const bridgeConfigPath = join(repo, "program-bridge-config.json");
       const stubRoot = join(repo, "bridge-python-stubs");
@@ -1985,6 +2051,9 @@ class ScoreWithFeedback:
       writeDspyGepaProgramBridge(badOracleBridgePath, { validOracle: false });
       // Equality fails closed: 7808 + 256 + 128 == 8192.
       writeDspyGepaProgramBridge(reflectionOverflowBridgePath, { reflectionPromptTokens: 7808 });
+      writeDspyGepaProgramBridge(badRouteBridgePath, { validRouteBinding: false });
+      writeDspyGepaProgramBridge(badInputBundleBridgePath, { validInputBundleBinding: false });
+      writeDspyGepaProgramBridge(badEndpointBundleBridgePath, { validEndpointBundleBinding: false });
       writeDspyGepaProgramBridge(noChangeBridgePath, { mutationClaimed: false });
       writeDspyGepaBridgeConfig(bridgeConfigPath);
       mkdirSync(programProject);
@@ -2062,6 +2131,7 @@ class ScoreWithFeedback:
         MODEL_SENTINEL: modelSentinel,
         GEPA_KWARGS_SENTINEL: kwargsSentinel,
         UNDERSTUDY_API_KEY: "fixture-key",
+        FIXTURE_FIREWORKS_API_KEY: "fixture-fireworks-key",
         UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
         UNDERSTUDY_AUTH_SOURCE: "fixture",
       };
@@ -2076,6 +2146,16 @@ class ScoreWithFeedback:
       assert.equal(admissionPayload.optimizer_provider_calls, false);
       assert.equal(admissionPayload.endpoint_provider_calls, true);
       assert.equal(admissionPayload.spend_evidence.calls_attempted, 0);
+      assert.equal(admissionPayload.route_bindings.student.requested_model, "student-deployment");
+      assert.equal(admissionPayload.route_bindings.student.executed_model, "openai/student-deployment");
+      assert.equal(admissionPayload.route_bindings.reflection.requested_model, "reflection-deployment");
+      assert.equal(
+        admissionPayload.route_bindings.reflection.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+      assert.equal(admissionPayload.route_bindings.student.credential_present, true);
+      assert.equal(admissionPayload.route_bindings.reflection.credential_present, true);
+      assert.equal("base_url" in admissionPayload.route_bindings.reflection, false);
       const admissionReceipt = join(
         repo,
         ".understudy",
@@ -2098,7 +2178,14 @@ class ScoreWithFeedback:
       assert.equal(payload.spend_evidence.calls_attempted, 2);
 
       const models = readFileSync(modelSentinel, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-      assert.deepEqual(models.map((item) => item.model), ["openai/student-deployment", "openai/reflection-deployment"]);
+      assert.deepEqual(models.map((item) => item.model), [
+        "openai/student-deployment",
+        "openai/accounts/fireworks/models/reflection-deployment",
+      ]);
+      assert.deepEqual(models.map((item) => item.api_base), [
+        "http://127.0.0.1:9/v1",
+        "https://api.fireworks.ai/inference/v1",
+      ]);
       assert.deepEqual(models.map((item) => item.num_retries), [0, 0]);
       const gepaKwargs = JSON.parse(readFileSync(kwargsSentinel, "utf8"));
       assert.equal(gepaKwargs.max_metric_calls, 7);
@@ -2112,7 +2199,10 @@ class ScoreWithFeedback:
       assert.equal(gepaKwargs.track_stats, true);
       assert.equal(gepaKwargs.track_best_outputs, true);
       assert.equal(gepaKwargs.log_dir, realpathSync(logDir));
-      assert.equal(gepaKwargs.reflection_model, "openai/reflection-deployment");
+      assert.equal(
+        gepaKwargs.reflection_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
 
       const runDir = join(repo, ".understudy", "optimize-workload", "dspy-gepa");
       const packageState = JSON.parse(readFileSync(join(runDir, "package-state.json"), "utf8"));
@@ -2124,14 +2214,37 @@ class ScoreWithFeedback:
       const config = JSON.parse(readFileSync(join(runDir, "config.json"), "utf8"));
       assert.equal(config.gepa.num_threads, 1);
       assert.equal(config.gepa.use_merge, true);
+      assert.equal(config.inference.routes.student.route_id, "fixture-understudy-student");
+      assert.equal(config.inference.routes.reflection.route_id, "fixture-fireworks-reflection");
+      assert.equal(config.inference.routes.student.requested_model, "student-deployment");
+      assert.equal(config.inference.routes.student.executed_model, "openai/student-deployment");
+      assert.equal(config.inference.routes.reflection.requested_model, "reflection-deployment");
+      assert.equal(
+        config.inference.routes.reflection.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
       const validation = config.admission.offline.bundle_validation;
       assert.equal(validation.network_calls_made, 0);
+      assert.equal(validation.input_bundle_sha256, "a".repeat(64));
+      assert.equal(validation.loaded_bundle_sha256, "d".repeat(64));
+      assert.notEqual(validation.input_bundle_sha256, validation.loaded_bundle_sha256);
+      assert.equal(validation.loaded_bundle_schema_version, "understudy.fixture_endpoint_bundle.v1");
       assert.equal(validation.oracle_contract.kind, "state_verifier");
       assert.equal(validation.tool_contract_probe.decoded_arguments_type, "object");
       assert.equal(validation.tool_contract_probe.world_state_changed, true);
       assert.equal(validation.deployment_parity.duplicate_policy_injection, false);
       assert.equal(validation.context_window_gate.source_context_limit, 4096);
       assert.equal(validation.reflection_context_window_gate.reflection_context_limit, 8192);
+      assert.equal(validation.context_window_gate.route.id, config.inference.routes.student.route_id);
+      assert.equal(
+        validation.context_window_gate.route.sha256,
+        config.inference.routes.student.route_binding_sha256,
+      );
+      assert.equal(validation.reflection_context_window_gate.route.id, config.inference.routes.reflection.route_id);
+      assert.equal(
+        validation.reflection_context_window_gate.route.sha256,
+        config.inference.routes.reflection.route_binding_sha256,
+      );
       assert.equal(validation.trajectory_feedback_contract.action_sequence_optimization_enabled, true);
       assert.equal(config.admission.live.standard_verifiers, true);
       assert.equal(config.admission.live.optimizer_started, false);
@@ -2155,6 +2268,28 @@ class ScoreWithFeedback:
       assert.equal(manifest.export_metadata.provenance.tool_schema_sha256, "b".repeat(64));
       assert.equal(manifest.mutation_claimed, true);
       assert.equal(manifest.outcome, "improved");
+      assert.deepEqual(manifest.route_bindings, config.inference.routes);
+
+      const spendEntries = payload.spend_evidence.entries;
+      assert.equal(spendEntries[0].configured_identity.role, "student");
+      assert.equal(spendEntries[0].configured_identity.requested_model, "student-deployment");
+      assert.equal(spendEntries[0].configured_identity.executed_model, "openai/student-deployment");
+      assert.equal(spendEntries[1].configured_identity.role, "reflection");
+      assert.equal(spendEntries[1].configured_identity.requested_model, "reflection-deployment");
+      assert.equal(
+        spendEntries[1].configured_identity.executed_model,
+        "openai/accounts/fireworks/models/reflection-deployment",
+      );
+      assert.deepEqual(spendEntries[0].response_identity.provider_returned_model, {
+        status: "observed",
+        source: "response.model",
+        value: "provider-returned/openai/student-deployment",
+      });
+      assert.deepEqual(spendEntries[1].response_identity.effective_model_header, {
+        status: "observed",
+        header: "x-model-id",
+        value: "effective/openai/accounts/fireworks/models/reflection-deployment",
+      });
 
       for (const artifact of [
         "package-state.json",
@@ -2190,6 +2325,39 @@ class ScoreWithFeedback:
       const reflectionOverflow = spawnSync("python3", reflectionOverflowArgs, { encoding: "utf8", env: runtimeEnv });
       assert.equal(reflectionOverflow.status, 6, reflectionOverflow.stderr || reflectionOverflow.stdout);
       assert.equal(JSON.parse(reflectionOverflow.stdout).reason, "reflection-renderer-context-window-overflow");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badRouteArgs = [...runtimeArgs, "--admission-only"];
+      badRouteArgs[badRouteArgs.indexOf(bridgePath)] = badRouteBridgePath;
+      badRouteArgs[badRouteArgs.indexOf(logDir)] = `${logDir}-bad-route`;
+      const badRoute = spawnSync("python3", badRouteArgs, { encoding: "utf8", env: runtimeEnv });
+      assert.equal(badRoute.status, 6, badRoute.stderr || badRoute.stdout);
+      assert.equal(JSON.parse(badRoute.stdout).reason, "reflection-route-binding-mismatch");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badInputBundleArgs = [...runtimeArgs, "--admission-only"];
+      badInputBundleArgs[badInputBundleArgs.indexOf(bridgePath)] = badInputBundleBridgePath;
+      badInputBundleArgs[badInputBundleArgs.indexOf(logDir)] = `${logDir}-bad-input-bundle`;
+      const badInputBundle = spawnSync("python3", badInputBundleArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(badInputBundle.status, 6, badInputBundle.stderr || badInputBundle.stdout);
+      assert.equal(JSON.parse(badInputBundle.stdout).reason, "input-bundle-sha256-mismatch");
+      assert.equal(existsSync(modelSentinel), false);
+
+      const badEndpointBundleArgs = [...runtimeArgs, "--admission-only"];
+      badEndpointBundleArgs[badEndpointBundleArgs.indexOf(bridgePath)] = badEndpointBundleBridgePath;
+      badEndpointBundleArgs[badEndpointBundleArgs.indexOf(logDir)] = `${logDir}-bad-endpoint-bundle`;
+      const badEndpointBundle = spawnSync("python3", badEndpointBundleArgs, {
+        encoding: "utf8",
+        env: runtimeEnv,
+      });
+      assert.equal(badEndpointBundle.status, 6, badEndpointBundle.stderr || badEndpointBundle.stdout);
+      assert.equal(
+        JSON.parse(badEndpointBundle.stdout).reason,
+        "loaded-endpoint-bundle-sha256-mismatch",
+      );
       assert.equal(existsSync(modelSentinel), false);
 
       const badAdmissionArgs = [...runtimeArgs, "--admission-only"];

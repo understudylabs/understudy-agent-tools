@@ -181,6 +181,20 @@ deployments. Both independent LM instances share the same cumulative ledger,
 reserve before every request, disable retries, and fail closed on incomplete
 usage evidence.
 
+A bridge may route either LM independently with optional non-secret
+`inference_routes.student` and `inference_routes.reflection` objects. Each
+explicit object contains exactly `route_id`, credential-free `base_url`,
+`api_key_env`, `requested_model`, and `executed_model`. `requested_model` must
+equal the corresponding CLI model; `executed_model` is the exact DSPy/LiteLLM
+model identifier passed to that route. Missing role entries retain the
+Understudy Gateway default. The runtime reads credentials only from the named
+environment variables, executes each LM against its bound base URL, and records
+requested/executed/DSPy model identities plus URL/host hashes in config,
+admission, spend, export, and terminal receipts. Per-call provider-returned
+model and a recognized effective-model response header are recorded only when
+the response exposes them; otherwise each field is explicitly unavailable.
+Neither a route name nor `workload_capture: false` proves ZDR eligibility.
+
 ### Opt-in program bridge
 
 `--program-bridge path/to/bridge.py` plus a non-secret JSON
@@ -212,16 +226,25 @@ package/lock state, bridge/config hashes, budget allocation, model sampling,
 and resume configuration.
 
 Phase A returns a JSON-safe redacted receipt with `admitted: true` and a
-`bundle_validation` object proving zero validation network calls, the
-executable input bundle was actually loaded, all required typed fields were
-present, and the loaded hash matches `input_bundle_sha256`. It binds exact
-workload-adapter, tool-schema, and package/lock receipt SHA-256 values plus
-package versions. `typed_request_contract` attests typed `model`, `messages`,
-`tools`, and `sampling`. `oracle_contract` is discriminated: exact-message
-workloads require a materialized expected object and continuation/provenance;
+`bundle_validation` object proving zero validation network calls. Two semantic
+identities are kept separate: `input_bundle_sha256` binds the typed,
+provider-free optimizer/admission rows, while `loaded_bundle_schema_version`
+and `loaded_bundle_sha256` bind the executable policy bundle actually loaded by
+the endpoint. The bridge config must declare matching `input_bundle_sha256`,
+`endpoint_bundle_schema_version`, and `endpoint_bundle_sha256`; the validator
+never compares the typed-row hash to the executable-bundle hash. It also binds
+exact workload-adapter, tool-schema, and package/lock receipt SHA-256 values
+plus package versions. `typed_request_contract` attests typed `model`,
+`messages`, `tools`, and `sampling`. `oracle_contract` is discriminated:
+exact-message workloads require a materialized expected object and
+continuation/provenance;
 state-verifier workloads require typed task/initial state plus assertion,
 Prime-receipt, and reward-metric binding hashes and must not fabricate an
 expected assistant message for root tasks.
+
+For an exact-message workload, map the provider-free Phase-A request fixtures
+to `input_bundle_sha256` and the executable runtime policy artifact to the
+endpoint bundle fields. Neither identity aliases its package/lock receipt.
 
 Tool workloads additionally include `tool_contract_probe`. For an
 OpenAI-compatible tool call, `function.arguments` must remain a string on the

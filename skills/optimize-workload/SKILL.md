@@ -125,7 +125,12 @@ validator kinds in [`reference.md`](reference.md):
    and output token prices before it resolves the Understudy API key. It passes
    auth to the child process through environment only, disables client-side
    retries, and reserves each request against one cumulative price-basis ledger before
-   running train/dev rows through the gateway. Treat the resulting attribution
+   running train/dev rows. A program bridge may bind student and reflection to
+   independent credential-free routes by naming credential environment
+   variables; missing mappings use the Understudy Gateway. Receipt the
+   requested alias, exact executed DSPy/LiteLLM model, and only response model
+   identity actually exposed. Do not infer ZDR from a route name or
+   `workload_capture: false`. Treat the resulting attribution
    as a conservative cap under the supplied prices, not a provider invoice. GEPA's
    edge is natural-language feedback: the metric must return a diagnosis of
    *why* each failing row failed and what to change, not a bare score — bland
@@ -139,7 +144,8 @@ validator kinds in [`reference.md`](reference.md):
    merge only when the approved budget covers it. For a workload-owned program,
    first pass `--program-bridge ... --admission-only`, inspect its hashed offline
    and one-episode live receipt, then compile separately with the exact
-   `--admission-receipt`. Admission must fail unless provider-free validation proves the exact
+   `--admission-receipt`. Admission must fail unless provider-free validation
+   separately binds the typed input-row bundle and proves the exact endpoint
    executable bundle was loaded, typed request/expected/tool contracts passed,
    package/adapter/tool-schema hashes match, and every required write produced
    an actual world-state delta. Never score a hash-only expectation or an HTTP

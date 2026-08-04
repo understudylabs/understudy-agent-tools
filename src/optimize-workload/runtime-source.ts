@@ -12,6 +12,7 @@ import platform
 import re
 import socket
 import threading
+from urllib.parse import urlsplit
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
@@ -39,11 +40,6 @@ def load_rows(path: str) -> list[dict[str, Any]]:
     if isinstance(raw, dict) and isinstance(raw.get("rows"), list):
         return raw["rows"]
     raise ValueError("samples must be a JSON list or object with rows")
-
-
-def normalize_gateway_url(value: str) -> str:
-    base = value.rstrip("/")
-    return base if base.endswith("/v1") else f"{base}/v1"
 
 
 def normalize_dspy_model(value: str) -> str:
@@ -186,6 +182,163 @@ def canonical_json_bytes(payload: Any) -> bytes:
 
 def canonical_sha256(payload: Any) -> str:
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def text_sha256(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def credential_free_api_base(value: Any, *, append_v1: bool) -> tuple[str, str]:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("LM route base_url must be a non-empty string")
+    base = value.strip().rstrip("/")
+    if append_v1 and not base.endswith("/v1"):
+        base = f"{base}/v1"
+    parsed = urlsplit(base)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("LM route base_url must be credential-free HTTP(S) without query or fragment")
+    default_port = 443 if parsed.scheme == "https" else 80
+    port = parsed.port or default_port
+    host_identity = f"{parsed.scheme.lower()}://{parsed.hostname.lower()}:{port}"
+    return base, host_identity
+
+
+def resolve_lm_route(
+    role: str,
+    requested_model: str,
+    bridge_config: Mapping[str, Any],
+    gateway_url: str | None,
+) -> tuple[dict[str, Any], str, str]:
+    route_map = bridge_config.get("inference_routes", {})
+    if not isinstance(route_map, Mapping):
+        raise ValueError("bridge_config.inference_routes must be a mapping")
+    if any(key not in {"student", "reflection"} for key in route_map.keys()):
+        raise ValueError("bridge_config.inference_routes supports only student and reflection")
+    configured = route_map.get(role)
+    if configured is None:
+        if not gateway_url:
+            raise ValueError(f"UNDERSTUDY_GATEWAY_URL is required for the default {role} route")
+        base_url, host_identity = credential_free_api_base(gateway_url, append_v1=True)
+        route_config = {
+            "route_id": "understudy-gateway",
+            "base_url": base_url,
+            "api_key_env": "UNDERSTUDY_API_KEY",
+            "requested_model": requested_model,
+            "executed_model": normalize_dspy_model(requested_model),
+        }
+    else:
+        if not isinstance(configured, Mapping):
+            raise ValueError(f"bridge_config.inference_routes.{role} must be a mapping")
+        required_fields = {
+            "route_id",
+            "base_url",
+            "api_key_env",
+            "requested_model",
+            "executed_model",
+        }
+        if set(configured.keys()) != required_fields:
+            raise ValueError(
+                f"bridge_config.inference_routes.{role} must contain exactly {sorted(required_fields)}"
+            )
+        route_config = dict(configured)
+        base_url, host_identity = credential_free_api_base(
+            route_config["base_url"], append_v1=False,
+        )
+    route_id = route_config.get("route_id")
+    api_key_env = route_config.get("api_key_env")
+    configured_requested_model = route_config.get("requested_model")
+    executed_model = route_config.get("executed_model")
+    if not isinstance(route_id, str) or not route_id.strip() or route_id != route_id.strip():
+        raise ValueError(f"{role} route_id must be a non-empty string")
+    if not isinstance(api_key_env, str) or _ENV_NAME.fullmatch(api_key_env) is None:
+        raise ValueError(f"{role} api_key_env must be an environment variable name")
+    if configured_requested_model != requested_model:
+        raise ValueError(f"{role} requested_model does not match the CLI model")
+    if (
+        not isinstance(executed_model, str)
+        or not executed_model.strip()
+        or executed_model != executed_model.strip()
+    ):
+        raise ValueError(f"{role} executed_model must be a non-empty string")
+    credential = os.environ.get(api_key_env)
+    if not credential:
+        raise ValueError(f"{api_key_env} is required for the {role} LM route")
+    dspy_model = normalize_dspy_model(executed_model)
+    if dspy_model != executed_model:
+        raise ValueError(f"{role} executed_model must be the exact DSPy/LiteLLM model identifier")
+    binding = {
+        "schema_version": "understudy.dspy_lm_route_binding.v1",
+        "role": role,
+        "route_id": route_id,
+        "requested_model": requested_model,
+        "executed_model": executed_model,
+        "dspy_model": dspy_model,
+        "base_url_sha256": text_sha256(base_url),
+        "base_host_sha256": text_sha256(host_identity),
+        "api_key_env": api_key_env,
+    }
+    receipt = {
+        **binding,
+        "route_binding_sha256": canonical_sha256(binding),
+        "credential_source": "environment",
+        "credential_present": True,
+        "provider_response_identity_scope": "per-call-spend-entry-when-exposed",
+    }
+    return receipt, credential, base_url
+
+
+def response_identity_receipt(response: Any) -> dict[str, Any]:
+    model = response.get("model") if isinstance(response, Mapping) else getattr(response, "model", None)
+    model_source = "response.model"
+    hidden = (
+        response.get("_hidden_params")
+        if isinstance(response, Mapping)
+        else getattr(response, "_hidden_params", None)
+    )
+    hidden = hidden if isinstance(hidden, Mapping) else {}
+    if not isinstance(model, str) or not model:
+        hidden_model = hidden.get("model_id")
+        model = hidden_model if isinstance(hidden_model, str) and hidden_model else None
+        model_source = "response._hidden_params.model_id"
+    headers = hidden.get("additional_headers")
+    headers = headers if isinstance(headers, Mapping) else {}
+    normalized_headers = {
+        str(key).lower(): value
+        for key, value in headers.items()
+        if isinstance(value, str) and value
+    }
+    effective_model = None
+    effective_header_name = None
+    for header_name in (
+        "x-understudy-effective-model",
+        "x-understudy-upstream-model",
+        "x-litellm-model-id",
+        "x-model-id",
+        "x-fireworks-model",
+    ):
+        if header_name in normalized_headers:
+            effective_header_name = header_name
+            effective_model = normalized_headers[header_name]
+            break
+    return {
+        "provider_returned_model": (
+            {"status": "observed", "source": model_source, "value": model}
+            if model is not None
+            else {"status": "unavailable-from-response"}
+        ),
+        "effective_model_header": (
+            {"status": "observed", "header": effective_header_name, "value": effective_model}
+            if effective_model is not None
+            else {"status": "unavailable-from-response"}
+        ),
+    }
 
 
 def file_sha256(path: Path) -> str:
@@ -382,7 +535,12 @@ class SpendLedger:
             self.output_usd_per_million,
         )
 
-    def reserve(self, input_token_ceiling: int, output_token_ceiling: int) -> int:
+    def reserve(
+        self,
+        input_token_ceiling: int,
+        output_token_ceiling: int,
+        call_identity: Mapping[str, Any] | None = None,
+    ) -> int:
         projected = self.projected_reservation(input_token_ceiling, output_token_ceiling)
         with self._lock:
             next_total = self.reserved_upper_bound_usd + projected
@@ -391,13 +549,18 @@ class SpendLedger:
             self.calls_attempted += 1
             call_id = self.calls_attempted
             self.reserved_upper_bound_usd = next_total
-            self.entries.append({
+            entry = {
                 "call_id": call_id,
                 "status": "reserved",
                 "input_token_ceiling": input_token_ceiling,
                 "output_token_ceiling": output_token_ceiling,
                 "reserved_upper_bound_usd": projected,
-            })
+            }
+            if call_identity is not None:
+                identity = dict(call_identity)
+                canonical_json_bytes(identity)
+                entry["configured_identity"] = identity
+            self.entries.append(entry)
             return call_id
 
     def mark_error(self, call_id: int) -> None:
@@ -406,7 +569,7 @@ class SpendLedger:
             self.usage_complete = False
 
     def complete(self, call_id: int, response: Any) -> None:
-        usage = getattr(response, "usage", None)
+        usage = response.get("usage") if isinstance(response, Mapping) else getattr(response, "usage", None)
         input_tokens = usage_token_count(usage, "prompt_tokens", "input_tokens")
         output_tokens = usage_token_count(usage, "completion_tokens", "output_tokens")
         with self._lock:
@@ -433,6 +596,7 @@ class SpendLedger:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "attributed_cost_usd": attributed,
+                "response_identity": response_identity_receipt(response),
             })
             self.calls_completed += 1
             self.attributed_cost_usd += attributed
@@ -750,8 +914,13 @@ def run_bridge_admission(module: Any, context: dict[str, Any]) -> dict[str, Any]
         raise WorkloadAdmissionError("bundle-validation-requires-input-bundle-sha256")
     if validation.get("executable_bundle_loaded") is not True:
         raise WorkloadAdmissionError("bundle-validation-must-prove-executable-bundle-loaded")
-    if validation.get("loaded_bundle_sha256") != validation.get("input_bundle_sha256"):
-        raise WorkloadAdmissionError("loaded-bundle-sha256-mismatch")
+    if not is_sha256(validation.get("loaded_bundle_sha256")):
+        raise WorkloadAdmissionError("bundle-validation-requires-loaded-endpoint-bundle-sha256")
+    if (
+        not isinstance(validation.get("loaded_bundle_schema_version"), str)
+        or not validation.get("loaded_bundle_schema_version")
+    ):
+        raise WorkloadAdmissionError("bundle-validation-requires-loaded-endpoint-bundle-schema")
     if validation.get("required_bundle_fields_present") is not True:
         raise WorkloadAdmissionError("bundle-validation-requires-all-bundle-fields")
     if not is_sha256(validation.get("workload_adapter_sha256")):
@@ -777,6 +946,15 @@ def run_bridge_admission(module: Any, context: dict[str, Any]) -> dict[str, Any]
     for field in ("input_bundle_sha256", "tool_schema_sha256"):
         if bridge_config.get(field) != validation.get(field):
             raise WorkloadAdmissionError(f"{field.replace('_', '-')}-mismatch")
+    if not is_sha256(bridge_config.get("endpoint_bundle_sha256")):
+        raise WorkloadAdmissionError("bridge-config-requires-endpoint-bundle-sha256")
+    if validation.get("loaded_bundle_sha256") != bridge_config.get("endpoint_bundle_sha256"):
+        raise WorkloadAdmissionError("loaded-endpoint-bundle-sha256-mismatch")
+    endpoint_schema = bridge_config.get("endpoint_bundle_schema_version")
+    if not isinstance(endpoint_schema, str) or not endpoint_schema:
+        raise WorkloadAdmissionError("bridge-config-requires-endpoint-bundle-schema")
+    if validation.get("loaded_bundle_schema_version") != endpoint_schema:
+        raise WorkloadAdmissionError("loaded-endpoint-bundle-schema-mismatch")
     typed_contract = validation.get("typed_request_contract")
     required_typed_checks = {
         "model_typed": True,
@@ -877,6 +1055,23 @@ def run_bridge_admission(module: Any, context: dict[str, Any]) -> dict[str, Any]
         context_limit_field="reflection_context_limit",
         overflow_reason="reflection-renderer-context-window-overflow",
     )
+    runtime_routes = config.get("inference", {}).get("routes")
+    if not isinstance(runtime_routes, Mapping):
+        raise WorkloadAdmissionError("runtime-route-bindings-missing")
+    for role, gate_name in (
+        ("student", "context_window_gate"),
+        ("reflection", "reflection_context_window_gate"),
+    ):
+        route_receipt = runtime_routes.get(role)
+        gate = validation.get(gate_name)
+        gate_route = gate.get("route") if isinstance(gate, Mapping) else None
+        if (
+            not isinstance(route_receipt, Mapping)
+            or not isinstance(gate_route, Mapping)
+            or gate_route.get("id") != route_receipt.get("route_id")
+            or gate_route.get("sha256") != route_receipt.get("route_binding_sha256")
+        ):
+            raise WorkloadAdmissionError(f"{role}-route-binding-mismatch")
     trajectory_feedback = validation.get("trajectory_feedback_contract")
     required_event_fields = [
         "sequence_index",
@@ -999,7 +1194,7 @@ def run_live_bridge_admission(
         for field in ("health_ok", "models_loaded", "bundle_loaded")
     ):
         raise WorkloadAdmissionError("live-admission-preflight-failed")
-    expected_bundle_sha = offline_admission["bundle_validation"]["input_bundle_sha256"]
+    expected_bundle_sha = offline_admission["bundle_validation"]["loaded_bundle_sha256"]
     if preflight.get("loaded_bundle_sha256") != expected_bundle_sha:
         raise WorkloadAdmissionError("live-admission-loaded-bundle-mismatch")
     integer_counts: dict[str, int] = {}
@@ -1262,6 +1457,7 @@ def write_canonical_bundle(
             "student": export_context["config"]["inference"]["student_sampling"],
             "reflection": export_context["config"]["inference"]["reflection_sampling"],
         },
+        "route_bindings": export_context["config"]["inference"]["routes"],
     }
     manifest_path = run_dir / "bundle-manifest.json"
     write_owner_only_json(manifest_path, manifest)
@@ -1317,9 +1513,20 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
     import dspy
 
     class BudgetedLM(dspy.LM):
-        def __init__(self, *lm_args: Any, spend_ledger: SpendLedger, **lm_kwargs: Any) -> None:
+        def __init__(
+            self,
+            *lm_args: Any,
+            spend_ledger: SpendLedger,
+            role: str,
+            route_receipt: Mapping[str, Any],
+            **lm_kwargs: Any,
+        ) -> None:
             self._spend_ledger = spend_ledger
+            self._role = role
+            self._route_receipt = dict(route_receipt)
             super().__init__(*lm_args, **lm_kwargs)
+            if getattr(self, "model", None) != self._route_receipt["dspy_model"]:
+                raise ValueError(f"{role} DSPy model does not match the bound executed model")
 
         def _output_token_ceiling(self, call_kwargs: dict[str, Any]) -> int:
             value = (
@@ -1345,6 +1552,16 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
             return self._spend_ledger.reserve(
                 input_token_ceiling_from_bytes(message_bytes, message_count),
                 self._output_token_ceiling(call_kwargs),
+                {
+                    "role": self._role,
+                    "route_id": self._route_receipt["route_id"],
+                    "route_binding_sha256": self._route_receipt["route_binding_sha256"],
+                    "requested_model": self._route_receipt["requested_model"],
+                    "executed_model": self._route_receipt["executed_model"],
+                    "dspy_model": self._route_receipt["dspy_model"],
+                    "base_url_sha256": self._route_receipt["base_url_sha256"],
+                    "base_host_sha256": self._route_receipt["base_host_sha256"],
+                },
             )
 
         def forward(
@@ -1377,12 +1594,13 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
             self._spend_ledger.complete(call_id, response)
             return response
 
-    api_key = os.environ.get("UNDERSTUDY_API_KEY")
     gateway_url = os.environ.get("UNDERSTUDY_GATEWAY_URL")
-    if not api_key:
-        raise ValueError("UNDERSTUDY_API_KEY is required for dspy-gepa")
-    if not gateway_url:
-        raise ValueError("UNDERSTUDY_GATEWAY_URL is required for dspy-gepa")
+    student_route, student_api_key, student_api_base = resolve_lm_route(
+        "student", args.model, bridge_config, gateway_url,
+    )
+    reflection_route, reflection_api_key, reflection_api_base = resolve_lm_route(
+        "reflection", args.reflection_model, bridge_config, gateway_url,
+    )
 
     rows = load_rows(args.samples) if args.samples else []
     input_keys = split_keys(args.input_keys or "")
@@ -1455,6 +1673,10 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
                 "temperature": args.reflection_temperature,
                 "reasoning_effort": args.reflection_reasoning_effort,
             },
+            "routes": {
+                "student": student_route,
+                "reflection": reflection_route,
+            },
             "cache": False,
             "num_retries": 0,
             "shared_cumulative_spend_ledger": True,
@@ -1509,10 +1731,12 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
     )
 
     student_lm = BudgetedLM(
-        normalize_dspy_model(args.model),
+        student_route["dspy_model"],
         spend_ledger=ledger,
-        api_key=api_key,
-        api_base=normalize_gateway_url(gateway_url),
+        role="student",
+        route_receipt=student_route,
+        api_key=student_api_key,
+        api_base=student_api_base,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         reasoning_effort=args.reasoning_effort,
@@ -1520,10 +1744,12 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         num_retries=0,
     )
     reflection_lm = BudgetedLM(
-        normalize_dspy_model(args.reflection_model),
+        reflection_route["dspy_model"],
         spend_ledger=ledger,
-        api_key=api_key,
-        api_base=normalize_gateway_url(gateway_url),
+        role="reflection",
+        route_receipt=reflection_route,
+        api_key=reflection_api_key,
+        api_base=reflection_api_base,
         max_tokens=args.max_tokens,
         temperature=args.reflection_temperature,
         reasoning_effort=args.reflection_reasoning_effort,
@@ -1627,6 +1853,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
             "student": config_payload["inference"]["student_sampling"],
             "reflection": config_payload["inference"]["reflection_sampling"],
         }
+        admission_spend_evidence["route_bindings"] = config_payload["inference"]["routes"]
         write_dspy_run_state(
             args,
             ledger,
@@ -1636,6 +1863,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
                 "config_sha256": config_sha256,
                 "admission_receipt_sha256": receipt["receipt_sha256"],
                 "budget_allocation": budget_allocation,
+                "route_bindings": config_payload["inference"]["routes"],
                 "provider_calls": bool(live_admission and live_admission.get("call_count", 0) > 0),
                 "optimizer_provider_calls": False,
                 "endpoint_provider_calls": bool(live_admission and live_admission.get("call_count", 0) > 0),
@@ -1652,6 +1880,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
             "admission_receipt_sha256": receipt["receipt_sha256"],
             "admission_receipt_path": artifact_path(repo, receipt_path),
             "run_state_path": artifact_path(repo, dspy_run_state_path(args)),
+            "route_bindings": config_payload["inference"]["routes"],
             "spend_evidence": admission_spend_evidence,
         })
         return
@@ -1694,6 +1923,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         "student": config_payload["inference"]["student_sampling"],
         "reflection": config_payload["inference"]["reflection_sampling"],
     }
+    spend_evidence["route_bindings"] = config_payload["inference"]["routes"]
     candidate = {
         "schema_version": "understudy.dspy_gepa_candidate.v2",
         "adapter": "dspy-gepa",
@@ -1713,6 +1943,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         "config_sha256": config_sha256,
         "budget_allocation": budget_allocation,
         "bundle_sha256": bundle_manifest["bundle_sha256"] if bundle_manifest else None,
+        "route_bindings": config_payload["inference"]["routes"],
         "canonical_bundle_sha256": bundle_manifest["canonical_bundle_sha256"] if bundle_manifest else None,
         "artifacts": dspy_artifacts(args),
         "spend_evidence": spend_evidence,
@@ -1745,6 +1976,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         "config_sha256": config_sha256,
         "budget_allocation": budget_allocation,
         "bundle_sha256": bundle_manifest["bundle_sha256"] if bundle_manifest else None,
+        "route_bindings": config_payload["inference"]["routes"],
     }
     write_dspy_run_state(args, ledger, "candidate-created", None, extra)
     emit({
@@ -1756,8 +1988,13 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         "provider_calls": spend_evidence["calls_attempted"] > 0,
         "optimizer_execution": True,
         "auth_source": os.environ.get("UNDERSTUDY_AUTH_SOURCE", "unknown"),
-        "gateway_url_configured": True,
-        "api_key_configured": True,
+        "lm_routes_configured": True,
+        "understudy_gateway_route_used": any(
+            route["route_id"] == "understudy-gateway"
+            for route in config_payload["inference"]["routes"].values()
+        ),
+        "credentials_configured": {"student": True, "reflection": True},
+        "route_bindings": config_payload["inference"]["routes"],
         "train_count": len(trainset),
         "dev_count": len(valset),
         "holdout_count_excluded": holdout_count,
