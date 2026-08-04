@@ -20,7 +20,11 @@ export function registerCampaignsCommand(program: Command): void {
     .requiredOption("--response <path>", "Raw JSON response artifact")
     .requiredOption("--tools <path>", "Raw JSON tool catalog artifact")
     .requiredOption("--trace <path>", "Exactly-one-task standard-Verifiers trace artifact")
-    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string }) => {
+    .requiredOption("--execution-receipt <path>", "Generated locked-project execution receipt")
+    .requiredOption("--before-state <path>", "Generated before-state artifact")
+    .requiredOption("--after-state <path>", "Generated after-state artifact")
+    .requiredOption("--smoke-generator <path>", "Provider-free generator inside the locked project")
+    .action((options: { manifest: string; project: string; request: string; response: string; tools: string; trace: string; executionReceipt: string; beforeState: string; afterState: string; smokeGenerator: string }) => {
       try {
         const project = resolve(options.project);
         const manifest = JSON.parse(readFileSync(resolve(options.manifest), "utf8")) as Record<string, unknown>;
@@ -33,6 +37,7 @@ export function registerCampaignsCommand(program: Command): void {
         if (!uvVersion) throw new Error("could not parse uv version");
         if (environment.uv_version !== uvVersion) throw new Error(`uv version mismatch: expected ${String(environment.uv_version)}, got ${uvVersion}`);
         execFileSync("uv", ["lock", "--check", "--project", project], { stdio: "pipe" });
+        execFileSync("uv", ["sync", "--locked", "--check", "--project", project], { stdio: "pipe" });
         const declaredPins = JSON.stringify(environment.resolved_packages);
         const lockedPins = JSON.stringify(parseUvLockPins(readFileSync(lock, "utf8")));
         if (declaredPins !== lockedPins) throw new Error("resolved package pins do not exactly match uv.lock");
@@ -40,7 +45,13 @@ export function registerCampaignsCommand(program: Command): void {
         const pythonVersion = execFileSync(python, ["-c", "import platform; print(platform.python_version())"], { encoding: "utf8" }).trim();
         if (pythonVersion !== environment.python_version) throw new Error(`python version mismatch: expected ${String(environment.python_version)}, got ${pythonVersion}`);
         if (fileSha256(python) !== environment.python_executable_sha256) throw new Error("python executable hash does not match manifest");
-        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace) }));
+        const generator = resolve(options.smokeGenerator);
+        if (generator !== join(project, "generate_smoke.py")) throw new Error("smoke generator must be generate_smoke.py inside the locked project");
+        const comparisons = [["trace.json", options.trace], ["execution-receipt.json", options.executionReceipt], ["before-state.json", options.beforeState], ["after-state.json", options.afterState]] as const;
+        const expected = new Map(comparisons.map(([generated, supplied]) => [generated, readFileSync(resolve(supplied))]));
+        execFileSync("uv", ["run", "--project", ".", "--locked", "python", "generate_smoke.py", "--output", "generated"], { cwd: project, stdio: "pipe" });
+        for (const [generated] of comparisons) if (!readFileSync(join(project, "generated", generated)).equals(expected.get(generated)!)) throw new Error(`generated ${generated} differs from supplied fixture`);
+        const result = validateCampaignAdmission(manifest, readTransportArtifacts({ request: resolve(options.request), response: resolve(options.response), tools: resolve(options.tools), trace: resolve(options.trace), executionReceipt: resolve(options.executionReceipt), beforeState: resolve(options.beforeState), afterState: resolve(options.afterState) }));
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         if (!result.admitted) process.exitCode = 1;
       } catch (error) {

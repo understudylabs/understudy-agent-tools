@@ -1,1 +1,1 @@
-{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":[{"id":"call-public-1","type":"function","function":{"name":"set-record","arguments":"{\"id\":\"alpha\",\"status\":\"ready\"}"}}]}}]}
+{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":[{"id":"call-public-1","type":"function","function":{"name":"set-record","arguments":"{ \"status\": \"ready\", \"id\": \"alpha\" }"}}]}}]}

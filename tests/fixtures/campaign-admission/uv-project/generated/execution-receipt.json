@@ -1,0 +1,33 @@
+{
+  "after_state_sha256": "578c4dc9e95cf9ef87e1ccd5f2236a61cc2faf0a120d16f52f871643f3675a34",
+  "argv": [
+    "uv",
+    "run",
+    "--project",
+    ".",
+    "--locked",
+    "python",
+    "generate_smoke.py",
+    "--output",
+    "generated"
+  ],
+  "before_state_sha256": "9e4f76c756726a6c01f052f18b08db9fa2e073cd5e074f7693d55159d5f99612",
+  "interpreter": {
+    "implementation": "CPython",
+    "version": "3.12.13"
+  },
+  "mutated_candidate_sha256": "0ba2e4298634b3771db51d77ffca15af1c7e731fc15c290b60ab5c44097c1f6c",
+  "resolved_package_inventory_sha256": "be34de4d14a135dac01c2649f6447b4abebde8242ff51cbf6d8bba2835d7c8dd",
+  "schema_version": "understudy.synthetic_verifiers_execution.v1",
+  "seed_candidate_sha256": "4dbee206fc073f8db3e50fad210ca48772e481ad31ee37f33e638bca91db1914",
+  "trace_sha256": "a60d2d3f6096130e1c0d999a24ec2170e697f03892f078f6db58d17398483ddf",
+  "verified_state_delta": {
+    "after": "ready",
+    "before": "pending",
+    "path": "/records/alpha/status"
+  },
+  "verifiers": {
+    "module": "verifiers",
+    "version": "0.2.1"
+  }
+}

@@ -120,7 +120,9 @@ export {
   CAMPAIGN_ADMISSION_SCHEMA_VERSION,
   SPEND_LANES,
   fingerprintTransport,
+  fingerprintToolSteps,
   parseUvLockPins,
+  publishedSchemaErrors,
   readTransportArtifacts,
   semanticJsonSha256,
   sha256Bytes as sha256CampaignAdmissionBytes,
@@ -129,6 +131,7 @@ export {
   type SpendLane,
   type TransportArtifacts,
   type TransportFingerprints,
+  type ToolStepFingerprint,
   type ResolvedPackagePin,
 } from "./campaign-admission/index.js";
 
