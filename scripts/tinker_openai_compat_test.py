@@ -79,7 +79,11 @@ def test_payload_requires_defined_finish_reason():
     check("payload choices[0].finish_reason present", payload["choices"][0]["finish_reason"] == "stop")
     check("payload content propagated", payload["choices"][0]["message"]["content"] == "hello")
     check("payload usage propagated",
-          payload["usage"] == {"prompt_tokens": 100, "completion_tokens": 3})
+          payload["usage"] == {
+              "prompt_tokens": 100,
+              "completion_tokens": 3,
+              "total_tokens": 103,
+          })
 
     fr_len = normalize_finish_reason(stop_reason="length", completion_tokens=384, max_tokens=384)
     payload_len = build_chat_completion({"role": "assistant", "content": ""}, 100, 384, fr_len)
