@@ -41,8 +41,10 @@ from tinker_cookbook.tokenizer_utils import get_tokenizer
 from tinker_openai_compat import (
     bearer_authorized,
     build_chat_completion,
+    normalize_assistant_message,
     normalize_finish_reason,
 )
+from tinker_renderer_compat import renderer_messages, renderer_tools
 
 parser = argparse.ArgumentParser()
 model_group = parser.add_mutually_exclusive_group(required=True)
@@ -111,8 +113,14 @@ pool = ThreadPoolExecutor(max_workers=args.max_workers)
 served_models = sorted(samplers)
 
 
-def sample(model, messages, temperature, max_tokens):
-    prompt = renderer.build_generation_prompt([{"role": m["role"], "content": m["content"]} for m in messages])
+def sample(model, messages, tools, temperature, max_tokens):
+    system_prompt, conversation = renderer_messages(messages)
+    tool_specs = renderer_tools(tools)
+    prefix = renderer.create_conversation_prefix_with_tools(
+        tool_specs,
+        system_prompt=system_prompt,
+    )
+    prompt = renderer.build_generation_prompt([*prefix, *conversation])
     params = tinker.types.SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
@@ -122,16 +130,14 @@ def sample(model, messages, temperature, max_tokens):
     sequence = result.sequences[0]
     tokens = sequence.tokens
     message, termination = renderer.parse_response(tokens)
-    content = message.get("content") if isinstance(message, dict) else getattr(message, "content", "")
-    if isinstance(content, list):
-        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    openai_message = renderer.to_openai_message(message)
     finish_reason = normalize_finish_reason(
         stop_reason=sequence.stop_reason,
         termination=getattr(termination, "value", termination),
         completion_tokens=len(tokens),
         max_tokens=max_tokens,
     )
-    return content or "", prompt.length, len(tokens), finish_reason
+    return openai_message, prompt.length, len(tokens), finish_reason
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -200,10 +206,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             for attempt in range(2):
                 try:
-                    content, prompt_tokens, completion_tokens, finish_reason = pool.submit(
+                    message, prompt_tokens, completion_tokens, finish_reason = pool.submit(
                         sample,
                         requested_model,
                         body["messages"],
+                        body.get("tools") or [],
                         float(body.get("temperature", 0.0)),
                         int(body.get("max_tokens", args.max_tokens)),
                     ).result(timeout=request_timeout)
@@ -213,7 +220,8 @@ class Handler(BaseHTTPRequestHandler):
                     if attempt == 1:
                         raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
                     log_event("retry", request_id=request_id, attempt=attempt + 2)
-            payload = build_chat_completion(content, prompt_tokens, completion_tokens, finish_reason)
+            message = normalize_assistant_message(message, request_id)
+            payload = build_chat_completion(message, prompt_tokens, completion_tokens, finish_reason)
             status = 200
         except Exception as error:  # surface upstream failures as HTTP errors
             log_event("error", request_id=request_id, error=type(error).__name__, detail=str(error)[:240])

@@ -23,13 +23,47 @@ We never invent OpenAI reasons the upstream cannot justify (e.g. no
 from __future__ import annotations
 
 import hmac
-from typing import Optional
+import json
+import uuid
+from typing import Any, Optional
 
 # Values tinker.types.StopReason may take.
 _SAMPLER_STOP = "stop"
 _SAMPLER_LENGTH = "length"
 # tinker_cookbook renderers.base.ParseTermination values that mean a clean end.
 _CLEAN_TERMINATIONS = ("stop_sequence", "eos")
+
+
+def normalize_assistant_message(message: dict[str, Any], request_id: str) -> dict[str, Any]:
+    """Return strict OpenAI assistant shape with stable tool-call IDs/arguments."""
+    normalized = {"role": "assistant", "content": message.get("content") or ""}
+    raw_calls = message.get("tool_calls") or []
+    if raw_calls:
+        calls = []
+        for index, raw in enumerate(raw_calls):
+            function = raw.get("function") or {}
+            arguments = function.get("arguments", "{}")
+            if isinstance(arguments, dict):
+                arguments = json.dumps(arguments, sort_keys=True)
+            if not isinstance(arguments, str):
+                raise ValueError("parsed tool arguments must be a JSON string or object")
+            json.loads(arguments)
+            call_id = raw.get("id") or (
+                "call_"
+                + uuid.uuid5(
+                    uuid.NAMESPACE_URL,
+                    f"understudy:tinker:{request_id}:{index}:{function.get('name')}",
+                ).hex
+            )
+            calls.append(
+                {
+                    "type": "function",
+                    "id": call_id,
+                    "function": {"name": function["name"], "arguments": arguments},
+                }
+            )
+        normalized["tool_calls"] = calls
+    return normalized
 
 
 def bearer_authorized(header: Optional[str], expected_token: Optional[str]) -> bool:
@@ -79,7 +113,7 @@ def normalize_finish_reason(
 
 
 def build_chat_completion(
-    content: str,
+    message: dict[str, Any],
     prompt_tokens: int,
     completion_tokens: int,
     finish_reason: str,
@@ -93,7 +127,7 @@ def build_chat_completion(
     return {
         "choices": [
             {
-                "message": {"role": "assistant", "content": content},
+                "message": message,
                 "finish_reason": finish_reason,
             }
         ],

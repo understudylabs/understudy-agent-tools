@@ -31,6 +31,7 @@ image = (
     )
     .add_local_file("scripts/tinker-openai-shim.py", "/opt/understudy/tinker-openai-shim.py")
     .add_local_file("scripts/tinker_openai_compat.py", "/opt/understudy/tinker_openai_compat.py")
+    .add_local_file("scripts/tinker_renderer_compat.py", "/opt/understudy/tinker_renderer_compat.py")
 )
 
 
@@ -59,7 +60,7 @@ def serve() -> None:
             "--tokenizer-model",
             BASE_MODEL,
             "--renderer",
-            "nemotron3",
+            "nemotron3_disable_thinking",
             "--host",
             "0.0.0.0",
             "--trusted-proxy-auth",

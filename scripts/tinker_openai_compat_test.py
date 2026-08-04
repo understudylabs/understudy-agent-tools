@@ -12,6 +12,7 @@ from enum import Enum
 from tinker_openai_compat import (
     bearer_authorized,
     build_chat_completion,
+    normalize_assistant_message,
     normalize_finish_reason,
 )
 
@@ -73,15 +74,30 @@ def test_payload_requires_defined_finish_reason():
     # with a normalized finish_reason. It is a required positional arg, so an
     # undefined variable cannot silently slip through.
     fr = normalize_finish_reason(stop_reason="stop", completion_tokens=3, max_tokens=384)
-    payload = build_chat_completion("hello", 100, 3, fr)
+    payload = build_chat_completion({"role": "assistant", "content": "hello"}, 100, 3, fr)
     check("payload choices[0].finish_reason present", payload["choices"][0]["finish_reason"] == "stop")
     check("payload content propagated", payload["choices"][0]["message"]["content"] == "hello")
     check("payload usage propagated",
           payload["usage"] == {"prompt_tokens": 100, "completion_tokens": 3})
 
     fr_len = normalize_finish_reason(stop_reason="length", completion_tokens=384, max_tokens=384)
-    payload_len = build_chat_completion("", 100, 384, fr_len)
+    payload_len = build_chat_completion({"role": "assistant", "content": ""}, 100, 384, fr_len)
     check("length propagates into payload", payload_len["choices"][0]["finish_reason"] == "length")
+
+    tool_message = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{
+            "type": "function",
+            "id": "call_1",
+            "function": {"name": "create-task", "arguments": '{"title":"A"}'},
+        }],
+    }
+    payload_tool = build_chat_completion(tool_message, 100, 20, "stop")
+    check(
+        "tool calls propagate without text flattening",
+        payload_tool["choices"][0]["message"] == tool_message,
+    )
 
 
 def test_bearer_auth_is_fail_closed():
@@ -90,6 +106,26 @@ def test_bearer_auth_is_fail_closed():
     check("wrong scheme rejects", bearer_authorized("Basic secret", "secret") is False)
     check("wrong token rejects", bearer_authorized("Bearer wrong", "secret") is False)
     check("matching token authorizes", bearer_authorized("Bearer secret", "secret") is True)
+
+
+def test_parsed_tool_call_gets_stable_openai_shape():
+    parsed = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [{
+            "type": "function",
+            "id": None,
+            "function": {"name": "create-task", "arguments": {"title": "A"}},
+        }],
+    }
+    first = normalize_assistant_message(parsed, "request-1")
+    second = normalize_assistant_message(parsed, "request-1")
+    check("missing tool id synthesized", first["tool_calls"][0]["id"].startswith("call_"))
+    check("synthesized tool id stable", first == second)
+    check(
+        "tool arguments serialized as JSON string",
+        first["tool_calls"][0]["function"]["arguments"] == '{"title": "A"}',
+    )
 
 
 def main():
@@ -102,6 +138,7 @@ def main():
         test_unknown_non_clean_termination_falls_through_to_cap,
         test_payload_requires_defined_finish_reason,
         test_bearer_auth_is_fail_closed,
+        test_parsed_tool_call_gets_stable_openai_shape,
     ]
     for t in tests:
         print(t.__name__)
