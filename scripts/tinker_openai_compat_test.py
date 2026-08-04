@@ -15,6 +15,7 @@ from tinker_openai_compat import (
     normalize_assistant_message,
     normalize_finish_reason,
     openai_error_response,
+    parse_openai_request_body,
 )
 
 
@@ -29,6 +30,23 @@ def check(name, cond):
     if not cond:
         raise AssertionError(f"FAIL: {name}")
     print(f"  ok: {name}")
+
+
+def test_request_body_is_a_bounded_json_object():
+    parsed = parse_openai_request_body(b'{"messages":[]}', max_bytes=64)
+    check("bounded object accepted", parsed == {"messages": []})
+    for label, raw, limit in (
+        ("empty rejected", b"", 64),
+        ("array rejected", b"[]", 64),
+        ("malformed rejected", b"not-json", 64),
+        ("oversized rejected", b'{"messages":[]}', 4),
+    ):
+        try:
+            parse_openai_request_body(raw, max_bytes=limit)
+        except ValueError:
+            check(label, True)
+        else:
+            check(label, False)
 
 
 def test_upstream_stop():
@@ -145,6 +163,7 @@ def test_error_mapping_preserves_context_overflow_semantics():
 
 def main():
     tests = [
+        test_request_body_is_a_bounded_json_object,
         test_upstream_stop,
         test_upstream_length,
         test_absent_at_cap_infers_length,

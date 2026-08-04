@@ -35,6 +35,19 @@ _SAMPLER_LENGTH = "length"
 _CLEAN_TERMINATIONS = ("stop_sequence", "eos")
 
 
+def parse_openai_request_body(raw: bytes, *, max_bytes: int) -> dict[str, Any]:
+    """Parse a bounded OpenAI request body without retaining or echoing values."""
+    if not isinstance(raw, bytes) or not raw or len(raw) > max_bytes:
+        raise ValueError("request body size is invalid")
+    try:
+        parsed = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("request body must contain valid JSON") from error
+    if not isinstance(parsed, dict):
+        raise ValueError("request body must be a JSON object")
+    return parsed
+
+
 def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     """Map sampler failures without disguising deterministic client errors.
 

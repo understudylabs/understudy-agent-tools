@@ -44,6 +44,7 @@ from tinker_openai_compat import (
     normalize_assistant_message,
     normalize_finish_reason,
     openai_error_response,
+    parse_openai_request_body,
 )
 from tinker_renderer_compat import renderer_messages, renderer_tools
 
@@ -77,6 +78,7 @@ if (
         "TINKER_SHIM_BEARER_TOKEN or --trusted-proxy-auth is required for non-loopback binds"
     )
 request_timeout = 300
+max_request_bytes = 16 * 1024 * 1024
 log_path = os.environ.get("TINKER_SHIM_LOG", "/tmp/tinker-openai-shim.log")
 log_lock = threading.Lock()
 active_lock = threading.Lock()
@@ -188,13 +190,32 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/v1/chat/completions":
             self._send_json(404, {"error": {"message": "not found", "type": "invalid_request_error"}})
             return
+        try:
+            content_length = int(self.headers.get("content-length", ""))
+            if content_length <= 0 or content_length > max_request_bytes:
+                raise ValueError("request body size is invalid")
+            body = parse_openai_request_body(
+                self.rfile.read(content_length),
+                max_bytes=max_request_bytes,
+            )
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self._send_json(
+                400,
+                {
+                    "error": {
+                        "message": "request body must be a bounded JSON object",
+                        "type": "invalid_request_error",
+                        "code": "invalid_json",
+                    }
+                },
+            )
+            return
         request_id = self.headers.get("x-request-id") or str(uuid.uuid4())
         started = time.monotonic()
         with active_lock:
             active_requests += 1
             in_flight = active_requests
         log_event("start", request_id=request_id, in_flight=in_flight)
-        body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         try:
             requested_model = body.get("model")
             if requested_model is None and len(served_models) == 1:
