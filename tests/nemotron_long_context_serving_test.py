@@ -1,0 +1,219 @@
+import importlib.util
+import json
+import os
+import pathlib
+import struct
+import sys
+import tempfile
+import types
+import unittest
+from unittest.mock import MagicMock, patch
+
+
+ROOT = pathlib.Path(__file__).parents[1]
+SCRIPTS = ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+CONTRACT = load("nemotron_long_context_contract", SCRIPTS / "nemotron_long_context_contract.py")
+EXPORT = load("nemotron_long_context_export", SCRIPTS / "export-tinker-nemotron-long-context.py")
+PARITY = load("nemotron_long_context_parity", SCRIPTS / "nemotron-long-context-parity.py")
+
+
+def identity_decorator(*_args, **_kwargs):
+    return lambda function: function
+
+
+fake_modal = types.ModuleType("modal")
+fake_app = MagicMock()
+fake_app.function.side_effect = identity_decorator
+fake_modal.App = MagicMock(return_value=fake_app)
+fake_modal.Volume = MagicMock()
+fake_modal.Volume.from_name.return_value = MagicMock()
+fake_modal.Image = MagicMock()
+fake_modal.Image.from_registry.return_value = MagicMock()
+fake_modal.web_server = identity_decorator
+previous_modal = sys.modules.get("modal")
+sys.modules["modal"] = fake_modal
+DEPLOY = load("nemotron_long_context_deploy", SCRIPTS / "modal-vllm-nemotron-long-context.py")
+if previous_modal is None:
+    del sys.modules["modal"]
+else:
+    sys.modules["modal"] = previous_modal
+
+
+def write_safetensors(path: pathlib.Path, tensors: dict[str, list[int]]):
+    offset = 0
+    header = {}
+    payload = bytearray()
+    for name, shape in tensors.items():
+        elements = 1
+        for dimension in shape:
+            elements *= dimension
+        size = elements * 2
+        header[name] = {"dtype": "BF16", "shape": shape, "data_offsets": [offset, offset + size]}
+        payload.extend(b"\0" * size)
+        offset += size
+    encoded = json.dumps(header, separators=(",", ":")).encode()
+    path.write_bytes(struct.pack("<Q", len(encoded)) + encoded + payload)
+
+
+def adapter(root: pathlib.Path, tensors: dict[str, list[int]], targets: list[str]):
+    root.mkdir()
+    (root / "adapter_config.json").write_text(json.dumps({
+        "base_model_name_or_path": CONTRACT.BASE_MODEL,
+        "target_modules": targets,
+        "r": 16,
+    }))
+    write_safetensors(root / "adapter_model.safetensors", tensors)
+
+
+class NemotronLongContextServingTest(unittest.TestCase):
+    def test_compatible_adapter_can_use_multi_lora(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory) / "adapter"
+            adapter(root, {
+                "base_model.model.layers.0.mixer.q_proj.lora_A.weight": [16, 32],
+                "base_model.model.layers.0.mixer.q_proj.lora_B.weight": [32, 16],
+            }, ["q_proj"])
+            inspection = CONTRACT.inspect_peft_adapter(root)
+            self.assertTrue(inspection["multi_lora_faithful"])
+            self.assertEqual(CONTRACT.choose_artifact_kind(inspection)[0], "peft-lora")
+
+    def test_nonempty_incompatible_tensor_forces_merged_hf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory) / "adapter"
+            adapter(root, {
+                "base_model.model.layers.0.mixer.gate_proj.lora_A.weight": [16, 32],
+                "base_model.model.layers.0.mixer.gate_proj.lora_B.weight": [32, 16],
+            }, ["gate_proj"])
+            inspection = CONTRACT.inspect_peft_adapter(root)
+            self.assertFalse(inspection["multi_lora_faithful"])
+            self.assertEqual(CONTRACT.choose_artifact_kind(inspection)[0], "merged-hf")
+
+    def test_unknown_nonempty_tensor_fails_closed_to_merged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory) / "adapter"
+            adapter(root, {"unexpected.weight": [4, 4]}, ["q_proj"])
+            inspection = CONTRACT.inspect_peft_adapter(root)
+            self.assertEqual(CONTRACT.choose_artifact_kind(inspection)[0], "merged-hf")
+
+    def test_export_requires_explicit_confirmation_before_provider_import(self):
+        args = types.SimpleNamespace(confirm_export=False, tinker_path="tinker://x", output_dir=pathlib.Path("/tmp/x"))
+        with patch.object(EXPORT, "_provider_weights") as provider:
+            with self.assertRaisesRegex(ValueError, "--confirm-export"):
+                EXPORT.export_command(args)
+            provider.assert_not_called()
+
+    def test_export_downloads_the_exact_bf16_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            destination = pathlib.Path(directory) / "base"
+            fake_hub = types.ModuleType("huggingface_hub")
+            download = MagicMock(return_value=str(destination))
+            fake_hub.snapshot_download = download
+            with patch.object(EXPORT.importlib.util, "find_spec", return_value=object()), patch.dict(
+                sys.modules, {"huggingface_hub": fake_hub}
+            ):
+                self.assertEqual(EXPORT._pinned_base_snapshot(destination), destination)
+            download.assert_called_once_with(
+                repo_id=CONTRACT.BASE_MODEL,
+                revision=CONTRACT.BASE_REVISION,
+                local_dir=str(destination),
+            )
+
+    def test_modal_command_pins_bf16_revision_and_131k_without_truncation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            artifact_root = root / "model-a"
+            artifact_root.mkdir()
+            (artifact_root / "config.json").write_text("{}")
+            digest, files = CONTRACT.sha256_tree(artifact_root)
+            receipt = {
+                "schema_version": CONTRACT.EXPORT_SCHEMA,
+                "created_at": "2026-08-04T00:00:00Z",
+                "base_model": CONTRACT.BASE_MODEL,
+                "base_revision": CONTRACT.BASE_REVISION,
+                "source_checkpoint": {"ref": "tinker://x"},
+                "inspection": {"incompatible_nonempty_tensors": [{}], "multi_lora_faithful": False},
+                "selection": {"artifact_kind": "merged-hf"},
+                "artifact": {"path": str(artifact_root), "sha256": digest, "files": files},
+                "serving": {
+                    "max_model_len": 131072, "truncate_messages": False,
+                    "reasoning_parser": "nano_v3", "tool_call_parser": "qwen3_coder",
+                    "reasoning_parser_plugin_sha256": CONTRACT.REASONING_PARSER_PLUGIN_SHA256,
+                },
+                "privacy": {"holdout_accessed": False, "dev_labels_accessed": False},
+            }
+            with patch.object(DEPLOY, "MODEL_ROOT", root):
+                command = DEPLOY.build_vllm_command("model-a", receipt)
+            joined = " ".join(command)
+            self.assertIn("--max-model-len 131072", joined)
+            self.assertIn("--tokenizer-revision " + CONTRACT.BASE_REVISION, joined)
+            self.assertIn("--reasoning-parser nano_v3", joined)
+            self.assertIn("--reasoning-parser-plugin " + CONTRACT.REASONING_PARSER_PLUGIN, joined)
+            self.assertIn("--tool-call-parser qwen3_coder", joined)
+            self.assertNotIn("truncate", joined)
+
+    def test_modal_deployment_is_proxy_authenticated_and_fused(self):
+        source = (SCRIPTS / "modal-vllm-nemotron-long-context.py").read_text()
+        self.assertIn("requires_proxy_auth=True", source)
+        self.assertIn("max_containers=1", source)
+        self.assertIn("SCALEDOWN_WINDOW_SECONDS = 300", source)
+        self.assertIn('"PYTHONPATH": "/opt/understudy"', source)
+        self.assertNotIn("--api-key", source)
+        self.assertIn("REASONING_PARSER_PLUGIN_SHA256", source)
+
+    def test_proxy_auth_contract_requires_both_headers(self):
+        with self.assertRaises(ValueError):
+            CONTRACT.require_proxy_auth_environment({"MODAL_PROXY_KEY": "key"})
+        self.assertEqual(
+            CONTRACT.require_proxy_auth_environment({"MODAL_PROXY_KEY": "key", "MODAL_PROXY_SECRET": "secret"}),
+            ("key", "secret"),
+        )
+
+    def test_full_messages_and_tool_ids_are_preserved_in_parity(self):
+        messages = [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": [{"type": "text", "text": "run"}]},
+            {"role": "assistant", "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "lookup", "arguments": "{\"x\":1}"}}]},
+            {"role": "tool", "tool_call_id": "call-1", "content": "result"},
+        ]
+        row = {
+            "case_id": "case-1", "messages": messages, "input_tokens": 130000,
+            "truncated": False, "finish_reason": "tool_calls",
+            "assistant_message": {"tool_calls": [{"function": {"name": "lookup", "arguments": "{\"x\":1}"}}]},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            left, right = root / "tinker.jsonl", root / "vllm.jsonl"
+            line = json.dumps(row) + "\n"
+            left.write_text(line); right.write_text(line)
+            receipt = PARITY.score(left, right, "a" * 64)
+        self.assertTrue(receipt["passed"])
+        self.assertTrue(receipt["messages_preserved"])
+        self.assertFalse(receipt["truncation_observed"])
+
+    def test_parity_rejects_truncation_or_changed_messages(self):
+        base = {
+            "case_id": "case-1", "messages": [{"role": "user", "content": "x"}],
+            "input_tokens": 12, "truncated": False, "finish_reason": "stop", "assistant_message": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory); left = root / "a"; right = root / "b"
+            left.write_text(json.dumps(base) + "\n")
+            changed = dict(base); changed["messages"] = [{"role": "user", "content": "y"}]
+            right.write_text(json.dumps(changed) + "\n")
+            with self.assertRaisesRegex(ValueError, "messages changed"):
+                PARITY.score(left, right, "b" * 64)
+
+
+if __name__ == "__main__":
+    unittest.main()
