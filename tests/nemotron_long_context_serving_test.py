@@ -178,6 +178,7 @@ class NemotronLongContextServingTest(unittest.TestCase):
     def test_modal_deployment_is_proxy_authenticated_and_fused(self):
         source = (SCRIPTS / "modal-vllm-nemotron-long-context.py").read_text()
         self.assertIn("requires_proxy_auth=True", source)
+        self.assertIn('gpu=["H200", "B200"]', source)
         self.assertIn("ARTIFACT_SECRET_NAME", source)
         self.assertIn("max_containers=1", source)
         self.assertIn("SCALEDOWN_WINDOW_SECONDS = 300", source)

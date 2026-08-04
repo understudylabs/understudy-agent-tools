@@ -103,7 +103,7 @@ def build_vllm_command(artifact_id: str, receipt: dict) -> list[str]:
 
 @app.function(
     image=image,
-    gpu="H200",
+    gpu=["H200", "B200"],
     volumes={str(MODEL_ROOT): models},
     scaledown_window=SCALEDOWN_WINDOW_SECONDS,
     timeout=FUNCTION_TIMEOUT_SECONDS,
