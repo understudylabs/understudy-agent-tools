@@ -40,7 +40,7 @@ PARITY_SAMPLING = {
     "top_p": None,
     "max_tokens": 4096,
     "tool_choice": "auto",
-    "chat_template_kwargs": {"enable_thinking": True},
+    "chat_template_kwargs": {"enable_thinking": False},
 }
 
 
@@ -178,6 +178,8 @@ class NemotronLongContextServingTest(unittest.TestCase):
                     "max_model_len": 131072, "truncate_messages": False,
                     "reasoning_parser": "nano_v3", "tool_call_parser": "qwen3_coder",
                     "reasoning_parser_plugin_sha256": CONTRACT.REASONING_PARSER_PLUGIN_SHA256,
+                    "renderer": CONTRACT.RENDERER,
+                    "chat_template_kwargs": CONTRACT.CHAT_TEMPLATE_KWARGS,
                 },
                 "privacy": {"holdout_accessed": False, "dev_labels_accessed": False},
             }
@@ -224,6 +226,8 @@ class NemotronLongContextServingTest(unittest.TestCase):
                     "max_model_len": 131072, "truncate_messages": False,
                     "reasoning_parser": "nano_v3", "tool_call_parser": "qwen3_coder",
                     "reasoning_parser_plugin_sha256": CONTRACT.REASONING_PARSER_PLUGIN_SHA256,
+                    "renderer": CONTRACT.RENDERER,
+                    "chat_template_kwargs": CONTRACT.CHAT_TEMPLATE_KWARGS,
                 },
                 "privacy": {"holdout_accessed": False, "dev_labels_accessed": False},
             }

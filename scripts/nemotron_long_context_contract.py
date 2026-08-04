@@ -22,6 +22,8 @@ BASE_REVISION = "2d59de1cbd51c0adf384eb906b766d1aee0e0517"
 MAX_MODEL_LEN = 131_072
 REASONING_PARSER = "nano_v3"
 TOOL_CALL_PARSER = "qwen3_coder"
+RENDERER = "nemotron3_disable_thinking"
+CHAT_TEMPLATE_KWARGS = {"enable_thinking": False}
 REASONING_PARSER_PLUGIN = "/opt/understudy/nano_v3_reasoning_parser.py"
 REASONING_PARSER_PLUGIN_SHA256 = "aafb12208054504f619cbdd01837e1532a482ad937ed987bfe9a13fb812ae2b7"
 REASONING_PARSER_PLUGIN_URL = (
@@ -186,6 +188,10 @@ def validate_export_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("export receipt parser contract mismatch")
     if serving.get("reasoning_parser_plugin_sha256") != REASONING_PARSER_PLUGIN_SHA256:
         raise ValueError("export receipt reasoning parser plugin mismatch")
+    if serving.get("renderer") != RENDERER:
+        raise ValueError("export receipt renderer contract mismatch")
+    if serving.get("chat_template_kwargs") != CHAT_TEMPLATE_KWARGS:
+        raise ValueError("export receipt chat template contract mismatch")
     if receipt["privacy"] != {"holdout_accessed": False, "dev_labels_accessed": False}:
         raise ValueError("export receipt privacy boundary mismatch")
     kind = receipt["selection"].get("artifact_kind")
