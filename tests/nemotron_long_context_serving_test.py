@@ -38,12 +38,15 @@ fake_app.function.side_effect = identity_decorator
 fake_modal.App = MagicMock(return_value=fake_app)
 fake_modal.Volume = MagicMock()
 fake_modal.Volume.from_name.return_value = MagicMock()
+fake_modal.Secret = MagicMock()
+fake_modal.Secret.from_name.return_value = MagicMock()
 fake_modal.Image = MagicMock()
 fake_modal.Image.from_registry.return_value = MagicMock()
 fake_modal.web_server = identity_decorator
 previous_modal = sys.modules.get("modal")
 sys.modules["modal"] = fake_modal
 DEPLOY = load("nemotron_long_context_deploy", SCRIPTS / "modal-vllm-nemotron-long-context.py")
+MERGE = load("nemotron_long_context_merge", SCRIPTS / "modal-nemotron-merge-export.py")
 if previous_modal is None:
     del sys.modules["modal"]
 else:
@@ -77,6 +80,16 @@ def adapter(root: pathlib.Path, tensors: dict[str, list[int]], targets: list[str
 
 
 class NemotronLongContextServingTest(unittest.TestCase):
+    def test_modal_merge_is_cpu_only_hash_bound_and_private(self):
+        source = (SCRIPTS / "modal-nemotron-merge-export.py").read_text()
+        self.assertIn("cpu=8", source)
+        self.assertIn("memory=65536", source)
+        self.assertNotIn('gpu=', source)
+        self.assertIn("expected_adapter_sha256", source)
+        self.assertIn("expected_config_sha256", source)
+        self.assertIn('"holdout_accessed": False', source)
+        self.assertIn('merge_strategy="shard"', source)
+
     def test_compatible_adapter_can_use_multi_lora(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory) / "adapter"
@@ -165,9 +178,11 @@ class NemotronLongContextServingTest(unittest.TestCase):
     def test_modal_deployment_is_proxy_authenticated_and_fused(self):
         source = (SCRIPTS / "modal-vllm-nemotron-long-context.py").read_text()
         self.assertIn("requires_proxy_auth=True", source)
+        self.assertIn("ARTIFACT_SECRET_NAME", source)
         self.assertIn("max_containers=1", source)
         self.assertIn("SCALEDOWN_WINDOW_SECONDS = 300", source)
         self.assertIn('"PYTHONPATH": "/opt/understudy"', source)
+        self.assertIn("copy=True", source)
         self.assertNotIn("--api-key", source)
         self.assertIn("REASONING_PARSER_PLUGIN_SHA256", source)
 

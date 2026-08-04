@@ -32,6 +32,7 @@ APP_NAME = "understudy-nemotron-long-context"
 VLLM_IMAGE = "vllm/vllm-openai:v0.26.0"
 PORT = 8000
 MODEL_VOLUME_NAME = "understudy-nemotron-long-context-models"
+ARTIFACT_SECRET_NAME = "understudy-nemotron-long-context-serving"
 MODEL_ROOT = Path("/models")
 SCALEDOWN_WINDOW_SECONDS = 300
 FUNCTION_TIMEOUT_SECONDS = 2 * 60 * 60
@@ -45,6 +46,7 @@ image = (
     .add_local_file(
         "scripts/nemotron_long_context_contract.py",
         "/opt/understudy/nemotron_long_context_contract.py",
+        copy=True,
     )
     .run_commands(
         "python -c \"import hashlib,urllib.request; "
@@ -106,6 +108,7 @@ def build_vllm_command(artifact_id: str, receipt: dict) -> list[str]:
     scaledown_window=SCALEDOWN_WINDOW_SECONDS,
     timeout=FUNCTION_TIMEOUT_SECONDS,
     max_containers=1,
+    secrets=[modal.Secret.from_name(ARTIFACT_SECRET_NAME)],
 )
 @modal.web_server(PORT, startup_timeout=45 * 60, requires_proxy_auth=True)
 def serve() -> None:
