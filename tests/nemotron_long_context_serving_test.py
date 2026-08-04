@@ -182,6 +182,53 @@ class NemotronLongContextServingTest(unittest.TestCase):
         self.assertTrue(receipt["passed"])
         self.assertEqual(receipt["inference_posts"], 1)
 
+    def test_canary_rejects_source_context_overflow_before_network(self):
+        opener = MagicMock()
+        row = {
+            "case_id": "continuation", "model": "model",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS,
+            "sampling": {**PARITY_SAMPLING, "max_tokens": 256},
+            "expected_assistant_message": {"tool_calls": []},
+            "source_prompt_tokens": 63_500,
+            "source_context_limit": 65_536,
+            "source_context_safety_margin": 2_048,
+        }
+        with self.assertRaisesRegex(ValueError, "exceeds source sampler context budget before network"):
+            CANARY.run([row], "https://serve/v1/chat/completions", "https://serve/health", {}, "f" * 64, opener=opener)
+        opener.open.assert_not_called()
+
+    def test_canary_accepts_source_context_budget_at_boundary(self):
+        class Response:
+            status = 200
+            def __init__(self, body=b"{}"):
+                self.body = body
+            def read(self):
+                return self.body
+
+        expected = {"tool_calls": []}
+        body = json.dumps({
+            "choices": [{"message": expected, "finish_reason": "stop"}],
+            "usage": {"completion_tokens": 1},
+        }).encode()
+        opener = MagicMock()
+        opener.open.side_effect = [Response(), Response(body)]
+        row = {
+            "case_id": "continuation", "model": "model",
+            "messages": [{"role": "user", "content": "x"}],
+            "tools": PARITY_TOOLS,
+            "sampling": {**PARITY_SAMPLING, "max_tokens": 256},
+            "expected_assistant_message": expected,
+            "source_prompt_tokens": 63_232,
+            "source_context_limit": 65_536,
+            "source_context_safety_margin": 2_048,
+        }
+        receipt = CANARY.run(
+            [row], "https://serve/v1/chat/completions", "https://serve/health", {},
+            "f" * 64, readiness_attempts=1, opener=opener,
+        )
+        self.assertTrue(receipt["passed"])
+
     def test_canary_exposes_redirect_and_suppresses_dependent_continuation(self):
         class Response:
             def __init__(self, status, body=b"{}"):

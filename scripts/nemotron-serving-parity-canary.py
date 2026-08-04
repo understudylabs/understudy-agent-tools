@@ -158,6 +158,25 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
                     message,
                     label=f"case {row['case_id']} message {index}",
                 )
+        context_fields = ("source_prompt_tokens", "source_context_limit")
+        supplied_context_fields = [field for field in context_fields if field in row]
+        if supplied_context_fields and len(supplied_context_fields) != len(context_fields):
+            raise ValueError(
+                f"case {row['case_id']} must provide source_prompt_tokens and source_context_limit together"
+            )
+        if supplied_context_fields:
+            prompt_tokens = row["source_prompt_tokens"]
+            context_limit = row["source_context_limit"]
+            max_tokens = row["sampling"].get("max_tokens")
+            margin = row.get("source_context_safety_margin", 0)
+            if not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (
+                prompt_tokens, context_limit, max_tokens, margin,
+            )):
+                raise ValueError(f"case {row['case_id']} source context budget fields must be nonnegative integers")
+            if prompt_tokens + max_tokens + margin > context_limit:
+                raise ValueError(
+                    f"case {row['case_id']} exceeds source sampler context budget before network"
+                )
         parent = row.get("continuation_of")
         if parent is not None and parent not in case_ids:
             raise ValueError(f"case {row['case_id']} references unknown continuation parent")
