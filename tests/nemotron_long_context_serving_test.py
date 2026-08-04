@@ -101,7 +101,8 @@ class NemotronLongContextServingTest(unittest.TestCase):
     def test_canary_requires_readiness_before_any_inference_post(self):
         opener = MagicMock()
         opener.open.side_effect = urllib.error.HTTPError("https://serve/health", 503, "cold", {}, None)
-        receipt = CANARY.run([], "https://serve/v1/chat/completions", "https://serve/health", {}, opener=opener)
+        rows = [{"case_id": "first"}]
+        receipt = CANARY.run(rows, "https://serve/v1/chat/completions", "https://serve/health", {}, "a" * 64, opener=opener)
         self.assertFalse(receipt["ready"])
         self.assertEqual(receipt["inference_posts"], 0)
         self.assertEqual(opener.open.call_count, 1)
@@ -127,12 +128,14 @@ class NemotronLongContextServingTest(unittest.TestCase):
             "expected_assistant_message": {"tool_calls": []},
         }
         rows = [{**base, "case_id": "first"}, {**base, "case_id": "continuation", "continuation_of": "first"}]
-        receipt = CANARY.run(rows, "https://serve/v1/chat/completions", "https://serve/health", {}, opener=opener)
+        receipt = CANARY.run(rows, "https://serve/v1/chat/completions", "https://serve/health", {}, "b" * 64, opener=opener)
         self.assertEqual(receipt["inference_posts"], 1)
         self.assertEqual(receipt["rows"][0]["outcome"], "transport_failure")
         self.assertIsNone(receipt["rows"][0]["action_parity"])
         self.assertEqual(receipt["rows"][1]["outcome"], "suppressed_parent_transport_failure")
         self.assertEqual(opener.open.call_count, 2)
+        self.assertEqual(receipt["artifact_sha256"], "b" * 64)
+        self.assertRegex(receipt["bundle_sha256"], r"^[a-f0-9]{64}$")
 
     def test_modal_merge_is_cpu_only_hash_bound_and_private(self):
         source = (SCRIPTS / "modal-nemotron-merge-export.py").read_text()
