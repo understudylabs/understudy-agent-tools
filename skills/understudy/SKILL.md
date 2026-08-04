@@ -156,6 +156,11 @@ Identify the developer's current stage and load exactly one:
   capturing my LLM calls") → [`../instrument/SKILL.md`](../instrument/SKILL.md)
   (env-var redirect through the gateway, verified test call, then hands off
   to `ingest-traces`).
+- **Hosted trace ID supplied** — the developer provides a `trace_id` or says
+  "get this trace", "download the full trace", or "show every request in this
+  trace" → [`../export-trace/SKILL.md`](../export-trace/SKILL.md). It resolves
+  request membership through the customer trace lookup API, exports captures
+  privately, and hands the local files to `ingest-traces` or the trace viewer.
 - **Traces already exist** — a bucket of captures, a provider log export, or
   gateway capture files are in hand and the developer wants them turned into
   local eval sets, profiled for where the spend goes, or triaged in bulk by

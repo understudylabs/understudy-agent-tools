@@ -112,6 +112,7 @@ async function withHostedFixture(fn) {
     captures: [
       {
         request_id: "req_123",
+        trace_id: "trace_alpha",
         schema_version: "understudy.capture.v1",
         ts: "2026-06-07T00:00:00Z",
         project_id: "proj_1",
@@ -130,6 +131,7 @@ async function withHostedFixture(fn) {
       },
       {
         request_id: "req_456",
+        trace_id: "trace_alpha",
         schema_version: "understudy.capture.v1",
         ts: "2026-06-07T00:01:00Z",
         project_id: "proj_1",
@@ -148,6 +150,7 @@ async function withHostedFixture(fn) {
       },
       {
         request_id: "req_retry",
+        trace_id: "trace_beta",
         schema_version: "understudy.capture.v1",
         ts: "2026-06-07T00:02:00Z",
         project_id: "proj_1",
@@ -166,6 +169,7 @@ async function withHostedFixture(fn) {
       },
     ],
     transientCaptureFailures: new Map([["req_retry", 1]]),
+    unavailableCaptureIds: new Set(),
     captureAuthorizationFailure: false,
   };
 
@@ -185,7 +189,6 @@ async function withHostedFixture(fn) {
       res.writeHead(status, { "content-type": "application/x-ndjson", ...headers });
       res.end(value);
     };
-
     if (req.method === "GET" && url.pathname === "/healthz") return send(200, { ok: true });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/api_keys") return send(200, { keys: [{ id: "key_1", name: "default", obfuscated_value: "sk_...test", last_used_at: null, permissions: [], created_at: "2026-06-01T00:00:00Z" }] });
@@ -212,6 +215,37 @@ async function withHostedFixture(fn) {
       workload.route_traffic_pct = body.model_id === null ? null : body.route_traffic_pct;
       return send(200, { workload_id: workload.id, project_id: "proj_1", model_id: body.model_id, route_model_id: body.model_id, route_traffic_pct: workload.route_traffic_pct });
     }
+    const traceRequestIds = url.pathname.match(
+      /^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/traces\/([^/]+)\/request-ids$/,
+    );
+    if (req.method === "GET" && traceRequestIds) {
+      const traceId = decodeURIComponent(traceRequestIds[1]);
+      const workloadId = url.searchParams.get("workload_id");
+      if (workloadId && workloadId !== "usp_classify") {
+        return send(404, {
+          type: "invalid_request_error",
+          message: "Synthetic workload trace not found.",
+          request_id: "req_fixture",
+        });
+      }
+      const requestIds = state.captures
+        .filter((capture) =>
+          capture.trace_id === traceId &&
+          (!workloadId || capture.workload_id === workloadId)
+        )
+        .map((capture) => capture.request_id);
+      return requestIds.length > 0
+        ? send(200, {
+          trace_id: traceId,
+          request_ids: requestIds,
+          observability_id: "obs_fixture",
+        })
+        : send(404, {
+          type: "invalid_request_error",
+          message: "Synthetic trace not found.",
+          request_id: "req_fixture",
+        });
+    }
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
     const projectCapture = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/captures\/([^/]+)$/);
@@ -226,6 +260,13 @@ async function withHostedFixture(fn) {
         });
       }
       const requestId = decodeURIComponent(captureMatch[1]);
+      if (state.unavailableCaptureIds.has(requestId)) {
+        return send(404, {
+          type: "invalid_request_error",
+          message: "Synthetic capture body is unavailable.",
+          request_id: "req_fixture",
+        });
+      }
       const transientFailures = state.transientCaptureFailures.get(requestId) ?? 0;
       if (transientFailures > 0) {
         state.transientCaptureFailures.set(requestId, transientFailures - 1);
@@ -3107,6 +3148,247 @@ class ScoreWithFeedback:
       assert.equal(
         readFileSync(join(outputDirectory, "failed-request-ids.txt"), "utf8"),
         "",
+      );
+    });
+  });
+
+  it("resolves trace request ids and reuses the capture batch exporter", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const blockedDirectory = join(repo, "blocked-trace-export");
+      const blocked = await runWithEnvAsync([
+        "traces", "export", "trace_alpha",
+        "--out", blockedDirectory,
+        "--include-payload",
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /may contain prompts\/completions/);
+      assert.equal(existsSync(blockedDirectory), false);
+
+      const summaryDirectory = join(repo, "trace-summaries");
+      const requestCountBeforeSummary = requests.length;
+      const summaryExport = await runWithEnvAsync([
+        "--json", "traces", "export", "trace_alpha",
+        "--project", "rehearsal",
+        "--workload", "classify",
+        "--out", summaryDirectory,
+      ], env, repo);
+      assert.equal(summaryExport.status, 0, summaryExport.stderr);
+      assert.doesNotMatch(
+        `${summaryExport.stdout}${summaryExport.stderr}`,
+        /SECRET_(?:BATCH_)?(?:PROMPT|COMPLETION)/,
+      );
+      const summaryResult = JSON.parse(summaryExport.stdout);
+      assert.deepEqual(
+        {
+          complete: summaryResult.complete,
+          partial: summaryResult.partial,
+          failed: summaryResult.failed,
+          request_count: summaryResult.request_count,
+          captures_written: summaryResult.captures_written,
+        },
+        {
+          complete: 1,
+          partial: 0,
+          failed: 0,
+          request_count: 2,
+          captures_written: 2,
+        },
+      );
+      const summaryManifest = JSON.parse(
+        readFileSync(join(summaryDirectory, "trace.json"), "utf8"),
+      );
+      assert.equal(summaryManifest.schema_version, "understudy.trace_export.v1");
+      assert.deepEqual(summaryManifest.request_ids, ["req_123", "req_456"]);
+      assert.equal(summaryManifest.capture_export.complete, true);
+      assert.equal(summaryManifest.capture_export.output_suffix, ".summary.json");
+      assert.doesNotMatch(
+        readFileSync(join(summaryDirectory, "req_123.summary.json"), "utf8"),
+        /SECRET_(?:BATCH_)?(?:PROMPT|COMPLETION)/,
+      );
+      assert.equal(
+        JSON.parse(
+          readFileSync(join(summaryDirectory, "req_456.summary.json"), "utf8"),
+        ).trace_id,
+        "trace_alpha",
+      );
+      const summaryRequests = requests.slice(requestCountBeforeSummary);
+      const lookup = summaryRequests.find((entry) =>
+        entry.path ===
+          "/admin/v1/orgs/org_1/projects/proj_1/traces/trace_alpha/request-ids"
+      );
+      assert.ok(lookup, "trace export should call the trace request-id endpoint");
+      assert.equal(lookup.search, "?workload_id=usp_classify");
+      assert.equal(
+        summaryRequests.some((entry) =>
+          entry.path === "/admin/v1/orgs/org_1/projects/proj_1/captures"
+        ),
+        false,
+        "trace export must not scan the capture catalog",
+      );
+
+      state.unavailableCaptureIds.add("req_456");
+      const traceIdsPath = join(repo, "trace-ids.txt");
+      writeFileSync(
+        traceIdsPath,
+        "trace_alpha\ntrace_beta\ntrace_alpha\ntrace_missing\n",
+      );
+      const payloadDirectory = join(repo, "trace-payloads");
+      const batchExport = await runWithEnvAsync([
+        "--json", "traces", "export",
+        "--trace-ids-file", traceIdsPath,
+        "--project", "rehearsal",
+        "--out", payloadDirectory,
+        "--include-payload",
+        "--yes",
+        "--concurrency", "2",
+        "--retries", "1",
+      ], env, repo);
+      assert.equal(batchExport.status, 1, batchExport.stderr);
+      assert.doesNotMatch(
+        `${batchExport.stdout}${batchExport.stderr}`,
+        /SECRET_(?:BATCH_|RETRY_)?(?:PROMPT|COMPLETION)/,
+      );
+      const batchResult = JSON.parse(batchExport.stdout);
+      assert.deepEqual(
+        {
+          input_count: batchResult.input_count,
+          unique_count: batchResult.unique_count,
+          complete: batchResult.complete,
+          partial: batchResult.partial,
+          failed: batchResult.failed,
+          request_count: batchResult.request_count,
+          captures_written: batchResult.captures_written,
+          captures_failed: batchResult.captures_failed,
+        },
+        {
+          input_count: 4,
+          unique_count: 3,
+          complete: 1,
+          partial: 1,
+          failed: 1,
+          request_count: 3,
+          captures_written: 2,
+          captures_failed: 1,
+        },
+      );
+      const alphaManifest = JSON.parse(
+        readFileSync(
+          join(payloadDirectory, "trace-trace_alpha", "trace.json"),
+          "utf8",
+        ),
+      );
+      assert.deepEqual(alphaManifest.request_ids, ["req_123", "req_456"]);
+      assert.equal(alphaManifest.capture_export.complete, false);
+      assert.match(
+        readFileSync(
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "req_123.payload.json",
+          ),
+          "utf8",
+        ),
+        /SECRET_PROMPT/,
+      );
+      assert.equal(
+        existsSync(
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "req_456.payload.json",
+          ),
+        ),
+        false,
+      );
+      assert.match(
+        readFileSync(
+          join(
+            payloadDirectory,
+            "trace-trace_beta",
+            "req_retry.payload.json",
+          ),
+          "utf8",
+        ),
+        /SECRET_RETRY_PROMPT/,
+      );
+      assert.equal(
+        readFileSync(join(payloadDirectory, "failed-trace-ids.txt"), "utf8"),
+        "trace_alpha\ntrace_missing\n",
+      );
+      assert.equal(
+        readFileSync(
+          join(
+            payloadDirectory,
+            "trace-trace_alpha",
+            "failed-request-ids.txt",
+          ),
+          "utf8",
+        ),
+        "req_456\n",
+      );
+      if (process.platform !== "win32") {
+        assert.equal(
+          statSync(
+            join(
+              payloadDirectory,
+              "trace-trace_alpha",
+              "req_123.payload.json",
+            ),
+          ).mode & 0o777,
+          0o600,
+        );
+      }
+
+      const unbounded = await runWithEnvAsync([
+        "traces", "export",
+        "--all",
+        "--project", "rehearsal",
+        "--out", join(repo, "unbounded"),
+      ], env, repo);
+      assert.notEqual(unbounded.status, 0);
+      assert.match(unbounded.stderr, /unknown option '--all'/);
+      assert.equal(
+        requests.some((entry) =>
+          entry.method === "GET" &&
+          entry.path === "/admin/v1/orgs/org_1/projects/proj_1/captures" &&
+          entry.search.includes("cursor=")
+        ),
+        false,
+        "trace exports must never paginate the capture catalog",
+      );
+
+      const retryCapture = state.captures.find(
+        (capture) => capture.request_id === "req_retry",
+      );
+      assert.ok(retryCapture);
+      retryCapture.trace_id = "failed-trace-ids.txt";
+      const reservedTraceIdsPath = join(repo, "reserved-trace-ids.txt");
+      writeFileSync(reservedTraceIdsPath, "failed-trace-ids.txt\n");
+      const reservedDirectory = join(repo, "reserved-trace-export");
+      const reservedExport = await runWithEnvAsync([
+        "--json", "traces", "export",
+        "--trace-ids-file", reservedTraceIdsPath,
+        "--project", "rehearsal",
+        "--out", reservedDirectory,
+      ], env, repo);
+      assert.equal(reservedExport.status, 0, reservedExport.stderr);
+      assert.equal(
+        readFileSync(join(reservedDirectory, "failed-trace-ids.txt"), "utf8"),
+        "",
+      );
+      assert.equal(
+        JSON.parse(
+          readFileSync(
+            join(
+              reservedDirectory,
+              "trace-failed-trace-ids.txt",
+              "trace.json",
+            ),
+            "utf8",
+          ),
+        ).trace_id,
+        "failed-trace-ids.txt",
       );
     });
   });

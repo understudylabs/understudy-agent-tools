@@ -18,6 +18,11 @@ local evidence artifacts without leaking anything. This worker does that
 transformation: local source → normalized captures → source-history DAG →
 machine-proposed benchmark → human judgment, all on the local machine.
 
+When the developer has only a hosted `trace_id`, acquire its private local
+files first with [`../export-trace/SKILL.md`](../export-trace/SKILL.md). This
+skill begins after capture files exist locally and does not recreate the hosted
+trace-to-request lookup.
+
 ## OSS filesystem boundary
 
 This public skill starts with files already present in `.understudy/captures/`

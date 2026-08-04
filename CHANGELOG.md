@@ -17,6 +17,17 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Trace-level hosted capture exports.** `understudy traces export <trace-id>`
+  calls the customer trace request-ID lookup and hands every returned ID to the
+  existing resumable request capture exporter. Explicit `--trace-ids-file`
+  batches are supported; the CLI never scans project capture history and has no
+  unbounded all-traces mode. Full payloads remain file-only behind
+  `--include-payload --yes`, with per-request and per-trace retry manifests.
+- **Hosted trace retrieval skill.** The new `export-trace` worker owns requests
+  such as "get this trace" when the developer supplies a `trace_id`, then hands
+  private local files to `ingest-traces` or the trace viewer. Its intent was
+  checked against `use-understudy-gateway` (auth/routing) and `ingest-traces`
+  (already-local processing) before adding a new top-level skill.
 - **Resumable customer capture batches.** `understudy captures export` now
   accepts `--request-ids-file` for one-request-id-per-line exports using the
   signed-in customer's existing capture access. Batch downloads use bounded

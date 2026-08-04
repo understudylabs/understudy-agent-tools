@@ -64,8 +64,38 @@ interface BatchExportResult {
   status: BatchExportStatus;
 }
 
+export interface CaptureBatchExportInput {
+  requestIds: string[];
+  inputCount?: number;
+  outputDirectory: string;
+  includePayload: boolean;
+  concurrency: number;
+  retries: number;
+  resume: boolean;
+  orgId: string;
+  projectId: string;
+  workloadId?: string;
+  onProgress?: (completed: number, total: number) => void;
+}
+
+export interface CaptureBatchExportSummary {
+  ok: boolean;
+  input_count: number;
+  unique_count: number;
+  written: number;
+  skipped: number;
+  failed: number;
+  failed_request_ids: string[];
+  output_directory: string;
+  failure_manifest: string;
+  output_suffix: ".payload.json" | ".summary.json";
+  include_payload: boolean;
+  warning: string | null;
+}
+
 export interface CaptureSummary {
   request_id: string | null;
+  trace_id: string | null;
   schema_version: string | null;
   ts: string | null;
   project_id: string | null;
@@ -232,38 +262,83 @@ async function runBatchExport(
     MAX_EXPORT_RETRIES,
     DEFAULT_EXPORT_RETRIES,
   );
-  const outputDirectory = resolveBatchOutputDirectory(opts.out);
-  const failureManifest = join(outputDirectory, "failed-request-ids.txt");
-  const resume = opts.resume !== false;
   const { project, workload } = await resolveCaptureContext(opts);
+  const payload = await exportCapturesByRequestIds({
+    requestIds,
+    inputCount,
+    outputDirectory: opts.out,
+    includePayload: Boolean(opts.includePayload),
+    concurrency,
+    retries,
+    resume: opts.resume !== false,
+    orgId: project.auth.orgId,
+    projectId: project.projectId,
+    workloadId: workload?.id,
+    onProgress: isJsonMode(cmd)
+      ? undefined
+      : (completed, total) => {
+        if (completed % 100 === 0) {
+          process.stderr.write(`Exported ${completed}/${total} captures...\n`);
+        }
+      },
+  });
+
+  if (isJsonMode(cmd)) {
+    const { failed_request_ids: _, ...publicPayload } = payload;
+    process.stdout.write(`${JSON.stringify(publicPayload)}\n`);
+  } else {
+    process.stdout.write(
+      `${payload.failed === 0 ? kleur.green("✓") : kleur.yellow("!")} ` +
+      `Capture batch complete: ${payload.written} written, ${payload.skipped} skipped, ` +
+      `${payload.failed} failed -> ${payload.output_directory}\n`,
+    );
+    process.stdout.write(`Failure manifest: ${payload.failure_manifest}\n`);
+    if (opts.includePayload) {
+      process.stdout.write(
+        `${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`,
+      );
+    }
+  }
+
+  if (payload.failed > 0) {
+    process.exitCode = 1;
+  }
+}
+
+export async function exportCapturesByRequestIds(
+  input: CaptureBatchExportInput,
+): Promise<CaptureBatchExportSummary> {
+  const requestIds = normalizeRequestIds(input.requestIds);
+  const outputDirectory = resolveBatchOutputDirectory(input.outputDirectory);
+  const failureManifest = join(outputDirectory, "failed-request-ids.txt");
   const results: BatchExportResult[] = new Array(requestIds.length);
   let completed = 0;
   let fatalError: unknown;
 
   await runWithConcurrency(
     requestIds,
-    concurrency,
+    input.concurrency,
     async (requestId, index) => {
       const outputPath = join(
         outputDirectory,
-        batchCaptureFilename(requestId, Boolean(opts.includePayload)),
+        batchCaptureFilename(requestId, input.includePayload),
       );
-      if (resume && isCompletedExport(outputPath)) {
+      if (input.resume && isCompletedExport(outputPath)) {
         results[index] = { requestId, status: "skipped" };
       } else {
         try {
-          if (!resume) {
+          if (!input.resume) {
             quarantineExistingExport(outputPath);
           }
           const capture = await fetchCaptureWithRetry(
-            project.auth.orgId,
-            project.projectId,
+            input.orgId,
+            input.projectId,
             requestId,
-            workload?.id,
-            retries,
+            input.workloadId,
+            input.retries,
           );
           if (fatalError) return;
-          const value = opts.includePayload
+          const value = input.includePayload
             ? capture
             : summarizeCapture(capture);
           writePrivateText(outputPath, `${JSON.stringify(value, null, 2)}\n`);
@@ -279,9 +354,7 @@ async function runBatchExport(
       }
 
       completed += 1;
-      if (!isJsonMode(cmd) && completed % 100 === 0) {
-        process.stderr.write(`Exported ${completed}/${requestIds.length} captures...\n`);
-      }
+      input.onProgress?.(completed, requestIds.length);
     },
     () => fatalError !== undefined,
   );
@@ -298,41 +371,22 @@ async function runBatchExport(
     failedIds.length > 0 ? `${failedIds.join("\n")}\n` : "",
   );
 
-  const payload = {
+  return {
     ok: failedIds.length === 0,
-    input_count: inputCount,
+    input_count: input.inputCount ?? input.requestIds.length,
     unique_count: requestIds.length,
     written,
     skipped,
     failed: failedIds.length,
+    failed_request_ids: failedIds,
     output_directory: outputDirectory,
     failure_manifest: failureManifest,
-    output_suffix: opts.includePayload ? ".payload.json" : ".summary.json",
-    include_payload: Boolean(opts.includePayload),
-    warning: opts.includePayload
+    output_suffix: input.includePayload ? ".payload.json" : ".summary.json",
+    include_payload: input.includePayload,
+    warning: input.includePayload
       ? "files may contain prompts, completions, or tool payloads"
       : null,
   };
-
-  if (isJsonMode(cmd)) {
-    process.stdout.write(`${JSON.stringify(payload)}\n`);
-  } else {
-    process.stdout.write(
-      `${failedIds.length === 0 ? kleur.green("✓") : kleur.yellow("!")} ` +
-      `Capture batch complete: ${written} written, ${skipped} skipped, ` +
-      `${failedIds.length} failed -> ${outputDirectory}\n`,
-    );
-    process.stdout.write(`Failure manifest: ${failureManifest}\n`);
-    if (opts.includePayload) {
-      process.stdout.write(
-        `${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`,
-      );
-    }
-  }
-
-  if (failedIds.length > 0) {
-    process.exitCode = 1;
-  }
 }
 
 async function resolveCaptureContext(opts: CaptureOpts) {
@@ -373,6 +427,7 @@ export function summarizeCapture(input: unknown): CaptureSummary {
   const tags = isObject(capture.tags) ? capture.tags : {};
   return {
     request_id: stringField(capture, "request_id"),
+    trace_id: stringField(capture, "trace_id") ?? stringField(capture, "traceId"),
     schema_version: stringField(capture, "schema_version"),
     ts: stringField(capture, "ts") ?? stringField(capture, "created_at"),
     project_id: stringField(capture, "project_id"),
@@ -434,20 +489,33 @@ function readRequestIds(path: string): {
       `Request-id file contains more than ${MAX_BATCH_REQUEST_IDS} rows.`,
     );
   }
+  return { requestIds: normalizeRequestIds(rows), inputCount: rows.length };
+}
+
+function normalizeRequestIds(rows: string[]): string[] {
+  if (rows.length === 0) {
+    throw new Error("At least one request id is required.");
+  }
+  if (rows.length > MAX_BATCH_REQUEST_IDS) {
+    throw new Error(
+      `Request-id batch contains more than ${MAX_BATCH_REQUEST_IDS} rows.`,
+    );
+  }
   const invalid = rows.find(
     (requestId) =>
-      requestId.length > 512 || /[\u0000-\u001f\u007f]/.test(requestId),
+      requestId.length === 0 ||
+      requestId.length > 512 ||
+      /[\u0000-\u001f\u007f]/.test(requestId),
   );
   if (invalid) {
     throw new Error(
-      "Request ids must be at most 512 characters and contain no control characters.",
+      "Request ids must be non-empty, at most 512 characters, and contain no control characters.",
     );
   }
-  const requestIds = [...new Set(rows)];
-  return { requestIds, inputCount: rows.length };
+  return [...new Set(rows)];
 }
 
-function resolveBatchOutputDirectory(out: string): string {
+export function resolveBatchOutputDirectory(out: string): string {
   if (existsSync(out) && !statSync(out).isDirectory()) {
     throw new Error(`Batch --out must be a directory: ${out}`);
   }
@@ -551,7 +619,7 @@ function isRetryableCaptureError(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-function isBatchFatalError(error: unknown): boolean {
+export function isBatchFatalError(error: unknown): boolean {
   return error instanceof UnderstudyApiError &&
     (error.status === 401 || error.status === 403);
 }
