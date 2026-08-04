@@ -114,6 +114,22 @@ test("canonical request round trips through both native tool protocols", () => {
   assert.deepEqual(decodeOpenAIRequest(encodeOpenAIRequest(canonical, { model: "openai-model" })), canonical);
 });
 
+test("Anthropic mixed tool results and follow-up text convert without dropping either", () => {
+  const mixed = anthropicFixture();
+  mixed.messages[2].content.push({ type: "text", text: "Also continue with the next lookup." });
+  const decoded = decodeAnthropicRequest(mixed);
+  assert.deepEqual(decoded.messages.slice(2, 4), [
+    canonical.messages[2],
+    { role: "user", parts: [{ type: "text", text: "Also continue with the next lookup." }] },
+  ]);
+  const openai = encodeOpenAIRequest(decoded);
+  assert.deepEqual(openai.messages.slice(3, 6), [
+    { role: "tool", tool_call_id: "call-1", content: "found α" },
+    { role: "tool", tool_call_id: "call-2", content: "timeout", is_error: true },
+    { role: "user", content: "Also continue with the next lookup." },
+  ]);
+});
+
 test("structured system and message text-part boundaries survive both protocols", () => {
   const structured = {
     schema_version: "understudy.tool_trajectory.v1",
@@ -191,4 +207,3 @@ test("fingerprints are deterministic, key-order independent, and structure sensi
   changed.messages.at(-1).parts[0].text = "Different";
   assert.notEqual(first, canonicalTrajectoryFingerprint(changed));
 });
-

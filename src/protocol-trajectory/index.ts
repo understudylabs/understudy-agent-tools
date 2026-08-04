@@ -232,12 +232,18 @@ function openAiContent(message: Record<string, unknown>, context: string): Canon
 export function decodeAnthropicRequest(body: unknown): CanonicalTrajectory {
   const request = record(body, "Anthropic request");
   const system = request.system === undefined ? [] : anthropicContent(request.system, "system");
-  const messages = array(request.messages, "messages").map((value, index): CanonicalTurn => {
+  const messages = array(request.messages, "messages").flatMap((value, index): CanonicalTurn[] => {
     const message = record(value, `messages[${index}]`);
     const role = string(message.role, `messages[${index}].role`);
     if (role !== "user" && role !== "assistant") throw new ProtocolTrajectoryError("invalid_role", `Unsupported Anthropic role: ${role}`);
     const parts = anthropicContent(message.content, `messages[${index}].content`);
-    return { role: role === "assistant" ? "assistant" : parts.every((part) => part.type === "tool_result") ? "tool" : "user", parts };
+    if (role === "assistant") return [{ role: "assistant", parts }];
+    const results = parts.filter((part): part is CanonicalToolResultPart => part.type === "tool_result");
+    const text = parts.filter((part): part is CanonicalTextPart => part.type === "text");
+    return [
+      ...(results.length ? [{ role: "tool" as const, parts: results }] : []),
+      ...(text.length ? [{ role: "user" as const, parts: text }] : []),
+    ];
   });
   const tools = (request.tools === undefined ? [] : array(request.tools, "tools")).map((value, index): CanonicalToolDefinition => {
     const tool = record(value, `tools[${index}]`);
@@ -339,4 +345,3 @@ export function decodeOpenAIResponse(body: unknown): CanonicalAssistantResponse 
     return part;
   }), stop_reason: stopReason(choice.finish_reason) };
 }
-
