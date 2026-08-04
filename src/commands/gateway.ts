@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { createHash } from "node:crypto";
 import kleur from "kleur";
 
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
@@ -129,6 +130,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   const latencyMs = Date.now() - started;
   const text = await res.text();
   const requestId = res.headers.get("x-understudy-request-id");
+  const diagnostics = responseDiagnostics(res, text);
   const payload = {
     ok: res.ok,
     status: res.status,
@@ -141,6 +143,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
     workload: opts.workload ?? null,
     byok: Boolean(opts.byokEnv),
     response_kind: opts.stream ? "stream" : responseKind(text),
+    ...diagnostics,
   };
   if (!res.ok) process.exitCode = 1;
   if (isJsonMode(cmd)) {
@@ -156,6 +159,48 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   process.stdout.write(`request_id ${requestId ?? "(none)"}\n`);
   process.stdout.write(`latency_ms ${latencyMs}\n`);
   process.stdout.write(`${res.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
+}
+
+function responseDiagnostics(res: Response, text: string): Record<string, string | null> {
+  let errorType: string | null = null;
+  let errorCode: string | null = null;
+  if (!res.ok) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const error = parsed.error && typeof parsed.error === "object"
+        ? parsed.error as Record<string, unknown>
+        : parsed;
+      errorType = safeScalar(error.type);
+      errorCode = safeScalar(error.code);
+    } catch {
+      // The response hash still distinguishes non-JSON upstream failures.
+    }
+  }
+  return {
+    response_sha256: createHash("sha256").update(text).digest("hex"),
+    error_type: errorType,
+    error_code: errorCode,
+    retry_after: headerFirst(res.headers, ["retry-after"]),
+    rate_limit_limit: headerFirst(res.headers, ["x-ratelimit-limit-requests", "x-ratelimit-limit"]),
+    rate_limit_remaining: headerFirst(res.headers, ["x-ratelimit-remaining-requests", "x-ratelimit-remaining"]),
+    rate_limit_reset: headerFirst(res.headers, ["x-ratelimit-reset-requests", "x-ratelimit-reset"]),
+    upstream_request_id: headerFirst(res.headers, ["x-fireworks-request-id", "x-request-id"]),
+    deployment_id: headerFirst(res.headers, ["x-understudy-deployment-id", "x-fireworks-deployment-id"]),
+    deployment_state: headerFirst(res.headers, ["x-understudy-deployment-state", "x-fireworks-deployment-state"]),
+    cold_start: headerFirst(res.headers, ["x-understudy-cold-start", "x-fireworks-cold-start"]),
+  };
+}
+
+function safeScalar(value: unknown): string | null {
+  return typeof value === "string" || typeof value === "number" ? String(value).slice(0, 128) : null;
+}
+
+function headerFirst(headers: Headers, names: string[]): string | null {
+  for (const name of names) {
+    const value = headers.get(name);
+    if (value) return value.slice(0, 256);
+  }
+  return null;
 }
 
 function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Record<string, unknown> {
