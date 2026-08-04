@@ -16,6 +16,7 @@ from tinker_openai_compat import (
     normalize_finish_reason,
     openai_error_response,
     parse_openai_request_body,
+    validated_generation_args,
 )
 
 
@@ -43,6 +44,28 @@ def test_request_body_is_a_bounded_json_object():
     ):
         try:
             parse_openai_request_body(raw, max_bytes=limit)
+        except ValueError:
+            check(label, True)
+        else:
+            check(label, False)
+
+
+def test_generation_args_are_bounded():
+    check(
+        "default generation args accepted",
+        validated_generation_args({"messages": []}, configured_max_tokens=512) == (0.0, 512),
+    )
+    for label, body in (
+        ("missing messages rejected", {}),
+        ("zero max_tokens rejected", {"messages": [], "max_tokens": 0}),
+        ("negative max_tokens rejected", {"messages": [], "max_tokens": -1}),
+        ("huge max_tokens rejected", {"messages": [], "max_tokens": 513}),
+        ("boolean max_tokens rejected", {"messages": [], "max_tokens": True}),
+        ("invalid temperature rejected", {"messages": [], "temperature": 3}),
+        ("invalid tools rejected", {"messages": [], "tools": {}}),
+    ):
+        try:
+            validated_generation_args(body, configured_max_tokens=512)
         except ValueError:
             check(label, True)
         else:
@@ -117,6 +140,31 @@ def test_payload_requires_defined_finish_reason():
         "tool calls propagate without text flattening",
         payload_tool["choices"][0]["message"] == tool_message,
     )
+    check(
+        "tool response uses tool_calls finish reason",
+        payload_tool["choices"][0]["finish_reason"] == "tool_calls",
+    )
+    continuation = build_chat_completion(
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                tool_message["tool_calls"][0],
+                {
+                    "type": "function",
+                    "id": "call_2",
+                    "function": {"name": "finish-task", "arguments": '{"id":"A"}'},
+                },
+            ],
+        },
+        120,
+        30,
+        "stop",
+    )
+    check(
+        "multiple continuation calls preserve tool_calls finish reason",
+        continuation["choices"][0]["finish_reason"] == "tool_calls",
+    )
 
 
 def test_bearer_auth_is_fail_closed():
@@ -164,6 +212,7 @@ def test_error_mapping_preserves_context_overflow_semantics():
 def main():
     tests = [
         test_request_body_is_a_bounded_json_object,
+        test_generation_args_are_bounded,
         test_upstream_stop,
         test_upstream_length,
         test_absent_at_cap_infers_length,

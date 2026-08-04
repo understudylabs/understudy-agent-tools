@@ -486,6 +486,14 @@ class NemotronLongContextServingTest(unittest.TestCase):
             ("key", "secret"),
         )
 
+    def test_canary_proxy_credentials_never_use_cli_arguments(self):
+        source = (SCRIPTS / "nemotron-serving-parity-canary.py").read_text()
+        self.assertNotIn('add_argument("--proxy-key"', source)
+        self.assertNotIn('add_argument("--proxy-secret"', source)
+        self.assertIn("require_proxy_auth_environment(os.environ)", source)
+        self.assertNotIn('"Modal-Key": args.', source)
+        self.assertNotIn('"Modal-Secret": args.', source)
+
     def test_full_messages_and_tool_ids_are_preserved_in_parity(self):
         messages = [
             {"role": "system", "content": "system"},

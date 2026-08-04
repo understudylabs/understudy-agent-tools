@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+from nemotron_long_context_contract import require_proxy_auth_environment
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -291,19 +294,18 @@ def main():
     parser.add_argument("--cases", type=Path, required=True)
     parser.add_argument("--endpoint", required=True)
     parser.add_argument("--health-endpoint", required=True)
-    parser.add_argument("--proxy-key", required=True)
-    parser.add_argument("--proxy-secret", required=True)
     parser.add_argument("--artifact-sha256", required=True)
     parser.add_argument("--timeout-seconds", type=float, default=180)
     parser.add_argument("--readiness-attempts", type=int, default=3)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
+    proxy_key, proxy_secret = require_proxy_auth_environment(os.environ)
     rows = [json.loads(line) for line in args.cases.read_text().splitlines() if line.strip()]
     receipt = run(
         rows,
         args.endpoint,
         args.health_endpoint,
-        {"Modal-Key": args.proxy_key, "Modal-Secret": args.proxy_secret},
+        {"Modal-Key": proxy_key, "Modal-Secret": proxy_secret},
         args.artifact_sha256,
         args.timeout_seconds,
         args.readiness_attempts,

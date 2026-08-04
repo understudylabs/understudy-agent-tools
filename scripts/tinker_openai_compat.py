@@ -48,6 +48,29 @@ def parse_openai_request_body(raw: bytes, *, max_bytes: int) -> dict[str, Any]:
     return parsed
 
 
+def validated_generation_args(body: dict[str, Any], *, configured_max_tokens: int) -> tuple[float, int]:
+    """Validate caller-controlled sampling values against the serving cap."""
+    if not isinstance(body.get("messages"), list):
+        raise ValueError("messages must be a list")
+    if "tools" in body and not isinstance(body.get("tools"), list):
+        raise ValueError("tools must be a list")
+    max_tokens = body.get("max_tokens", configured_max_tokens)
+    if (
+        not isinstance(max_tokens, int)
+        or isinstance(max_tokens, bool)
+        or max_tokens <= 0
+        or max_tokens > configured_max_tokens
+    ):
+        raise ValueError("max_tokens must be a positive integer within the serving cap")
+    temperature = body.get("temperature", 0.0)
+    if not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
+        raise ValueError("temperature must be numeric")
+    temperature = float(temperature)
+    if not 0.0 <= temperature <= 2.0:
+        raise ValueError("temperature must be between 0 and 2")
+    return temperature, max_tokens
+
+
 def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     """Map sampler failures without disguising deterministic client errors.
 
@@ -60,7 +83,7 @@ def openai_error_response(error: Exception) -> tuple[int, dict[str, Any]]:
     detail = str(error)
     lowered = detail.lower()
     type_name = type(error).__name__
-    if type_name == "BadRequestError" or "exceeds the model's context window" in lowered:
+    if isinstance(error, ValueError) or type_name == "BadRequestError" or "exceeds the model's context window" in lowered:
         code = "context_length_exceeded" if "context window" in lowered else "invalid_request"
         return 400, {
             "error": {
@@ -205,11 +228,16 @@ def build_chat_completion(
     object without a defined finish_reason is impossible here, which is exactly
     the undefined-variable (NameError) failure this module exists to prevent.
     """
+    response_finish_reason = (
+        "tool_calls"
+        if message.get("tool_calls") and finish_reason != "length"
+        else finish_reason
+    )
     return {
         "choices": [
             {
                 "message": message,
-                "finish_reason": finish_reason,
+                "finish_reason": response_finish_reason,
             }
         ],
         "usage": {

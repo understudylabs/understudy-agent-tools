@@ -45,6 +45,7 @@ from tinker_openai_compat import (
     normalize_finish_reason,
     openai_error_response,
     parse_openai_request_body,
+    validated_generation_args,
 )
 from tinker_renderer_compat import renderer_messages, renderer_tools
 
@@ -66,8 +67,11 @@ parser.add_argument(
 )
 parser.add_argument("--port", type=int, default=8099)
 parser.add_argument("--max-tokens", type=int, default=512)
+parser.add_argument("--context-limit", type=int, default=65_536)
 parser.add_argument("--max-workers", type=int, default=16, help="in-flight samples; raise it for rollout mining")
 args = parser.parse_args()
+if args.max_tokens <= 0 or args.context_limit <= args.max_tokens:
+    raise SystemExit("--context-limit must exceed the positive --max-tokens cap")
 service_token = os.environ.get("TINKER_SHIM_BEARER_TOKEN")
 if (
     args.host not in {"127.0.0.1", "::1", "localhost"}
@@ -124,6 +128,8 @@ def sample(model, messages, tools, temperature, max_tokens):
         system_prompt=system_prompt,
     )
     prompt = renderer.build_generation_prompt([*prefix, *conversation])
+    if prompt.length + max_tokens > args.context_limit:
+        raise ValueError("prompt plus max_tokens exceeds the model's context window")
     params = tinker.types.SamplingParams(
         max_tokens=max_tokens,
         temperature=temperature,
@@ -226,22 +232,32 @@ class Handler(BaseHTTPRequestHandler):
                     {"error": {"message": "unknown model", "type": "invalid_request_error"}},
                 )
                 return
-            for attempt in range(2):
-                try:
-                    message, prompt_tokens, completion_tokens, finish_reason = pool.submit(
-                        sample,
-                        requested_model,
-                        body["messages"],
-                        body.get("tools") or [],
-                        float(body.get("temperature", 0.0)),
-                        int(body.get("max_tokens", args.max_tokens)),
-                    ).result(timeout=request_timeout)
-                    break
-                except FutureTimeoutError:
-                    log_event("timeout", request_id=request_id, attempt=attempt + 1, seconds=request_timeout)
-                    if attempt == 1:
-                        raise TimeoutError(f"sampling exceeded {request_timeout}s twice")
-                    log_event("retry", request_id=request_id, attempt=attempt + 2)
+            temperature, max_tokens = validated_generation_args(
+                body,
+                configured_max_tokens=args.max_tokens,
+            )
+            future = pool.submit(
+                sample,
+                requested_model,
+                body["messages"],
+                body.get("tools") or [],
+                temperature,
+                max_tokens,
+            )
+            try:
+                message, prompt_tokens, completion_tokens, finish_reason = future.result(
+                    timeout=request_timeout
+                )
+            except FutureTimeoutError as error:
+                cancelled = future.cancel()
+                log_event(
+                    "timeout",
+                    request_id=request_id,
+                    seconds=request_timeout,
+                    cancelled=cancelled,
+                    retry_suppressed=True,
+                )
+                raise TimeoutError(f"sampling exceeded {request_timeout}s; retry suppressed") from error
             message = normalize_assistant_message(message, request_id)
             payload = build_chat_completion(message, prompt_tokens, completion_tokens, finish_reason)
             status = 200
