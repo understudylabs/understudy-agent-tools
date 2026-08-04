@@ -37,7 +37,7 @@ The current implementation is `src/optimize-workload.ts`: it generates
 `eval-input-gepa` and `dspy-gepa`.
 
 The live DSPy adapter installs exactly `dspy==3.3.0` and
-`gepa[dspy]==0.1.1`, verifies the installed distribution versions, and records
+`gepa[dspy]==0.1.1` plus `cloudpickle==3.1.2`, verifies the installed distribution versions, and records
 them in an owner-only package receipt. Its optional `--program-bridge` is a
 workload file contract, not another package: a provider-free admission hook
 binds exact adapter/data/tool-schema/package hashes before separate metered

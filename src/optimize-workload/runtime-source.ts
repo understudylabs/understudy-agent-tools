@@ -23,6 +23,8 @@ DSPY_PACKAGE_SPEC = "dspy==3.3.0"
 DSPY_VERSION = "3.3.0"
 GEPA_PACKAGE_SPEC = "gepa[dspy]==0.1.1"
 GEPA_VERSION = "0.1.1"
+CLOUDPICKLE_PACKAGE_SPEC = "cloudpickle==3.1.2"
+CLOUDPICKLE_VERSION = "3.1.2"
 
 
 def emit(payload: dict[str, Any]) -> None:
@@ -741,10 +743,15 @@ def require_exact_optimizer_packages(
         actual = {
             "dspy": importlib.metadata.version("dspy"),
             "gepa": importlib.metadata.version("gepa"),
+            "cloudpickle": importlib.metadata.version("cloudpickle"),
         }
     except importlib.metadata.PackageNotFoundError as error:
         raise RuntimePackageVersionError("runtime-package-version-mismatch") from error
-    if actual != {"dspy": DSPY_VERSION, "gepa": GEPA_VERSION}:
+    if actual != {
+        "dspy": DSPY_VERSION,
+        "gepa": GEPA_VERSION,
+        "cloudpickle": CLOUDPICKLE_VERSION,
+    }:
         raise RuntimePackageVersionError("runtime-package-version-mismatch")
     workload_actual: dict[str, str] = {}
     for distribution, expected in (workload_package_pins or {}).items():
@@ -759,7 +766,7 @@ def require_exact_optimizer_packages(
         workload_actual[distribution] = installed
     payload = {
         "schema_version": "understudy.dspy_gepa_package_state.v1",
-        "requested": [DSPY_PACKAGE_SPEC, GEPA_PACKAGE_SPEC],
+        "requested": [DSPY_PACKAGE_SPEC, GEPA_PACKAGE_SPEC, CLOUDPICKLE_PACKAGE_SPEC],
         "actual": actual,
         "workload_actual": workload_actual,
         "program_project": dict(project_state) if project_state else None,
@@ -1730,31 +1737,39 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         else None
     )
 
+    student_lm_kwargs = {
+        "api_key": student_api_key,
+        "api_base": student_api_base,
+        "max_tokens": args.max_tokens,
+        "temperature": args.temperature,
+        "cache": False,
+        "num_retries": 0,
+    }
+    if args.reasoning_effort != "none":
+        student_lm_kwargs["reasoning_effort"] = args.reasoning_effort
     student_lm = BudgetedLM(
         student_route["dspy_model"],
         spend_ledger=ledger,
         role="student",
         route_receipt=student_route,
-        api_key=student_api_key,
-        api_base=student_api_base,
-        max_tokens=args.max_tokens,
-        temperature=args.temperature,
-        reasoning_effort=args.reasoning_effort,
-        cache=False,
-        num_retries=0,
+        **student_lm_kwargs,
     )
+    reflection_lm_kwargs = {
+        "api_key": reflection_api_key,
+        "api_base": reflection_api_base,
+        "max_tokens": args.max_tokens,
+        "temperature": args.reflection_temperature,
+        "cache": False,
+        "num_retries": 0,
+    }
+    if args.reflection_reasoning_effort != "none":
+        reflection_lm_kwargs["reasoning_effort"] = args.reflection_reasoning_effort
     reflection_lm = BudgetedLM(
         reflection_route["dspy_model"],
         spend_ledger=ledger,
         role="reflection",
         route_receipt=reflection_route,
-        api_key=reflection_api_key,
-        api_base=reflection_api_base,
-        max_tokens=args.max_tokens,
-        temperature=args.reflection_temperature,
-        reasoning_effort=args.reflection_reasoning_effort,
-        cache=False,
-        num_retries=0,
+        **reflection_lm_kwargs,
     )
     if student_lm is reflection_lm:
         raise ValueError("student and reflection LMs must be separate instances")
@@ -1899,6 +1914,7 @@ def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
         track_stats=args.track_stats,
         track_best_outputs=True,
         seed=args.seed,
+        gepa_kwargs={"use_cloudpickle": True},
     )
     optimized = teleprompter.compile(student, trainset=trainset, valset=valset)
     program_state = optimized_program_state(optimized, bridge_state)

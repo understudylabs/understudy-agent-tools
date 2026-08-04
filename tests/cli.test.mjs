@@ -533,7 +533,7 @@ function withOptimizerFixtureRepo(fn) {
 }
 
 function writePythonDistributionMetadata(root) {
-  for (const [name, version] of [["dspy", "3.3.0"], ["gepa", "0.1.1"]]) {
+  for (const [name, version] of [["dspy", "3.3.0"], ["gepa", "0.1.1"], ["cloudpickle", "3.1.2"]]) {
     const metadataDir = join(root, `${name}-${version}.dist-info`);
     mkdirSync(metadataDir, { recursive: true });
     writeFileSync(
@@ -1622,7 +1622,6 @@ printf '%s\n' '{"schema_version":"fixture.uv.v1","status":"fixture-ok"}'
         "1",
         "--seed",
         "42",
-        "--track-stats",
         "--execute",
       ], {
         PATH: `${fakeBin}:${baseEnv.PATH}`,
@@ -1632,13 +1631,15 @@ printf '%s\n' '{"schema_version":"fixture.uv.v1","status":"fixture-ok"}'
       });
       assert.equal(result.status, 0, result.stderr);
       const uvArgs = readFileSync(uvArgsPath, "utf8").trim().split("\n");
-      assert.deepEqual(uvArgs.slice(0, 6), [
+      assert.deepEqual(uvArgs.slice(0, 8), [
         "run",
         "--no-project",
         "--with",
         "dspy==3.3.0",
         "--with",
         "gepa[dspy]==0.1.1",
+        "--with",
+        "cloudpickle==3.1.2",
       ]);
       const flagValue = (flag) => uvArgs[uvArgs.indexOf(flag) + 1];
       assert.equal(flagValue("--model"), "student-deployment");
@@ -2187,6 +2188,7 @@ class ScoreWithFeedback:
         "https://api.fireworks.ai/inference/v1",
       ]);
       assert.deepEqual(models.map((item) => item.num_retries), [0, 0]);
+      assert.deepEqual(models.map((item) => item.reasoning_effort), [null, null]);
       const gepaKwargs = JSON.parse(readFileSync(kwargsSentinel, "utf8"));
       assert.equal(gepaKwargs.max_metric_calls, 7);
       assert.equal(gepaKwargs.reflection_minibatch_size, 2);
@@ -2198,6 +2200,7 @@ class ScoreWithFeedback:
       assert.equal(gepaKwargs.seed, 42);
       assert.equal(gepaKwargs.track_stats, true);
       assert.equal(gepaKwargs.track_best_outputs, true);
+      assert.deepEqual(gepaKwargs.gepa_kwargs, { use_cloudpickle: true });
       assert.equal(gepaKwargs.log_dir, realpathSync(logDir));
       assert.equal(
         gepaKwargs.reflection_model,
@@ -2206,8 +2209,8 @@ class ScoreWithFeedback:
 
       const runDir = join(repo, ".understudy", "optimize-workload", "dspy-gepa");
       const packageState = JSON.parse(readFileSync(join(runDir, "package-state.json"), "utf8"));
-      assert.deepEqual(packageState.requested, ["dspy==3.3.0", "gepa[dspy]==0.1.1"]);
-      assert.deepEqual(packageState.actual, { dspy: "3.3.0", gepa: "0.1.1" });
+      assert.deepEqual(packageState.requested, ["dspy==3.3.0", "gepa[dspy]==0.1.1", "cloudpickle==3.1.2"]);
+      assert.deepEqual(packageState.actual, { dspy: "3.3.0", gepa: "0.1.1", cloudpickle: "3.1.2" });
       assert.deepEqual(packageState.workload_actual, { "fixture-workload": "1.2.3" });
       assert.equal(packageState.program_project.locked, true);
       assert.equal(packageState.program_project.uv_lock_sha256.length, 64);

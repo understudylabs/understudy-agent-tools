@@ -80,7 +80,7 @@ export function registerOptimizeWorkloadCommand(program: Command): void {
     .option("--num-threads <number>", "GEPA worker threads", "1")
     .option("--seed <number>", "GEPA random seed", "0")
     .option("--log-dir <path>", "Owner-only GEPA log directory used for safe resume")
-    .option("--track-stats", "Persist upstream GEPA optimization statistics")
+    .option("--track-stats", "Persist upstream GEPA optimization statistics (required by DSPy 3.3 best-output tracking)")
     .option("--program-bridge <path>", "Opt-in Python program bridge implementing build_understudy_dspy_gepa(context)")
     .option("--program-bridge-config <path>", "Required immutable JSON settings for an opt-in program bridge")
     .option("--program-project <dir>", "Locked uv project containing workload bridge dependencies")

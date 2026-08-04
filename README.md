@@ -719,7 +719,8 @@ understudy optimize-workload adapter run --repo . --adapter dspy-gepa \
 ```
 
 The adapter creates an approval-gated `uv run --no-project` runtime with exact
-`dspy==3.3.0` and `gepa[dspy]==0.1.1` packages. That environment, resumable
+`dspy==3.3.0`, `gepa[dspy]==0.1.1`, and `cloudpickle==3.1.2` packages.
+Cloudpickle preserves resumable DSPy signature state. That environment, resumable
 logs, and owner-only optimizer receipts are local runtime state. They are not
 package infrastructure and must not be committed.
 
