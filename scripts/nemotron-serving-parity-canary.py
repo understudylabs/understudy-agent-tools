@@ -50,7 +50,7 @@ def _sha256(value):
     return hashlib.sha256(encoded).hexdigest()
 
 
-def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, opener=None):
+def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, readiness_attempts=3, opener=None):
     if len(artifact_sha256) != 64 or any(character not in "0123456789abcdef" for character in artifact_sha256):
         raise ValueError("artifact sha256 must be lowercase hex")
     case_ids = [row.get("case_id") for row in rows]
@@ -58,14 +58,22 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
         raise ValueError("canary needs non-empty rows with unique case ids")
     bundle_sha256 = _sha256(rows)
     opener = opener or urllib.request.build_opener(NoRedirect())
-    health = urllib.request.Request(health_endpoint, headers=headers, method="GET")
-    health_status, _, health_latency = _request(opener, health, timeout)
+    if readiness_attempts < 1:
+        raise ValueError("readiness attempts must be positive")
+    readiness = []
+    health_status = None
+    for attempt in range(1, readiness_attempts + 1):
+        health = urllib.request.Request(health_endpoint, headers=headers, method="GET")
+        health_status, _, health_latency = _request(opener, health, timeout)
+        readiness.append({"attempt": attempt, "status": health_status, "latency_seconds": health_latency})
+        if health_status == 200:
+            break
     receipt_rows = []
     if health_status != 200:
         return {
             "ready": False,
             "health_status": health_status,
-            "health_latency_seconds": health_latency,
+            "readiness": readiness,
             "inference_posts": 0,
             "artifact_sha256": artifact_sha256,
             "bundle_sha256": bundle_sha256,
@@ -130,7 +138,7 @@ def run(rows, endpoint, health_endpoint, headers, artifact_sha256, timeout=180, 
     return {
         "ready": True,
         "health_status": health_status,
-        "health_latency_seconds": health_latency,
+        "readiness": readiness,
         "inference_posts": posts,
         "artifact_sha256": artifact_sha256,
         "bundle_sha256": bundle_sha256,
@@ -148,6 +156,7 @@ def main():
     parser.add_argument("--proxy-secret", required=True)
     parser.add_argument("--artifact-sha256", required=True)
     parser.add_argument("--timeout-seconds", type=float, default=180)
+    parser.add_argument("--readiness-attempts", type=int, default=3)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
     rows = [json.loads(line) for line in args.cases.read_text().splitlines() if line.strip()]
@@ -158,6 +167,7 @@ def main():
         {"Modal-Key": args.proxy_key, "Modal-Secret": args.proxy_secret},
         args.artifact_sha256,
         args.timeout_seconds,
+        args.readiness_attempts,
     )
     receipt.update({
         "schema_version": "understudy.nemotron_serving_parity_canary.v1",
