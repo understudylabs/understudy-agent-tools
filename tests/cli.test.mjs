@@ -298,7 +298,22 @@ async function withHostedFixture(fn) {
       });
     }
     if (req.method === "GET" && url.pathname === "/eval-capture-req_123") return sendBytes(200, rawCapture);
-    if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
+    if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) {
+      if (body?.model === "fixture-error") {
+        return send(503, { error: { type: "upstream_capacity", code: "deployment_unavailable", message: "SECRET_PROVIDER_DETAIL" } }, {
+          "x-understudy-request-id": "req_error",
+          "x-fireworks-request-id": "fw_req_123",
+          "x-fireworks-deployment-id": "accounts/example/deployments/qwen",
+          "x-fireworks-deployment-state": "cold",
+          "x-fireworks-cold-start": "true",
+          "retry-after": "7",
+          "x-ratelimit-limit-requests": "64",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-reset-requests": "2s",
+        });
+      }
+      return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
+    }
     return send(404, { message: `${req.method} ${url.pathname}` });
   });
 
@@ -2251,6 +2266,26 @@ class ScoreWithFeedback:
       assert.equal(buffered.status, 0, buffered.stderr);
       assert.equal(requests.at(-1).body.stream, false);
       assert.equal(JSON.parse(buffered.stdout).response_kind, "json");
+
+      const failed = await runWithEnvAsync([
+        "--json", "gateway", "probe", "--provider", "openai", "--model", "fixture-error", "--no-stream",
+      ], env, repo);
+      assert.notEqual(failed.status, 0);
+      const failedPayload = JSON.parse(failed.stdout);
+      assert.equal(failedPayload.status, 503);
+      assert.equal(failedPayload.request_id, "req_error");
+      assert.equal(failedPayload.error_type, "upstream_capacity");
+      assert.equal(failedPayload.error_code, "deployment_unavailable");
+      assert.equal(failedPayload.retry_after, "7");
+      assert.equal(failedPayload.rate_limit_limit, "64");
+      assert.equal(failedPayload.rate_limit_remaining, "0");
+      assert.equal(failedPayload.rate_limit_reset, "2s");
+      assert.equal(failedPayload.upstream_request_id, "fw_req_123");
+      assert.equal(failedPayload.deployment_id, "accounts/example/deployments/qwen");
+      assert.equal(failedPayload.deployment_state, "cold");
+      assert.equal(failedPayload.cold_start, "true");
+      assert.match(failedPayload.response_sha256, /^[0-9a-f]{64}$/);
+      assert.doesNotMatch(failed.stdout + failed.stderr, /SECRET_PROVIDER_DETAIL/);
 
       // An unreachable gateway must surface a non-zero exit code (scriptability).
       const healthDown = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", "http://127.0.0.1:1"], env, repo);
