@@ -117,6 +117,7 @@ export {
 } from "./outcome-executors/index.js";
 
 export const repoRoot = installedPackageRoot();
+export { FIREWORKS_CANARY_SCHEMA, runFireworksCanary, type FireworksCanaryReceipt } from "./fireworks-serving-qualification.js";
 
 type SkillSummary = {
   name: string;
