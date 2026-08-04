@@ -179,8 +179,18 @@ Three ways to optimize, picked by commitment and workload shape:
 3. **Program lane (opt-in).** The agent can scaffold a reusable DSPy program
    from local samples using the program-scaffold pattern, verify parity, then
    run the approval-gated `adapter run --adapter dspy-gepa --execute` path
-   against the Understudy gateway with an explicit dollar cap and input/output
-   token-price basis. Full GEPA optimization over that program is
+   against the Understudy gateway with exact `dspy==3.3.0` and
+   `gepa[dspy]==0.1.1`, separate student/reflection deployments, an explicit
+   dollar cap, and a conservative input/output token-price basis. A
+   `--program-bridge` may provide a multi-component student, trainset, valset,
+   `ScoreWithFeedback` metric, and deployable export callback. Before either LM
+   is used, its offline hook binds provider-free validation
+   of the loaded executable bundle to the workload-adapter source,
+   tool-schema, package receipt, typed request/expected fields, and any required
+   tool-write/world-state probe; an admission-only command then performs one
+   live canary and emits the exact receipt required by the later compile. The
+   optimizer records package/config/program
+   state and a canonical bundle SHA-256. Full GEPA optimization over that program is
    gated by parity: the scaffolded program must reproduce the incumbent
    baseline before optimization, or you optimize a reconstruction that diverges
    from production.

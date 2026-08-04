@@ -709,13 +709,19 @@ For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:
 
 ```bash
-understudy optimize-workload --uv
-uv venv .understudy/venvs/optimize
-uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa \
+  --samples samples.json --input-keys question --output-keys answer \
+  --model student-model --reflection-model reflection-model \
+  --budget-usd <approved-usd> \
+  --input-usd-per-million <conservative-input-price> \
+  --output-usd-per-million <conservative-output-price> \
+  --num-threads 1 --execute
 ```
 
-That environment is local runtime state. It is not package infrastructure and
-must not be committed.
+The adapter creates an approval-gated `uv run --no-project` runtime with exact
+`dspy==3.3.0` and `gepa[dspy]==0.1.1` packages. That environment, resumable
+logs, and owner-only optimizer receipts are local runtime state. They are not
+package infrastructure and must not be committed.
 
 For the exact before/after functionality ledger, see
 [`docs/current-functionality.md`](docs/current-functionality.md).

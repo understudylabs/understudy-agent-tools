@@ -120,7 +120,8 @@ validator kinds in [`reference.md`](reference.md):
    `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
    model-backed path is explicitly selected. `adapter run --adapter dspy-gepa
-   --execute` additionally requires an approved dollar cap and explicit input
+   --execute` uses exact `dspy==3.3.0` and `gepa[dspy]==0.1.1` packages and
+   additionally requires separate student/reflection model names, an approved dollar cap, and explicit input
    and output token prices before it resolves the Understudy API key. It passes
    auth to the child process through environment only, disables client-side
    retries, and reserves each request against one cumulative price-basis ledger before
@@ -134,6 +135,19 @@ validator kinds in [`reference.md`](reference.md):
    first result page; tighten the stop condition" or "answer omitted the date
    filter the question required; add it to the query plan" — rather than a bare
    `0`.
+   Start new GEPA runs with `--num-threads 1`; use pareto selection and opt into
+   merge only when the approved budget covers it. For a workload-owned program,
+   first pass `--program-bridge ... --admission-only`, inspect its hashed offline
+   and one-episode live receipt, then compile separately with the exact
+   `--admission-receipt`. Admission must fail unless provider-free validation proves the exact
+   executable bundle was loaded, typed request/expected/tool contracts passed,
+   package/adapter/tool-schema hashes match, and every required write produced
+   an actual world-state delta. Never score a hash-only expectation or an HTTP
+   200 response that failed local parsing as model behavior. The bridge metric
+   returns `ScoreWithFeedback`; its optional export callback writes a canonical,
+   provenance-bound deployable bundle.
+   Keep workload package/lock pins workload-scoped; never copy one workload's
+   verifier/MCP bump into another workload.
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.
@@ -180,12 +194,14 @@ understudy skills --search gepa
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
-If approved, keep Python isolated under ignored local runtime state:
+If approved, let the named adapter create its exact ignored `uv` runtime:
 
 ```bash
-uv venv .understudy/venvs/optimize
-uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --help
 ```
+
+Do not preinstall a floating DSPy/GEPA environment; the adapter pins and
+receipts its compatible package pair.
 
 ## Claim Rules
 
