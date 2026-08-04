@@ -178,7 +178,8 @@ class NemotronLongContextServingTest(unittest.TestCase):
     def test_modal_deployment_is_proxy_authenticated_and_fused(self):
         source = (SCRIPTS / "modal-vllm-nemotron-long-context.py").read_text()
         self.assertIn("requires_proxy_auth=True", source)
-        self.assertIn('gpu=["H200", "B200"]', source)
+        self.assertIn('GPU_OPTIONS = ["H200", "B200", "H100:2"]', source)
+        self.assertIn('"event": "serving_gpu_inventory"', source)
         self.assertIn("ARTIFACT_SECRET_NAME", source)
         self.assertIn("max_containers=1", source)
         self.assertIn("SCALEDOWN_WINDOW_SECONDS = 300", source)
@@ -186,6 +187,33 @@ class NemotronLongContextServingTest(unittest.TestCase):
         self.assertIn("copy=True", source)
         self.assertNotIn("--api-key", source)
         self.assertIn("REASONING_PARSER_PLUGIN_SHA256", source)
+
+    def test_two_gpu_fallback_enables_tensor_parallelism(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            artifact_root = root / "model-a"
+            artifact_root.mkdir()
+            (artifact_root / "config.json").write_text("{}")
+            digest, files = CONTRACT.sha256_tree(artifact_root)
+            receipt = {
+                "schema_version": CONTRACT.EXPORT_SCHEMA,
+                "created_at": "2026-08-04T00:00:00Z",
+                "base_model": CONTRACT.BASE_MODEL,
+                "base_revision": CONTRACT.BASE_REVISION,
+                "source_checkpoint": {"ref": "tinker://x"},
+                "inspection": {"incompatible_nonempty_tensors": [{}], "multi_lora_faithful": False},
+                "selection": {"artifact_kind": "merged-hf"},
+                "artifact": {"path": str(artifact_root), "sha256": digest, "files": files},
+                "serving": {
+                    "max_model_len": 131072, "truncate_messages": False,
+                    "reasoning_parser": "nano_v3", "tool_call_parser": "qwen3_coder",
+                    "reasoning_parser_plugin_sha256": CONTRACT.REASONING_PARSER_PLUGIN_SHA256,
+                },
+                "privacy": {"holdout_accessed": False, "dev_labels_accessed": False},
+            }
+            with patch.object(DEPLOY, "MODEL_ROOT", root):
+                command = DEPLOY.build_vllm_command("model-a", receipt, gpu_count=2)
+            self.assertEqual(command[-2:], ["--tensor-parallel-size", "2"])
 
     def test_proxy_auth_contract_requires_both_headers(self):
         with self.assertRaises(ValueError):

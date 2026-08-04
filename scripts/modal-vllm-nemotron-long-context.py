@@ -36,6 +36,7 @@ ARTIFACT_SECRET_NAME = "understudy-nemotron-long-context-serving"
 MODEL_ROOT = Path("/models")
 SCALEDOWN_WINDOW_SECONDS = 300
 FUNCTION_TIMEOUT_SECONDS = 2 * 60 * 60
+GPU_OPTIONS = ["H200", "B200", "H100:2"]
 
 app = modal.App(APP_NAME)
 models = modal.Volume.from_name(MODEL_VOLUME_NAME, create_if_missing=False)
@@ -57,7 +58,7 @@ image = (
 )
 
 
-def build_vllm_command(artifact_id: str, receipt: dict) -> list[str]:
+def build_vllm_command(artifact_id: str, receipt: dict, gpu_count: int = 1) -> list[str]:
     validate_export_receipt(receipt)
     artifact_dir = safe_artifact_path(MODEL_ROOT, artifact_id)
     expected_sha = receipt["artifact"]["sha256"]
@@ -97,13 +98,15 @@ def build_vllm_command(artifact_id: str, receipt: dict) -> list[str]:
         "--reasoning-parser-plugin", REASONING_PARSER_PLUGIN,
         "--tool-call-parser", TOOL_CALL_PARSER,
     ])
+    if gpu_count > 1:
+        command.extend(["--tensor-parallel-size", str(gpu_count)])
     # Deliberately absent: --truncate-prompt-tokens and application API keys.
     return command
 
 
 @app.function(
     image=image,
-    gpu=["H200", "B200"],
+    gpu=GPU_OPTIONS,
     volumes={str(MODEL_ROOT): models},
     scaledown_window=SCALEDOWN_WINDOW_SECONDS,
     timeout=FUNCTION_TIMEOUT_SECONDS,
@@ -118,4 +121,9 @@ def serve() -> None:
     if not receipt_path.is_file():
         raise RuntimeError("mounted artifact has no export receipt")
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    subprocess.Popen(build_vllm_command(artifact_id, receipt), env=os.environ.copy())
+    gpu_names = subprocess.check_output(
+        ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+        text=True,
+    ).strip().splitlines()
+    print(json.dumps({"event": "serving_gpu_inventory", "gpus": gpu_names}), flush=True)
+    subprocess.Popen(build_vllm_command(artifact_id, receipt, len(gpu_names)), env=os.environ.copy())
