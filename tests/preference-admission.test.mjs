@@ -114,6 +114,7 @@ describe("preference admission", () => {
       requiredActionFamilies: ["read", "write"],
       requireMultiEffectContinuation: true,
       requiredRejectionClasses: [...PREFERENCE_REJECTION_CLASSES],
+      desiredRejectionClasses: ["wrong_arguments_or_effects"],
     }));
     assert.equal(result.admitted, false);
     assert.match(result.rejections.map((item) => item.reason).join(","), /rejection_class_mismatch/);
@@ -121,6 +122,7 @@ describe("preference admission", () => {
     assert.match(globals, /missing_action_family:read/);
     assert.match(globals, /missing_multi_effect_continuation/);
     assert.match(globals, /missing_rejection_class:collapse_sentinel/);
+    assert.deepEqual(result.missingDesiredRejectionClasses, ["wrong_arguments_or_effects"]);
   });
 
   it("accepts the no-action sentinel when the row contract is no-action", () => {
