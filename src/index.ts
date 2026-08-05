@@ -64,13 +64,18 @@ import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
 
 export {
-  SEED43_PREFERENCE_REJECTION_CLASSES,
-  admitSeed43PreferencePairs,
+  PREFERENCE_REJECTION_CLASSES,
+  admitPreferencePairs,
+  isSha256,
   sha256TokenSequence as sha256PreferenceTokenSequence,
+  type PreferenceAdmissionConfig,
+  type PreferenceAdmissionRejection,
+  type PreferenceAdmissionResult,
+  type PreferencePair,
+  type PreferenceSemantic,
   type PreferenceToolCall,
-  type Seed43PreferenceAdmissionResult,
-  type Seed43PreferencePair,
-} from "./seed43-preference-admission.js";
+  type VerifiedRejectedPayload,
+} from "./preference-admission.js";
 
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
