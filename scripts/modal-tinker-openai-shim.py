@@ -5,10 +5,12 @@ TINKER_MODEL_REGISTRY_JSON. Set TINKER_SERVING_APP_NAME and
 TINKER_SERVING_SECRET_NAME at deploy time to isolate checkpoint lineages.
 
 For a new private checkpoint, reuse an existing API-key secret without reading
-it back by setting TINKER_SERVING_API_SECRET_NAME, and pass the checkpoint-only
-registry in TINKER_SERVING_REGISTRY_JSON. The latter is converted to a Modal
-Secret at deploy time and must never be committed or printed. Modal proxy
-authentication is required before requests reach the shim.
+it back by setting TINKER_SERVING_API_SECRET_NAME, and place the checkpoint-only
+registry in a second named secret selected with
+TINKER_SERVING_REGISTRY_SECRET_NAME. Both dependencies are declared
+unconditionally because Modal imports this module again in the remote runtime;
+conditional Secret objects produce a local/remote dependency-count mismatch.
+Modal proxy authentication is required before requests reach the shim.
 """
 from __future__ import annotations
 
@@ -27,18 +29,15 @@ SECRET_NAME = os.environ.get(
     "TINKER_SERVING_SECRET_NAME", "understudy-tinker-serving-seed37"
 )
 API_SECRET_NAME = os.environ.get("TINKER_SERVING_API_SECRET_NAME", SECRET_NAME)
-registry_override = os.environ.get("TINKER_SERVING_REGISTRY_JSON")
-runtime_secrets = [modal.Secret.from_name(API_SECRET_NAME)]
-if registry_override:
-    # The checkpoint registry is supplied only to Modal's encrypted secret
-    # plane at deploy time. It never enters Git, the image, or app logs, and it
-    # can reuse an existing TINKER_API_KEY secret without copying that key back
-    # to the operator workstation.
-    runtime_secrets.append(
-        modal.Secret.from_dict(
-            {"TINKER_MODEL_REGISTRY_JSON_OVERRIDE": registry_override}
-        )
-    )
+REGISTRY_SECRET_NAME = os.environ.get(
+    "TINKER_SERVING_REGISTRY_SECRET_NAME", SECRET_NAME
+)
+# Keep this list structurally identical in the deploy process and the remote
+# container import. Values stay in Modal's encrypted secret plane.
+runtime_secrets = [
+    modal.Secret.from_name(API_SECRET_NAME),
+    modal.Secret.from_name(REGISTRY_SECRET_NAME),
+]
 BASE_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 TINKER_VERSION = "0.24.0"
 COOKBOOK_VERSION = "0.5.3"

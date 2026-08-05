@@ -34,8 +34,9 @@ def test_logs_expose_only_error_class() -> None:
     assert "detail=str(error)" not in SHIM
 
 
-def test_modal_registry_override_uses_secret_plane() -> None:
-    assert 'modal.Secret.from_dict(' in MODAL_SHIM
-    assert '"TINKER_MODEL_REGISTRY_JSON_OVERRIDE": registry_override' in MODAL_SHIM
+def test_modal_registry_uses_static_named_secret_dependency() -> None:
+    assert '"TINKER_SERVING_REGISTRY_SECRET_NAME", SECRET_NAME' in MODAL_SHIM
+    assert "modal.Secret.from_name(REGISTRY_SECRET_NAME)" in MODAL_SHIM
+    assert "modal.Secret.from_dict(" not in MODAL_SHIM
     assert 'os.environ.get("TINKER_MODEL_REGISTRY_JSON_OVERRIDE")' in MODAL_SHIM
     assert '.env({"TINKER_MODEL_REGISTRY_JSON"' not in MODAL_SHIM
