@@ -63,6 +63,15 @@ import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
 
+export {
+  SEED43_PREFERENCE_REJECTION_CLASSES,
+  admitSeed43PreferencePairs,
+  sha256TokenSequence as sha256PreferenceTokenSequence,
+  type PreferenceToolCall,
+  type Seed43PreferenceAdmissionResult,
+  type Seed43PreferencePair,
+} from "./seed43-preference-admission.js";
+
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
