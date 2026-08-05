@@ -3,7 +3,12 @@
 Deploy with a Modal secret containing TINKER_API_KEY and
 TINKER_MODEL_REGISTRY_JSON. Set TINKER_SERVING_APP_NAME and
 TINKER_SERVING_SECRET_NAME at deploy time to isolate checkpoint lineages.
-Modal proxy authentication is required before requests reach the shim.
+
+For a new private checkpoint, reuse an existing API-key secret without reading
+it back by setting TINKER_SERVING_API_SECRET_NAME, and pass the checkpoint-only
+registry in TINKER_SERVING_REGISTRY_JSON. The latter is converted to a Modal
+Secret at deploy time and must never be committed or printed. Modal proxy
+authentication is required before requests reach the shim.
 """
 from __future__ import annotations
 
