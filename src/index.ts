@@ -63,6 +63,20 @@ import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 import { installedPackageRoot } from "./internal/package-root.js";
 
+export {
+  PREFERENCE_REJECTION_CLASSES,
+  admitPreferencePairs,
+  isSha256,
+  sha256TokenSequence as sha256PreferenceTokenSequence,
+  type PreferenceAdmissionConfig,
+  type PreferenceAdmissionRejection,
+  type PreferenceAdmissionResult,
+  type PreferencePair,
+  type PreferenceSemantic,
+  type PreferenceToolCall,
+  type VerifiedRejectedPayload,
+} from "./preference-admission.js";
+
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
