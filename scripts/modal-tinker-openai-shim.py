@@ -21,6 +21,19 @@ PORT = 8099
 SECRET_NAME = os.environ.get(
     "TINKER_SERVING_SECRET_NAME", "understudy-tinker-serving-seed37"
 )
+API_SECRET_NAME = os.environ.get("TINKER_SERVING_API_SECRET_NAME", SECRET_NAME)
+registry_override = os.environ.get("TINKER_SERVING_REGISTRY_JSON")
+runtime_secrets = [modal.Secret.from_name(API_SECRET_NAME)]
+if registry_override:
+    # The checkpoint registry is supplied only to Modal's encrypted secret
+    # plane at deploy time. It never enters Git, the image, or app logs, and it
+    # can reuse an existing TINKER_API_KEY secret without copying that key back
+    # to the operator workstation.
+    runtime_secrets.append(
+        modal.Secret.from_dict(
+            {"TINKER_MODEL_REGISTRY_JSON_OVERRIDE": registry_override}
+        )
+    )
 BASE_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 TINKER_VERSION = "0.24.0"
 COOKBOOK_VERSION = "0.5.3"
@@ -42,7 +55,7 @@ image = (
 
 @app.function(
     image=image,
-    secrets=[modal.Secret.from_name(SECRET_NAME)],
+    secrets=runtime_secrets,
     timeout=60 * 60,
     scaledown_window=300,
     max_containers=4,
@@ -50,7 +63,10 @@ image = (
 @modal.concurrent(max_inputs=64)
 @modal.web_server(PORT, startup_timeout=10 * 60, requires_proxy_auth=True)
 def serve() -> None:
-    registry = json.loads(os.environ["TINKER_MODEL_REGISTRY_JSON"])
+    registry = json.loads(
+        os.environ.get("TINKER_MODEL_REGISTRY_JSON_OVERRIDE")
+        or os.environ["TINKER_MODEL_REGISTRY_JSON"]
+    )
     if not isinstance(registry, dict) or not registry:
         raise RuntimeError("TINKER_MODEL_REGISTRY_JSON must be a non-empty object")
     registry_path = Path("/tmp/tinker-model-registry.json")

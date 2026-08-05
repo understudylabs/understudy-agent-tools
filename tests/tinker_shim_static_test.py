@@ -4,6 +4,9 @@ from pathlib import Path
 
 
 SHIM = (Path(__file__).parents[1] / "scripts" / "tinker-openai-shim.py").read_text()
+MODAL_SHIM = (
+    Path(__file__).parents[1] / "scripts" / "modal-tinker-openai-shim.py"
+).read_text()
 
 
 def test_request_accounting_wraps_request_parsing() -> None:
@@ -29,3 +32,10 @@ def test_logs_expose_only_error_class() -> None:
     error_log = 'log_event("error", request_id=request_id, error=type(error).__name__)'
     assert error_log in SHIM
     assert "detail=str(error)" not in SHIM
+
+
+def test_modal_registry_override_uses_secret_plane() -> None:
+    assert 'modal.Secret.from_dict(' in MODAL_SHIM
+    assert '"TINKER_MODEL_REGISTRY_JSON_OVERRIDE": registry_override' in MODAL_SHIM
+    assert 'os.environ.get("TINKER_MODEL_REGISTRY_JSON_OVERRIDE")' in MODAL_SHIM
+    assert '.env({"TINKER_MODEL_REGISTRY_JSON"' not in MODAL_SHIM
