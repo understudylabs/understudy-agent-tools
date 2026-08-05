@@ -115,6 +115,15 @@ export {
   type Hooks as OutcomeExecutorHooks,
   type StoredCall,
 } from "./outcome-executors/index.js";
+export {
+  SEED43_COLLAPSE_SENTINEL,
+  admitSeed43Targets,
+  isCollapseSentinel,
+  sha256TokenSequence,
+  type Seed43AdmissionResult,
+  type Seed43TargetRecord,
+  type Seed43ToolCall,
+} from "./seed43-target-admission.js";
 
 export const repoRoot = installedPackageRoot();
 
