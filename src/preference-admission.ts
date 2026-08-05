@@ -176,7 +176,7 @@ export function admitPreferencePairs(
 
     if (pairIds.has(pair.pairId)) addRejection(result, pair, "duplicate_pair_id");
     pairIds.add(pair.pairId);
-    if (!config.allowMultipleRejectionsPerRow && rowIds.get(pair.rowId)?.length === 2) {
+    if (!config.allowMultipleRejectionsPerRow && (rowIds.get(pair.rowId)?.length ?? 0) >= 2) {
       addRejection(result, pair, "duplicate_source_row_id");
     }
     if (pair.split !== "train" || !config.allowedTrainRowIds.has(pair.rowId)) {
@@ -212,14 +212,6 @@ export function admitPreferencePairs(
       && pair.chosenTokens[2] === 11) {
       addRejection(result, pair, "chosen_collapse_sentinel");
     }
-    if (pair.actionRequired
-      && pair.chosenTokens.length === 3
-      && pair.chosenTokens[0] === 16071
-      && pair.chosenTokens[1] === 95597
-      && pair.chosenTokens[2] === 11) {
-      addRejection(result, pair, "chosen_collapse_sentinel");
-    }
-
     const verified = config.verifyRejectedPayload(pair);
     if (verified === null) {
       addRejection(result, pair, "missing_rejected_payload_preimage");

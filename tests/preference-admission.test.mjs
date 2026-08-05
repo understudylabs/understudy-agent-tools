@@ -95,16 +95,36 @@ describe("preference admission", () => {
     const result = admitPreferencePairs([
       pair({ pairId: "duplicate", split: "dev", runtimeSha256: "d".repeat(64) }),
       pair({ pairId: "duplicate", rowId: "row-2", sourceCapabilitySha256: "e".repeat(64) }),
+      pair({ pairId: "duplicate-3" }),
     ], config(() => verified({
       semantic: { kind: "tool_calls", toolCalls: [{ name: "write", arguments: { id: "x" }, effects: ["updated:x"] }] },
     }), { requireMultiEffectContinuation: false }));
     assert.equal(result.admitted, false);
     const reasons = result.rejections.map((item) => item.reason).join(",");
     assert.match(reasons, /duplicate_pair_id/);
+    assert.equal(result.rejections.filter((item) => item.reason === "duplicate_source_row_id").length, 1);
     assert.match(reasons, /row_outside_frozen_train_allowlist/);
     assert.match(reasons, /runtime_mismatch/);
     assert.match(reasons, /source_capability_mismatch/);
     assert.match(reasons, /identical_chosen_rejected_semantics/);
+  });
+
+  it("rejects the collapse sentinel for action-required rows", () => {
+    const result = admitPreferencePairs([
+      pair({ chosenTokens: [16071, 95597, 11] }),
+    ], config(() => verified(), { requireMultiEffectContinuation: false }));
+    assert.equal(result.admitted, false);
+    assert.equal(result.rejections.filter((item) => item.reason === "chosen_collapse_sentinel").length, 1);
+  });
+
+  it("rejects every source-row occurrence after the first", () => {
+    const result = admitPreferencePairs([
+      pair({ pairId: "row-dup-1" }),
+      pair({ pairId: "row-dup-2" }),
+      pair({ pairId: "row-dup-3" }),
+    ], config(() => verified(), { requireMultiEffectContinuation: false }));
+    assert.equal(result.admitted, false);
+    assert.equal(result.rejections.filter((item) => item.reason === "duplicate_source_row_id").length, 2);
   });
 
   it("rejects caller-mislabeled classes and reports global coverage failures", () => {
