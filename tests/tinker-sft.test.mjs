@@ -109,7 +109,7 @@ describe("portable Tinker SFT backend", () => {
     assert.equal(existsSync(outputRoot), false);
   });
 
-  it("executes the same immutable evaluator contract with bounded spend and one-hour cleanup", async () => {
+  it("executes the same immutable evaluator contract with durable recovery state and bounded sampler lifetime", async () => {
     const fixture = portablePlan();
     const result = await startTinkerSftTraining({
       planPath: fixture.planPath,
@@ -134,7 +134,9 @@ describe("portable Tinker SFT backend", () => {
     assert.equal(result.cost.approved_max_usd, 0.5);
     assert.ok(result.cost.actual_estimated_usd <= result.cost.worst_case_usd);
     assert.ok(result.cost.worst_case_usd <= result.cost.approved_max_usd);
-    assert.equal(result.checkpoint_ttl_seconds, 3600);
+    assert.match(result.training_state_path, /^tinker:\/\//);
+    assert.equal(result.training_state_ttl_seconds, null);
+    assert.equal(result.checkpoint_ttl_seconds, 86400);
     assert.equal(result.privacy.provider_training_data_sent, true);
     assert.equal(result.privacy.raw_artifact_uploaded, false);
     assert.equal(result.runtime.maximum_seconds, 900);
