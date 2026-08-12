@@ -22,7 +22,9 @@ describe("install.sh", () => {
     assert.match(script, /sparse-checkout set/);
     assert.doesNotMatch(script, /sparse-checkout set[^\n]*apps\/homescreen/);
     assert.match(script, /npm install --prefix "\$INSTALL_SOURCE_DIR" --omit=dev --ignore-scripts/);
-    assert.match(script, /--noCheck --declaration false --sourceMap false/);
+    assert.match(script, /tsconfig\.install\.json/);
+    assert.match(script, /npm pkg delete scripts\.prepare --prefix "\$INSTALL_SOURCE_DIR"/);
+    assert.match(script, /npm pack "\$INSTALL_SOURCE_DIR" --ignore-scripts/);
   });
 
   it("runs from a pipe when noninteractive mode is explicit", () => {

@@ -723,12 +723,16 @@ install_understudy_package() {
   printf '%s\n' "$package_commit" >"$STATE_DIR/package-commit"
   run_logged "Install runtime dependencies" npm install --prefix "$INSTALL_SOURCE_DIR" --omit=dev --ignore-scripts
   run_logged "Build the CLI" npx --yes --package typescript@5.7.3 tsc \
-    -p "$INSTALL_SOURCE_DIR/tsconfig.build.json" --noCheck --declaration false --sourceMap false
+    -p "$INSTALL_SOURCE_DIR/tsconfig.install.json"
   run_logged "Prepare the CLI" node "$INSTALL_SOURCE_DIR/scripts/ensure-bin-mode.mjs"
   package_version="$(node -p "require('$INSTALL_SOURCE_DIR/package.json').version")"
   package_tarball="$STATE_DIR/understudylabs-understudy-agent-tools-$package_version.tgz"
   rm -f "$package_tarball"
-  run_logged "Pack Understudy" npm pack --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts --pack-destination "$STATE_DIR"
+  # npm pack always runs `prepare` for directory inputs. The installer already
+  # produced dist with its no-typecheck build, so remove prepare only from this
+  # temporary checkout before packaging it.
+  run_logged "Disable redundant package prepare" npm pkg delete scripts.prepare --prefix "$INSTALL_SOURCE_DIR"
+  run_logged "Pack Understudy" npm pack "$INSTALL_SOURCE_DIR" --ignore-scripts --pack-destination "$STATE_DIR"
   run_logged "Install the understudy command" npm install -g --ignore-scripts "$package_tarball"
   rm -rf "$INSTALL_SOURCE_DIR"
 }
