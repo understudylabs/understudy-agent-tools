@@ -97,7 +97,7 @@ Environment overrides:
   UNDERSTUDY_LAB                 local runtime/log directory, default ~/.understudy/agent-tools
   UNDERSTUDY_INSTALL_REPO_URL    public repo URL, default https://github.com/UnderstudyLabs/understudy-agent-tools.git
   UNDERSTUDY_INSTALL_REF         Git ref for public repo install, default main
-  UNDERSTUDY_INSTALL_SOURCE_DIR  local repo checkout, default $UNDERSTUDY_LAB/source/understudy-agent-tools
+  UNDERSTUDY_INSTALL_SOURCE_DIR  temporary sparse checkout, default $UNDERSTUDY_LAB/source/understudy-agent-tools
   UNDERSTUDY_INSTALL_STATE_DIR   install markers, default $UNDERSTUDY_LAB/install-state
   UNDERSTUDY_INSTALL_LOG_DIR     install logs, default $UNDERSTUDY_LAB/logs
   UNDERSTUDY_INSTALL_LOG_FILE    exact install log path
@@ -696,7 +696,7 @@ remove_previous_global_package() {
 }
 
 install_understudy_package() {
-  local package_commit
+  local package_commit package_version package_tarball
   remove_previous_global_package
 
   if [ -n "$INSTALL_PACKAGE" ]; then
@@ -713,14 +713,24 @@ install_understudy_package() {
   say "Installing Understudy package from $INSTALL_REPO_URL#$INSTALL_REF"
   rm -rf "$INSTALL_SOURCE_DIR"
   mkdir -p "$(dirname "$INSTALL_SOURCE_DIR")"
-  run_logged "Download Understudy ($INSTALL_REF)" git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR"
+  run_logged "Download Understudy ($INSTALL_REF)" git clone --depth 1 --filter=blob:none --sparse --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR"
+  run_logged "Select install files" git -C "$INSTALL_SOURCE_DIR" sparse-checkout set \
+    .agents .claude-plugin .codex-plugin .cursor-plugin .devin .hermes .opencode \
+    docs experiments/desktop-tool-proof runtime-assets schemas scripts skills src
   package_commit="$(git -C "$INSTALL_SOURCE_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
   say "Understudy package commit: $package_commit"
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$package_commit" >"$STATE_DIR/package-commit"
-  run_logged "Install dependencies" npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts
-  run_logged "Build the CLI" npm run --prefix "$INSTALL_SOURCE_DIR" build
-  run_logged "Link the understudy command" npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR"
+  run_logged "Install runtime dependencies" npm install --prefix "$INSTALL_SOURCE_DIR" --omit=dev --ignore-scripts
+  run_logged "Build the CLI" npx --yes --package typescript@5.7.3 tsc \
+    -p "$INSTALL_SOURCE_DIR/tsconfig.build.json" --noCheck --declaration false --sourceMap false
+  run_logged "Prepare the CLI" node "$INSTALL_SOURCE_DIR/scripts/ensure-bin-mode.mjs"
+  package_version="$(node -p "require('$INSTALL_SOURCE_DIR/package.json').version")"
+  package_tarball="$STATE_DIR/understudylabs-understudy-agent-tools-$package_version.tgz"
+  rm -f "$package_tarball"
+  run_logged "Pack Understudy" npm pack --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts --pack-destination "$STATE_DIR"
+  run_logged "Install the understudy command" npm install -g --ignore-scripts "$package_tarball"
+  rm -rf "$INSTALL_SOURCE_DIR"
 }
 
 # ── agent-first sign-in ──────────────────────────────────────────────

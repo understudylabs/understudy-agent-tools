@@ -27,7 +27,6 @@ import {
   runConversationAdapterConformance,
   runConversationConformance,
 } from "../runtime/conversation/conformance.js";
-import { runPiConversation } from "../runtime/conversation/pi-runtime.js";
 import { runVercelConversation } from "../runtime/conversation/vercel-runtime.js";
 import {
   requireDesktopApi,
@@ -455,7 +454,10 @@ export function registerRuntimeCommand(program: Command): void {
             "--deterministic-supervisor cannot be combined with supervisor provider flags",
           );
         }
-        const run = backend === "pi" ? runPiConversation : runVercelConversation;
+        const run =
+          backend === "pi"
+            ? (await import("../runtime/conversation/pi-runtime.js")).runPiConversation
+            : runVercelConversation;
         const defaultCapabilities =
           backend === "pi" ? "compaction,restart,supervision" : "";
         const capabilities = (options.capabilities ?? defaultCapabilities)
