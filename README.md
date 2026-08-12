@@ -33,8 +33,15 @@ Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and opens the
 selected agent when it can. It installs from the current GitHub `main`
 branch: the script clones the source into
 `~/.understudy/agent-tools/source/understudy-agent-tools`,
-builds the CLI locally, and links the `understudy` command. You do not
-need a published npm package.
+builds and packs the CLI locally, installs the resulting tarball, and removes
+the temporary checkout. You do not need a published npm package.
+
+The default install uses the smaller Vercel conversation backend. The optional
+Pi backend can be added later without reinstalling Understudy:
+
+```bash
+npm install -g @earendil-works/pi-ai@0.80.6 @earendil-works/pi-coding-agent@0.80.6
+```
 
 Then, in Claude Code:
 

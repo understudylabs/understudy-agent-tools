@@ -66,6 +66,26 @@ function positiveInteger(value: string): number {
   return parsed;
 }
 
+async function loadPiConversation(): Promise<
+  typeof import("../runtime/conversation/pi-runtime.js").runPiConversation
+> {
+  try {
+    return (await import("../runtime/conversation/pi-runtime.js")).runPiConversation;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("@earendil-works/pi-ai") ||
+        error.message.includes("@earendil-works/pi-coding-agent"))
+    ) {
+      throw new Error(
+        "The optional Pi backend is not installed. Run `npm install -g @earendil-works/pi-ai@0.80.6 @earendil-works/pi-coding-agent@0.80.6`, then retry.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 async function startDeterministicSupervisorFixture(): Promise<{
   target: { base_url: string; model: string };
   close(): Promise<void>;
@@ -456,7 +476,7 @@ export function registerRuntimeCommand(program: Command): void {
         }
         const run =
           backend === "pi"
-            ? (await import("../runtime/conversation/pi-runtime.js")).runPiConversation
+            ? await loadPiConversation()
             : runVercelConversation;
         const defaultCapabilities =
           backend === "pi" ? "compaction,restart,supervision" : "";
