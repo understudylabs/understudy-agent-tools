@@ -184,276 +184,10 @@ the agent-run install/update/verify flow for every platform.
 Every path is local-only: installing an adapter does not authenticate, upload
 data, download model weights, or make provider calls.
 
-<a id="install-as-a-claude-code-plugin"></a>
-<details>
-<summary><b>Claude Code — install as a plugin (recommended)</b></summary>
-
-The skills in [`skills/`](skills/) ship as a Claude Code plugin, declared in
-[`.claude-plugin/`](.claude-plugin/) (`plugin.json` + `marketplace.json`).
-Installing it registers the public invocable skills, including the
-`understudy` orchestrator, onboarding, capture/eval, optimization, local
-model, distillation, RLM, and verifier-handoff workers.
-
-From a clone of this repo:
-
-```bash
-claude plugin marketplace add /path/to/understudy-agent-tools
-claude plugin install understudy@understudy-skills
-```
-
-Then run `/reload-plugins` in your Claude Code session to activate — **no
-restart required**. The equivalent interactive flow is `/plugin marketplace add
-<path>` then `/plugin install understudy@understudy-skills`. The
-[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill automates
-this and reports whether the plugin is already installed. The older
-[`install-plugin`](skills/install-plugin/SKILL.md) skill remains as a Claude Code
-compatibility shim.
-
-After `/reload-plugins`, run `/understudy:onboard`. That is where the coding
-agent guides the first local model, launches the ladder climb, and handles any
-frontier comparison with explicit consent.
-
-Installing as a plugin is the recommended way to use Understudy: the skills are
-what let a coding agent explain what Understudy is and walk you from a trace to
-a shipped improvement. It is also fully reversible —
-
-```bash
-claude plugin uninstall understudy@understudy-skills
-claude plugin marketplace remove understudy-skills
-```
-
-— and nothing outside Claude Code's plugin registry is touched.
-
-</details>
-
-<a id="install-as-a-cursor-plugin"></a>
-<details>
-<summary><b>Cursor — install as a plugin</b></summary>
-
-The same skills ship as a Cursor plugin, declared in
-[`.cursor-plugin/plugin.json`](.cursor-plugin/plugin.json). Cursor discovers
-the repo's existing [`skills/`](skills/) tree from the plugin root, so there is
-no Cursor-specific fork of the playbooks.
-
-For local testing from a clone:
-
-```bash
-mkdir -p ~/.cursor/plugins/local
-ln -s /path/to/understudy-agent-tools ~/.cursor/plugins/local/understudy
-```
-
-Then restart Cursor or run **Developer: Reload Window**. In Cursor Settings ->
-Rules, the Understudy skills should appear under Agent Decides. To remove it:
-
-```bash
-rm -f ~/.cursor/plugins/local/understudy
-```
-
-The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
-contains the agent-run install/update/verify flow; ask for platform `cursor`.
-The older [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
-remains as a compatibility shim.
-
-</details>
-
-<a id="install-as-a-codex-plugin"></a>
-<details>
-<summary><b>Codex — install as a plugin</b></summary>
-
-The same skills ship as a Codex plugin, declared in
-[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) and exposed through the
-repo marketplace at
-[`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json). The
-plugin points at the repo's existing [`skills/`](skills/) tree.
-
-From a clone of this repo:
-
-```bash
-codex plugin marketplace add /path/to/understudy-agent-tools
-```
-
-Then open Codex, run `/plugins`, choose the `understudy-skills` marketplace, and
-install or enable the `understudy` plugin. The
-[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill contains
-the agent-run registration/verify flow; ask for platform `codex`. The older
-[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill remains as
-a compatibility shim.
-
-To remove the marketplace registration:
-
-```bash
-codex plugin marketplace remove understudy-skills
-```
-
-`AGENTS.md` remains repo guidance for Codex, but the Codex plugin is the
-reusable distribution unit for the skills.
-
-</details>
-
-<a id="install-as-opencode-skills"></a>
-<details>
-<summary><b>OpenCode — install as skills</b></summary>
-
-OpenCode loads `SKILL.md` files natively. This repo exposes the shared skill
-tree through [`.opencode/skills`](.opencode/skills), a symlink to
-[`skills/`](skills/), and ships a small
-[`/understudy-onboard`](.opencode/commands/understudy-onboard.md) command.
-
-This is an OpenCode skills/commands adapter, not an OpenCode JS/TS plugin.
-OpenCode plugins are for lifecycle hooks and custom behavior; Understudy only
-needs native skill discovery plus a command that routes into onboarding.
-[`.opencode/adapter.json`](.opencode/adapter.json) is an Understudy
-version/staleness sentinel for release checks, not a manifest consumed by
-OpenCode.
-
-For global local testing from a clone:
-
-```bash
-mkdir -p ~/.config/opencode/skills ~/.config/opencode/commands
-for skill in /path/to/understudy-agent-tools/skills/*; do
-  [ -f "$skill/SKILL.md" ] || continue
-  dest=~/.config/opencode/skills/"$(basename "$skill")"
-  [ -e "$dest" ] || [ -L "$dest" ] || ln -s "$skill" "$dest"
-done
-[ -e ~/.config/opencode/commands/understudy-onboard.md ] || \
-  ln -s /path/to/understudy-agent-tools/.opencode/commands/understudy-onboard.md \
-    ~/.config/opencode/commands/understudy-onboard.md
-```
-
-Then restart OpenCode or open a new TUI session and run:
-
-```text
-/understudy-onboard
-```
-
-The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
-contains the agent-run install/update/verify flow; ask for platform `opencode`.
-The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
-skill remains as a compatibility shim for the old name. Because symlink targets
-can live outside the current project, OpenCode may ask before reading linked
-external resources.
-
-To remove Understudy-owned symlinks:
-
-```bash
-find ~/.config/opencode/skills -type l -lname '*/understudy-agent-tools/skills/*' -delete
-rm -f ~/.config/opencode/commands/understudy-onboard.md
-```
-
-</details>
-
-<a id="install-as-hermes-skills"></a>
-<details>
-<summary><b>Hermes Agent — install as skills</b></summary>
-
-Hermes Agent (Nous Research) loads `SKILL.md` files natively and scans any
-directory listed in `skills.external_dirs` in `~/.hermes/config.yaml`. The
-shared skill tree already ships valid Hermes skills, so the adapter registers
-the directory rather than copying it. To keep the config entry stable across
-checkout or package moves, it registers a durable `~/.understudy/skills`
-symlink to [`skills/`](skills/) — a path indirection, not a fork.
-[`.hermes/adapter.json`](.hermes/adapter.json) is an Understudy
-version/staleness sentinel for release checks, not a manifest consumed by
-Hermes.
-
-For global local testing from a clone:
-
-```bash
-REPO=/path/to/understudy-agent-tools
-LINK="$HOME/.understudy/skills"
-mkdir -p "$HOME/.understudy"
-[ -e "$LINK" ] || ln -s "$REPO/skills" "$LINK"
-python3 - "${HERMES_HOME:-$HOME/.hermes}/config.yaml" "$LINK" <<'PY'
-import sys, os, yaml
-p, d = sys.argv[1], sys.argv[2]
-c = (yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {}
-s = c.get("skills") if isinstance(c.get("skills"), dict) else {}
-c["skills"] = s
-e = s.get("external_dirs") or []
-e = [e] if isinstance(e, str) else (e if isinstance(e, list) else [])
-if d not in e:
-    e.append(d)
-s["external_dirs"] = e
-os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
-yaml.safe_dump(c, open(p, "w"), sort_keys=False)
-PY
-```
-
-Then, in Hermes, rescan without restarting and start onboarding:
-
-```text
-/reload-skills
-/onboard
-```
-
-The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
-contains the agent-run install/update/verify flow; ask for platform `hermes`.
-Local `~/.hermes/skills/` entries win on name conflicts, so a few generically
-named skills may be shadowed by Hermes bundled skills.
-
-To remove the registration, drop the entry from `skills.external_dirs` and the
-symlink:
-
-```bash
-CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
-LINK="$HOME/.understudy/skills"
-python3 - "$CONFIG" "$LINK" <<'PY'
-import sys, os, yaml
-p, d = sys.argv[1], sys.argv[2]
-c = (yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {}
-s = c.get("skills") if isinstance(c.get("skills"), dict) else {}
-e = s.get("external_dirs") or []
-e = [e] if isinstance(e, str) else (e if isinstance(e, list) else [])
-s["external_dirs"] = [x for x in e if x != d]
-yaml.safe_dump(c, open(p, "w"), sort_keys=False)
-PY
-[ -L "$LINK" ] && rm -f "$LINK"
-```
-
-</details>
-
-<details>
-<summary><b>Devin — install as a global CLI</b></summary>
-
-Devin is a cloud-based coding agent: each session boots from a snapshot, so the
-install surface is a global CLI rather than a local plugin registration. Until
-the npm package is published, the public installer uses a temporary sparse
-checkout of the reviewed GitHub source, omits Desktop/Rust and other development
-trees, builds with production dependencies only, and installs the resulting npm
-tarball. Devin reads `AGENTS.md` as an injected repository rule and accesses the
-shared [`skills/`](skills/) tree from the installed package.
-[`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
-sentinel for release checks, not a manifest consumed by Devin.
-
-Install the CLI without launching an interactive local agent (typically add
-the same command to the Devin environment blueprint for persistence):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh \
-  | bash -s -- --yes --agents devin --no-launch-agent
-```
-
-Then ask Devin:
-
-```text
-Use the Understudy onboarding skill for this project.
-```
-
-The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
-contains the agent-run install/verify flow; ask for platform `devin`. This path
-is local-only: installing the CLI does not authenticate, upload data, download
-model weights, or make provider calls.
-
-To remove:
-
-```bash
-npm uninstall -g @understudylabs/understudy-agent-tools
-```
-
-</details>
-
-Use the platform registry to see the current install/reload surface across
-agent clients:
+All adapters expose the same skill tree; there are no platform-specific forks.
+For manual setup, removal, or adapter internals, see
+[`docs/agent-platform-adapters.md`](docs/agent-platform-adapters.md). You can
+also inspect the live registry from the CLI:
 
 ```bash
 understudy platforms
@@ -475,85 +209,20 @@ understudy models runtime doctor  # verify the pinned Apple Silicon VLM engine
 `spine` prints the public workflow and points agents at
 `skills/understudy/SKILL.md`.
 
-Understudy Desktop does not depend on a user's global Python environment. On
-Apple Silicon, `understudy models runtime install` creates a private,
-commit-pinned MLX/VLM engine under `~/.understudy`; `doctor` verifies its
-provenance and the required Gemma compatibility fix, and `repair` reinstalls
-that exact runtime when first-use diagnostics fail.
-
-When Desktop is running, agents can use its authenticated local control plane
-without discovering ports or handling tokens themselves:
+When Understudy Desktop is running, the CLI can inspect its authenticated local
+control plane and run models without exposing ports or tokens:
 
 ```bash
 understudy desktop contract --json
-understudy desktop capabilities
 understudy desktop status --json
 understudy desktop model catalog --json
-understudy desktop download start understudy-small
-understudy desktop download status <download-id> --json
-understudy desktop slot add --json
-understudy desktop slot assign <slot-id> understudy-small
-understudy desktop slot warm <slot-id>
-understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
-understudy desktop chat --slot 9 --supervisor-slot 5 "Let the small model work first"
-understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
-understudy desktop run cancel my-task-1
-understudy desktop run events my-task-1 --json
-understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
-  --marker my-task-1:intervention:0 --stage take_over --correct-action continue
-understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
-  --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
-understudy desktop supervision export --reviewed-only --json
-understudy desktop supervision prepare-proof --proof ~/.understudy/proofs/<proof-id> --json
-understudy desktop tool-proof run --suite core \
-  --candidate local-main:7 --candidate local-fast:6 --repetitions 1
-understudy desktop tool-proof list --json
-understudy desktop tool-proof prepare --proof <proof-id> --json
+understudy desktop chat --slot <slot-id> --session my-task "Inspect this"
 ```
 
-The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
-the recorded PID and loopback health endpoint, and streams the canonical
-ConversationRuntime events. The desktop UI, REST API, CLI, and MCP use the same
-runtime and exact `run_id`; the CLI does not drive UI controls or create a
-second chat harness. `understudy desktop contract` prints the packaged OpenAPI
-3.1 contract even when Desktop is not running, so agents can plan calls without
-probing private implementation routes or handling the bearer token themselves.
-Model inventory, download, and residency commands use the versioned Desktop
-REST contract and fall back to the equivalent legacy routes for one release;
-they do not duplicate model-process ownership inside the CLI. MCP remains an
-adapter for agents that prefer tool calls, not the CLI's hidden transport.
-The supervision export is explicit and local-only. It writes content-addressed,
-owner-only correction-pair JSONL and metrics under
-`~/.understudy/exports/supervision/` without printing prompt or completion
-payloads to the terminal. Metrics use only provider-complete role attribution;
-missing or estimated usage is counted as excluded rather than treated as zero.
-The export also reports incomplete interventions and any journal or intervention
-rows omitted by its bounded recent-evidence window, so aggregates are never
-presented as all-time metrics when the safety cap was reached.
-`supervision prepare-proof` joins only exact proof/run/session/marker identities
-to those canonical pairs. It records deterministic structured-output scores
-separately from human judgment, keeps promotion and smoke proofs
-evaluation-only, and emits training-eligible rows only for a separately
-declared train or development split. The content-addressed JSONL and manifest
-remain owner-only and local; the command performs no upload. When at least two
-eligible rows exist, the same command also prepares an owner-only DSPy/GEPA
-handoff with a deterministic 75/25 train/dev split. Its inputs preserve the
-small-model partial, supervisor reason, and failed teacher attempt; its target
-is the frozen expected JSON. The handoff is preparation only: it performs no
-provider call and never admits promotion or smoke rows.
-Executing the provider-backed DSPy adapter additionally requires an approved
-dollar cap and explicit input/output token prices. Before every request, the
-runtime reserves a conservative upper bound from the serialized input bytes and
-the configured output-token ceiling; it disables client-side retries and stops
-before a request whose reservation could exceed the cap. Candidate, proof, and terminal
-run-state artifacts record the cumulative reservation, metered token
-attribution, and user-supplied price basis. This is a fail-closed cap under that
-declared basis, not a claim about the provider's final invoice.
-The strict tool proof is also local-only: Pi runs each selected model serially,
-the CLI restores the previous residency set in a `finally` path, and promotion
-requires the frozen 30-task suite repeated three times with complete owner-only
-result and canonical-event evidence. Failed exact calls can be projected into
-an immutable GEPA-first improvement packet without uploading local traces.
+`understudy desktop contract` prints the packaged OpenAPI 3.1 contract even
+when Desktop is not running. Model downloads, supervision exports, proof
+preparation, and tool-proof commands are explicit and local-only; use
+`understudy desktop --help` for the complete surface.
 
 ## The skill tree
 
@@ -572,6 +241,7 @@ live in each skill's `references/` directory:
 | **Train locally** | curate-trajectories, distill-classifier, local-distillation-lab (incl. the pedagogical arm) |
 | **RL handoff** | prepare-verifier-handoff (decide → author env → package → hand off) |
 | **Gateway & routing** | use-understudy-gateway (incl. the frontier-keys decision), ramp-and-verify, check-routing-health (self-service diagnostics) |
+| **Writing & papers** | deslop, latex-paper-polish |
 
 [`skills/README.md`](skills/README.md) is the authoritative index with
 per-skill descriptions — keep it in sync when adding skills. See

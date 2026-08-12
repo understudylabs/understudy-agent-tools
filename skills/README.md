@@ -260,6 +260,17 @@ shows headroom, no hosted RL until the local arms plateau.
   there provider errors", and "is this us?" — without asking the team. Uses
   the developer's existing `sk_*` key.
 
+## Writing & Papers
+
+- [`deslop`](deslop/SKILL.md) edits prose to remove formulaic AI patterns while
+  preserving the author's meaning, evidence, citations, uncertainty, and voice.
+  Detailed phrase, structure, trope, and before/after catalogs live in its
+  [`references/`](deslop/references/) directory.
+- [`latex-paper-polish`](latex-paper-polish/SKILL.md) prepares LaTeX papers and
+  PDFs for review or sharing through evidence-aware prose editing, local
+  compilation, warning triage, and page-flow fixes. It includes a local
+  inspection helper and uses `deslop` for the prose pass.
+
 ## Public Safety
 
 Default to the path with the highest expected progress toward the stated
