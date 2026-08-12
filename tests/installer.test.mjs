@@ -16,6 +16,17 @@ describe("install.sh", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("keeps the curl installer off the desktop and development dependency paths", () => {
+    const script = readFileSync("install.sh", "utf8");
+    assert.match(script, /git clone --depth 1 --filter=blob:none --sparse/);
+    assert.match(script, /sparse-checkout set/);
+    assert.doesNotMatch(script, /sparse-checkout set[^\n]*apps\/homescreen/);
+    assert.match(script, /npm install --prefix "\$INSTALL_SOURCE_DIR" --omit=dev --ignore-scripts/);
+    assert.match(script, /tsconfig\.install\.json/);
+    assert.match(script, /npm pkg delete scripts\.prepare --prefix "\$INSTALL_SOURCE_DIR"/);
+    assert.match(script, /npm pack "\$INSTALL_SOURCE_DIR" --ignore-scripts/);
+  });
+
   it("runs from a pipe when noninteractive mode is explicit", () => {
     const script = readFileSync("install.sh", "utf8");
     const lab = join(root, "lab");

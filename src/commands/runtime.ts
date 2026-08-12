@@ -27,7 +27,6 @@ import {
   runConversationAdapterConformance,
   runConversationConformance,
 } from "../runtime/conversation/conformance.js";
-import { runPiConversation } from "../runtime/conversation/pi-runtime.js";
 import { runVercelConversation } from "../runtime/conversation/vercel-runtime.js";
 import {
   requireDesktopApi,
@@ -65,6 +64,26 @@ function positiveInteger(value: string): number {
     throw new Error("value must be a positive integer");
   }
   return parsed;
+}
+
+async function loadPiConversation(): Promise<
+  typeof import("../runtime/conversation/pi-runtime.js").runPiConversation
+> {
+  try {
+    return (await import("../runtime/conversation/pi-runtime.js")).runPiConversation;
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (error.message.includes("@earendil-works/pi-ai") ||
+        error.message.includes("@earendil-works/pi-coding-agent"))
+    ) {
+      throw new Error(
+        "The optional Pi backend is not installed. Run `npm install -g @earendil-works/pi-ai@0.80.6 @earendil-works/pi-coding-agent@0.80.6`, then retry.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
 }
 
 async function startDeterministicSupervisorFixture(): Promise<{
@@ -455,7 +474,10 @@ export function registerRuntimeCommand(program: Command): void {
             "--deterministic-supervisor cannot be combined with supervisor provider flags",
           );
         }
-        const run = backend === "pi" ? runPiConversation : runVercelConversation;
+        const run =
+          backend === "pi"
+            ? await loadPiConversation()
+            : runVercelConversation;
         const defaultCapabilities =
           backend === "pi" ? "compaction,restart,supervision" : "";
         const capabilities = (options.capabilities ?? defaultCapabilities)

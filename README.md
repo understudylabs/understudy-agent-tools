@@ -33,8 +33,15 @@ Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and opens the
 selected agent when it can. It installs from the current GitHub `main`
 branch: the script clones the source into
 `~/.understudy/agent-tools/source/understudy-agent-tools`,
-builds the CLI locally, and links the `understudy` command. You do not
-need a published npm package.
+builds and packs the CLI locally, installs the resulting tarball, and removes
+the temporary checkout. You do not need a published npm package.
+
+The default install uses the smaller Vercel conversation backend. The optional
+Pi backend can be added later without reinstalling Understudy:
+
+```bash
+npm install -g @earendil-works/pi-ai@0.80.6 @earendil-works/pi-coding-agent@0.80.6
+```
 
 Then, in Claude Code:
 
@@ -409,11 +416,12 @@ PY
 <summary><b>Devin — install as a global CLI</b></summary>
 
 Devin is a cloud-based coding agent: each session boots from a snapshot, so the
-install surface is a global CLI rather than a local plugin registration. The
-public installer clones the reviewed GitHub source, builds it, and globally
-links the CLI. Devin reads `AGENTS.md` as an
-injected repository rule and accesses the shared [`skills/`](skills/) tree
-directly from that checkout.
+install surface is a global CLI rather than a local plugin registration. Until
+the npm package is published, the public installer uses a temporary sparse
+checkout of the reviewed GitHub source, omits Desktop/Rust and other development
+trees, builds with production dependencies only, and installs the resulting npm
+tarball. Devin reads `AGENTS.md` as an injected repository rule and accesses the
+shared [`skills/`](skills/) tree from the installed package.
 [`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
 sentinel for release checks, not a manifest consumed by Devin.
 
