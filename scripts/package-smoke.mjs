@@ -47,6 +47,8 @@ const requiredPackageMembers = [
   "skills/local-distillation-lab/references/pedagogical-arm.md",
   "skills/recursive-language-model/SKILL.md",
   "skills/recursive-language-model/references/pedagogical-training.md",
+  "runtime-assets/campaign-admission/trusted-generator.txt",
+  "schemas/understudy.strict_promotion.v1.schema.json",
 ];
 
 function npmPackFiles() {

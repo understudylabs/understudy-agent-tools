@@ -1,0 +1,10 @@
+[project]
+name = "understudy-campaign-admission-generic-smoke"
+version = "0.0.0"
+requires-python = "==3.12.*"
+dependencies = [
+  "verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@61e7394d45109d142deec768c3c459ab98111e91",
+]
+
+[tool.uv]
+override-dependencies = ["mcp==1.29.0"]
