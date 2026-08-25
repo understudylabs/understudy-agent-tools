@@ -166,7 +166,8 @@ bun run start:demo # production server incl. repo demo data
 
 The server-side loader (`lib/data-core.ts`) scans:
 
-1. `BENCHMARK_HUB_DATA_DIR` — a colon-separated list of directories whose
+1. `BENCHMARK_HUB_DATA_DIR` — a list of directories (separated by the
+   platform path delimiter, `:` on POSIX / `;` on Windows) whose
    subdirectories are benchmarks; when unset, `~/.understudy/benchmarks`
 2. Only when `BENCHMARK_HUB_DEMO=1` (the `dev` and `start:demo` scripts set
    it): `<repo>/experiments/benchmark-hub-demo` (seeded demo data, writable

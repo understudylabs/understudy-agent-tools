@@ -78,7 +78,7 @@ export type { CalibrationSummary } from "./benchmark-hub-types.js";
 
 /**
  * Data-dir contract:
- * - BENCHMARK_HUB_DATA_DIR: colon-separated list of directories whose
+ * - BENCHMARK_HUB_DATA_DIR: list of directories (path.delimiter-separated) whose
  *   subdirectories are benchmarks. Each benchmark dir holds benchmark.json
  *   (understudy.benchmark.v1), optional rows-*.jsonl and/or rows/*.jsonl
  *   (understudy.eval_result.v1 lines), optional traces*.jsonl (message DAG
@@ -104,7 +104,7 @@ function demoEnabled(): boolean {
 function slugRoots(): { prefix: string; root: string; source: HubEntry["source"]; readOnly: boolean }[] {
   const roots: { prefix: string; root: string; source: HubEntry["source"]; readOnly: boolean }[] = [];
   const envDirs = (process.env.BENCHMARK_HUB_DATA_DIR ?? "")
-    .split(":")
+    .split(path.delimiter)
     .map((d) => d.trim())
     .filter(Boolean);
   if (envDirs.length > 0) {
