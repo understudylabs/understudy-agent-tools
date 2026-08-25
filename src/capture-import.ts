@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { globalConfigDir } from "./config/paths.js";
 import { readXlsxRecords } from "./capture-import-xlsx.js";
 
@@ -1418,8 +1418,8 @@ function ratio(numerator: number, denominator: number): number {
 }
 
 function artifactReference(repo: string, path: string): string {
-  const repoRelative = relative(repo, path);
-  if (repoRelative === ".." || repoRelative.startsWith("../") || repoRelative.startsWith("..\\")) {
+  const repoRelative = relative(repo, path).split(sep).join("/");
+  if (repoRelative === ".." || repoRelative.startsWith("../")) {
     return path;
   }
   return repoRelative;
