@@ -15,7 +15,7 @@
  */
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { validateBenchmarkManifest } from "./benchmark.js";
 import { readJsonlFile, readRunEvents } from "./benchmark-artifacts.js";
 import {
@@ -625,11 +625,22 @@ export function filterChangedBenchmarkDirs(dirs: string[], baseRef?: string): { 
   let changed: string[];
   let base: string | null = null;
   try {
-    base = baseRef ?? execSync("git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1", { encoding: "utf8", shell: "/bin/sh" }).trim();
+    if (!baseRef) {
+      try {
+        base = execSync("git merge-base HEAD origin/main", { encoding: "utf8" }).trim();
+      } catch {
+        base = execSync("git rev-parse HEAD~1", { encoding: "utf8" }).trim();
+      }
+    } else {
+      base = baseRef;
+    }
     const repoRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf8" }).trim();
     changed = execSync(`git diff --name-only ${base} HEAD`, { encoding: "utf8" }).split("\n").filter(Boolean).map((file) => resolve(repoRoot, file));
   } catch {
     return { dirs, base: null };
   }
-  return { dirs: dirs.filter((dir) => changed.some((file) => file.startsWith(`${resolve(dir)}/`) || file === resolve(dir))), base };
+  return { dirs: dirs.filter((dir) => {
+    const absolute = resolve(dir);
+    return changed.some((file) => file === absolute || file.startsWith(`${absolute}${sep}`));
+  }), base };
 }
