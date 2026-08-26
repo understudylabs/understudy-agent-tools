@@ -24,9 +24,9 @@ does not write routes or change traffic.
 
 These endpoints are read-only and carry no side effects. They do not change
 routes, traffic percentages, or provider configuration. Do not print the full
-`sk_*` key in output — mask it to the last 4 characters. Use `understudy run`
-to inject credentials into child processes instead of pasting keys into shell
-commands.
+`sk_*` key in output — mask it to the last 4 characters. Prefer the first-class
+`understudy reporting` commands, which resolve the signed-in organization and
+project without exposing credentials to a child process.
 
 ## Vocabulary — use these words, exactly
 
@@ -77,32 +77,28 @@ node dist/bin.js status --json
 
 2. **Ground in volume first — one org-wide call.** Before analyzing or
    recommending anything, rank workloads by spend and request count across
-   the whole org. `understudy run` spawns the child **without a shell**, so
-   wrap the command in `sh -c '...'` — the injected `$UNDERSTUDY_API_KEY` /
-   `$UNDERSTUDY_ORG_ID` only expand inside that child shell (bare
-   `understudy run -- curl` would send the literal string
-   `$UNDERSTUDY_API_KEY` as the bearer):
+   the whole org:
 
    ```sh
-   understudy run -- sh -c 'curl -s \
-     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=workload"'
+   understudy reporting summary --window 7d --group-by workload --json
    ```
 
    Rank by `customer_cost_usd` and `requests` (`group_by` defaults to
    `project` — use that first when the org has many projects, then
-   `workload`). For a tight incident window add `granularity=minute` (ranges
+   `workload`). For a tight incident window add `--granularity minute` (ranges
    up to 24h); drill down with the `project_id` / `workload_id` filters.
    Every statement you make must be grounded in that volume ranking — lead
    with the workloads that carry the spend and traffic. Do not anchor on
    low-leverage generic advice about workloads that barely run.
 
-3. Pull the unified per-workload view (same `sh -c` wrapper):
+   Organization reporting has no pricing-coverage block. Use
+   `understudy reporting cost-breakdown` before treating the cost ranking as
+   complete enough for an exact billing claim.
+
+3. Pull the unified per-workload view:
 
    ```sh
-   understudy run -- sh -c 'curl -s \
-     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/workload-status?window=24h"'
+   understudy reporting workload-status --project <project> --window 24h --json
    ```
 
    One row per workload: `status` (healthy | degraded | idle), the declared
@@ -143,9 +139,7 @@ node dist/bin.js status --json
    ([`reference.md`](reference.md) § Captures metadata list):
 
    ```sh
-   understudy run -- sh -c 'curl -s \
-     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/captures?limit=25"'
+   understudy captures list --project <project> --limit 25 --json
    ```
 
 6. If any call fails or a number looks wrong, capture the
@@ -160,8 +154,13 @@ node dist/bin.js status --json
 within one project when the org-wide view isn't enough: it carries what
 org reporting doesn't — the computed `cache_read_pct` share, a per-group
 `error_rate`, and multi-dimension `group_by` (e.g. `workload,day`). Raw
-cache token counts are in both. See [`reference.md`](reference.md) § Usage
-summary. The
+cache token counts are in both:
+
+```sh
+understudy reporting usage --project <project> --window 7d --group-by workload,day --json
+```
+
+See [`reference.md`](reference.md) § Usage summary. The
 older `routing-status`, `provider-health`, and `status` endpoints still
 exist but are deprecated — see the legacy section of
 [`reference.md`](reference.md). Only fall back to them if `workload-status`

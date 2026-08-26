@@ -193,6 +193,228 @@ async function withHostedFixture(fn) {
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/api_keys") return send(200, { keys: [{ id: "key_1", name: "default", obfuscated_value: "sk_...test", last_used_at: null, permissions: [], created_at: "2026-06-01T00:00:00Z" }] });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/models") return send(200, { models: [{ id: "glm-5.1", display_name: "GLM 5.1", capabilities: ["chat"], context_window: 128000 }] });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/reporting") {
+      return send(200, {
+        org_id: "org_1",
+        window: url.searchParams.has("from") ? "custom" : (url.searchParams.get("window") ?? "7d"),
+        window_start: "2026-08-19T00:00:00.000Z",
+        window_end: "2026-08-26T00:00:00.000Z",
+        granularity: url.searchParams.get("granularity") ?? "day",
+        group_by: url.searchParams.get("group_by") ?? "project",
+        filters: {
+          project_id: url.searchParams.get("project_id"),
+          workload_id: url.searchParams.get("workload_id"),
+          exclude_project_ids: url.searchParams.getAll("exclude_project_id"),
+        },
+        totals: {
+          requests: 120,
+          input_tokens: 12000,
+          cache_read_input_tokens: 4000,
+          cache_creation_input_tokens: 1000,
+          output_tokens: 3000,
+          total_tokens: 20000,
+          customer_cost_usd: 4.25,
+          future_total: "preserved",
+        },
+        series: [{
+          bucket: "2026-08-25",
+          project_id: "proj_1",
+          project: "Rehearsal",
+          workload_id: "usp_classify",
+          workload: "classify",
+          model: null,
+          requests: 120,
+          input_tokens: 12000,
+          cache_read_input_tokens: 4000,
+          cache_creation_input_tokens: 1000,
+          output_tokens: 3000,
+          total_tokens: 20000,
+          customer_cost_usd: 4.25,
+        }],
+        generated_at: "2026-08-26T00:00:01.000Z",
+        future_field: "preserved",
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/usage-summary") {
+      const groups = url.searchParams.get("window") === "29d"
+        ? Array.from({ length: 5_000 }, (_, index) => ({
+          workload_id: `usp_${index}`,
+          workload: `workload-${index}`,
+          model: null,
+          day: null,
+          requests: 1,
+          input_tokens: 1,
+          output_tokens: 1,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_pct: 0,
+          customer_cost_usd: 0,
+          error_rate: 0,
+        }))
+        : [{
+          workload_id: "usp_classify",
+          workload: "classify",
+          model: null,
+          day: null,
+          requests: 120,
+          input_tokens: 12000,
+          output_tokens: 3000,
+          cache_read_input_tokens: 4000,
+          cache_creation_input_tokens: 1000,
+          cache_read_pct: 0.2353,
+          customer_cost_usd: 4.25,
+          error_rate: 0.01,
+        }];
+      return send(200, {
+        project_id: "proj_1",
+        window: url.searchParams.get("window") ?? "7d",
+        window_start: "2026-08-19T00:00:00.000Z",
+        window_end: "2026-08-26T00:00:00.000Z",
+        group_by: (url.searchParams.get("group_by") ?? "workload").split(","),
+        groups,
+        generated_at: "2026-08-26T00:00:01.000Z",
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workload-status") {
+      return send(200, {
+        project_id: "proj_1",
+        window: url.searchParams.get("window") ?? "24h",
+        window_start: "2026-08-25T00:00:00.000Z",
+        window_end: "2026-08-26T00:00:00.000Z",
+        workloads: [{
+          workload_id: "usp_classify",
+          display_name: "classify",
+          status: "healthy",
+          mode: "managed",
+          declared: { routed: "pin", split_pct: 10 },
+          requests: 120,
+          route_shares: { primary: 0.89, understudy: 0.1, fallback: 0.01 },
+          error_rate: 0.01,
+          last_error_at: "2026-08-25T12:00:00.000Z",
+          example_request_ids: ["req_123"],
+          served_models: [{ model: "glm-5.1", provider_label: "managed", requests: 12, share: 0.1 }],
+          rerouted_pct: 0.1,
+        }],
+        workload_count: 1,
+        generated_at: "2026-08-26T00:00:01.000Z",
+      });
+    }
+    const callCost = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/calls\/([^/]+)\/cost$/);
+    if (req.method === "GET" && callCost) {
+      const correlationId = decodeURIComponent(callCost[1]);
+      const priced = correlationId !== "req_pending";
+      const customerCost = correlationId === "req_tiny" ? 0.0000001 : 0.012345;
+      return send(200, {
+        org_id: "org_1",
+        request_id: priced ? "req_123" : "req_pending",
+        ts: "2026-08-25T12:00:00.000Z",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        provider: "managed",
+        served_model: "glm-5.1",
+        tokens: {
+          input_tokens: 100,
+          cache_creation_input_tokens: 10,
+          cache_read_input_tokens: 20,
+          output_tokens: 30,
+          reasoning_output_tokens: 0,
+        },
+        pricing_status: priced ? "priced" : "unpriced",
+        unpriced_reason: priced ? null : "pricing_pending",
+        customer_cost_usd: priced ? customerCost : null,
+        cost_categories: priced ? {
+          uncached_input_usd: 0.004,
+          cache_write_usd: 0.001,
+          cache_read_usd: 0.000345,
+          output_usd: 0.007,
+        } : null,
+        coverage: {
+          source_timestamp: "2026-08-25T12:00:00.000Z",
+          data_completeness: priced ? 1 : 0,
+          known_gaps: priced ? [] : ["Pricing is still pending for this call."],
+        },
+        generated_at: "2026-08-26T00:00:01.000Z",
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/cost-breakdown") {
+      const cost = {
+        uncached_input_usd: 2,
+        cache_write_usd: 0.5,
+        cache_read_usd: 0.25,
+        output_usd: 1.5,
+        total_usd: 4.25,
+      };
+      return send(200, {
+        project_id: "proj_1",
+        window: url.searchParams.get("window") ?? "7d",
+        window_start: "2026-08-19T00:00:00.000Z",
+        window_end: "2026-08-26T00:00:00.000Z",
+        workload_id: url.searchParams.get("workload_id"),
+        workloads: [{ workload_id: "usp_classify", workload: "classify", requests: 120, priced_requests: 118, cost }],
+        totals: { ...cost, requests: 120, priced_requests: 118 },
+        coverage: {
+          source_timestamp: "2026-08-25T23:59:00.000Z",
+          data_completeness: 0.9833,
+          known_gaps: ["2 requests are awaiting pricing.\nforged\u001b]8;;https://example.com\u0007"],
+        },
+        generated_at: "2026-08-26T00:00:01.000Z",
+        future_field: "preserved",
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/billing/balance") {
+      return send(200, {
+        balance: {
+          org_id: "org_1",
+          billing_mode: "prepaid",
+          status: "active",
+          balance_usd: 95.75,
+          currency: "USD",
+          low_balance_threshold_usd: 10,
+          grants: {
+            total_granted_usd: 100,
+            total_remaining_usd: 95.75,
+            soonest_expiry: null,
+          },
+        },
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/billing/summary") {
+      return send(200, {
+        summary: {
+          org_id: "org_1",
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          tokens: {
+            input_tokens: 12000,
+            cache_read_input_tokens: 4000,
+            cache_creation_input_tokens: 1000,
+            output_tokens: 3000,
+            reasoning_output_tokens: 0,
+            total_tokens: 20000,
+          },
+          metered_requests: 120,
+          priced_events: 118,
+          estimated_cost_usd: 4.25,
+          blended_price_per_mtok: 212.5,
+        },
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/billing/trend") {
+      return send(200, {
+        points: [{
+          day: "2026-08-25",
+          tokens: {
+            input_tokens: 12000,
+            cache_read_input_tokens: 4000,
+            cache_creation_input_tokens: 1000,
+            output_tokens: 3000,
+            reasoning_output_tokens: 0,
+            total_tokens: 20000,
+          },
+          cost_usd: 4.25,
+        }],
+      });
+    }
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads") return send(200, { workloads: state.workloads, cursor: null });
     if (req.method === "POST" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads") {
       const workload = { id: `usp_${body.name}`, project_id: "proj_1", name: body.name, capture_enabled: Boolean(body.capture_enabled), route_model_id: null, route_traffic_pct: null, is_default: false, created_at: "2026-06-07T00:00:00Z" };
@@ -2827,6 +3049,302 @@ class ScoreWithFeedback:
       assert.equal(requests.at(-1).method, "PUT");
       assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_support_triage/route");
       assert.deepEqual(requests.at(-1).body, { model_id: "glm-5.1", route_traffic_pct: 10 });
+    });
+  });
+
+  it("reads customer-safe reporting and billing data through first-class commands", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const credentialsPath = join(home, ".understudy", "credentials.json");
+      const credentials = JSON.parse(readFileSync(credentialsPath, "utf8"));
+      credentials.orgs.org_2 = {
+        api_key: "sk_test_org_2",
+        gateway_url: credentials.gateway_url,
+      };
+      writeFileSync(credentialsPath, `${JSON.stringify(credentials, null, 2)}\n`);
+
+      const reporting = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "summary",
+        "--window",
+        "7d",
+        "--group-by",
+        "workload",
+        "--exclude-project-id",
+        "proj_internal",
+        "--exclude-project-id",
+        " proj_internal ",
+      ], env, repo);
+      assert.equal(reporting.status, 0, reporting.stderr);
+      const reportingPayload = JSON.parse(reporting.stdout);
+      assert.equal(reportingPayload.totals.customer_cost_usd, 4.25);
+      assert.equal(reportingPayload.totals.future_total, "preserved");
+      assert.equal(reportingPayload.future_field, "preserved");
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/reporting");
+      assert.equal(requests.at(-1).search, "?window=7d&group_by=workload&exclude_project_id=proj_internal");
+      assert.equal(requests.at(-1).headers.authorization, "Bearer sk_test_hosted");
+
+      const usage = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "usage",
+        "--project",
+        "rehearsal",
+        "--window",
+        "30d",
+        "--group-by",
+        "workload,day",
+      ], env, repo);
+      assert.equal(usage.status, 0, usage.stderr);
+      assert.equal(JSON.parse(usage.stdout).groups[0].cache_read_pct, 0.2353);
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/usage-summary");
+      assert.equal(requests.at(-1).search, "?window=30d&group_by=workload%2Cday");
+
+      const workloadStatus = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "workload-status",
+        "--project",
+        "rehearsal",
+        "--window",
+        "6h",
+      ], env, repo);
+      assert.equal(workloadStatus.status, 0, workloadStatus.stderr);
+      assert.equal(JSON.parse(workloadStatus.stdout).workloads[0].route_shares.understudy, 0.1);
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/workload-status");
+      assert.equal(requests.at(-1).search, "?window=6h");
+
+      const callCost = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "cost",
+        "upstream_message_123",
+      ], env, repo);
+      assert.equal(callCost.status, 0, callCost.stderr);
+      assert.equal(JSON.parse(callCost.stdout).request_id, "req_123");
+      assert.equal(JSON.parse(callCost.stdout).customer_cost_usd, 0.012345);
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/calls/upstream_message_123/cost");
+
+      const pending = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "cost",
+        "req_pending",
+      ], env, repo);
+      assert.equal(pending.status, 0, pending.stderr);
+      assert.equal(JSON.parse(pending.stdout).pricing_status, "unpriced");
+      assert.equal(JSON.parse(pending.stdout).customer_cost_usd, null);
+
+      const breakdown = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "cost-breakdown",
+        "--project-id",
+        "proj_1",
+        "--window",
+        "7d",
+        "--workload-id",
+        "usp_classify",
+      ], env, repo);
+      assert.equal(breakdown.status, 0, breakdown.stderr);
+      const breakdownPayload = JSON.parse(breakdown.stdout);
+      assert.equal(breakdownPayload.totals.total_usd, 4.25);
+      assert.equal(breakdownPayload.coverage.data_completeness, 0.9833);
+      assert.equal(breakdownPayload.future_field, "preserved");
+      assert.equal(requests.at(-1).search, "?window=7d&workload_id=usp_classify");
+
+      const balance = await runWithEnvAsync(["--json", "billing", "balance"], env, repo);
+      assert.equal(balance.status, 0, balance.stderr);
+      assert.equal(JSON.parse(balance.stdout).balance.balance_usd, 95.75);
+
+      const summary = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "summary",
+        "--from",
+        "2026-08-19T00:00:00Z",
+        "--to",
+        "2026-08-26T00:00:00Z",
+      ], env, repo);
+      assert.equal(summary.status, 0, summary.stderr);
+      assert.equal(JSON.parse(summary.stdout).summary.priced_events, 118);
+      assert.equal(requests.at(-1).search, "?from=2026-08-19T00%3A00%3A00.000Z&to=2026-08-26T00%3A00%3A00.000Z");
+
+      const trend = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "trend",
+        "--from",
+        "2026-08-19T00:00:00Z",
+        "--to",
+        "2026-08-26T00:00:00Z",
+      ], env, repo);
+      assert.equal(trend.status, 0, trend.stderr);
+      assert.equal(JSON.parse(trend.stdout).points[0].cost_usd, 4.25);
+
+      const humanSummary = await runWithEnvAsync([
+        "billing",
+        "summary",
+        "--from",
+        "2026-08-19T00:00:00Z",
+        "--to",
+        "2026-08-26T00:00:00Z",
+      ], env, repo);
+      assert.equal(humanSummary.status, 0, humanSummary.stderr);
+      assert.match(humanSummary.stdout, /coverage note/i);
+      assert.match(humanSummary.stdout, /zero-cost traffic or pricing lag/i);
+      assert.doesNotMatch(humanSummary.stdout, /pricing gap/i);
+
+      const humanBreakdown = await runWithEnvAsync([
+        "reporting",
+        "cost-breakdown",
+        "--project-id",
+        "proj_1",
+      ], env, repo);
+      assert.equal(humanBreakdown.status, 0, humanBreakdown.stderr);
+      assert.match(humanBreakdown.stdout, /uncached \$2\.00/);
+      assert.match(humanBreakdown.stdout, /cache write \$0\.50/);
+      assert.match(humanBreakdown.stdout, /cache read \$0\.25/);
+      assert.match(humanBreakdown.stdout, /output \$1\.50/);
+      assert.doesNotMatch(humanBreakdown.stdout, /\u001b|\u0007/);
+      assert.match(humanBreakdown.stdout, /\\u000a/);
+      assert.match(humanBreakdown.stdout, /\\u001b/);
+
+      const human = await runWithEnvAsync([
+        "reporting",
+        "cost",
+        "req_pending",
+      ], env, repo);
+      assert.equal(human.status, 0, human.stderr);
+      assert.match(human.stdout, /unpriced/i);
+      assert.match(human.stdout, /pricing pending/i);
+      assert.doesNotMatch(human.stdout, /\$0(?:\.00+)?\b/);
+
+      const tiny = await runWithEnvAsync([
+        "reporting",
+        "cost",
+        "req_tiny",
+      ], env, repo);
+      assert.equal(tiny.status, 0, tiny.stderr);
+      assert.match(tiny.stdout, /<\$0\.000001/);
+    });
+  });
+
+  it("rejects invalid reporting dimensions and billing windows before the API call", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const initialRequests = requests.length;
+
+      const groupBy = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "summary",
+        "--group-by",
+        "provider",
+      ], env, repo);
+      assert.notEqual(groupBy.status, 0);
+      assert.match(groupBy.stderr, /group-by/i);
+
+      const window = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "summary",
+        "--from",
+        "2026-08-26T00:00:00Z",
+        "--to",
+        "2026-08-19T00:00:00Z",
+      ], env, repo);
+      assert.notEqual(window.status, 0);
+      assert.match(window.stderr, /before/i);
+
+      const naiveTimestamp = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "trend",
+        "--from",
+        "2026-08-19T00:00:00",
+        "--to",
+        "2026-08-26T00:00:00",
+      ], env, repo);
+      assert.notEqual(naiveTimestamp.status, 0);
+      assert.match(naiveTimestamp.stderr, /Z or a numeric UTC offset/i);
+
+      const calendarDate = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "summary",
+        "--from",
+        "2026-02-30",
+        "--to",
+        "2026-03-01",
+      ], env, repo);
+      assert.notEqual(calendarDate.status, 0);
+      assert.match(calendarDate.stderr, /calendar dates/i);
+
+      const usageGroup = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "usage",
+        "--project-id",
+        "proj_1",
+        "--group-by",
+        "workload,provider",
+      ], env, repo);
+      assert.notEqual(usageGroup.status, 0);
+      assert.match(usageGroup.stderr, /workload, model, day/i);
+
+      const usageDuration = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "usage",
+        "--project-id",
+        "proj_1",
+        "--window",
+        "31d",
+      ], env, repo);
+      assert.notEqual(usageDuration.status, 0);
+      assert.match(usageDuration.stderr, /no longer than 30d/i);
+      assert.equal(requests.length, initialRequests);
+    });
+  });
+
+  it("fails closed when usage reaches the server group limit", async () => {
+    await withHostedFixture(async ({ home, repo }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const result = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "usage",
+        "--project-id",
+        "proj_1",
+        "--window",
+        "29d",
+        "--group-by",
+        "workload,day",
+      ], env, repo);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /5,000-group server limit/i);
+    });
+  });
+
+  it("normalizes billing timezone offsets before sending them", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const result = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "summary",
+        "--from",
+        "2026-08-18T17:00:00-07:00",
+        "--to",
+        "2026-08-25T17:00:00-07:00",
+      ], env, repo);
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(
+        requests.at(-1).search,
+        "?from=2026-08-19T00%3A00%3A00.000Z&to=2026-08-26T00%3A00%3A00.000Z",
+      );
     });
   });
 

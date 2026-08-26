@@ -17,6 +17,11 @@ across all projects — the grounding call) followed by **workload-status**
 hand the Understudy team) complete the surface. The three older endpoints
 are deprecated — see [Legacy endpoints](#legacy-endpoints-deprecated).
 
+For cost-specific investigations, use **call cost** for one request,
+**cost breakdown** for a project's workload/category rollup, and the
+read-only **billing** commands for the organization ledger position and
+customer-cost history.
+
 ## Vocabulary
 
 All responses use the canonical vocabulary — use the same words with the user:
@@ -53,9 +58,7 @@ endpoints).
 | `project_id`, `workload_id` | — | Optional filters (max 255 chars). |
 
 ```sh
-understudy run -- sh -c 'curl -s \
-  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=workload"'
+understudy reporting summary --window 7d --group-by workload --json
 ```
 
 The response carries `totals` (`requests`, `input_tokens`,
@@ -83,13 +86,8 @@ metrics by hand.
 | `window` | `24h` | Lookback window. Accepts `30m`, `1h`, `6h`, up to `24h`. |
 
 ```sh
-understudy run -- sh -c 'curl -s \
-  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/workload-status?window=24h"'
+understudy reporting workload-status --project <project> --window 24h --json
 ```
-
-The `sh -c` wrapper is required: `understudy run` spawns the child without a
-shell, so `$UNDERSTUDY_API_KEY` only expands inside the child shell.
 
 ```jsonc
 {
@@ -164,9 +162,7 @@ within one project.
 | `group_by` | — | Comma-separated subset of the server-side allowlist: `workload`, `model`, `day`. |
 
 ```sh
-understudy run -- sh -c 'curl -s \
-  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"'
+understudy reporting usage --project <project> --window 7d --group-by workload,day --json
 ```
 
 ```jsonc
@@ -203,6 +199,55 @@ understudy run -- sh -c 'curl -s \
 | `customer_cost_usd` | What the customer is billed for the group over the window. Rank workloads by this + `requests` before making any recommendation. |
 | `error_rate` | 5xx error rate within the group (0..1). |
 
+## Cost reporting
+
+Look up one call by its Understudy request id, upstream request id, or upstream
+response/message id:
+
+```sh
+understudy reporting cost <request-or-upstream-id> --json
+```
+
+`customer_cost_usd` and `cost_categories` are customer pricing, not supplier
+cost or margin. An event not yet covered by pricing returns
+`pricing_status: "unpriced"` and `customer_cost_usd: null`; never translate
+that into zero. The response's `coverage.known_gaps` explains incomplete
+category or source data.
+
+For a project-wide rollup by workload and token category:
+
+```sh
+understudy reporting cost-breakdown --project <project> --window 7d --json
+```
+
+The output separates `requests` from `priced_requests` and preserves
+`coverage.data_completeness` plus `coverage.known_gaps`. A workload filter is
+available as `--workload-id <id>`.
+
+Organization reporting does not carry a coverage block. Treat its cost ranking
+as directional until a project cost breakdown confirms the applicable pricing
+coverage.
+
+## Billing reads
+
+These commands are read-only. Balance reads the authoritative billing ledger;
+summary and trend read metered tokens plus derived customer pricing:
+
+```sh
+understudy billing balance --json
+understudy billing summary --from <inclusive-timestamp-with-timezone> --to <exclusive-timestamp-with-timezone> --json
+understudy billing trend --from <inclusive-timestamp-with-timezone> --to <exclusive-timestamp-with-timezone> --json
+```
+
+Keep the sources distinct: balance is the ledger position, while summary and
+trend are usage-derived estimates. None is a provider-cost or margin report.
+Metered request and priced-event counts are different units: complete zero-cost
+traffic or pricing lag can make them differ, so their difference is not itself
+an exact missing-price count.
+The CLI intentionally does not expose the lower-level billing model-breakdown
+endpoint because its raw provider/model fields do not use the customer-safe
+scrubbing contract of the reporting surface.
+
 ## Captures metadata list
 
 ```
@@ -217,9 +262,7 @@ defaults to 25 (max 100); `truncated: true` comes with an opaque R2 `cursor`
 to pass back verbatim for the next page.
 
 ```sh
-understudy run -- sh -c 'curl -s \
-  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/captures?limit=25"'
+understudy captures list --project <project> --limit 25 --json
 ```
 
 Capture **content** (request/response bodies) is not readable with an `sk_*`
@@ -244,10 +287,9 @@ Every error envelope carries `request_id`, and every response carries the
 ## Calling without the CLI
 
 The endpoints accept a standard `Authorization: Bearer sk_*` header. Prefer
-`understudy run -- sh -c '...'` so credentials come from the CLI's credential
-store (see the examples above). To call curl directly instead, first export
-the key from `~/.understudy/credentials.json` in your own shell — the variable
-below expands in *your* shell, not via `understudy run`:
+the first-class `understudy reporting` commands so credentials come from the
+CLI's credential store. To call curl directly instead, first export the key in
+your own shell:
 
 ```sh
 curl -s -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \

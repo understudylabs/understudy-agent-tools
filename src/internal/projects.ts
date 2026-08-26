@@ -33,6 +33,10 @@ export interface ResolvedProject {
   project: Project | null;
 }
 
+export function resolveOrganizationAuth(org?: string): ResolvedAuth {
+  return resolveAuth(org ?? readProjectConfig()?.org_id);
+}
+
 export async function listProjects(auth: ResolvedAuth): Promise<Project[]> {
   const projects: Project[] = [];
   let cursor: string | null = null;
@@ -50,7 +54,7 @@ export async function listProjects(auth: ResolvedAuth): Promise<Project[]> {
 
 export async function resolveProject(opts: ProjectResolutionOptions): Promise<ResolvedProject> {
   const config = readProjectConfig();
-  const auth = resolveAuth(opts.org ?? config?.org_id);
+  const auth = resolveOrganizationAuth(opts.org ?? config?.org_id);
 
   if (opts.projectId) {
     return {

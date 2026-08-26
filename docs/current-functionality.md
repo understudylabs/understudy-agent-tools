@@ -38,6 +38,14 @@ understudy workloads route <workload-id> --project-id <project-id> --model-id gl
 understudy workloads route <workload-id> --project-id <project-id> --clear
 understudy gateway health
 understudy gateway probe --provider anthropic --project rehearsal --workload classify
+understudy reporting summary --window 7d --group-by workload
+understudy reporting usage --project rehearsal --window 7d --group-by workload,day
+understudy reporting workload-status --project rehearsal --window 24h
+understudy reporting cost <request-or-upstream-id>
+understudy reporting cost-breakdown --project rehearsal --window 7d
+understudy billing balance
+understudy billing summary --from 2026-08-01T00:00:00Z --to 2026-09-01T00:00:00Z
+understudy billing trend --from 2026-08-01T00:00:00Z --to 2026-09-01T00:00:00Z
 understudy captures list --project rehearsal --workload classify
 understudy captures get <request-id> --project rehearsal --workload classify
 understudy captures export <request-id> --out .understudy/captures/<request-id>.json
@@ -96,6 +104,12 @@ traces, or secret values.
 .understudy/capture-import/redaction-manifest.json
 .understudy/capture-import/workload-card.json
 ```
+
+The reporting and billing commands are authenticated, read-only hosted calls.
+They expose customer-safe usage and customer pricing, plus the authoritative
+billing ledger balance; they do not expose provider cost or margin. Call-cost
+lookups preserve `unpriced` as `null`, and cost breakdowns surface the API's
+coverage and known-gap fields instead of presenting incomplete data as final.
 
 ## What Is Skill-Led Now
 
