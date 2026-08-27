@@ -92,7 +92,7 @@ export const CostCategoriesSchema = z.object({
   output_usd: z.number(),
 }).passthrough();
 
-export const CallCostResponseSchema = z.object({
+const CallCostResponseBaseSchema = z.object({
   org_id: z.string(),
   request_id: z.string(),
   ts: z.string(),
@@ -101,13 +101,22 @@ export const CallCostResponseSchema = z.object({
   provider: z.enum(["anthropic", "openai", "managed"]),
   served_model: z.string(),
   tokens: TokenCountsSchema,
-  pricing_status: z.enum(["priced", "unpriced"]),
   unpriced_reason: z.string().nullable(),
-  customer_cost_usd: z.number().nullable(),
   cost_categories: CostCategoriesSchema.nullable(),
   coverage: CoverageSchema,
   generated_at: z.string(),
-}).passthrough();
+});
+
+export const CallCostResponseSchema = z.discriminatedUnion("pricing_status", [
+  CallCostResponseBaseSchema.extend({
+    pricing_status: z.literal("priced"),
+    customer_cost_usd: z.number(),
+  }).passthrough(),
+  CallCostResponseBaseSchema.extend({
+    pricing_status: z.literal("unpriced"),
+    customer_cost_usd: z.null(),
+  }).passthrough(),
+]);
 export type CallCostResponse = z.infer<typeof CallCostResponseSchema>;
 
 const CostBreakdownCategoriesSchema = CostCategoriesSchema.extend({
@@ -257,11 +266,36 @@ export function parseDuration(value: string, label: string, maxMinutes: number):
 }
 
 export function parseBillingWindow(from: string, to: string): { from: string; to: string } {
-  const explicitTimezone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
+  const explicitTimezone = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
   const normalizedFrom = from.trim();
   const normalizedTo = to.trim();
-  if (!explicitTimezone.test(normalizedFrom) || !explicitTimezone.test(normalizedTo)) {
+  const fromMatch = normalizedFrom.match(explicitTimezone);
+  const toMatch = normalizedTo.match(explicitTimezone);
+  if (!fromMatch || !toMatch) {
     throw new Error("--from and --to must be ISO timestamps with Z or a numeric UTC offset.");
+  }
+  const hasValidCalendarComponents = (match: RegExpMatchArray): boolean => {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] ?? "0");
+    const offsetHour = Number(match[8] ?? "0");
+    const offsetMinute = Number(match[9] ?? "0");
+    const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    return daysInMonth !== undefined
+      && day >= 1
+      && day <= daysInMonth
+      && hour <= 23
+      && minute <= 59
+      && second <= 59
+      && offsetHour <= 23
+      && offsetMinute <= 59;
+  };
+  if (!hasValidCalendarComponents(fromMatch) || !hasValidCalendarComponents(toMatch)) {
+    throw new Error("--from and --to must be valid ISO UTC timestamps.");
   }
   const fromMs = Date.parse(normalizedFrom);
   const toMs = Date.parse(normalizedTo);

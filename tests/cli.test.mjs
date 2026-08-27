@@ -302,8 +302,10 @@ async function withHostedFixture(fn) {
     const callCost = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/calls\/([^/]+)\/cost$/);
     if (req.method === "GET" && callCost) {
       const correlationId = decodeURIComponent(callCost[1]);
-      const priced = correlationId !== "req_pending";
-      const customerCost = correlationId === "req_tiny" ? 0.0000001 : 0.012345;
+      const priced = correlationId !== "req_pending" && correlationId !== "req_unpriced_with_cost";
+      const customerCost = correlationId === "req_pending" || correlationId === "req_priced_without_cost"
+        ? null
+        : correlationId === "req_tiny" ? 0.0000001 : 0.012345;
       return send(200, {
         org_id: "org_1",
         request_id: priced ? "req_123" : "req_pending",
@@ -321,7 +323,7 @@ async function withHostedFixture(fn) {
         },
         pricing_status: priced ? "priced" : "unpriced",
         unpriced_reason: priced ? null : "pricing_pending",
-        customer_cost_usd: priced ? customerCost : null,
+        customer_cost_usd: customerCost,
         cost_categories: priced ? {
           uncached_input_usd: 0.004,
           cache_write_usd: 0.001,
@@ -3306,6 +3308,49 @@ class ScoreWithFeedback:
       assert.notEqual(usageDuration.status, 0);
       assert.match(usageDuration.stderr, /no longer than 30d/i);
       assert.equal(requests.length, initialRequests);
+    });
+  });
+
+  it("rejects calendar-invalid billing timestamps before the API call", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const initialRequests = requests.length;
+      const result = await runWithEnvAsync([
+        "--json",
+        "billing",
+        "summary",
+        "--from",
+        "2026-02-30T00:00:00Z",
+        "--to",
+        "2026-03-03T00:00:00Z",
+      ], env, repo);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /valid ISO UTC timestamps/i);
+      assert.equal(requests.length, initialRequests);
+    });
+  });
+
+  it("fails closed when call pricing status contradicts customer cost", async () => {
+    await withHostedFixture(async ({ home, repo }) => {
+      const env = { HOME: home, USERPROFILE: home };
+
+      const pricedWithoutCost = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "cost",
+        "req_priced_without_cost",
+      ], env, repo);
+      assert.notEqual(pricedWithoutCost.status, 0);
+      assert.match(pricedWithoutCost.stderr, /customer_cost_usd/i);
+
+      const unpricedWithCost = await runWithEnvAsync([
+        "--json",
+        "reporting",
+        "cost",
+        "req_unpriced_with_cost",
+      ], env, repo);
+      assert.notEqual(unpricedWithCost.status, 0);
+      assert.match(unpricedWithCost.stderr, /customer_cost_usd/i);
     });
   });
 
