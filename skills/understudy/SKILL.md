@@ -197,6 +197,10 @@ Identify the developer's current stage and load exactly one:
   provider health", "are there 500s", "what's our error rate", or wants
   self-service diagnostics without asking the team →
   [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md).
+- **Understudy usage, customer cost, or billing position** — the developer asks
+  for organization/project usage, the customer-priced cost of a call or
+  workload, pricing coverage, billing balance, or cost history →
+  [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md).
 - **Share savings / leaderboard receipt** — the developer wants to share how
   much money they saved, submit an anonymous lower-Anthropic-bill result, or
   send metrics back for the coming leaderboard →

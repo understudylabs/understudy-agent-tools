@@ -45,6 +45,8 @@ import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
 import { registerModelsCommand } from "./commands/models.js";
 import { registerProjectsCommand } from "./commands/projects.js";
+import { registerReportingCommand } from "./commands/reporting.js";
+import { registerBillingCommand } from "./commands/billing.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerRunsCommand } from "./commands/runs.js";
@@ -920,6 +922,8 @@ export function buildProgram(): Command {
   registerKeysCommand(program);
   registerModelsCommand(program);
   registerProjectsCommand(program);
+  registerReportingCommand(program);
+  registerBillingCommand(program);
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
   registerTracesCommand(program);
