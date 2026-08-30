@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
@@ -161,7 +162,38 @@ export function cohortFromResponse(cohort: Cohort): FrozenCohort {
 interface LeaseOwner {
   token: string;
   pid: number;
+  process_instance_id?: string;
   created_at: string;
+}
+
+function processInstanceId(pid: number): string | null {
+  if (process.platform === "linux") {
+    try {
+      const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const commandEnd = stat.lastIndexOf(")");
+      if (!bootId || commandEnd === -1) return null;
+      const fieldsAfterCommand = stat.slice(commandEnd + 1).trim().split(/\s+/);
+      const startTimeTicks = fieldsAfterCommand[19];
+      if (!/^\d+$/.test(startTimeTicks ?? "")) return null;
+      return `linux-proc-v1:${pid}:${bootId}:${startTimeTicks}`;
+    } catch {
+      return null;
+    }
+  }
+
+  if (process.platform === "darwin") {
+    const result = spawnSync("/bin/ps", ["-p", String(pid), "-o", "lstart="], {
+      encoding: "utf8",
+      env: { LC_ALL: "C", LANG: "C" },
+      timeout: 1_000,
+      maxBuffer: 1_024,
+    });
+    const startedAt = result.status === 0 ? result.stdout.trim().replace(/\s+/g, " ") : "";
+    return startedAt ? `darwin-ps-v1:${pid}:${startedAt}` : null;
+  }
+
+  return null;
 }
 
 function processIsAlive(pid: number): boolean {
@@ -187,11 +219,24 @@ export function acquireEvalBuildLease(output: string): () => void {
       throw new Error(`Another eval build owns ${output}; lock metadata is incomplete at ${leasePath}.`);
     }
     if (Number.isInteger(owner.pid) && processIsAlive(owner.pid)) {
-      throw new Error(`Another eval build (pid ${owner.pid}) already owns ${output}.`);
+      const observedProcessInstanceId = processInstanceId(owner.pid);
+      if (
+        typeof owner.process_instance_id !== "string" ||
+        observedProcessInstanceId === null ||
+        owner.process_instance_id === observedProcessInstanceId
+      ) {
+        throw new Error(`Another eval build (pid ${owner.pid}) already owns ${output}.`);
+      }
     }
     throw new Error(`A stale eval build lock remains at ${leasePath} (owner pid ${owner.pid}). Remove that exact lock directory, then rerun to resume.`);
   }
-  const owner: LeaseOwner = { token: randomUUID(), pid: process.pid, created_at: new Date().toISOString() };
+  const instanceId = processInstanceId(process.pid);
+  const owner: LeaseOwner = {
+    token: randomUUID(),
+    pid: process.pid,
+    ...(instanceId === null ? {} : { process_instance_id: instanceId }),
+    created_at: new Date().toISOString(),
+  };
   try {
     writePrivateJson(join(leasePath, "owner.json"), owner);
   } catch (error) {

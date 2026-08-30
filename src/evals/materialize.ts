@@ -11,6 +11,9 @@ const CAPTURE_DOWNLOAD_CONCURRENCY = 4;
 export const MAX_CAPTURE_BYTES = 16 * 1024 * 1024;
 export const MAX_COHORT_BYTES = 256 * 1024 * 1024;
 const EXPORT_MIN_REMAINING_MS = 2 * 60_000;
+const MAX_PORTABLE_FILE_NAME_BYTES = 240;
+const CAPTURE_FILE_EXTENSION = ".jsonl";
+const WINDOWS_RESERVED_BASENAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 
 export async function downloadExport(
   exportData: CohortExport,
@@ -61,14 +64,18 @@ export async function downloadExport(
 }
 
 function localFilePlans(exportData: CohortExport): Array<{ fileName: string }> {
-  const fileNames = new Set<string>();
+  const fileNameKeys = new Set<string>();
   return exportData.captures.map((capture, index) => {
-    const stem = safeFileStem(capture.request_id);
-    let fileName = `${stem}.jsonl`;
-    if (fileNames.has(fileName)) fileName = `${stem}-${capture.content_sha256.slice(0, 12)}.jsonl`;
-    if (fileNames.has(fileName)) fileName = `${stem}-${capture.content_sha256.slice(0, 12)}-${index}.jsonl`;
-    if (fileNames.has(fileName)) throw new Error(`Capture ${capture.request_id} collides with another local filename.`);
-    fileNames.add(fileName);
+    let fileName = portableCaptureFileName(capture.request_id);
+    if (fileNameKeys.has(portableFileNameKey(fileName))) {
+      fileName = portableCaptureFileName(capture.request_id, `-${capture.content_sha256.slice(0, 12)}`);
+    }
+    if (fileNameKeys.has(portableFileNameKey(fileName))) {
+      fileName = portableCaptureFileName(capture.request_id, `-${capture.content_sha256.slice(0, 12)}-${index}`);
+    }
+    const key = portableFileNameKey(fileName);
+    if (fileNameKeys.has(key)) throw new Error(`Capture ${capture.request_id} collides with another local filename.`);
+    fileNameKeys.add(key);
     return { fileName };
   });
 }
@@ -187,8 +194,26 @@ function allowedCaptureUrl(raw: string, gatewayUrl: string): string {
   throw new Error(`Refusing capture download from untrusted origin ${url.origin}.`);
 }
 
-function safeFileStem(value: string): string {
-  const safe = value.replace(/[^a-zA-Z0-9._-]/g, "_");
-  if (!safe || safe === "." || safe === "..") throw new Error(`Unsafe request id: ${value}`);
+function portableCaptureFileName(requestId: string, suffix = ""): string {
+  const tail = `${suffix}${CAPTURE_FILE_EXTENSION}`;
+  const stemBytes = MAX_PORTABLE_FILE_NAME_BYTES - Buffer.byteLength(tail);
+  if (stemBytes < 1) throw new Error(`Capture filename suffix is too long for request ${requestId}.`);
+  return `${safeFileStem(requestId, stemBytes)}${tail}`;
+}
+
+function portableFileNameKey(fileName: string): string {
+  return fileName.toLowerCase();
+}
+
+function safeFileStem(value: string, maxBytes: number): string {
+  let safe = value.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/[. ]+$/g, "");
+  if (!safe || safe === "." || safe === "..") safe = "request";
+  if (WINDOWS_RESERVED_BASENAME.test(safe)) safe = `_${safe}`;
+
+  // The replacement above guarantees ASCII, so code units and UTF-8 bytes
+  // have the same length. Trim again in case truncation lands on a dot.
+  safe = safe.slice(0, maxBytes).replace(/[. ]+$/g, "");
+  if (!safe) safe = "request".slice(0, maxBytes);
+  if (WINDOWS_RESERVED_BASENAME.test(safe)) safe = `_${safe}`.slice(0, maxBytes);
   return safe;
 }
