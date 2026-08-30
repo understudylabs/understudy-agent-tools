@@ -74,6 +74,25 @@ test("fails closed when no trace is within the requested window", () => {
   assert.throws(() => compileTraceFoundry(source, join(root, ".understudy", "out"), 3, new Date("2026-07-21T00:00:00Z")), /Refusing to compile a stale benchmark/);
 });
 
+test("hosted v3 placement ids remain workload-scoped after normalization", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-v3-scope-"));
+  const source = join(root, "captures"), output = join(root, "out");
+  mkdirSync(source, { recursive: true });
+  const legacy = capture("legacy-v3", "2026-07-20T00:00:00Z", [{ role: "user", content: "Update legacy record" }], {
+    content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1 } }],
+  });
+  legacy.schema_version = 3;
+  legacy.placement_id = "usp_legacy";
+  delete legacy.workload_id;
+  delete legacy.workload_name;
+  writeFileSync(join(source, "legacy.json"), JSON.stringify(legacy));
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "usp_legacy" });
+  assert.equal(result.counts.captures, 1);
+  const normalized = JSON.parse(readFileSync(join(output, "normalized-captures.jsonl"), "utf8"));
+  assert.equal(normalized.scope.workload_id, "usp_legacy");
+  assert.ok(normalized.warnings.includes("legacy_placement_id"));
+});
+
 test("scopes workloads, preserves upstream requests, emits a resumable v1 environment, and applies review decisions", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-lifecycle-"));
   const source = join(root, ".understudy", "captures"), output = join(root, ".understudy", "benchmarks", "automation"); mkdirSync(source, { recursive: true });
@@ -807,6 +826,28 @@ test("leakage audit: clean when contract targets never surface outside the input
   assert.equal(audit.checked_tasks, 1);
 });
 
+test("build-time leakage warnings keep customer-derived excerpts off stderr", async () => {
+  const { printLeakageAudit } = await import("../dist/trace-foundry.js");
+  const customerValue = "confidential-customer-document-998877";
+  const stderr = [];
+  const originalError = console.error;
+  console.error = (...parts) => stderr.push(parts.join(" "));
+  try {
+    printLeakageAudit({
+      schema_version: "understudy.leakage_audit.v1",
+      status: "findings",
+      checked_tasks: 1,
+      findings: [{ task_id: "task-private", location: "fixtures.json", kind: "state_effect_value", excerpt: customerValue, tier: "verbatim", similarity: 1, signal: "exact" }],
+      tier_counts: { verbatim: 1, fuzzy: 0, semantic: 0 },
+      heuristic: "synthetic test fixture",
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.doesNotMatch(stderr.join("\n"), new RegExp(customerValue));
+  assert.match(stderr.join("\n"), /details recorded only in the private manifest/);
+});
+
 test("build-benchmark records the leakage audit additively in manifest.json", () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-leakage-"));
   const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
@@ -921,6 +962,41 @@ const pythonBin = ["python3", "python3.13", "python3.12", "python3.11", "python3
   (bin) => spawnSync(bin, ["-c", "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"], { encoding: "utf8" }).status === 0,
 );
 
+test("hostile observed tool names remain data in generated Python", { skip: !pythonBin }, () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-hostile-tool-"));
+  const source = join(root, "captures"), output = join(root, "out");
+  mkdirSync(source, { recursive: true });
+  const hostileName = 'update-record\"\"\"\nraise RuntimeError("trace-data-executed")\n#';
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture(
+    "hostile",
+    "2026-07-20T00:00:00Z",
+    [{ role: "user", content: "Apply the update" }],
+    { content: [
+      { type: "tool_use", id: "x", name: hostileName, input: { class: 1, self: 2, "foo-bar": 3, foo_bar: 4 } },
+      { type: "tool_use", id: "y", name: "foo-bar", input: { id: 1 } },
+      { type: "tool_use", id: "z", name: "foo_bar", input: { id: 2 } },
+      { type: "tool_use", id: "dunder-init", name: "__init__", input: {} },
+      { type: "tool_use", id: "dunder-get", name: "__getattribute__", input: {} },
+      { type: "tool_use", id: "inherited", name: "run", input: {} },
+    ] },
+  )));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const worldPath = join(output, "environment", "understudy_trace_env", "servers", "world.py");
+  const world = readFileSync(worldPath, "utf8");
+  assert.match(world, /Execute one trace-derived transition against per-rollout state/);
+  assert.doesNotMatch(world, /Execute the trace-derived/);
+  assert.match(world, /async def tool_foo_bar\(/);
+  assert.match(world, /async def tool_foo_bar_2\(/, "colliding tool names receive distinct Python identifiers");
+  assert.match(world, /async def tool___init__\(/);
+  assert.match(world, /async def tool___getattribute__\(/);
+  assert.match(world, /async def tool_run\(/, "captured names cannot override inherited runtime methods");
+  assert.match(world, /class_: float \| None = None/);
+  assert.match(world, /self_: float \| None = None/);
+  assert.match(world, /foo_bar_2: float \| None = None/, "colliding argument names receive distinct Python identifiers");
+  const parsed = spawnSync(pythonBin, ["-m", "py_compile", worldPath], { encoding: "utf8" });
+  assert.equal(parsed.status, 0, parsed.stderr);
+});
+
 test("two sequential rollouts: rollout 2 starts from the seeded initial state, no residue from rollout 1", { skip: !pythonBin }, () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-isolation-"));
   const source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
@@ -974,7 +1050,7 @@ test("two sequential rollouts: rollout 2 starts from the seeded initial state, n
     "    state = world.WorldState()",
     "    ts = world.WorldToolset(state)",
     "    initial = state.model_dump()",
-    "    reply = await ts.update_record(id=7, status='active')",
+    "    reply = await ts.tool_update_record(id=7, status='active')",
     "    return initial, state.model_dump(), reply",
     "i1, f1, r1 = asyncio.run(rollout())",
     "i2, f2, r2 = asyncio.run(rollout())",

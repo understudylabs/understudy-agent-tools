@@ -3,6 +3,21 @@
 Use these helpers instead of rewriting normalization, DAG construction,
 benchmark manifests, review application, environment packages, or replay loops.
 
+When the source is a named workload already captured by Understudy, the
+one-command front door freezes and downloads an immutable cohort before invoking
+this same compiler locally:
+
+```sh
+understudy evals build \
+  --project <project> \
+  --workload <workload> \
+  --name <eval-name>
+```
+
+See
+[`../../capture-evidence/references/hosted-workload-eval.md`](../../capture-evidence/references/hosted-workload-eval.md)
+for the service-versus-agent ownership boundary and privacy gates.
+
 ## Compile or resume
 
 ```sh
