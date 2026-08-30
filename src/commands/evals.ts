@@ -1,63 +1,44 @@
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { confirm } from "@inquirer/prompts";
 import { Command } from "commander";
 import kleur from "kleur";
-import { z } from "zod";
 
+import { buildEvalProject } from "../eval-project.js";
+import {
+  acquireEvalBuildLease,
+  assertBuildStateMatches,
+  buildState,
+  cohortFromResponse,
+  creatingBuildState,
+  initializeBuildCheckpoint,
+  pathExists,
+  readEvalBuildState,
+  replacePrivateJson,
+  writePrivateJson,
+} from "../evals/build-state.js";
+import {
+  CatalogItemSchema,
+  CatalogResponseSchema,
+  CohortExportSchema,
+  CohortSchema,
+  type CatalogItem,
+  type Cohort,
+  type EvalBuildCreatingState,
+  type EvalBuildIdentity,
+  type EvalBuildSelection,
+  type FrozenCohort,
+} from "../evals/contracts.js";
+import {
+  assertEquivalentExport,
+  assertExportLineage,
+  downloadExport,
+  EXPORT_EXPIRES_SECONDS,
+} from "../evals/materialize.js";
 import { request } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 import { resolveProject, type ProjectResolutionOptions } from "../internal/projects.js";
 import { resolveWorkload } from "../internal/workloads.js";
-
-const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
-const CatalogItemSchema = z.object({
-  capture_key: z.string(),
-  request_id: z.string(),
-  content_sha256: Sha256Schema,
-  captured_at: z.string(),
-  provider: z.string(),
-  requested_model: z.string(),
-  served_model: z.string(),
-  status_code: z.number().int(),
-  latency_ms: z.number().nonnegative(),
-  has_tools: z.boolean(),
-  has_structured_output: z.boolean(),
-});
-const CatalogResponseSchema = z.object({
-  captures: z.array(CatalogItemSchema),
-  selection: z.object({
-    from: z.string(),
-    to: z.string(),
-    limit: z.number().int().positive(),
-    sample_seed: z.string(),
-    requested_model: z.string().nullable(),
-    served_model: z.string().nullable(),
-    status_code: z.number().int().nullable(),
-    requires_tools: z.boolean(),
-    requires_structured_output: z.boolean(),
-  }),
-});
-const CohortSchema = z.object({
-  id: z.string(),
-  workload_id: z.string(),
-  name: z.string(),
-  capture_count: z.number().int().positive(),
-  cohort_sha256: Sha256Schema,
-  created_at: z.string(),
-}).passthrough();
-const CohortExportSchema = z.object({
-  export_id: z.string(),
-  cohort_id: z.string(),
-  cohort_sha256: Sha256Schema,
-  expires_at: z.string(),
-  captures: z.array(z.object({
-    request_id: z.string(),
-    content_sha256: Sha256Schema,
-    url: z.string().url(),
-  })).min(1).max(500),
-});
 
 interface WorkloadOpts extends ProjectResolutionOptions {
   workload: string;
@@ -98,28 +79,36 @@ interface GuidedCreateOpts extends WorkloadOpts {
   download: boolean;
   yes?: boolean;
 }
+interface BuildOpts extends Omit<GuidedCreateOpts, "download"> {
+  maxAgeDays?: string;
+  batchSize: string;
+}
 
 export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
     .description("Select, freeze, and materialize workload-scoped evaluation cohorts.");
 
-  addWorkloadOptions(evals.command("create")
-    .description("Create a frozen eval set from a recent workload window.")
-    .requiredOption("--name <name>", "Cohort name.")
-    .option("--description <text>", "Why these captures were selected.")
-    .option("--last <duration>", "Recent window, such as 14d or 12h (max 31d).", "14d")
-    .option("--limit <n>", "Candidate limit, max 100.", "50")
-    .option("--seed <seed>", "Deterministic sample seed.", "understudy-eval-catalog-v1")
-    .option("--requested-model <id>", "Filter by requested model.")
-    .option("--served-model <id>", "Filter by served model.")
-    .option("--status-code <code>", "Filter by HTTP status code.")
-    .option("--requires-tools", "Require a trace containing tools.")
-    .option("--requires-structured-output", "Require structured output.")
+  addWorkloadOptions(addRecentSelectionOptions(
+    evals.command("create").description("Create a frozen eval set from a recent workload window."),
+    "Cohort name.",
+  )
     .option("--out <directory>", "Destination directory (default: .understudy/evals/<name>).")
     .option("--no-download", "Freeze the cohort without downloading trace bodies.")
     .option("--yes", "Approve freezing and local trace download without prompting."))
     .action(async function (this: Command, opts: GuidedCreateOpts) {
       await runAction(this, () => runGuidedCreate(this, opts));
+    });
+
+  addWorkloadOptions(addRecentSelectionOptions(
+    evals.command("build").description("Build a private local draft eval project from a frozen workload cohort."),
+    "Local eval project and cohort name.",
+  )
+    .option("--out <directory>", "Destination directory (default: .understudy/evals/<safe-name>).")
+    .option("--max-age-days <days>", "Override freshness cutoff (must cover --last; default: derive from --last).")
+    .option("--batch-size <count>", "Local trace-foundry processing batch size.", "10")
+    .option("--yes", "Approve freezing and downloading payload-bearing traces without prompting."))
+    .action(async function (this: Command, opts: BuildOpts) {
+      await runAction(this, () => runBuild(this, opts));
     });
 
   addWorkloadOptions(evals.command("catalog")
@@ -165,6 +154,20 @@ function addWorkloadOptions(command: Command): Command {
     .option("--org <id>", "Org id (default: local config or only credential org).");
 }
 
+function addRecentSelectionOptions(command: Command, nameDescription: string): Command {
+  return command
+    .requiredOption("--name <name>", nameDescription)
+    .option("--description <text>", "Why these captures were selected.")
+    .option("--last <duration>", "Recent window, such as 14d or 12h (max 31d).", "14d")
+    .option("--limit <n>", "Candidate limit, max 100.", "50")
+    .option("--seed <seed>", "Deterministic sample seed.", "understudy-eval-catalog-v1")
+    .option("--requested-model <id>", "Filter by requested model.")
+    .option("--served-model <id>", "Filter by served model.")
+    .option("--status-code <code>", "Filter by HTTP status code.")
+    .option("--requires-tools", "Require a trace containing tools.")
+    .option("--requires-structured-output", "Require structured output.");
+}
+
 async function resolveContext(opts: WorkloadOpts) {
   const project = await resolveProject(opts);
   const workload = await resolveWorkload(project, opts.workload);
@@ -207,7 +210,13 @@ async function runGuidedCreate(cmd: Command, opts: GuidedCreateOpts): Promise<vo
     }
   }
   if (shouldDownload) {
-    materialized = await materializeCohort(catalog, cohort.id, opts.out ?? join(".understudy", "evals", safeFileStem(opts.name)));
+    materialized = await materializeCohort(
+      catalog,
+      cohort.id,
+      cohort.cohort_sha256,
+      opts.out ?? join(".understudy", "evals", safeFileStem(opts.name)),
+      cohort.capture_count,
+    );
   }
 
   const payload = {
@@ -228,6 +237,159 @@ async function runGuidedCreate(cmd: Command, opts: GuidedCreateOpts): Promise<vo
   }
 }
 
+async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
+  const batchSize = parsePositiveInteger("--batch-size", opts.batchSize);
+  const windowMs = parseDuration(opts.last);
+  const selectionDays = Math.ceil(windowMs / 86_400_000);
+  const maxAgeDays = opts.maxAgeDays === undefined
+    ? selectionDays
+    : parsePositiveInteger("--max-age-days", opts.maxAgeDays);
+  if (maxAgeDays < selectionDays) {
+    throw new Error(`--max-age-days must cover --last (${selectionDays} day(s)).`);
+  }
+  const selection = buildSelectionFromOptions(opts);
+  if (isJsonMode(cmd) && !opts.yes) {
+    throw new Error("JSON mode cannot prompt. Re-run with --yes to approve freezing and local trace download.");
+  }
+  if (!opts.yes && !process.stdin.isTTY) {
+    throw new Error("Non-interactive eval builds cannot prompt. Re-run with --yes to approve freezing and local trace download.");
+  }
+  const output = resolve(opts.out ?? join(".understudy", "evals", safeFileStem(opts.name)));
+  if (pathExists(output)) {
+    throw new Error(`Eval build destination already exists: ${output}. Choose a fresh --out directory.`);
+  }
+  const releaseLease = acquireEvalBuildLease(output);
+  try {
+    await runBuildWithLease(cmd, opts, { batchSize, windowMs, maxAgeDays, output, selection });
+  } finally {
+    releaseLease();
+  }
+}
+
+async function runBuildWithLease(
+  cmd: Command,
+  opts: BuildOpts,
+  build: { batchSize: number; windowMs: number; maxAgeDays: number; output: string; selection: EvalBuildSelection },
+): Promise<void> {
+  const { batchSize, windowMs, maxAgeDays, output, selection } = build;
+  if (pathExists(output)) {
+    throw new Error(`Eval build destination already exists: ${output}. Choose a fresh --out directory.`);
+  }
+  const staging = join(dirname(output), `.${basename(output)}.eval-build`);
+  const pending = pathExists(staging) ? readEvalBuildState(staging) : null;
+  const to = new Date();
+  let context: Awaited<ReturnType<typeof resolveContext>>;
+  let cohort: FrozenCohort;
+  let identity: EvalBuildIdentity;
+
+  if (pending) {
+    context = await resolveContext(opts);
+    const currentIdentity = identityFromContext(context);
+    assertBuildStateMatches(pending, opts.name, currentIdentity, selection, maxAgeDays, batchSize);
+    identity = pending.identity;
+    if (pending.status === "cohort_creating") {
+      const created = await createOrRecoverBuildCohort(context, pending);
+      cohort = cohortFromResponse(created);
+      replacePrivateJson(
+        join(staging, "build-state.json"),
+        buildState("cohort_frozen", opts.name, identity, cohort, selection, maxAgeDays, batchSize, new Date(pending.created_at)),
+      );
+    } else {
+      cohort = pending.cohort;
+    }
+    if (!isJsonMode(cmd)) {
+      process.stdout.write(`Resuming frozen cohort ${cohort.id} (${cohort.capture_count} captures).\n`);
+    }
+    if (!opts.yes) {
+      const approved = await confirm({
+        message: `Resume downloading ${cohort.capture_count} payload-bearing captures for local draft “${opts.name}” (16 MiB each, 256 MiB total maximum)?`,
+        default: false,
+      });
+      if (!approved) throw new Error("Eval build resume cancelled before payload download.");
+    }
+  } else {
+    const from = new Date(to.getTime() - windowMs);
+    const catalog = await fetchCatalog(opts, from.toISOString(), to.toISOString());
+    if (catalog.response.captures.length === 0) {
+      throw new Error(`No eligible captures found for ${catalog.workload.name} in the last ${opts.last}.`);
+    }
+    if (!isJsonMode(cmd)) printCatalogSummary(catalog.workload.name, catalog.response.captures);
+    if (!opts.yes) {
+      const approved = await confirm({
+        message: `Freeze these ${catalog.response.captures.length} captures and download their payloads to build local draft “${opts.name}”? The files may contain prompts, completions, and tool payloads (16 MiB each, 256 MiB total maximum).`,
+        default: false,
+      });
+      if (!approved) throw new Error("Eval build cancelled before payload download.");
+    }
+    context = catalog;
+    identity = identityFromContext(context);
+    const creating = creatingBuildState(opts.name, opts.description, identity, catalog.response, selection, maxAgeDays, batchSize, to);
+    initializeBuildCheckpoint(staging, creating);
+    const created = await createOrRecoverBuildCohort(context, creating);
+    cohort = cohortFromResponse(created);
+    replacePrivateJson(
+      join(staging, "build-state.json"),
+      buildState("cohort_frozen", opts.name, identity, cohort, selection, maxAgeDays, batchSize, to),
+    );
+  }
+
+  const attempts = join(staging, "attempts");
+  // An interrupted process may have left payload-bearing partial attempts.
+  // The frozen cohort state lives outside this directory, so retries can
+  // safely clear them instead of accumulating customer data.
+  rmSync(attempts, { recursive: true, force: true });
+  mkdirSync(attempts, { recursive: true, mode: 0o700 });
+  chmodSync(attempts, 0o700);
+  const attempt = mkdtempSync(join(attempts, "attempt-"));
+  chmodSync(attempt, 0o700);
+  const buildNow = pending ? new Date(pending.created_at) : to;
+  let published = false;
+  let project!: ReturnType<typeof buildEvalProject>;
+  try {
+    const materialized = await materializeCohort(
+      context,
+      cohort.id,
+      cohort.cohort_sha256,
+      join(attempt, "captures"),
+      cohort.capture_count,
+    );
+    project = buildEvalProject({
+      output: attempt,
+      identity: {
+        orgId: identity.org_id,
+        projectId: identity.project_id,
+        workloadId: identity.workload_id,
+        workloadName: identity.workload_name,
+      },
+      cohort: {
+        id: cohort.id,
+        cohortSha256: cohort.cohort_sha256,
+        captureCount: cohort.capture_count,
+        materializationManifest: materialized.manifest,
+      },
+      maxAgeDays,
+      batchSize,
+      now: buildNow,
+    });
+    writePrivateJson(join(attempt, "build-state.json"), buildState("complete", opts.name, identity, cohort, selection, maxAgeDays, batchSize, buildNow));
+    renameSync(attempt, output);
+    published = true;
+  } finally {
+    if (!published) rmSync(attempt, { recursive: true, force: true });
+  }
+  rmSync(staging, { recursive: true, force: true });
+  project.project_file = join(output, "eval-project.json");
+
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify(project)}\n`);
+  } else {
+    process.stdout.write(`${kleur.green("✓")} Created local draft eval project at ${output}\n`);
+    process.stdout.write(`Project manifest: ${project.project_file}\n`);
+    process.stdout.write(`Review viewer: ${join(output, project.foundry.artifacts.viewer)}\n`);
+    process.stdout.write(`${kleur.yellow("warning")}: local files contain prompts, completions, or tool payloads; nothing was uploaded and no model provider was called\n`);
+  }
+}
+
 async function fetchCatalog(opts: Omit<CatalogOpts, "from" | "to">, from: string, to: string) {
   const limit = parseLimit(opts.limit);
   validateStatusCode(opts.statusCode);
@@ -239,7 +401,7 @@ async function fetchCatalog(opts: Omit<CatalogOpts, "from" | "to">, from: string
   if (opts.requiresTools) params.set("requires_tools", "true");
   if (opts.requiresStructuredOutput) params.set("requires_structured_output", "true");
   const response = await request(
-    { url: `${base}/eval-capture-catalog?${params}`, orgId: project.auth.orgId },
+    { url: `${base}/eval-capture-catalog?${params}`, orgId: project.auth.orgId, signal: AbortSignal.timeout(60_000) },
     CatalogResponseSchema,
   );
   return { project, workload, base, response: response.data };
@@ -252,6 +414,7 @@ async function createCohort(
 ) {
   const response = await request({
     url: `${context.base}/eval-cohorts`, method: "POST", orgId: context.project.auth.orgId,
+    signal: AbortSignal.timeout(60_000),
     body: {
       name,
       selection: { source: "explicit_capture_references", description, sampling_seed: context.response.selection.sample_seed },
@@ -261,19 +424,68 @@ async function createCohort(
   return response.data;
 }
 
-async function materializeCohort(
-  context: Awaited<ReturnType<typeof fetchCatalog>>,
-  cohortId: string,
-  out: string,
-) {
-  const response = await request(
-    { url: `${context.base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`, method: "POST", body: {}, orgId: context.project.auth.orgId },
-    CohortExportSchema,
-  );
-  return downloadExport(response.data, context.workload.id, out);
+async function createOrRecoverBuildCohort(
+  context: Awaited<ReturnType<typeof resolveContext>>,
+  state: EvalBuildCreatingState,
+): Promise<Cohort> {
+  let response: { data: Cohort } | null = null;
+  let createError: unknown;
+  for (let attempt = 0; attempt < 2 && response === null; attempt += 1) {
+    try {
+      response = await request({
+        url: `${context.base}/eval-cohorts`,
+        method: "POST",
+        orgId: context.project.auth.orgId,
+        signal: AbortSignal.timeout(60_000),
+        body: state.create_request,
+      }, CohortSchema);
+    } catch (error) {
+      createError = error;
+    }
+  }
+  if (response === null) throw createError;
+  const cohort = response.data;
+  if (
+    cohort.operation_id !== state.create_request.operation_id ||
+    cohort.org_id !== context.project.auth.orgId ||
+    cohort.project_id !== context.project.projectId ||
+    cohort.workload_id !== context.workload.id ||
+    cohort.capture_count !== state.create_request.captures.length
+  ) {
+    throw new Error(`Created cohort ${cohort.id} does not match the persisted eval build selection.`);
+  }
+  return cohort;
 }
 
-function printCatalogSummary(workloadName: string, captures: z.infer<typeof CatalogItemSchema>[]): void {
+async function materializeCohort(
+  context: Awaited<ReturnType<typeof resolveContext>>,
+  cohortId: string,
+  expectedCohortSha256: string,
+  out: string,
+  expectedCaptureCount: number,
+) {
+  const createExport = async () => {
+    const response = await request(
+      {
+        url: `${context.base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`,
+        method: "POST",
+        body: { expires_seconds: EXPORT_EXPIRES_SECONDS },
+        orgId: context.project.auth.orgId,
+        signal: AbortSignal.timeout(60_000),
+      },
+      CohortExportSchema,
+    );
+    assertExportLineage(response.data, cohortId, expectedCohortSha256);
+    if (response.data.captures.length !== expectedCaptureCount) {
+      throw new Error(`Cohort export count ${response.data.captures.length} does not match frozen cohort count ${expectedCaptureCount}.`);
+    }
+    return response.data;
+  };
+  const exportData = await createExport();
+  return downloadExport(exportData, context.workload.id, out, context.project.auth.gatewayUrl, createExport);
+}
+
+function printCatalogSummary(workloadName: string, captures: CatalogItem[]): void {
   const models = new Set(captures.map((capture) => capture.served_model));
   const errors = captures.filter((capture) => capture.status_code >= 400).length;
   const tools = captures.filter((capture) => capture.has_tools).length;
@@ -337,11 +549,26 @@ async function runCohortExport(cmd: Command, cohortId: string, opts: CohortExpor
     throw new Error("Cohort files may contain prompts/completions. Re-run with --yes to download them locally.");
   }
   const { project, workload, base } = await resolveContext(opts);
-  const response = await request(
-    { url: `${base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`, method: "POST", body: {}, orgId: project.auth.orgId },
-    CohortExportSchema,
-  );
-  const payload = await downloadExport(response.data, workload.id, opts.out);
+  const createExport = async () => {
+    const response = await request(
+      {
+        url: `${base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`,
+        method: "POST",
+        body: { expires_seconds: EXPORT_EXPIRES_SECONDS },
+        orgId: project.auth.orgId,
+        signal: AbortSignal.timeout(60_000),
+      },
+      CohortExportSchema,
+    );
+    if (response.data.cohort_id !== cohortId) throw new Error(`Cohort export lineage does not match requested cohort ${cohortId}.`);
+    return response.data;
+  };
+  const firstExport = await createExport();
+  const payload = await downloadExport(firstExport, workload.id, opts.out, project.auth.gatewayUrl, async () => {
+    const refreshed = await createExport();
+    assertEquivalentExport(firstExport, refreshed);
+    return refreshed;
+  });
   if (isJsonMode(cmd)) process.stdout.write(`${JSON.stringify({ ok: true, ...payload })}\n`);
   else {
     process.stdout.write(`${kleur.green("✓")} Materialized ${payload.count} frozen captures at ${payload.output}\n`);
@@ -349,42 +576,20 @@ async function runCohortExport(cmd: Command, cohortId: string, opts: CohortExpor
   }
 }
 
-async function downloadExport(exportData: z.infer<typeof CohortExportSchema>, workloadId: string, out: string) {
-  const outputDir = resolve(out);
-  mkdirSync(outputDir, { recursive: true });
-  const files: Array<{ request_id: string; path: string; content_sha256: string }> = [];
-  const fileNames = new Set<string>();
-  for (const capture of exportData.captures) {
-    const download = await fetch(capture.url, { headers: { Accept: "application/x-ndjson" } });
-    if (!download.ok) throw new Error(`Capture ${capture.request_id} download failed with status ${download.status}.`);
-    const bytes = new Uint8Array(await download.arrayBuffer());
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== capture.content_sha256) throw new Error(`Capture ${capture.request_id} failed SHA-256 verification.`);
-    const stem = safeFileStem(capture.request_id);
-    let fileName = `${stem}.jsonl`;
-    if (fileNames.has(fileName)) fileName = `${stem}-${capture.content_sha256.slice(0, 12)}.jsonl`;
-    if (fileNames.has(fileName)) throw new Error(`Capture ${capture.request_id} collides with another local filename.`);
-    fileNames.add(fileName);
-    writeFileSync(join(outputDir, fileName), bytes);
-    files.push({ request_id: capture.request_id, path: fileName, content_sha256: digest });
-  }
-  const localManifest = join(outputDir, "cohort-manifest.json");
-  writeJson(localManifest, {
-    schema_version: "understudy.eval-cohort-materialization.v1",
-    cohort_id: exportData.cohort_id,
-    cohort_sha256: exportData.cohort_sha256,
-    workload_id: workloadId,
-    capture_count: files.length,
-    privacy: { local_only: true, upload_performed: false },
-    captures: files,
-  });
-  return { output: outputDir, manifest: localManifest, count: files.length, cohort_sha256: exportData.cohort_sha256 };
-}
-
 function writeJson(path: string, value: unknown): void {
   const absolute = resolve(path);
-  mkdirSync(dirname(absolute), { recursive: true });
-  writeFileSync(absolute, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  mkdirSync(dirname(absolute), { recursive: true, mode: 0o700 });
+  writeFileSync(absolute, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  chmodSync(absolute, 0o600);
+}
+
+function identityFromContext(context: Awaited<ReturnType<typeof resolveContext>>) {
+  return {
+    org_id: context.project.auth.orgId,
+    project_id: context.project.projectId,
+    workload_id: context.workload.id,
+    workload_name: context.workload.name,
+  };
 }
 
 function parseIsoOption(name: string, value: string): string {
@@ -409,6 +614,22 @@ function validateStatusCode(value?: string): void {
   }
 }
 
+function buildSelectionFromOptions(opts: BuildOpts): EvalBuildSelection {
+  const limit = parseLimit(opts.limit);
+  validateStatusCode(opts.statusCode);
+  return {
+    last: opts.last,
+    limit,
+    seed: opts.seed,
+    description: opts.description ?? null,
+    requested_model: opts.requestedModel ?? null,
+    served_model: opts.servedModel ?? null,
+    status_code: opts.statusCode === undefined ? null : Number(opts.statusCode),
+    requires_tools: opts.requiresTools ?? false,
+    requires_structured_output: opts.requiresStructuredOutput ?? false,
+  };
+}
+
 function parseDuration(value: string): number {
   const match = /^(\d+)(h|d)$/.exec(value);
   if (!match) throw new Error("--last must be a duration such as 12h or 14d.");
@@ -418,6 +639,14 @@ function parseDuration(value: string): number {
     throw new Error("--last must be between 1h and 31d.");
   }
   return durationMs;
+}
+
+function parsePositiveInteger(name: string, value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 function safeFileStem(value: string): string {

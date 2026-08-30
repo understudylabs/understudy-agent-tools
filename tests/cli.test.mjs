@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
 const cli = ["node", resolve("dist/bin.js")];
@@ -171,6 +171,14 @@ async function withHostedFixture(fn) {
     transientCaptureFailures: new Map([["req_retry", 1]]),
     unavailableCaptureIds: new Set(),
     captureAuthorizationFailure: false,
+    evalCaptureFailures: 0,
+    evalCaptureDelayMs: 0,
+    evalCohortDropResponses: 0,
+    evalCohorts: [],
+    evalCaptureUrl: null,
+    evalCaptureDeclaredLength: null,
+    evalExportCohortSha: "a".repeat(64),
+    evalExportExpiries: [],
   };
 
   const server = createServer(async (req, res) => {
@@ -540,29 +548,56 @@ async function withHostedFixture(fn) {
         },
       });
     }
+    if (req.method === "GET" && url.pathname === `${evalBase}/eval-cohorts`) {
+      return send(200, { eval_cohorts: state.evalCohorts });
+    }
     if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts`) {
-      return send(201, {
+      const existing = body.operation_id
+        ? state.evalCohorts.find((entry) => entry.operation_id === body.operation_id)
+        : null;
+      if (existing) return send(200, existing);
+      const cohort = {
         id: "evc_123",
         org_id: "org_1",
         project_id: "proj_1",
         workload_id: "usp_classify",
+        operation_id: body.operation_id ?? null,
         name: body.name,
         selection: body.selection,
         capture_count: body.captures.length,
         cohort_sha256: "a".repeat(64),
         created_at: "2026-06-07T01:00:00Z",
-      });
+      };
+      state.evalCohorts.push(cohort);
+      if (state.evalCohortDropResponses > 0) {
+        state.evalCohortDropResponses -= 1;
+        return res.destroy();
+      }
+      return send(201, cohort);
     }
     if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts/evc_123/export`) {
       return send(201, {
         export_id: "eve_123",
         cohort_id: "evc_123",
-        cohort_sha256: "a".repeat(64),
-        expires_at: "2026-06-07T02:00:00Z",
-        captures: [{ request_id: "req_123", content_sha256: rawCaptureSha, url: `${gatewayUrl}/eval-capture-req_123` }],
+        cohort_sha256: state.evalExportCohortSha,
+        expires_at: state.evalExportExpiries.shift() ?? new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        captures: [{ request_id: "req_123", content_sha256: rawCaptureSha, url: state.evalCaptureUrl ?? `${gatewayUrl}/eval-capture-req_123` }],
       });
     }
-    if (req.method === "GET" && url.pathname === "/eval-capture-req_123") return sendBytes(200, rawCapture);
+    if (req.method === "GET" && url.pathname === "/eval-capture-req_123") {
+      if (state.evalCaptureDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, state.evalCaptureDelayMs));
+      }
+      if (state.evalCaptureFailures > 0) {
+        state.evalCaptureFailures -= 1;
+        return send(503, { message: "synthetic eval capture failure" });
+      }
+      return sendBytes(200, rawCapture, state.evalCaptureDeclaredLength === null ? {} : { "content-length": String(state.evalCaptureDeclaredLength) });
+    }
+    if (req.method === "GET" && url.pathname === "/eval-capture-redirect") {
+      res.writeHead(302, { location: `${gatewayUrl}/eval-capture-req_123` });
+      return res.end();
+    }
     if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) {
       if (body?.model === "fixture-error") {
         return send(503, { error: { type: "upstream_capacity", code: "deployment_unavailable", message: "SECRET_PROVIDER_DETAIL" } }, {
@@ -4067,6 +4102,7 @@ class ScoreWithFeedback:
       assert.equal(JSON.parse(create.stdout).cohort.id, "evc_123");
       const createRequest = requests.find((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST");
       assert.equal(createRequest.body.captures[0].request_id, "req_123");
+      assert.equal(createRequest.body.selection.sampling_seed, "cedar-july");
 
       const blocked = await runWithEnvAsync([
         "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
@@ -4115,6 +4151,311 @@ class ScoreWithFeedback:
       ], env, repo);
       assert.notEqual(blocked.status, 0);
       assert.match(blocked.stderr, /JSON mode cannot prompt/);
+    });
+  });
+
+  it("builds a private local eval project from a frozen workload cohort", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const outputDir = join(repo, ".understudy", "evals", "local-builder");
+
+      const blocked = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--name", "local-builder", "--out", outputDir, "--max-age-days", "365",
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /JSON mode cannot prompt/);
+      assert.equal(existsSync(join(outputDir, "eval-project.json")), false);
+      assert.equal(requests.length, 0, "approval failure must happen before hosted reads");
+
+      const nonInteractive = await runWithEnvAsync([
+        "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--name", "local-builder", "--out", outputDir, "--max-age-days", "365",
+      ], env, repo);
+      assert.notEqual(nonInteractive.status, 0);
+      assert.match(nonInteractive.stderr, /Non-interactive eval builds cannot prompt/);
+      assert.equal(requests.length, 0, "piped builds must fail before hosted reads");
+
+      const invalid = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--name", "local-builder", "--out", outputDir, "--max-age-days", "365",
+        "--batch-size", "0", "--yes",
+      ], env, repo);
+      assert.notEqual(invalid.status, 0);
+      assert.match(invalid.stderr, /--batch-size must be a positive integer/);
+      assert.equal(requests.length, 0, "numeric validation must happen before hosted reads");
+
+      const tooNarrow = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "local-builder", "--out", outputDir,
+        "--max-age-days", "7", "--yes",
+      ], env, repo);
+      assert.notEqual(tooNarrow.status, 0);
+      assert.match(tooNarrow.stderr, /--max-age-days must cover --last/);
+      assert.equal(requests.length, 0, "freshness validation must happen before hosted reads");
+
+      const resumableDir = join(repo, ".understudy", "evals", "resumable-builder");
+      state.evalCaptureFailures = 1;
+      const failedAttempt = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "resumable-builder", "--out", resumableDir,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(failedAttempt.status, 0);
+      assert.equal(existsSync(resumableDir), false, "failed attempts never publish the final project");
+      const resumableStateDir = join(dirname(resumableDir), ".resumable-builder.eval-build");
+      assert.equal(existsSync(join(resumableStateDir, "build-state.json")), true);
+      assert.deepEqual(readdirSync(join(resumableStateDir, "attempts")), [], "failed attempts retain no payload-bearing partial data");
+
+      const changedSelection = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "resumable-builder", "--out", resumableDir,
+        "--requires-tools", "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(changedSelection.status, 0);
+      assert.match(changedSelection.stderr, /does not match the capture selection options/);
+
+      state.workloads.find((workload) => workload.id === "usp_classify").name = "classify-renamed";
+
+      const resumed = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "usp_classify",
+        "--last", "31d", "--name", "resumable-builder", "--out", resumableDir,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.equal(resumed.status, 0, resumed.stderr);
+      assert.equal(
+        requests.filter((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST").length,
+        1,
+        "resume must reuse the already frozen cohort",
+      );
+      assert.equal(existsSync(join(resumableDir, "eval-project.json")), true);
+      assert.equal(
+        JSON.parse(readFileSync(join(resumableDir, "eval-project.json"), "utf8")).identity.workload_name,
+        "classify",
+        "resume preserves the freeze-time display name while matching stable ids",
+      );
+      state.workloads.find((workload) => workload.id === "usp_classify").name = "classify";
+
+      const lostResponseDir = join(repo, ".understudy", "evals", "lost-response-builder");
+      const postsBeforeLostResponse = requests.filter((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST").length;
+      const cohortsBeforeLostResponse = state.evalCohorts.length;
+      state.evalCohortDropResponses = 1;
+      const recovered = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "lost-response-builder", "--out", lostResponseDir,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.equal(recovered.status, 0, recovered.stderr);
+      assert.equal(
+        requests.filter((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST").length - postsBeforeLostResponse,
+        2,
+        "a lost create response is recovered by retrying the same idempotent operation",
+      );
+      assert.equal(state.evalCohorts.length - cohortsBeforeLostResponse, 1, "idempotent retries freeze only one cohort");
+      assert.equal(existsSync(join(lostResponseDir, "eval-project.json")), true);
+
+      const built = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "local-builder", "--out", outputDir,
+        "--max-age-days", "365", "--batch-size", "2", "--yes",
+      ], env, repo);
+      assert.equal(built.status, 0, built.stderr);
+      assert.doesNotMatch(built.stdout + built.stderr, /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const payload = JSON.parse(built.stdout);
+      assert.equal(payload.status, "local_draft");
+      assert.equal(payload.privacy.upload_performed, false);
+      assert.equal(payload.privacy.provider_called, false);
+
+      const capturesDir = join(outputDir, "captures");
+      const benchmarkDir = join(outputDir, "benchmark");
+      assert.match(readFileSync(join(capturesDir, "req_123.jsonl"), "utf8"), /SECRET_PROMPT/);
+      assert.equal(existsSync(join(benchmarkDir, "manifest.json")), true);
+      assert.equal(existsSync(join(benchmarkDir, "viewer", "index.html")), true);
+
+      const project = JSON.parse(readFileSync(join(outputDir, "eval-project.json"), "utf8"));
+      assert.equal(project.schema_version, "understudy.eval-project.v1");
+      assert.equal(project.status, "local_draft");
+      assert.deepEqual(project.identity, {
+        org_id: "org_1",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        workload_name: "classify",
+      });
+      assert.equal(project.cohort.id, "evc_123");
+      assert.equal(project.cohort.cohort_sha256, "a".repeat(64));
+      assert.equal(project.cohort.materialization_manifest, "captures/cohort-manifest.json");
+      assert.equal(project.foundry.status, "machine_compiled_review_pending");
+      assert.equal(project.foundry.manifest, "benchmark/manifest.json");
+      assert.equal(project.foundry.artifacts.viewer, "benchmark/viewer/index.html");
+      assert.deepEqual(project.privacy, {
+        local_only: true,
+        contains_customer_payloads: true,
+        upload_performed: false,
+        provider_called: false,
+      });
+      assert.doesNotMatch(JSON.stringify(project), /SECRET_PROMPT|SECRET_COMPLETION|https?:\/\//);
+      if (process.platform !== "win32") {
+        assert.equal(statSync(join(capturesDir, "req_123.jsonl")).mode & 0o077, 0);
+        assert.equal(statSync(join(outputDir, "eval-project.json")).mode & 0o077, 0);
+      }
+
+      const hostedPaths = requests.map((entry) => entry.path);
+      assert.ok(hostedPaths.some((path) => path.endsWith("/eval-capture-catalog")));
+      assert.ok(hostedPaths.some((path) => path.endsWith("/eval-cohorts")));
+      assert.ok(hostedPaths.some((path) => path.endsWith("/eval-cohorts/evc_123/export")));
+
+      const requestCount = requests.length;
+      const repeated = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "local-builder", "--out", outputDir,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(repeated.status, 0);
+      assert.match(repeated.stderr, /destination already exists/);
+      assert.equal(requests.length, requestCount, "destination reuse must fail before hosted reads");
+    });
+  });
+
+  it("publishes a validated checkpoint and excludes a concurrent builder from the same output", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const invalidOutput = join(repo, ".understudy", "evals", "invalid-checkpoint");
+      const invalidStaging = join(dirname(invalidOutput), ".invalid-checkpoint.eval-build");
+      const invalid = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "invalid-checkpoint", "--out", invalidOutput,
+        "--description", "x".repeat(1001), "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(invalid.status, 0);
+      assert.equal(existsSync(invalidStaging), false, "invalid state is never published as a resumable checkpoint");
+
+      const corrected = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "invalid-checkpoint", "--out", invalidOutput,
+        "--description", "corrected", "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.equal(corrected.status, 0, corrected.stderr);
+
+      const staleOutput = join(repo, ".understudy", "evals", "stale-builder");
+      const staleLock = join(dirname(staleOutput), ".stale-builder.eval-build.lock");
+      mkdirSync(staleLock, { recursive: true });
+      writeFileSync(join(staleLock, "owner.json"), JSON.stringify({
+        token: "stale-owner",
+        pid: 2_147_483_647,
+        created_at: "2026-01-01T00:00:00.000Z",
+      }));
+      const requestsBeforeStale = requests.length;
+      const stale = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "stale-builder", "--out", staleOutput,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(stale.status, 0);
+      assert.match(stale.stderr, /stale eval build lock remains/);
+      assert.equal(requests.length, requestsBeforeStale, "stale locks fail before hosted reads");
+      rmSync(staleLock, { recursive: true, force: true });
+
+      const concurrentOutput = join(repo, ".understudy", "evals", "concurrent-builder");
+      state.evalCaptureDelayMs = 400;
+      const captureReadsBefore = requests.filter((entry) => entry.path === "/eval-capture-req_123").length;
+      const first = runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "concurrent-builder", "--out", concurrentOutput,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      const deadline = Date.now() + 5_000;
+      while (requests.filter((entry) => entry.path === "/eval-capture-req_123").length === captureReadsBefore) {
+        if (Date.now() > deadline) throw new Error("first eval builder did not reach capture download");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const second = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "concurrent-builder", "--out", concurrentOutput,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(second.status, 0);
+      assert.match(second.stderr, /already owns/);
+      const completed = await first;
+      state.evalCaptureDelayMs = 0;
+      assert.equal(completed.status, 0, completed.stderr);
+      assert.equal(existsSync(join(concurrentOutput, "eval-project.json")), true);
+    });
+  });
+
+  it("rejects unsafe eval exports and never leaves partial payloads", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state, gatewayUrl }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const exportArgs = (out) => [
+        "--json", "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
+        "--out", out, "--yes",
+      ];
+
+      state.evalCaptureUrl = "http://169.254.169.254/latest/meta-data";
+      const untrustedOut = join(repo, ".understudy", "evals", "untrusted-export");
+      const untrusted = await runWithEnvAsync(exportArgs(untrustedOut), env, repo);
+      assert.notEqual(untrusted.status, 0);
+      assert.match(untrusted.stderr, /untrusted origin/);
+      assert.equal(existsSync(untrustedOut), false);
+
+      state.evalCaptureUrl = `${gatewayUrl}/eval-capture-redirect`;
+      const redirectOut = join(repo, ".understudy", "evals", "redirect-export");
+      const redirected = await runWithEnvAsync(exportArgs(redirectOut), env, repo);
+      assert.notEqual(redirected.status, 0);
+      assert.equal(existsSync(redirectOut), false, "redirect failures retain no partial files");
+
+      state.evalCaptureUrl = null;
+      state.evalCaptureDeclaredLength = 16 * 1024 * 1024 + 1;
+      const oversizedOut = join(repo, ".understudy", "evals", "oversized-export");
+      const oversized = await runWithEnvAsync(exportArgs(oversizedOut), env, repo);
+      assert.notEqual(oversized.status, 0);
+      assert.match(oversized.stderr, /local download limit/);
+      assert.equal(existsSync(oversizedOut), false);
+
+      state.evalCaptureDeclaredLength = null;
+      state.evalExportExpiries.push(
+        new Date(Date.now() + 30_000).toISOString(),
+        new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      );
+      const refreshedOut = join(repo, ".understudy", "evals", "refreshed-export");
+      const exportsBeforeRefresh = requests.filter((entry) => entry.path.endsWith("/export") && entry.method === "POST").length;
+      const refreshed = await runWithEnvAsync(exportArgs(refreshedOut), env, repo);
+      assert.equal(refreshed.status, 0, refreshed.stderr);
+      assert.equal(
+        requests.filter((entry) => entry.path.endsWith("/export") && entry.method === "POST").length - exportsBeforeRefresh,
+        2,
+        "an export near expiry is refreshed for the same frozen cohort before download",
+      );
+
+      state.evalExportCohortSha = "b".repeat(64);
+      const mismatchedOut = join(repo, ".understudy", "evals", "lineage-mismatch");
+      const captureReadsBefore = requests.filter((entry) => entry.path === "/eval-capture-req_123").length;
+      const mismatched = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "lineage-mismatch", "--out", mismatchedOut,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(mismatched.status, 0);
+      assert.match(mismatched.stderr, /lineage does not match frozen cohort/);
+      assert.equal(requests.filter((entry) => entry.path === "/eval-capture-req_123").length, captureReadsBefore, "lineage is rejected before payload fetch");
+      assert.equal(existsSync(mismatchedOut), false);
+    });
+  });
+
+  it("does not publish a destination when local eval compilation fails", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      state.captures[0].workload_id = "usp_other";
+      const outputDir = join(repo, ".understudy", "evals", "compile-failure");
+      const failed = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--last", "31d", "--name", "compile-failure", "--out", outputDir,
+        "--max-age-days", "365", "--yes",
+      ], env, repo);
+      assert.notEqual(failed.status, 0);
+      assert.equal(existsSync(outputDir), false);
+      const staging = join(dirname(outputDir), ".compile-failure.eval-build");
+      assert.deepEqual(readdirSync(join(staging, "attempts")), [], "compiler failures keep only the redacted cohort checkpoint");
     });
   });
 

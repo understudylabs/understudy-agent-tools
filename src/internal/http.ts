@@ -83,6 +83,8 @@ export interface RequestInput {
   headers?: Record<string, string>;
   /** Anything JSON-serializable. Caller does not stringify. */
   body?: unknown;
+  /** Optional caller-owned cancellation or timeout signal. */
+  signal?: AbortSignal;
   /** Org id whose credential is used. Defaults to the only org if there's
    * exactly one in credentials; throws otherwise. */
   orgId?: string;
@@ -250,6 +252,7 @@ export async function request<T>(
     method: input.method ?? "GET",
     headers,
     body,
+    signal: input.signal,
   });
 
   const responseHeaders: Record<string, string> = {};

@@ -9,9 +9,11 @@ import { buildRejectionGuidance, loadGuidanceFile } from "./rejection-guidance.j
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
+export const TRACE_FOUNDRY_DRAFT_STATUS = "machine_compiled_review_pending" as const;
 
 export type FoundryResult = {
   schema_version: typeof TRACE_FOUNDRY_SCHEMA;
+  status: typeof TRACE_FOUNDRY_DRAFT_STATUS;
   source: string;
   output_dir: string;
   freshness: { max_age_days: number; cutoff_utc: string; newest_capture_utc: string };
@@ -161,7 +163,12 @@ function parseTraceContext(envelope: Obj): Obj | null {
 }
 
 function normalize(envelope: Obj, pointer: string): Obj | null {
-  const version = Number(envelope.schema_version ?? 4);
+  // Hosted cohort exports use the public contract name while older local
+  // capture bundles carry the internal numeric capture version. They describe
+  // the same envelope fields consumed below.
+  const version = envelope.schema_version === "understudy.capture.v1"
+    ? 4
+    : Number(envelope.schema_version ?? 4);
   if (![2, 3, 4].includes(version)) throw new Error(`Unsupported capture schema_version ${version}`);
   const requestRaw = envelope.customer_request_body ?? envelope.request_body ?? envelope.request;
   const upstreamRequestRaw = envelope.upstream_request_body ?? envelope.forwarded_request_body ?? null;
@@ -193,7 +200,7 @@ function normalize(envelope: Obj, pointer: string): Obj | null {
         parent_event_id: envelope.parent_event_id ?? asObject(envelope.metadata).parent_event_id ?? null,
       },
     },
-    scope: { org_id: envelope.workos_org_id ?? envelope.org_id ?? null, project_id: envelope.project_id ?? null, workload_id: envelope.workload_id ?? null, workload_name: envelope.workload_name ?? null },
+    scope: { org_id: envelope.workos_org_id ?? envelope.org_id ?? null, project_id: envelope.project_id ?? null, workload_id: envelope.workload_id ?? envelope.placement_id ?? null, workload_name: envelope.workload_name ?? null },
     routing: { provider: envelope.provider ?? null, requested_model: envelope.requested_model ?? request.model ?? null, upstream_model: envelope.upstream_model ?? null },
     transport: { endpoint: envelope.endpoint ?? null, status_code: envelope.status_code ?? null, latency_ms: envelope.latency_ms ?? null },
     request: { system: request.system ?? null, messages, tools, settings: Object.fromEntries(Object.entries(request).filter(([k]) => !["system", "messages", "tools"].includes(k))) },
@@ -606,7 +613,34 @@ function readJsonl(path: string): Obj[] {
   return readJsonlFile<unknown>(path).items.map(asObject);
 }
 function appendJsonl(path: string, rows: Obj[]): void { if (rows.length === 0) return; mkdirSync(resolve(path, ".."), { recursive: true }); appendFileSync(path, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", { mode: 0o600 }); }
-const pyName = (value: string): string => { const clean = value.replace(/[^A-Za-z0-9_]/g, "_"); return /^[A-Za-z_]/.test(clean) ? clean : `tool_${clean}`; };
+const PYTHON_KEYWORDS = new Set([
+  "False", "None", "True", "and", "as", "assert", "async", "await", "break", "case", "class", "continue",
+  "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is",
+  "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
+]);
+
+function pythonIdentifier(value: string, fallback: string): string {
+  let clean = value.replace(/[^A-Za-z0-9_]/g, "_");
+  if (!clean) clean = fallback;
+  if (!/^[A-Za-z_]/.test(clean)) clean = `${fallback}_${clean}`;
+  if (PYTHON_KEYWORDS.has(clean) || clean === "self") clean = `${clean}_`;
+  return clean;
+}
+
+function allocatePythonIdentifiers(values: string[], options: { prefix?: string; reserved?: string[] } = {}): Map<string, string> {
+  const used = new Set(options.reserved ?? []);
+  const allocated = new Map<string, string>();
+  for (const value of values) {
+    const rawBase = pythonIdentifier(value, options.prefix ?? "value");
+    const base = options.prefix ? `${options.prefix}_${rawBase}` : rawBase;
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate) || PYTHON_KEYWORDS.has(candidate)) candidate = `${base}_${suffix++}`;
+    used.add(candidate);
+    allocated.set(value, candidate);
+  }
+  return allocated;
+}
 
 /**
  * Semantic-outcome matching (the contract's advertised
@@ -1555,17 +1589,13 @@ export function auditGoldLeakage(tasks: Obj[], taskRows: Obj[], fixtures: Obj[],
 }
 
 /** Build-time report: the audit is advisory, so it prints and moves on. */
-function printLeakageAudit(audit: LeakageAudit): void {
+export function printLeakageAudit(audit: LeakageAudit): void {
   if (audit.status === "clean") {
     console.error(`[leakage-audit] clean — no verbatim or fuzzy contract targets found in candidate-readable surfaces (${audit.checked_tasks} task(s) checked)`);
     return;
   }
   const tierSummary = `${audit.tier_counts.verbatim} verbatim, ${audit.tier_counts.fuzzy} fuzzy (advisory)${audit.tier_counts.semantic > 0 ? `, ${audit.tier_counts.semantic} semantic` : ""}`;
-  console.error(`[leakage-audit] ${audit.findings.length} potential gold-leakage finding(s) [${tierSummary}] across ${audit.checked_tasks} task(s) — recorded in manifest.leakage_audit (report-only, nothing redacted):`);
-  for (const finding of audit.findings.slice(0, 8)) {
-    console.error(`[leakage-audit]   ${finding.task_id} · ${finding.tier} (${finding.similarity}) · ${finding.kind} · ${finding.location} · "${finding.excerpt.slice(0, 80)}"`);
-  }
-  if (audit.findings.length > 8) console.error(`[leakage-audit]   … ${audit.findings.length - 8} more (see manifest.json)`);
+  console.error(`[leakage-audit] ${audit.findings.length} potential gold-leakage finding(s) [${tierSummary}] across ${audit.checked_tasks} task(s) — details recorded only in the private manifest (report-only, nothing redacted)`);
 }
 
 /**
@@ -1699,13 +1729,18 @@ export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceCo
   writeJson(join(servers, "guidance.json"), rejectionGuidance);
   const pyType = (value: unknown): string => typeof value === "boolean" ? "bool" : typeof value === "number" ? "float" : Array.isArray(value) ? "list" : value && typeof value === "object" ? "dict" : "str";
   const schemaType = (schema: Obj, fallback: unknown): string => schema.type === "boolean" ? "bool" : ["number", "integer"].includes(schema.type) ? "float" : schema.type === "array" ? "list" : schema.type === "object" ? "dict" : schema.type === "string" ? "str" : pyType(fallback);
+  const methodNames = allocatePythonIdentifiers(toolNames, {
+    prefix: "tool",
+    reserved: ["setup_task", "_fixture_reply", "_accept", "run"],
+  });
   const methods = toolNames.map((name) => {
     const observed = observedByTool.get(name) ?? {}, properties = asObject(schemaByTool.get(name)?.properties);
     const keys = [...new Set([...Object.keys(properties), ...Object.keys(observed)])];
-    const parameters = keys.map((key) => `${pyName(key)}: ${schemaType(asObject(properties[key]), observed[key])} | None = None`).join(", ");
-    const args = keys.map((key) => `${JSON.stringify(key)}: ${pyName(key)}`).join(", ");
+    const parameterNames = allocatePythonIdentifiers(keys, { reserved: ["self"] });
+    const parameters = keys.map((key) => `${parameterNames.get(key)!}: ${schemaType(asObject(properties[key]), observed[key])} | None = None`).join(", ");
+    const args = keys.map((key) => `${JSON.stringify(key)}: ${parameterNames.get(key)!}`).join(", ");
     const mutating = mutationPrefixes.some((prefix) => name.toLowerCase().startsWith(prefix));
-    return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute the trace-derived ${name} transition against per-rollout state.\"\"\"\n        return self._accept({\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}, ${mutating ? "True" : "False"})`;
+    return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${methodNames.get(name)!}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute one trace-derived transition against per-rollout state.\"\"\"\n        return self._accept({\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}, ${mutating ? "True" : "False"})`;
   }).join("\n\n");
   // Candidate-readable vs scorer-only split (fixtures-state-split): fixtures
   // carry ONLY what the incumbent observed BEFORE its first gold write —
@@ -2243,7 +2278,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   // "understudy.benchmark.v1" is reserved for the executable manifest written
   // by `traces promote` after human review (this resolves the known
   // foundry-vs-hub schema-name collision). Same content, honest name.
-  const benchmark = benchmarkManifestFrom(tasks, { schemaVersion: "understudy.benchmark_proposal.v1", benchmarkId: `trace-${hash({ source, workload: options.workload ?? null }).slice(0, 16)}`, name: options.workload ? `${options.workload} trace benchmark` : "Trace-derived benchmark", description: "Machine-compiled from a source-history DAG with human final judgment.", createdAt: now.toISOString(), sourceRefs: [relative(output, join(output, "capture-ledger.jsonl")), relative(output, join(output, "source-dag.json"))], packageSha256: environment.package_sha256, auditedCommit: environment.audited_commit, heldoutNovel, status: "machine_compiled_review_pending", executable: false, promotionBlockers });
+  const benchmark = benchmarkManifestFrom(tasks, { schemaVersion: "understudy.benchmark_proposal.v1", benchmarkId: `trace-${hash({ source, workload: options.workload ?? null }).slice(0, 16)}`, name: options.workload ? `${options.workload} trace benchmark` : "Trace-derived benchmark", description: "Machine-compiled from a source-history DAG with human final judgment.", createdAt: now.toISOString(), sourceRefs: [relative(output, join(output, "capture-ledger.jsonl")), relative(output, join(output, "source-dag.json"))], packageSha256: environment.package_sha256, auditedCommit: environment.audited_commit, heldoutNovel, status: TRACE_FOUNDRY_DRAFT_STATUS, executable: false, promotionBlockers });
   const manifestErrors = validateBenchmarkManifest({ ...benchmark, schema_version: "understudy.benchmark.v1" });
   if (manifestErrors.length > 0) throw new Error(`Generated benchmark manifest is invalid: ${manifestErrors.join("; ")}`);
   writeJson(join(output, "benchmark.json"), benchmark);
@@ -2256,7 +2291,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, source_scope: ctx.sourceScope, quarantines: dag.quarantines ?? [], self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, status: TRACE_FOUNDRY_DRAFT_STATUS, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, source_scope: ctx.sourceScope, quarantines: dag.quarantines ?? [], self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 

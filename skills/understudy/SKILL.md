@@ -150,7 +150,9 @@ Identify the developer's current stage and load exactly one:
 - **Codebase / evidence not yet pinned down** — LLM call sites, current model/
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
-  (also owns repo inspection + eval-harness discovery/build).
+  (also owns repo inspection + eval-harness discovery/build). For a named
+  workload already captured by Understudy, this route uses `understudy evals
+  build` to freeze the source cohort and construct the verifier draft locally.
 - **App is running but no traces exist yet** — the developer wants capture
   flowing in minutes with no app-code changes ("instrument my app", "start
   capturing my LLM calls") → [`../instrument/SKILL.md`](../instrument/SKILL.md)

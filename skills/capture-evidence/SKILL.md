@@ -18,6 +18,13 @@ The OSS loop does not require registration, auth, provider keys, an Understudy
 account, or hosted gateway access. Do a sufficient local pass that turns the
 workload into auditable artifacts and can answer the named decision.
 
+When the developer names a workload already captured by Understudy and the
+active credentials can read it, use the hosted-workload front door in
+[`references/hosted-workload-eval.md`](references/hosted-workload-eval.md).
+It freezes the exact source cohort, downloads payloads with approval, and runs
+the same local trace foundry. A hosted eval workspace is not required to author
+the verifier.
+
 ## Safety Gates
 
 Default to the evidence plan most likely to resolve the decision under the
@@ -180,6 +187,21 @@ REST/API workflows that mutate state — route the eval to
 instead of building a single-output harness; its state-mutating lens records
 reset/seed state, API schemas, policy docs, request logs, and final-state
 validators as part of the harness.
+
+For a named hosted workload, prefer:
+
+```sh
+understudy evals build \
+  --project <project> \
+  --workload <workload> \
+  --name <eval-name>
+```
+
+This is a local-authoring operation: the service selects and freezes the source
+captures, while the coding agent owns lineage reconstruction, tool-call
+interpretation, task and contract proposals, verifier generation, and review.
+Do not silently substitute an older server-generated environment for the local
+source-bound result.
 
 Start from the real local workload:
 
