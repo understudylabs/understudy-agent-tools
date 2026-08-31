@@ -1,7 +1,15 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { compileTraceFoundry, type FoundryResult } from "./trace-foundry.js";
+import { createPrivateDirectory } from "./evals/build-state.js";
+import type {
+  EvalBuildIdentity,
+  VerifiedWorkloadCaptureFile,
+  VerifyWorkloadCaptureExportReceiptResponse,
+  WorkloadCaptureExportScope,
+} from "./evals/contracts.js";
 
 export interface EvalProjectIdentity {
   orgId: string;
@@ -58,6 +66,44 @@ export interface EvalProjectManifest {
 }
 
 export interface EvalProjectBuildResult extends EvalProjectManifest {
+  project_file: string;
+}
+
+export interface WorkloadEvalProjectManifest {
+  schema_version: "understudy.eval-project.v2";
+  status: "source_materialized";
+  created_at: string;
+  identity: EvalBuildIdentity;
+  source: {
+    window: WorkloadCaptureExportScope;
+    capture_count: number;
+    size_bytes: number;
+    index: string;
+    index_sha256: string;
+    export_proof: string;
+    exported_capture_count: number;
+    exported_total_bytes: number;
+    terminal_receipt_verified: true;
+  };
+  authoring: {
+    owner: "coding_agent";
+    semantic_preparation_performed: false;
+  };
+  privacy: EvalProjectManifest["privacy"];
+}
+
+export interface BuildWorkloadEvalProjectOptions {
+  output: string;
+  identity: EvalBuildIdentity;
+  canonicalScope: WorkloadCaptureExportScope;
+  verifiedFiles: VerifiedWorkloadCaptureFile[];
+  segmentManifestSha256: string[];
+  terminalReceipt: string;
+  verifiedReceipt: VerifyWorkloadCaptureExportReceiptResponse;
+  now: Date;
+}
+
+export interface WorkloadEvalProjectBuildResult extends WorkloadEvalProjectManifest {
   project_file: string;
 }
 
@@ -136,4 +182,77 @@ export function buildEvalProject(options: BuildEvalProjectOptions): EvalProjectB
   };
   writeFileSync(projectFile, `${JSON.stringify(project, null, 2)}\n`, { mode: 0o600, flag: "wx" });
   return { ...project, project_file: projectFile };
+}
+
+export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOptions): WorkloadEvalProjectBuildResult {
+  const projectRoot = resolve(options.output);
+  const sourceRoot = join(projectRoot, "source");
+  createPrivateDirectory(sourceRoot);
+  if (
+    JSON.stringify(options.verifiedReceipt.canonical_scope) !== JSON.stringify(options.canonicalScope) ||
+    options.verifiedReceipt.chain_id.length === 0 ||
+    options.verifiedReceipt.manifest_sha256 !== options.segmentManifestSha256.at(-1)
+  ) throw new Error("Verified export receipt does not match the materialized source chain.");
+
+  const unique = new Map<string, VerifiedWorkloadCaptureFile>();
+  for (const file of options.verifiedFiles) {
+    const previous = unique.get(file.capture_key);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(file)) {
+      throw new Error(`Capture source ledger conflicts for ${file.capture_key}.`);
+    }
+    unique.set(file.capture_key, file);
+  }
+  const files = [...unique.values()].sort((left, right) =>
+    left.capture_key.localeCompare(right.capture_key) || left.request_id.localeCompare(right.request_id));
+  const indexBody = files.map((file) => JSON.stringify(file)).join("\n") + (files.length > 0 ? "\n" : "");
+  const indexPath = join(sourceRoot, "index.jsonl");
+  replacePrivateText(indexPath, indexBody);
+  const indexSha256 = createHash("sha256").update(indexBody).digest("hex");
+  const proofPath = join(sourceRoot, "export-proof.json");
+  replacePrivateText(proofPath, `${JSON.stringify({
+    schema_version: "understudy.eval-export-proof.v1",
+    canonical_scope: options.canonicalScope,
+    segment_manifest_sha256: options.segmentManifestSha256,
+    terminal_receipt: options.terminalReceipt,
+    verified_receipt: options.verifiedReceipt,
+  }, null, 2)}\n`);
+
+  const projectFile = join(projectRoot, "eval-project.json");
+  const project: WorkloadEvalProjectManifest = {
+    schema_version: "understudy.eval-project.v2",
+    status: "source_materialized",
+    created_at: options.now.toISOString(),
+    identity: options.identity,
+    source: {
+      window: options.canonicalScope,
+      capture_count: files.length,
+      size_bytes: files.reduce((sum, file) => sum + file.size_bytes, 0),
+      index: portableRelative(projectRoot, indexPath),
+      index_sha256: indexSha256,
+      export_proof: portableRelative(projectRoot, proofPath),
+      exported_capture_count: options.verifiedReceipt.cumulative_exported,
+      exported_total_bytes: options.verifiedReceipt.total_bytes,
+      terminal_receipt_verified: true,
+    },
+    authoring: { owner: "coding_agent", semantic_preparation_performed: false },
+    privacy: {
+      local_only: true,
+      contains_customer_payloads: true,
+      upload_performed: false,
+      provider_called: false,
+    },
+  };
+  replacePrivateText(projectFile, `${JSON.stringify(project, null, 2)}\n`);
+  return { ...project, project_file: projectFile };
+}
+
+function replacePrivateText(path: string, body: string): void {
+  const temporary = `${path}.tmp-${randomUUID()}`;
+  try {
+    writeFileSync(temporary, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
+    renameSync(temporary, path);
+    chmodSync(path, 0o600);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }

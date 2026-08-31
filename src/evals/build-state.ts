@@ -1,17 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   EvalBuildCreatingStateSchema,
   EvalBuildStateSchema,
+  EvalWorkloadBuildStateSchema,
   type CatalogResponse,
   type Cohort,
   type EvalBuildCreatingState,
   type EvalBuildIdentity,
+  type EvalLegacyBuildState,
   type EvalBuildSelection,
   type EvalBuildState,
+  type EvalWorkloadBuildState,
   type FrozenCohort,
 } from "./contracts.js";
 
@@ -27,7 +30,11 @@ export function pathExists(path: string): boolean {
 
 export function createPrivateDirectory(path: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  mkdirSync(path, { mode: 0o700 });
+  mkdirSync(path, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(`Private path must be a real directory: ${path}`);
+  }
   chmodSync(path, 0o700);
 }
 
@@ -50,7 +57,7 @@ export function replacePrivateJson(path: string, value: unknown): void {
   }
 }
 
-export function initializeBuildCheckpoint(staging: string, state: EvalBuildCreatingState): void {
+export function initializeBuildCheckpoint(staging: string, state: EvalBuildState): void {
   if (pathExists(staging)) throw new Error(`Eval build checkpoint already exists: ${staging}`);
   const temporary = join(dirname(staging), `.${basename(staging)}.init-${randomUUID()}`);
   try {
@@ -138,7 +145,10 @@ export function assertBuildStateMatches(
   selection: EvalBuildSelection,
   maxAgeDays: number,
   batchSize: number,
-): void {
+): asserts state is EvalLegacyBuildState {
+  if (state.schema_version !== "understudy.eval-build-state.v1") {
+    throw new Error("Existing eval build state uses a different build workflow.");
+  }
   if (state.status === "complete" || state.name !== name) {
     throw new Error("Existing eval build state does not match this resumable build.");
   }
@@ -153,6 +163,92 @@ export function assertBuildStateMatches(
   if (JSON.stringify(state.selection) !== JSON.stringify(selection)) {
     throw new Error("Existing eval build state does not match the capture selection options.");
   }
+}
+
+export function creatingWorkloadBuildState(input: {
+  name: string;
+  identity: EvalBuildIdentity;
+  source: EvalWorkloadBuildState["source"];
+  maxAgeDays: number;
+  batchSize: number;
+  now: Date;
+}): EvalWorkloadBuildState {
+  return EvalWorkloadBuildStateSchema.parse({
+    schema_version: "understudy.eval-build-state.v2",
+    status: "downloading",
+    created_at: input.now.toISOString(),
+    name: input.name,
+    identity: input.identity,
+    source: input.source,
+    compile: { max_age_days: input.maxAgeDays, batch_size: input.batchSize },
+    transport: {
+      resume_cursor: null,
+      chain_id: null,
+      next_segment_index: 0,
+      previous_manifest_sha256: null,
+      segment_manifest_sha256: [],
+      cumulative_exported: 0,
+      cumulative_total_bytes: 0,
+      terminal_receipt: null,
+      verified_files: [],
+    },
+  });
+}
+
+export function assertWorkloadBuildStateMatches(
+  state: EvalBuildState,
+  name: string,
+  identity: EvalBuildIdentity,
+  maxAgeDays: number,
+  batchSize: number,
+): asserts state is EvalWorkloadBuildState {
+  if (state.schema_version !== "understudy.eval-build-state.v2" || state.name !== name) {
+    throw new Error("Existing eval build state does not match this resumable full-corpus build.");
+  }
+  for (const key of ["org_id", "project_id", "workload_id"] as const) {
+    if (state.identity[key] !== identity[key]) {
+      throw new Error(`Existing eval build state does not match ${key}.`);
+    }
+  }
+  if (state.compile.max_age_days !== maxAgeDays || state.compile.batch_size !== batchSize) {
+    throw new Error("Existing eval build state does not match the build options.");
+  }
+}
+
+export function ensureUnderstudyGitExcluded(output: string): void {
+  const absoluteOutput = resolve(output);
+  let existing = resolve(output);
+  while (!pathExists(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) return;
+    existing = parent;
+  }
+  const canonicalExisting = realpathSync(existing);
+  const canonicalOutput = resolve(canonicalExisting, relative(existing, absoluteOutput));
+  const rootResult = spawnSync("git", ["-C", canonicalExisting, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  if (rootResult.status !== 0) return;
+  const root = rootResult.stdout.trim();
+  const relativeOutput = relative(root, canonicalOutput);
+  if (relativeOutput === ".." || relativeOutput.startsWith(`..${sep}`) || isAbsolute(relativeOutput)) return;
+  if (relativeOutput !== ".understudy" && !relativeOutput.startsWith(`.understudy${sep}`)) {
+    throw new Error(`Eval builds inside a Git repository must use a destination under ${join(root, ".understudy")}.`);
+  }
+
+  const excludeResult = spawnSync("git", ["-C", root, "rev-parse", "--git-path", "info/exclude"], {
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  if (excludeResult.status !== 0) return;
+  const rawExcludePath = excludeResult.stdout.trim();
+  const excludePath = isAbsolute(rawExcludePath) ? rawExcludePath : resolve(root, rawExcludePath);
+  mkdirSync(dirname(excludePath), { recursive: true, mode: 0o700 });
+  const current = pathExists(excludePath) ? readFileSync(excludePath, "utf8") : "";
+  if (current.split(/\r?\n/).includes("/.understudy/")) return;
+  const separator = current.length === 0 || current.endsWith("\n") ? "" : "\n";
+  writeFileSync(excludePath, `${current}${separator}/.understudy/\n`, { encoding: "utf8", mode: 0o600 });
 }
 
 export function cohortFromResponse(cohort: Cohort): FrozenCohort {

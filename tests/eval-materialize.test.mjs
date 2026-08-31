@@ -1,15 +1,17 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import {
   downloadExport,
+  materializeWorkloadExportSegment,
   MAX_CAPTURE_BYTES,
   MAX_COHORT_BYTES,
   reserveDownloadedChunk,
+  reserveReceiptDrivenChunk,
 } from "../dist/evals/materialize.js";
 
 describe("eval materialization byte budgets", () => {
@@ -89,3 +91,145 @@ describe("eval materialization filenames", () => {
     }
   });
 });
+
+describe("complete workload export materialization", () => {
+  it("resumes without redownloading verified files and uses manifest sizes instead of sample-era limits", async () => {
+    assert.equal(
+      reserveReceiptDrivenChunk("req_large", 256 * 1024 * 1024, 1, 300 * 1024 * 1024),
+      256 * 1024 * 1024 + 1,
+      "the full-corpus path must not retain the old 16 MiB or 256 MiB ceilings",
+    );
+
+    const root = mkdtempSync(join(tmpdir(), "understudy-workload-export-"));
+    const traces = join(root, "source", "traces");
+    const bodies = new Map([
+      ["req-a", '{"capture":"a"}\n'],
+      ["req-b", '{"capture":"b"}\n'],
+    ]);
+    const items = [...bodies].map(([request_id, body]) => ({
+      request_id,
+      key: `org/proj/apk/2026/08/30/${request_id}.jsonl`,
+      size: Buffer.byteLength(body),
+      url: `http://localhost:8787/captures/${request_id}`,
+    }));
+    const header = {
+      record_type: "understudy_capture_export_chain_v1",
+      chain_id: "chain-1",
+      segment_id: "a".repeat(64),
+      segment_index: 0,
+      previous_manifest_sha256: null,
+      cumulative_scanned: 2,
+      cumulative_matched: 2,
+      cumulative_exported: 2,
+      cumulative_total_bytes: items.reduce((sum, item) => sum + item.size, 0),
+      terminal: true,
+    };
+    const manifest = `${JSON.stringify(header)}\n${items.map((item) => JSON.stringify(item)).join("\n")}\n`;
+    const manifestSha256 = createHash("sha256").update(manifest).digest("hex");
+    const response = {
+      export_id: "exp-1",
+      count: 2,
+      total_bytes: items.reduce((sum, item) => sum + item.size, 0),
+      manifest_url: "http://localhost:8787/manifests/segment-0",
+      expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      truncated: false,
+      canonical_scope: {
+        schema_version: "understudy.export-scope.v1",
+        selector: "workload-window",
+        org_id: "org",
+        project_id: "proj",
+        workload_id: "workload",
+        from: "2026-08-23T00:00:00.000Z",
+        to: "2026-08-30T00:00:00.000Z",
+        ingestion_cutoff: "2026-08-30T00:00:01.000Z",
+      },
+      chain: {
+        chain_id: "chain-1",
+        segment_id: header.segment_id,
+        segment_index: 0,
+        previous_manifest_sha256: null,
+        manifest_sha256: manifestSha256,
+        cumulative_scanned: 2,
+        cumulative_matched: 2,
+        cumulative_exported: 2,
+        cumulative_total_bytes: responseTotal(items),
+        terminal: true,
+        terminal_receipt: "signed-terminal-receipt",
+      },
+    };
+    const requests = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (rawUrl) => {
+      const url = new URL(rawUrl);
+      requests.push(url.pathname);
+      if (url.pathname === "/manifests/segment-0") return new Response(manifest);
+      const requestId = url.pathname.split("/").at(-1);
+      const body = bodies.get(requestId);
+      return body === undefined
+        ? new Response("not found", { status: 404 })
+        : new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
+    };
+
+    const verified = [];
+    let interruptedFile;
+    try {
+      await assert.rejects(
+        materializeWorkloadExportSegment({
+          exportData: response,
+          tracesDirectory: traces,
+          gatewayUrl: "http://localhost:8787",
+          verifiedFiles: verified,
+          onVerified(file) {
+            interruptedFile = file;
+            throw new Error("synthetic interruption");
+          },
+        }),
+        /synthetic interruption/,
+      );
+      assert.equal(verified.length, 0, "the simulated crash happens before checkpoint persistence");
+      assert.equal(existsSync(join(root, interruptedFile.local_path)), true);
+      const firstDownloadedPath = requests.find((path) => path.startsWith("/captures/"));
+
+      const resumed = await materializeWorkloadExportSegment({
+        exportData: response,
+        tracesDirectory: traces,
+        gatewayUrl: "http://localhost:8787",
+        verifiedFiles: verified,
+        onVerified(file) {
+          verified.push(file);
+        },
+      });
+      assert.equal(resumed.manifest_sha256, manifestSha256);
+      assert.equal(verified.length, 2);
+      assert.equal(
+        requests.filter((path) => path === firstDownloadedPath).length,
+        1,
+        "an atomically published capture from the crash window must be adopted, not downloaded again",
+      );
+      assert.deepEqual(verified.map((file) => file.request_id).sort(), ["req-a", "req-b"]);
+
+      const captureRequests = requests.filter((path) => path.startsWith("/captures/")).length;
+      await materializeWorkloadExportSegment({
+        exportData: response,
+        tracesDirectory: traces,
+        gatewayUrl: "http://localhost:8787",
+        verifiedFiles: verified,
+        onVerified() {
+          throw new Error("verified files must not be checkpointed twice");
+        },
+      });
+      assert.equal(
+        requests.filter((path) => path.startsWith("/captures/")).length,
+        captureRequests,
+        "checkpointed captures must be rehashed locally, not downloaded again",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+function responseTotal(items) {
+  return items.reduce((sum, item) => sum + item.size, 0);
+}
