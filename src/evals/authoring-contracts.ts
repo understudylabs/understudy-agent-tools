@@ -6,12 +6,10 @@ import {
   VerifyWorkloadCaptureExportReceiptResponseSchema,
   WorkloadCaptureExportScopeSchema,
 } from "./contracts.js";
+import { EvalReleaseArtifactPathSchema } from "./release-contracts.js";
 
 const TimestampSchema = z.string().datetime();
-const RelativeArtifactPathSchema = z.string().min(1).refine(
-  (value) => !value.startsWith("/") && !value.includes("\\") && !/^[A-Za-z]:[\\/]/.test(value) && !value.split("/").includes(".."),
-  "artifact paths must be project-relative and cannot contain '..'",
-);
+const RelativeArtifactPathSchema = EvalReleaseArtifactPathSchema;
 
 export const EvalProjectArtifactsSchema = z.object({
   workload_profile: RelativeArtifactPathSchema,

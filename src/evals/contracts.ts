@@ -79,6 +79,7 @@ export const WorkloadCaptureExportManifestItemSchema = z.object({
   request_id: z.string().min(1),
   key: z.string().min(1),
   size: z.number().int().nonnegative(),
+  content_sha256: Sha256Schema,
   url: z.string().url(),
 });
 

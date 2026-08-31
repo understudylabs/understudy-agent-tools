@@ -81,6 +81,12 @@ export {
 
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
+export {
+  EvalPublicationSchema,
+  EvalReleaseSchema,
+  type EvalPublication,
+  type EvalRelease,
+} from "./evals/release-contracts.js";
 export { buildRejectionGuidance, classifyRejection, computeRecoveryOverJournals, computeRecoveryRates, loadGuidanceFile, readRolloutJournals, synthesizeMinimalExample } from "./rejection-guidance.js";
 export * from "./protocol-trajectory/index.js";
 export {

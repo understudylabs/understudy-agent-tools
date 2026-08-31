@@ -2,6 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://understudylabs.com/schemas/understudy.eval-release.v1.schema.json",
   "title": "understudy.eval-release.v1",
+  "$comment": "Structural validation only. Consumers must also apply the package-exported EvalReleaseSchema for cross-field bundle inventory and executable-root invariants.",
+  "x-understudy-semantic-validator": "EvalReleaseSchema",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "release_id", "release_number", "sealed_by_user_id", "sealed_at", "org_id", "project_id", "workload_id", "eval_id", "name", "source", "artifacts", "runtime", "skills", "approval", "artifact_layout", "bundle_files"],
@@ -22,7 +24,7 @@
     "skills": { "type": "array", "minItems": 1, "maxItems": 32, "items": { "$ref": "#/$defs/skill" } },
     "approval": { "$ref": "#/$defs/approval" },
     "artifact_layout": { "$ref": "#/$defs/layout" },
-    "bundle_files": { "type": "array", "minItems": 1, "maxItems": 1024, "items": { "$ref": "#/$defs/bundle_file" } }
+    "bundle_files": { "type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true, "items": { "$ref": "#/$defs/bundle_file" } }
   },
   "$defs": {
     "id": { "type": "string", "minLength": 1, "maxLength": 240 },

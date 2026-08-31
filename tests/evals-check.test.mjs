@@ -452,6 +452,24 @@ test("evals check enforces created, metric, intent, check, and final approval ch
       check_report_sha256: first.hashes.check_report_sha256,
     });
     await assert.rejects(() => runEvalCheck(finalAtCheck.project, { now: new Date("2026-08-30T14:00:00.000Z") }), /must occur after the current check report/);
+
+    const rollback = buildProject(join(root, "rollback"));
+    const future = await runEvalCheck(rollback.project, { now: new Date("2026-08-30T14:00:00.000Z") });
+    assert.equal(future.report.checked_at, "2026-08-30T14:00:00.000Z");
+    const rewound = await runEvalCheck(rollback.project, { now: new Date("2026-08-30T13:00:00.000Z") });
+    assert.equal(rewound.report.checked_at, "2026-08-30T13:00:00.000Z");
+    const rollbackApprovalPath = join(rollback.project, "approval.json");
+    writeJson(rollbackApprovalPath, {
+      ...JSON.parse(readFileSync(rollbackApprovalPath, "utf8")),
+      approved_at: "2026-08-30T13:05:00.000Z",
+      eval_set_sha256: rewound.hashes.eval_set_sha256,
+      coverage_sha256: rewound.hashes.coverage_sha256,
+      environment_sha256: rewound.hashes.environment_sha256,
+      verifier_sha256: rewound.hashes.verifier_sha256,
+      check_report_sha256: rewound.hashes.check_report_sha256,
+    });
+    const approvedAfterRollback = await runEvalCheck(rollback.project, { now: new Date("2026-08-30T13:06:00.000Z") });
+    assert.equal(approvedAfterRollback.publishable, true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -465,7 +483,7 @@ test("evals check requires dedicated disjoint executable trees with all source a
     const projectRootManifest = JSON.parse(readFileSync(projectRootManifestPath, "utf8"));
     projectRootManifest.artifacts.verifier = ".";
     writeJson(projectRootManifestPath, projectRootManifest);
-    await assert.rejects(() => runEvalCheck(projectRootVerifier.project), /dedicated project-local directories/);
+    await assert.rejects(() => runEvalCheck(projectRootVerifier.project), /dedicated project-local directories|normalized, project-relative paths/);
 
     const overlapping = buildProject(join(root, "overlap"));
     writeFileSync(join(overlapping.project, "environment/check.mjs"), readFileSync(join(overlapping.project, "verifier/check.mjs")));

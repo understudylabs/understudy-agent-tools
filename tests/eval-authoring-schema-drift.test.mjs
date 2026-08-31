@@ -18,6 +18,7 @@ import {
   WorkloadEvalProjectSchema,
 } from "../dist/evals/authoring-contracts.js";
 import {
+  EvalReleaseArtifactPathSchema,
   EvalPublicationSchema,
   EvalReleaseSchema,
 } from "../dist/evals/release-contracts.js";
@@ -281,6 +282,88 @@ test("publication and release golden bytes match the cross-repository digests", 
   const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
   assert.equal(digest(publicationValue), GOLDEN_PUBLICATION_SHA256);
   assert.equal(digest(releaseValue), GOLDEN_RELEASE_SHA256);
+});
+
+test("local authoring and release publication share one portable artifact-path contract", () => {
+  for (const path of ["metric.json", "fixtures/good.json", "environment/replay.mjs"]) {
+    const project = structuredClone(samples["project.v2"].value);
+    project.artifacts.metric = path;
+    assert.equal(WorkloadEvalProjectSchema.safeParse(project).success, true, `authoring accepts ${path}`);
+    assert.equal(EvalReleaseArtifactPathSchema.safeParse(path).success, true, `release accepts ${path}`);
+  }
+
+  for (const path of [
+    "./metric.json",
+    "fixtures//good.json",
+    "fixtures/./good.json",
+    "fixtures/good.json/",
+    "C:fixtures/good.json",
+    "fixtures/\0good.json",
+    "a".repeat(241),
+  ]) {
+    const project = structuredClone(samples["project.v2"].value);
+    project.artifacts.metric = path;
+    assert.equal(WorkloadEvalProjectSchema.safeParse(project).success, false, `authoring rejects ${JSON.stringify(path)}`);
+    assert.equal(EvalReleaseArtifactPathSchema.safeParse(path).success, false, `release rejects ${JSON.stringify(path)}`);
+  }
+});
+
+test("release JSON schemas delegate cross-field inventory invariants to the exported runtime validators", () => {
+  const publicationSchema = JSON.parse(readFileSync(resolve("schemas", "understudy.eval-publication.v1.schema.json"), "utf8"));
+  const releaseSchema = JSON.parse(readFileSync(resolve("schemas", "understudy.eval-release.v1.schema.json"), "utf8"));
+  assert.equal(publicationSchema["x-understudy-semantic-validator"], "EvalPublicationSchema");
+  assert.equal(releaseSchema["x-understudy-semantic-validator"], "EvalReleaseSchema");
+
+  const semanticDrifts = [
+    {
+      name: "duplicate paths",
+      mutate(value) {
+        value.bundle_files.push({ ...value.bundle_files[0], sha256: "b".repeat(64) });
+      },
+    },
+    {
+      name: "unsorted paths",
+      mutate(value) {
+        [value.bundle_files[0], value.bundle_files[1]] = [value.bundle_files[1], value.bundle_files[0]];
+      },
+    },
+    {
+      name: "missing required artifacts",
+      mutate(value) {
+        value.bundle_files = value.bundle_files.filter((file) => file.path !== value.artifact_layout.approval);
+      },
+    },
+    {
+      name: "files outside executable roots",
+      mutate(value) {
+        value.bundle_files.push({ path: "notes.txt", size_bytes: 1, sha256: sha });
+      },
+    },
+    {
+      name: "overlapping executable roots",
+      mutate(value) {
+        value.artifact_layout.verifier_root = "environment/verifier";
+      },
+    },
+    {
+      name: "entrypoints outside declared roots",
+      mutate(value) {
+        value.runtime.environment_entrypoint = "verifier/check.mjs";
+      },
+    },
+  ];
+
+  for (const { name, mutate } of semanticDrifts) {
+    const publication = structuredClone(publicationValue);
+    mutate(publication);
+    assert.equal(schemaAccepts(publicationSchema, publication), true, `${name} remains structurally valid`);
+    assert.equal(EvalPublicationSchema.safeParse(publication).success, false, `${name} fails publication semantics`);
+
+    const release = structuredClone(releaseValue);
+    mutate(release);
+    assert.equal(schemaAccepts(releaseSchema, release), true, `${name} remains structurally valid for releases`);
+    assert.equal(EvalReleaseSchema.safeParse(release).success, false, `${name} fails release semantics`);
+  }
 });
 
 for (const [name, sample] of Object.entries(samples)) {

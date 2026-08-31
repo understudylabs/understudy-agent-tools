@@ -34,6 +34,7 @@ import {
   snapshotModuleTree,
   type ModuleTreeSnapshot,
 } from "./module-sandbox.js";
+import { EvalReleaseArtifactPathSchema } from "./release-contracts.js";
 
 type JsonObject = Record<string, unknown>;
 
@@ -100,7 +101,7 @@ function pathsOverlap(left: string, right: string): boolean {
 }
 
 function existingProjectPath(projectRoot: string, value: string, label: string): string {
-  if (value.length === 0 || value.startsWith("/") || value.includes("\\") || /^[A-Za-z]:[\\/]/.test(value) || value.split("/").includes("..")) {
+  if (!EvalReleaseArtifactPathSchema.safeParse(value).success) {
     throw new Error(`${label} artifact path must remain inside the eval project.`);
   }
   const candidate = resolve(projectRoot, value);
@@ -118,7 +119,7 @@ function existingProjectPath(projectRoot: string, value: string, label: string):
 }
 
 function reportPath(projectRoot: string, value: string): string {
-  if (value.length === 0 || value.startsWith("/") || value.includes("\\") || /^[A-Za-z]:[\\/]/.test(value) || value.split("/").includes("..")) {
+  if (!EvalReleaseArtifactPathSchema.safeParse(value).success) {
     throw new Error("check report artifact path must remain inside the eval project.");
   }
   const candidate = resolve(projectRoot, value);
@@ -591,7 +592,7 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   let report = candidateReport;
   try {
     const existing = parseJson(checkReportPath, EvalCheckReportSchema, "checks/report.json");
-    if (sameReport(existing, candidateReport)) report = existing;
+    if (sameReport(existing, candidateReport) && Date.parse(existing.checked_at) <= checkTime.valueOf()) report = existing;
     else replacePrivateJson(checkReportPath, candidateReport);
   } catch (error) {
     if (lstatExists(checkReportPath)) throw error;

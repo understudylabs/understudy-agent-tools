@@ -225,6 +225,28 @@ test("evals publish deterministically packages exactly the checked release allow
   }
 });
 
+test("a portable artifact path accepted by evals check remains publishable", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-evals-publish-path-parity-"));
+  try {
+    const { project } = buildEvalProject(root);
+    const nestedMetric = join(project, "configuration/metric.json");
+    mkdirSync(join(project, "configuration"));
+    writeFileSync(nestedMetric, readFileSync(join(project, "metric.json")));
+    rmSync(join(project, "metric.json"));
+    const projectPath = join(project, "eval-project.json");
+    const manifest = JSON.parse(readFileSync(projectPath, "utf8"));
+    manifest.artifacts.metric = "configuration/metric.json";
+    writeJson(projectPath, manifest);
+
+    await finalizeApproval(project);
+    const prepared = await prepareEvalPublication(project);
+    assert.equal(prepared.publication.artifact_layout.metric, "configuration/metric.json");
+    assert.equal(prepared.publication.bundle_files.some((file) => file.path === "configuration/metric.json"), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("evals publish reruns the check and refuses stale approval or symlinked release artifacts", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-evals-publish-gates-"));
   try {

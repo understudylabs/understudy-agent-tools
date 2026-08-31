@@ -13,11 +13,19 @@ the deterministic check-input hash. These contracts require a provider-free
 local environment replay, independent good/wrong evidence, explicit lineage
 coverage, and a separate post-check owner approval.
 
-The strict `understudy.eval-publication.v1` and `understudy.eval-release.v1`
-schemas define the only hosted boundary for this workflow. Publication carries
-the checked hashes, final approval, executable layout, and exact sorted bundle
+The `understudy.eval-publication.v1` and `understudy.eval-release.v1` JSON
+Schemas define the structural hosted boundary for this workflow. Publication
+carries the checked hashes, final approval, executable layout, and bundle
 inventory. The server response adds the immutable release seal. Neither
 contract contains raw source traces, export proofs, or mutable authoring state.
+
+These Draft 2020-12 schemas do not express the release contract's cross-field
+path rules. Consumers must also parse publications with the package's exported
+`EvalPublicationSchema` and releases with `EvalReleaseSchema`. Those semantic
+validators require a unique, code-unit-sorted bundle inventory, every declared
+artifact and entrypoint, disjoint executable roots, entrypoints inside their
+declared roots, and no undeclared files outside the executable module trees.
+The CLI applies them before upload and to every hosted response.
 
 ## Outcome-first replacement contracts
 

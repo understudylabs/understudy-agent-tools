@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -93,6 +93,109 @@ describe("eval materialization filenames", () => {
 });
 
 describe("complete workload export materialization", () => {
+  it("rejects same-size capture bytes not bound by the authenticated manifest", async () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-workload-export-digest-"));
+    const traces = join(root, "source", "traces");
+    const requestId = "req-hash";
+    const expectedBody = '{"capture":"a"}\n';
+    const corruptedBody = '{"capture":"b"}\n';
+    const key = `org/proj/apk/2026/08/30/${requestId}.jsonl`;
+    const item = {
+      request_id: requestId,
+      key,
+      size: Buffer.byteLength(expectedBody),
+      content_sha256: createHash("sha256").update(expectedBody).digest("hex"),
+      url: `http://localhost:8787/captures/${requestId}`,
+    };
+    const header = {
+      record_type: "understudy_capture_export_chain_v1",
+      chain_id: "chain-digest",
+      segment_id: "a".repeat(64),
+      segment_index: 0,
+      previous_manifest_sha256: null,
+      cumulative_scanned: 1,
+      cumulative_matched: 1,
+      cumulative_exported: 1,
+      cumulative_total_bytes: item.size,
+      terminal: true,
+    };
+    const manifest = `${JSON.stringify(header)}\n${JSON.stringify(item)}\n`;
+    const manifestSha256 = createHash("sha256").update(manifest).digest("hex");
+    const response = {
+      export_id: "exp-digest",
+      count: 1,
+      total_bytes: item.size,
+      manifest_url: "http://localhost:8787/manifests/digest",
+      expires_at: new Date(Date.now() + 60 * 60_000).toISOString(),
+      truncated: false,
+      canonical_scope: {
+        schema_version: "understudy.export-scope.v1",
+        selector: "workload-window",
+        org_id: "org",
+        project_id: "proj",
+        workload_id: "workload",
+        from: "2026-08-23T00:00:00.000Z",
+        to: "2026-08-30T00:00:00.000Z",
+        ingestion_cutoff: "2026-08-30T00:00:01.000Z",
+      },
+      chain: {
+        chain_id: header.chain_id,
+        segment_id: header.segment_id,
+        segment_index: header.segment_index,
+        previous_manifest_sha256: header.previous_manifest_sha256,
+        manifest_sha256: manifestSha256,
+        cumulative_scanned: header.cumulative_scanned,
+        cumulative_matched: header.cumulative_matched,
+        cumulative_exported: header.cumulative_exported,
+        cumulative_total_bytes: header.cumulative_total_bytes,
+        terminal: header.terminal,
+        terminal_receipt: "signed-terminal-receipt",
+      },
+    };
+    const originalFetch = globalThis.fetch;
+    let captureRequests = 0;
+    globalThis.fetch = async (rawUrl) => {
+      const url = new URL(rawUrl);
+      if (url.pathname === "/manifests/digest") return new Response(manifest);
+      captureRequests += 1;
+      return new Response(corruptedBody, {
+        headers: { "content-length": String(Buffer.byteLength(corruptedBody)) },
+      });
+    };
+
+    try {
+      await assert.rejects(
+        materializeWorkloadExportSegment({
+          exportData: response,
+          tracesDirectory: traces,
+          gatewayUrl: "http://localhost:8787",
+          verifiedFiles: [],
+          onVerified() {},
+        }),
+        /authenticated SHA-256 verification/,
+      );
+      const localName = `${requestId}-${createHash("sha256").update(key).digest("hex").slice(0, 12)}.jsonl`;
+      const localPath = join(traces, localName);
+      assert.equal(existsSync(localPath), false, "a mismatched download must not be published");
+
+      writeFileSync(localPath, corruptedBody);
+      await assert.rejects(
+        materializeWorkloadExportSegment({
+          exportData: response,
+          tracesDirectory: traces,
+          gatewayUrl: "http://localhost:8787",
+          verifiedFiles: [],
+          onVerified() {},
+        }),
+        /Untracked capture file does not match/,
+      );
+      assert.equal(captureRequests, 1, "same-size recovery is rejected before another capture download");
+    } finally {
+      globalThis.fetch = originalFetch;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("resumes without redownloading verified files and uses manifest sizes instead of sample-era limits", async () => {
     assert.equal(
       reserveReceiptDrivenChunk("req_large", 256 * 1024 * 1024, 1, 300 * 1024 * 1024),
@@ -110,6 +213,7 @@ describe("complete workload export materialization", () => {
       request_id,
       key: `org/proj/apk/2026/08/30/${request_id}.jsonl`,
       size: Buffer.byteLength(body),
+      content_sha256: createHash("sha256").update(body).digest("hex"),
       url: `http://localhost:8787/captures/${request_id}`,
     }));
     const header = {

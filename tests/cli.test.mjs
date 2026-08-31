@@ -540,6 +540,7 @@ async function withHostedFixture(fn) {
           request_id: capture.request_id,
           key: `org_1/proj_1/key_${segmentIndex + 1}/2026/08/30/${capture.request_id}.jsonl`,
           size: Buffer.byteLength(bodies[segmentIndex]),
+          content_sha256: createHash("sha256").update(bodies[segmentIndex]).digest("hex"),
           url: `${gatewayUrl}/eval-workload-capture-${segmentIndex}`,
         };
         const terminal = segmentIndex === 1;

@@ -237,6 +237,13 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
   }
   const files = [...unique.values()].sort((left, right) =>
     left.capture_key.localeCompare(right.capture_key) || left.request_id.localeCompare(right.request_id));
+  const uniqueTotalBytes = files.reduce((sum, file) => sum + file.size_bytes, 0);
+  if (
+    files.length !== options.verifiedReceipt.cumulative_exported ||
+    uniqueTotalBytes !== options.verifiedReceipt.total_bytes
+  ) {
+    throw new Error("Verified export receipt totals do not match unique materialized captures.");
+  }
   const indexBody = files.map((file) => JSON.stringify(file)).join("\n") + (files.length > 0 ? "\n" : "");
   const indexPath = join(sourceRoot, "index.jsonl");
   replacePrivateText(indexPath, indexBody);
@@ -267,7 +274,7 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
     source: {
       window: options.canonicalScope,
       capture_count: files.length,
-      size_bytes: files.reduce((sum, file) => sum + file.size_bytes, 0),
+      size_bytes: uniqueTotalBytes,
       index: portableRelative(projectRoot, indexPath),
       index_sha256: indexSha256,
       export_proof: portableRelative(projectRoot, proofPath),

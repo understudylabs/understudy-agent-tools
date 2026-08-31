@@ -262,7 +262,7 @@ export async function materializeWorkloadExportSegment(input: {
     if (existing) {
       if (
         existing.request_id !== item.request_id || existing.size_bytes !== item.size ||
-        existing.local_path !== expectedLocalPath
+        existing.content_sha256 !== item.content_sha256 || existing.local_path !== expectedLocalPath
       ) throw new Error(`Verified capture ledger does not match export item ${item.request_id}.`);
       const existingPath = resolveLedgerPath(projectRoot, existing.local_path);
       const hashed = await hashLocalCapture(existingPath);
@@ -275,7 +275,7 @@ export async function materializeWorkloadExportSegment(input: {
     const finalPath = join(tracesDirectory, fileName);
     if (pathExists(finalPath)) {
       const recovered = await hashLocalCapture(finalPath);
-      if (recovered.sizeBytes !== item.size) {
+      if (recovered.sizeBytes !== item.size || recovered.digest !== item.content_sha256) {
         throw new Error(`Untracked capture file does not match export item ${item.request_id}.`);
       }
       const verified: VerifiedWorkloadCaptureFile = {
@@ -386,6 +386,9 @@ async function downloadReceiptDrivenCapture(
     closeSync(descriptor);
     descriptor = null;
     const digest = hash.digest("hex");
+    if (digest !== item.content_sha256) {
+      throw new Error(`Capture ${item.request_id} failed authenticated SHA-256 verification.`);
+    }
     renameSync(partialPath, finalPath);
     complete = true;
     return { digest, sizeBytes };
