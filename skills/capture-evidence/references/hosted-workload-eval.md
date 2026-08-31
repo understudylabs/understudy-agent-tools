@@ -27,6 +27,12 @@ path does not depend on the CLI's name-to-slug conversion.
 Resume the same command after an interruption. Do not copy the week into a
 separate archive or a global evidence directory. Work inside the active eval
 project named by `eval-project.json`; keep every payload-bearing file private.
+The trace-time window remains the exact half-open seven days ending at
+`source.window.to`. On the first export request, the backend freezes an
+`ingestion_cutoff` at or after that end and the CLI reuses the exact returned
+cutoff for every resumed segment. This includes already-arrived traces from the
+week even when their capture row was ingested shortly after the window ended,
+without allowing later arrivals to change the frozen corpus.
 
 ## 2. Classify lineage before selecting cases
 

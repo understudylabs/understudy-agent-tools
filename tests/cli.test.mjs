@@ -180,6 +180,8 @@ async function withHostedFixture(fn) {
     evalExportCohortSha: "a".repeat(64),
     evalExportExpiries: [],
     evalWorkloadManifests: new Map(),
+    evalWorkloadIngestionCutoffs: new Map(),
+    evalWorkloadIngestionCutoffOffsetMs: 1_000,
     evalWorkloadReceiptInvalid: false,
   };
 
@@ -523,6 +525,13 @@ async function withHostedFixture(fn) {
     const rawCapture = `${JSON.stringify(state.captures[0])}\n`;
     const rawCaptureSha = createHash("sha256").update(rawCapture).digest("hex");
     if (req.method === "POST" && url.pathname === `${evalBase}/eval-capture-export`) {
+      const sourceKey = `${body.from}|${body.to}`;
+      const frozenIngestionCutoff = state.evalWorkloadIngestionCutoffs.get(sourceKey) ??
+        new Date(Date.parse(body.to) + state.evalWorkloadIngestionCutoffOffsetMs).toISOString();
+      state.evalWorkloadIngestionCutoffs.set(sourceKey, frozenIngestionCutoff);
+      if (body.ingestion_cutoff !== undefined && body.ingestion_cutoff !== frozenIngestionCutoff) {
+        return send(400, { message: "synthetic ingestion cutoff mismatch" });
+      }
       const canonicalScope = {
         schema_version: "understudy.export-scope.v1",
         selector: "workload-window",
@@ -531,7 +540,7 @@ async function withHostedFixture(fn) {
         workload_id: "usp_classify",
         from: body.from,
         to: body.to,
-        ingestion_cutoff: body.ingestion_cutoff,
+        ingestion_cutoff: frozenIngestionCutoff,
       };
       const bodies = state.captures.slice(0, 2).map((capture) => `${JSON.stringify(capture)}\n`);
       const makeManifest = (segmentIndex, previousManifestSha256) => {
@@ -4280,7 +4289,10 @@ class ScoreWithFeedback:
       ], env, repo);
       assert.notEqual(interrupted.status, 0);
       assert.equal(existsSync(outputDir), false);
-      assert.equal(existsSync(join(repo, ".understudy", "evals", ".complete-week.eval-build", "build-state.json")), true);
+      const checkpointPath = join(repo, ".understudy", "evals", ".complete-week.eval-build", "build-state.json");
+      assert.equal(existsSync(checkpointPath), true);
+      const interruptedState = JSON.parse(readFileSync(checkpointPath, "utf8"));
+      assert.ok(Date.parse(interruptedState.source.ingestion_cutoff) > Date.parse(interruptedState.source.to));
 
       const built = await runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
@@ -4314,9 +4326,31 @@ class ScoreWithFeedback:
         Date.parse(exportRequests[0].body.to) - Date.parse(exportRequests[0].body.from),
         7 * 24 * 60 * 60 * 1000,
       );
-      assert.equal(exportRequests[0].body.ingestion_cutoff, exportRequests[0].body.to);
+      assert.equal(exportRequests[0].body.ingestion_cutoff, undefined, "the backend chooses the first frozen cutoff");
+      assert.ok(Date.parse(project.source.window.ingestion_cutoff) > Date.parse(project.source.window.to));
+      for (const request of exportRequests.slice(1)) {
+        assert.equal(request.body.ingestion_cutoff, project.source.window.ingestion_cutoff, "resumed segments reuse the backend cutoff");
+      }
       assert.ok(requests.some((entry) => entry.path.endsWith("/eval-capture-export/verify")));
       assert.equal(requests.some((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST"), false);
+    });
+  });
+
+  it("rejects an implausibly future backend ingestion cutoff", async () => {
+    await withHostedFixture(async ({ home, repo, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
+      state.evalWorkloadIngestionCutoffOffsetMs = 5 * 60 * 1000;
+      const outputDir = join(repo, ".understudy", "evals", "future-cutoff");
+
+      const result = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--name", "future-cutoff", "--out", outputDir, "--yes",
+      ], env, repo);
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /does not match the requested workload window/);
+      assert.equal(existsSync(outputDir), false);
     });
   });
 

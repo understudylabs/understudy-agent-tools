@@ -217,7 +217,18 @@ export const EvalWorkloadBuildStateSchema = z.object({
   source: z.object({
     from: z.string().datetime(),
     to: z.string().datetime(),
-    ingestion_cutoff: z.string().datetime(),
+    ingestion_cutoff: z.string().datetime().nullable(),
+  }).superRefine((source, context) => {
+    if (
+      source.ingestion_cutoff !== null &&
+      Date.parse(source.ingestion_cutoff) < Date.parse(source.to)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["ingestion_cutoff"],
+        message: "the frozen ingestion cutoff must be at or after the source window end",
+      });
+    }
   }),
   compile: z.object({
     max_age_days: z.number().int().positive(),

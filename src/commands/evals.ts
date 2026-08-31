@@ -379,7 +379,7 @@ async function runBuildWithLease(
       source: {
         from: new Date(to.getTime() - windowMs).toISOString(),
         to: to.toISOString(),
-        ingestion_cutoff: to.toISOString(),
+        ingestion_cutoff: null,
       },
       maxAgeDays,
       batchSize,
@@ -405,6 +405,16 @@ async function runBuildWithLease(
 
   while (state.status === "downloading") {
     const segment = await fetchWorkloadExportSegment(context, state);
+    if (state.source.ingestion_cutoff === null) {
+      assertInitialWorkloadExportScopeMatchesState(segment, state);
+      state = persistWorkloadBuildState(staging, {
+        ...state,
+        source: {
+          ...state.source,
+          ingestion_cutoff: segment.canonical_scope.ingestion_cutoff,
+        },
+      });
+    }
     assertWorkloadExportSegmentMatchesState(segment, state);
     await materializeWorkloadExportSegment({
       exportData: segment,
@@ -476,7 +486,11 @@ async function fetchWorkloadExportSegment(
     orgId: context.project.auth.orgId,
     signal: AbortSignal.timeout(60_000),
     body: {
-      ...state.source,
+      from: state.source.from,
+      to: state.source.to,
+      ...(state.source.ingestion_cutoff === null
+        ? {}
+        : { ingestion_cutoff: state.source.ingestion_cutoff }),
       expires_seconds: EXPORT_EXPIRES_SECONDS,
       ...(state.transport.resume_cursor ? { resume_cursor: state.transport.resume_cursor } : {}),
     },
@@ -503,14 +517,39 @@ async function verifyWorkloadExportReceipt(
 }
 
 function workloadExportScope(state: EvalWorkloadBuildState): WorkloadCaptureExportScope {
+  const ingestionCutoff = state.source.ingestion_cutoff;
+  if (ingestionCutoff === null) {
+    throw new Error("Capture export has not returned its frozen ingestion cutoff.");
+  }
   return {
     schema_version: "understudy.export-scope.v1" as const,
     selector: "workload-window" as const,
     org_id: state.identity.org_id,
     project_id: state.identity.project_id,
     workload_id: state.identity.workload_id,
-    ...state.source,
+    from: state.source.from,
+    to: state.source.to,
+    ingestion_cutoff: ingestionCutoff,
   };
+}
+
+function assertInitialWorkloadExportScopeMatchesState(
+  segment: WorkloadCaptureExportResponse,
+  state: EvalWorkloadBuildState,
+): void {
+  const scope = segment.canonical_scope;
+  const ingestionCutoffMs = Date.parse(scope.ingestion_cutoff);
+  if (
+    scope.org_id !== state.identity.org_id ||
+    scope.project_id !== state.identity.project_id ||
+    scope.workload_id !== state.identity.workload_id ||
+    scope.from !== state.source.from ||
+    scope.to !== state.source.to ||
+    ingestionCutoffMs < Date.parse(scope.to) ||
+    ingestionCutoffMs > Date.now() + 60_000
+  ) {
+    throw new Error("Capture export response does not match the requested workload window.");
+  }
 }
 
 function assertWorkloadExportSegmentMatchesState(

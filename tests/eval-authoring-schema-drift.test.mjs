@@ -289,6 +289,16 @@ test("publication and release golden bytes match the cross-repository digests", 
   assert.equal(digest(releaseValue), GOLDEN_RELEASE_SHA256);
 });
 
+test("release sources preserve a backend cutoff at or after the exact seven-day window", () => {
+  const delayed = structuredClone(publicationValue);
+  delayed.source.ingestion_cutoff = "2026-08-30T12:00:01.000Z";
+  assert.equal(EvalPublicationSchema.safeParse(delayed).success, true);
+
+  const premature = structuredClone(publicationValue);
+  premature.source.ingestion_cutoff = "2026-08-30T11:59:59.999Z";
+  assert.equal(EvalPublicationSchema.safeParse(premature).success, false);
+});
+
 test("local authoring and release publication share one portable artifact-path contract", () => {
   for (const path of ["metric.json", "fixtures/good.json", "environment/replay.mjs"]) {
     const project = structuredClone(samples["project.v2"].value);

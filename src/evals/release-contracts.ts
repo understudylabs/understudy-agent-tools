@@ -38,8 +38,8 @@ export const EvalReleaseSourceSchema = z.object({
   if (Date.parse(source.to) - Date.parse(source.from) !== 7 * 24 * 60 * 60 * 1_000) {
     context.addIssue({ code: "custom", path: ["to"], message: "the source window must be exactly seven days" });
   }
-  if (Date.parse(source.ingestion_cutoff) !== Date.parse(source.to)) {
-    context.addIssue({ code: "custom", path: ["ingestion_cutoff"], message: "the frozen ingestion cutoff must equal the source window end" });
+  if (Date.parse(source.ingestion_cutoff) < Date.parse(source.to)) {
+    context.addIssue({ code: "custom", path: ["ingestion_cutoff"], message: "the frozen ingestion cutoff must be at or after the source window end" });
   }
 });
 

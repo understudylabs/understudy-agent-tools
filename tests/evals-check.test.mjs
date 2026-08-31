@@ -315,6 +315,37 @@ test("evals check binds deterministic identity and the exact verified seven-day 
       "eval identity derivation is independent of caller object key order",
     );
 
+    const delayedIngestion = buildProject(join(root, "delayed-ingestion"));
+    rewriteProof(delayedIngestion.project, ({ manifest, proof }) => {
+      manifest.source.window.ingestion_cutoff = "2026-08-30T12:00:01.000Z";
+      proof.canonical_scope = manifest.source.window;
+      proof.verified_receipt.canonical_scope = proof.canonical_scope;
+      proof.verified_receipt.scope_hash = sha(JSON.stringify(proof.canonical_scope));
+      manifest.eval_id = deriveWorkloadEvalId({
+        name: manifest.name,
+        identity: manifest.identity,
+        sourceWindow: manifest.source.window,
+      });
+    });
+    assert.equal((await runEvalCheck(delayedIngestion.project)).status, "passed");
+
+    const prematureCutoff = buildProject(join(root, "premature-cutoff"));
+    rewriteProof(prematureCutoff.project, ({ manifest, proof }) => {
+      manifest.source.window.ingestion_cutoff = "2026-08-30T11:59:59.999Z";
+      proof.canonical_scope = manifest.source.window;
+      proof.verified_receipt.canonical_scope = proof.canonical_scope;
+      proof.verified_receipt.scope_hash = sha(JSON.stringify(proof.canonical_scope));
+      manifest.eval_id = deriveWorkloadEvalId({
+        name: manifest.name,
+        identity: manifest.identity,
+        sourceWindow: manifest.source.window,
+      });
+    });
+    await assert.rejects(
+      () => runEvalCheck(prematureCutoff.project),
+      /ingestion cutoff must be at or after the frozen window end/i,
+    );
+
     const arbitraryId = buildProject(join(root, "id"));
     const arbitraryManifestPath = join(arbitraryId.project, "eval-project.json");
     const arbitraryManifest = JSON.parse(readFileSync(arbitraryManifestPath, "utf8"));

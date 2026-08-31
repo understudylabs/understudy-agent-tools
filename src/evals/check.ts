@@ -264,8 +264,8 @@ function assertExactSourceProof(
   const windowStart = new Date(project.source.window.from).valueOf();
   const windowEnd = new Date(project.source.window.to).valueOf();
   if (windowEnd - windowStart !== 7 * 86_400_000) throw new Error("Eval source window must be exactly seven days.");
-  if (project.source.window.ingestion_cutoff !== project.source.window.to) {
-    throw new Error("Eval source ingestion cutoff must equal the frozen window end.");
+  if (Date.parse(project.source.window.ingestion_cutoff) < windowEnd) {
+    throw new Error("Eval source ingestion cutoff must be at or after the frozen window end.");
   }
   for (const key of ["org_id", "project_id", "workload_id"] as const) {
     if (project.source.window[key] !== project.identity[key]) {

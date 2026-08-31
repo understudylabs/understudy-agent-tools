@@ -93,7 +93,7 @@ test("a full-corpus checkpoint freezes the absolute window and locally ignores p
       source: {
         from: "2026-08-23T12:00:00.000Z",
         to: "2026-08-30T12:00:00.000Z",
-        ingestion_cutoff: "2026-08-30T12:00:00.000Z",
+        ingestion_cutoff: null,
       },
       maxAgeDays: 7,
       batchSize: 10,
@@ -104,6 +104,7 @@ test("a full-corpus checkpoint freezes the absolute window and locally ignores p
     assert.equal(stored.schema_version, "understudy.eval-build-state.v2");
     assert.equal(stored.status, "downloading");
     assert.deepEqual(stored.source, state.source);
+    assert.equal(stored.source.ingestion_cutoff, null, "the backend freezes the cutoff on the first export response");
     assert.deepEqual(stored.transport, {
       resume_cursor: null,
       chain_id: null,
