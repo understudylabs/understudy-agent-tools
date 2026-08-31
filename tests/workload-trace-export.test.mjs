@@ -489,6 +489,22 @@ test("workload trace export validates response and raw capture identity locally"
         gatewayUrl: "http://127.0.0.1:8789",
         concurrency: 1,
         retries: 0,
+        requestPage: async () => responsePage([reference], null, {
+          ingestion_cutoff: new Date(Date.now() + 120_000).toISOString(),
+        }),
+        fetchCapture: async () => new Response(captureBody(reference), { status: 200 }),
+      }),
+      /does not match the requested organization, project, workload, or window/i,
+    );
+
+    await assert.rejects(
+      () => exportWorkloadTraceWindow({
+        ...identity,
+        ...window,
+        outputDirectory: root,
+        gatewayUrl: "http://127.0.0.1:8789",
+        concurrency: 1,
+        retries: 0,
         requestPage: async () => responsePage([reference]),
         fetchCapture: async () => new Response(captureBody(reference, { request_id: "req_other" }), { status: 200 }),
       }),
@@ -510,6 +526,7 @@ test("failed export leaves resumable raw files but no final index, then adopts v
       () => exportWorkloadTraceWindow({
         ...identity,
         ...window,
+        reuseStoredWindow: true,
         outputDirectory: root,
         gatewayUrl: "http://127.0.0.1:8789",
         concurrency: 1,
@@ -643,6 +660,32 @@ test("workload trace export retries transient failures and resumes after a later
   }
 });
 
+test("workload trace export retries timeout errors", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-workload-traces-timeout-retry-"));
+  const reference = captureReference(0);
+  let attempts = 0;
+  try {
+    const result = await exportWorkloadTraceWindow({
+      ...identity,
+      ...window,
+      outputDirectory: root,
+      gatewayUrl: "http://127.0.0.1:8789",
+      concurrency: 1,
+      retries: 1,
+      requestPage: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new DOMException("timed out", "TimeoutError");
+        return responsePage([reference]);
+      },
+      fetchCapture: async () => new Response(captureBody(reference), { status: 200 }),
+    });
+    assert.equal(attempts, 2);
+    assert.equal(result.captureCount, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("workload trace export refuses to mix a different selected day into an existing output", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-workload-traces-bound-day-"));
   const reference = captureReference(0);
@@ -678,6 +721,44 @@ test("workload trace export refuses to mix a different selected day into an exis
     );
     assert.equal(requested, false);
     assert.equal(readFileSync(indexPath, "utf8"), originalIndex, "scope rejection must preserve the completed export");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("workload trace export refuses to reinterpret an explicit date as a rolling resume", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-workload-traces-window-mode-"));
+  const reference = captureReference(0);
+  try {
+    await exportWorkloadTraceWindow({
+      ...identity,
+      ...window,
+      outputDirectory: root,
+      gatewayUrl: "http://127.0.0.1:8789",
+      concurrency: 1,
+      retries: 0,
+      requestPage: async () => responsePage([reference]),
+      fetchCapture: async () => new Response(captureBody(reference), { status: 200 }),
+    });
+    let requested = false;
+    await assert.rejects(
+      () => exportWorkloadTraceWindow({
+        ...identity,
+        from: "2026-08-30T00:00:00.000Z",
+        to: "2026-08-31T00:00:00.000Z",
+        reuseStoredWindow: true,
+        outputDirectory: root,
+        gatewayUrl: "http://127.0.0.1:8789",
+        concurrency: 1,
+        retries: 0,
+        requestPage: async () => {
+          requested = true;
+          return responsePage([reference]);
+        },
+      }),
+      /different window selection mode.*fresh --out/i,
+    );
+    assert.equal(requested, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

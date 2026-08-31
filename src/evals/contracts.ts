@@ -79,6 +79,7 @@ export const WorkloadCaptureExportScopeSchema = z.object({
 
 export const WorkloadTraceWindowBindingSchema = z.object({
   schema_version: z.literal("understudy.trace-export-window.v1"),
+  selection_mode: z.enum(["rolling", "date"]),
   org_id: z.string().min(1),
   project_id: z.string().min(1),
   workload_id: z.string().min(1),
@@ -95,6 +96,17 @@ export const WorkloadSourceRowSchema = z.object({
   content_sha256: Sha256Schema,
   local_path: z.string().min(1),
 }).strict();
+
+/** A capture requested from the frozen source window but unavailable from R2. */
+export const WorkloadTraceExportSkippedCaptureSchema = z.object({
+  request_id: z.string().min(1),
+  capture_key: z.string().min(1),
+  captured_at: z.string().datetime(),
+  reason: z.literal("not_found"),
+}).strict();
+export type WorkloadTraceExportSkippedCapture = z.infer<
+  typeof WorkloadTraceExportSkippedCaptureSchema
+>;
 
 export const EvalBuildIdentitySchema = z.object({
   org_id: z.string().min(1),

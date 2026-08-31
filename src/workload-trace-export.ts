@@ -19,6 +19,7 @@ import { createPrivateDirectory, pathExists, replacePrivateText } from "./evals/
 import {
   WorkloadCaptureExportScopeSchema,
   WorkloadSourceRowSchema,
+  WorkloadTraceExportSkippedCaptureSchema,
   WorkloadTraceWindowBindingSchema,
   type WorkloadCaptureExportScope,
   type WorkloadSourceRow,
@@ -66,13 +67,6 @@ export const WorkloadTraceExportPageRequestSchema = z.object({
     });
   }
 });
-
-const WorkloadTraceExportSkippedCaptureSchema = z.object({
-  request_id: z.string().min(1),
-  capture_key: z.string().min(1),
-  captured_at: z.string().datetime(),
-  reason: z.literal("not_found"),
-}).strict();
 
 const WorkloadTraceExportSummarySchema = z.object({
   schema_version: z.literal("understudy.trace-source.v1"),
@@ -524,6 +518,7 @@ function bindExportWindow(
   const bindingPath = join(sourceDirectory, "window.json");
   const requested: WorkloadTraceWindowBinding = {
     schema_version: "understudy.trace-export-window.v1",
+    selection_mode: input.reuseStoredWindow ? "rolling" : "date",
     org_id: input.orgId,
     project_id: input.projectId,
     workload_id: input.workloadId,
@@ -539,7 +534,10 @@ function bindExportWindow(
     ) {
       throw new Error("Existing raw captures belong to a different organization, project, or workload. Choose a fresh --out directory.");
     }
-    if (!input.reuseStoredWindow && (stored.from !== requested.from || stored.to !== requested.to)) {
+    if (stored.selection_mode !== requested.selection_mode) {
+      throw new Error("Existing raw captures use a different window selection mode. Choose a fresh --out directory.");
+    }
+    if (requested.selection_mode === "date" && (stored.from !== requested.from || stored.to !== requested.to)) {
       throw new Error("Existing raw captures belong to a different day. Choose a fresh --out directory.");
     }
     return { from: stored.from, to: stored.to };
@@ -603,7 +601,8 @@ function assertPageScope(
     scope.workload_id !== input.workloadId ||
     scope.from !== input.from ||
     scope.to !== input.to ||
-    Date.parse(scope.ingestion_cutoff) < Date.parse(scope.to)
+    Date.parse(scope.ingestion_cutoff) < Date.parse(scope.to) ||
+    Date.parse(scope.ingestion_cutoff) > Date.now() + 60_000
   ) {
     throw new Error("Workload trace export response does not match the requested organization, project, workload, or window.");
   }
@@ -817,7 +816,8 @@ function isRetryable(error: unknown): boolean {
   if (error instanceof UnderstudyApiError || error instanceof CaptureDownloadStatusError) {
     return error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500;
   }
-  return error instanceof TypeError;
+  return error instanceof TypeError ||
+    (error instanceof DOMException && error.name === "TimeoutError");
 }
 
 function isMissingCapture(error: unknown): boolean {

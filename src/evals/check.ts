@@ -35,6 +35,7 @@ import {
 import { deriveWorkloadEvalId } from "../eval-project.js";
 import { replacePrivateJson } from "./build-state.js";
 import { sourceIndexCommitmentSha256 } from "./source-index.js";
+import { WorkloadTraceExportSkippedCaptureSchema } from "./contracts.js";
 import { canonicalJson, compareCodeUnits } from "./canonical.js";
 import {
   runInProviderFreeSandbox,
@@ -289,6 +290,72 @@ function assertExactSource(project: ReturnType<typeof WorkloadEvalProjectSchema.
   }
 }
 
+type SourceReference = {
+  request_id: string;
+  capture_key: string;
+  captured_at: string;
+};
+
+function compareSourceReferences(left: SourceReference, right: SourceReference): number {
+  for (const key of ["captured_at", "request_id", "capture_key"] as const) {
+    if (left[key] < right[key]) return -1;
+    if (left[key] > right[key]) return 1;
+  }
+  return 0;
+}
+
+function assertSourceReferenceScope(
+  project: ReturnType<typeof WorkloadEvalProjectSchema.parse>,
+  row: SourceReference,
+  label: string,
+): void {
+  if (
+    !row.capture_key.startsWith(`${project.identity.org_id}/${project.identity.project_id}/`) ||
+    !row.capture_key.endsWith(`/${row.request_id}.jsonl`)
+  ) {
+    throw new Error(`${label} capture reference does not match request ${row.request_id}.`);
+  }
+  const capturedAt = Date.parse(row.captured_at);
+  if (capturedAt < Date.parse(project.source.window.from) || capturedAt >= Date.parse(project.source.window.to)) {
+    throw new Error(`${label} capture ${row.request_id} falls outside the eval source window.`);
+  }
+}
+
+function assertSourceReferenceIndexes(
+  project: ReturnType<typeof WorkloadEvalProjectSchema.parse>,
+  sourceRows: SourceReference[],
+  skippedRows: SourceReference[],
+): void {
+  const requestIds = new Set<string>();
+  const captureKeys = new Set<string>();
+  let sourceIndex = 0;
+  let skippedIndex = 0;
+  let previous: SourceReference | null = null;
+  while (sourceIndex < sourceRows.length || skippedIndex < skippedRows.length) {
+    const source = sourceRows[sourceIndex];
+    const skipped = skippedRows[skippedIndex];
+    const useSource = source !== undefined &&
+      (skipped === undefined || compareSourceReferences(source, skipped) <= 0);
+    const row = useSource ? source! : skipped!;
+    const label = useSource ? "Source" : "Skipped source";
+    if (useSource) sourceIndex += 1;
+    else skippedIndex += 1;
+    assertSourceReferenceScope(project, row, label);
+    if (requestIds.has(row.request_id)) {
+      throw new Error(`Source and skipped indexes contain duplicate request id ${row.request_id}.`);
+    }
+    if (captureKeys.has(row.capture_key)) {
+      throw new Error(`Source and skipped indexes contain duplicate capture key ${row.capture_key}.`);
+    }
+    if (previous !== null && compareSourceReferences(previous, row) >= 0) {
+      throw new Error(`Source and skipped indexes are not strictly ordered at request ${row.request_id}.`);
+    }
+    requestIds.add(row.request_id);
+    captureKeys.add(row.capture_key);
+    previous = row;
+  }
+}
+
 export async function runEvalCheck(projectInput: string, options: RunEvalCheckOptions = {}): Promise<EvalCheckResult> {
   const draft = options.draft === true;
   const projectRoot = realpathSync(resolve(projectInput));
@@ -310,7 +377,14 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   const indexBytes = regularFile(indexPath, "source index");
   const skippedIndexPath = existingProjectPath(projectRoot, project.source.skipped_index, "skipped source index");
   const skippedRows = regularFile(skippedIndexPath, "skipped source index")
-    .toString("utf8").split(/\r?\n/).filter(Boolean);
+    .toString("utf8").split(/\r?\n/).filter(Boolean).map((line, index) => {
+      let value: unknown;
+      try { value = JSON.parse(line); }
+      catch (error) { throw new Error(`Invalid skipped source index line ${index + 1}: ${error instanceof Error ? error.message : String(error)}`); }
+      const parsed = WorkloadTraceExportSkippedCaptureSchema.safeParse(value);
+      if (!parsed.success) throw new Error(`Invalid skipped source index line ${index + 1}: ${z.prettifyError(parsed.error)}`);
+      return parsed.data;
+    });
   if (skippedRows.length !== project.source.skipped_count) {
     throw new Error("Skipped source index count does not match eval-project.json.");
   }
@@ -327,19 +401,13 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   }
   if (sourceRows.length !== project.source.capture_count) throw new Error("Source index capture count does not match eval-project.json.");
   if (sourceRows.reduce((sum, row) => sum + row.size_bytes, 0) !== project.source.size_bytes) throw new Error("Source index byte count does not match eval-project.json.");
+  assertSourceReferenceIndexes(project, sourceRows, skippedRows);
   const sourcePaths = new Set<string>();
-  const sourceCaptureKeys = new Set<string>();
   const sourceRowsByPath = new Map<string, (typeof sourceRows)[number]>();
   const sourceCapturePaths: string[] = [];
   for (const row of sourceRows) {
-    const capturedAt = Date.parse(row.captured_at);
-    if (capturedAt < Date.parse(project.source.window.from) || capturedAt >= Date.parse(project.source.window.to)) {
-      throw new Error(`Source capture ${row.request_id} falls outside the eval source window.`);
-    }
     if (sourcePaths.has(row.local_path)) throw new Error(`Source index contains duplicate local path ${row.local_path}.`);
-    if (sourceCaptureKeys.has(row.capture_key)) throw new Error(`Source index contains duplicate capture key ${row.capture_key}.`);
     sourcePaths.add(row.local_path);
-    sourceCaptureKeys.add(row.capture_key);
     sourceRowsByPath.set(row.local_path, row);
     const capturePath = existingProjectPath(projectRoot, row.local_path, "source capture");
     sourceCapturePaths.push(capturePath);

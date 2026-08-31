@@ -24,7 +24,7 @@ export function buildEvalProject(root, overrides = {}) {
   const sourceRow = {
     schema_version: "understudy.eval-source-capture.v1",
     request_id: "req-synthetic-1",
-    capture_key: "captures/synthetic/capture.json",
+    capture_key: "org_synthetic/proj_synthetic/key_synthetic/2026/08/29/req-synthetic-1.jsonl",
     captured_at: "2026-08-29T12:00:00.000Z",
     size_bytes: Buffer.byteLength(traceBody),
     content_sha256: sha(traceBody),

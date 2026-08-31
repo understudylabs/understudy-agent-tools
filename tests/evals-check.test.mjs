@@ -26,6 +26,15 @@ function rewriteExecutionIndex(project, mutate) {
   writeJson(coveragePath, coverage);
 }
 
+function writeSkippedIndex(project, body, count) {
+  writeFileSync(join(project, "source/skipped.jsonl"), body, { mode: 0o600 });
+  const manifestPath = join(project, "eval-project.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.source.skipped_count = count;
+  manifest.source.requested_count = manifest.source.materialized_count + count;
+  writeJson(manifestPath, manifest);
+}
+
 test("evals check hashes module trees in global code-unit path order", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-evals-module-order-"));
   try {
@@ -551,7 +560,7 @@ test("evals check reconciles every execution row to every frozen source file exa
     sourceRows.push({
       schema_version: "understudy.eval-source-capture.v1",
       request_id: "req-synthetic-2",
-      capture_key: "captures/synthetic/capture-2.json",
+      capture_key: "org_synthetic/proj_synthetic/key_synthetic/2026/08/29/req-synthetic-2.jsonl",
       captured_at: "2026-08-29T13:00:00.000Z",
       size_bytes: Buffer.byteLength(secondBody),
       content_sha256: sha(secondBody),
@@ -568,6 +577,46 @@ test("evals check reconciles every execution row to every frozen source file exa
     omittedManifest.source.index_sha256 = sourceIndexCommitmentSha256(sourceRows);
     writeJson(omittedManifestPath, omittedManifest);
     await assert.rejects(() => runEvalCheck(omitted.project), /capture total does not match|does not account for every frozen source file/i);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("evals check validates skipped rows, scope, strict ordering, and overlap", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-evals-check-skipped-index-"));
+  const skipped = (requestId, capturedAt, captureKey = `org_synthetic/proj_synthetic/key_synthetic/2026/08/29/${requestId}.jsonl`) => ({
+    request_id: requestId,
+    capture_key: captureKey,
+    captured_at: capturedAt,
+    reason: "not_found",
+  });
+  try {
+    const malformed = buildProject(join(root, "malformed"));
+    writeSkippedIndex(malformed.project, "{not-json}\n", 1);
+    await assert.rejects(() => runEvalCheck(malformed.project), /Invalid skipped source index line 1/i);
+
+    const outOfScope = buildProject(join(root, "out-of-scope"));
+    writeSkippedIndex(outOfScope.project, `${JSON.stringify(skipped("req-synthetic-2", "2026-08-30T12:00:00.000Z"))}\n`, 1);
+    await assert.rejects(() => runEvalCheck(outOfScope.project), /falls outside the eval source window/i);
+
+    const wrongKey = buildProject(join(root, "wrong-key"));
+    writeSkippedIndex(wrongKey.project, `${JSON.stringify(skipped("req-synthetic-2", "2026-08-29T13:00:00.000Z", "org_other/proj_other/req-synthetic-2.jsonl"))}\n`, 1);
+    await assert.rejects(() => runEvalCheck(wrongKey.project), /capture reference does not match request/i);
+
+    const outOfOrder = buildProject(join(root, "out-of-order"));
+    writeSkippedIndex(outOfOrder.project, [
+      skipped("req-synthetic-3", "2026-08-29T14:00:00.000Z"),
+      skipped("req-synthetic-2", "2026-08-29T13:00:00.000Z"),
+    ].map(JSON.stringify).join("\n") + "\n", 2);
+    await assert.rejects(() => runEvalCheck(outOfOrder.project), /not strictly ordered/i);
+
+    const overlap = buildProject(join(root, "overlap"));
+    writeSkippedIndex(overlap.project, `${JSON.stringify(skipped(
+      "req-synthetic-1",
+      "2026-08-29T12:00:00.000Z",
+      "org_synthetic/proj_synthetic/key_synthetic/2026/08/29/req-synthetic-1.jsonl",
+    ))}\n`, 1);
+    await assert.rejects(() => runEvalCheck(overlap.project), /duplicate request id/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
