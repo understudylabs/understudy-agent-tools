@@ -233,6 +233,9 @@ export function ensureUnderstudyGitExcluded(output: string): void {
   const root = rootResult.stdout.trim();
   const relativeOutput = relative(root, canonicalOutput);
   if (relativeOutput === ".." || relativeOutput.startsWith(`..${sep}`) || isAbsolute(relativeOutput)) return;
+  if (relativeOutput === ".understudy") {
+    throw new Error(`Eval build destination must be a child directory under ${join(root, ".understudy")}; the root itself is reserved.`);
+  }
   if (relativeOutput !== ".understudy" && !relativeOutput.startsWith(`.understudy${sep}`)) {
     throw new Error(`Eval builds inside a Git repository must use a destination under ${join(root, ".understudy")}.`);
   }

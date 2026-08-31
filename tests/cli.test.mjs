@@ -4286,10 +4286,22 @@ class ScoreWithFeedback:
   });
 
   it("builds a receipt-verified v2 project from every segment in a frozen seven-day workload window", async () => {
-    await withHostedFixture(async ({ home, repo, requests, state }) => {
+    await withHostedFixture(async ({ gatewayUrl, home, repo, requests, state }) => {
       const env = { HOME: home, USERPROFILE: home };
       assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
       const outputDir = join(repo, ".understudy", "evals", "complete-week");
+
+      const reservedOutput = join(repo, ".understudy");
+      rmSync(reservedOutput, { recursive: true, force: true });
+      const blockedReservedOutput = await runWithEnvAsync([
+        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
+        "--name", "reserved-root", "--out", reservedOutput, "--yes",
+      ], env, repo);
+      assert.notEqual(blockedReservedOutput.status, 0);
+      assert.match(blockedReservedOutput.stderr, /must be a child directory under .*\.understudy.*root itself is reserved/i);
+      assert.equal(existsSync(join(repo, "..understudy.eval-build")), false);
+      assert.equal(requests.length, 0, "the reserved private root fails before hosted reads");
+      writeHostedConfig({ home, repo, gatewayUrl });
 
       const unsafeOutput = join(repo, "evals", "unsafe-week");
       const blockedOutput = await runWithEnvAsync([

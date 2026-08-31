@@ -219,6 +219,9 @@ export function buildEvalProject(options: BuildEvalProjectOptions): EvalProjectB
 }
 
 export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOptions): WorkloadEvalProjectBuildResult {
+  if (options.verifiedReceipt.cumulative_exported === 0) {
+    throw new Error("No captures were exported for the frozen workload window; refusing to create an empty eval project.");
+  }
   const projectRoot = resolve(options.output);
   const sourceRoot = join(projectRoot, "source");
   createPrivateDirectory(sourceRoot);
