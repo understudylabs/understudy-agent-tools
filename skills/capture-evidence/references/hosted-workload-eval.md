@@ -33,6 +33,9 @@ The trace-time window remains the exact half-open seven days ending at
 cutoff for every resumed segment. This includes already-arrived traces from the
 week even when their capture row was ingested shortly after the window ended,
 without allowing later arrivals to change the frozen corpus.
+The backend and CLI bind that corpus with the same rolling commitment over the
+ordered source-index identity, size, and content digest fields. The local path
+is checked locally but is not part of the server-known commitment.
 
 ## 2. Classify lineage before selecting cases
 

@@ -296,9 +296,14 @@ test("evals publish reruns the check and refuses stale approval or symlinked rel
     await finalizeApproval(sourceIndexMutation.project);
     await assert.rejects(
       () => prepareEvalPublication(sourceIndexMutation.project, {
-        afterCheck: () => writeFileSync(join(sourceIndexMutation.project, "source/index.jsonl"), "\n", { flag: "a" }),
+        afterCheck: () => {
+          const path = join(sourceIndexMutation.project, "source/index.jsonl");
+          const row = JSON.parse(readFileSync(path, "utf8"));
+          row.request_id = "req-mutated-after-check";
+          writeFileSync(path, `${JSON.stringify(row)}\n`);
+        },
       }),
-      /source index changed after the passing eval check/i,
+      /source index commitment changed after the passing eval check/i,
     );
 
     const exportProofMutation = buildEvalProject(join(root, "export-proof-mutation"));
@@ -377,6 +382,7 @@ test("evals publish sends raw multipart bytes and fails closed on a mismatched r
         method: request.method,
         url: request.url,
         contentType: request.headers["content-type"],
+        contentLength: request.headers["content-length"],
         authorization: request.headers.authorization,
         body: Buffer.concat(chunks),
       };
@@ -401,6 +407,7 @@ test("evals publish sends raw multipart bytes and fails closed on a mismatched r
     assert.equal(received.url, "/admin/v1/orgs/org_synthetic/projects/proj_synthetic/workloads/workload_synthetic/eval-releases");
     assert.equal(received.authorization, "Bearer sk_synthetic");
     assert.match(received.contentType, /^multipart\/form-data; boundary=/);
+    assert.equal(received.contentLength, String(received.body.byteLength));
     assert.deepEqual(multipartFieldNames(received.body), ["manifest", "bundle"]);
     assert.match(received.body.toString("latin1"), /name="manifest"/);
     assert.match(received.body.toString("latin1"), /name="bundle"; filename="eval_[a-f0-9]{24}\.tar\.gz"/);

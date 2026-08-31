@@ -7,6 +7,7 @@ import test from "node:test";
 
 import { runEvalCheck } from "../dist/evals/check.js";
 import { deriveWorkloadEvalId } from "../dist/eval-project.js";
+import { sourceIndexCommitmentSha256 } from "../dist/evals/source-index.js";
 import { buildEvalProject as buildProject } from "./helpers/eval-project.mjs";
 
 const sha = (value) => createHash("sha256").update(value).digest("hex");
@@ -388,6 +389,20 @@ test("evals check binds deterministic identity and the exact verified seven-day 
     rewriteProof(scopeHash.project, ({ proof }) => { proof.verified_receipt.scope_hash = "b".repeat(64); });
     await assert.rejects(() => runEvalCheck(scopeHash.project), /receipt scope hash does not match/i);
 
+    const substitutedCorpus = buildProject(join(root, "substituted-corpus"));
+    const substitutedIndexPath = join(substitutedCorpus.project, "source/index.jsonl");
+    const substitutedRows = readFileSync(substitutedIndexPath, "utf8").trim().split("\n").map(JSON.parse);
+    substitutedRows[0].capture_key = "captures/substituted/capture.json";
+    writeFileSync(substitutedIndexPath, `${substitutedRows.map(JSON.stringify).join("\n")}\n`, { mode: 0o600 });
+    const substitutedManifestPath = join(substitutedCorpus.project, "eval-project.json");
+    const substitutedManifest = JSON.parse(readFileSync(substitutedManifestPath, "utf8"));
+    substitutedManifest.source.index_sha256 = sourceIndexCommitmentSha256(substitutedRows);
+    writeJson(substitutedManifestPath, substitutedManifest);
+    await assert.rejects(
+      () => runEvalCheck(substitutedCorpus.project),
+      /receipt source index commitment does not match/i,
+    );
+
     const totals = buildProject(join(root, "totals"));
     rewriteProof(totals.project, ({ manifest, proof }) => {
       manifest.source.exported_capture_count = 2;
@@ -444,11 +459,12 @@ test("evals check reconciles every execution row to every frozen source file exa
     rewriteProof(omitted.project, ({ manifest, proof }) => {
       manifest.source.capture_count = 2;
       manifest.source.size_bytes += Buffer.byteLength(secondBody);
-      manifest.source.index_sha256 = sha(sourceIndexBody);
+      manifest.source.index_sha256 = sourceIndexCommitmentSha256(sourceRows);
       manifest.source.exported_capture_count = 2;
       manifest.source.exported_total_bytes = manifest.source.size_bytes;
       proof.verified_receipt.cumulative_exported = 2;
       proof.verified_receipt.total_bytes = manifest.source.size_bytes;
+      proof.verified_receipt.local_index_sha256 = manifest.source.index_sha256;
     });
     await assert.rejects(() => runEvalCheck(omitted.project), /capture total does not match|does not account for every frozen source file/i);
   } finally {
@@ -593,10 +609,6 @@ test("evals check requires dedicated disjoint executable trees with all source a
         sourceRow.local_path = "environment/capture.js";
         const body = `${JSON.stringify(sourceRow)}\n`;
         writeFileSync(indexPath, body);
-        const manifestPath = join(item.project, "eval-project.json");
-        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-        manifest.source.index_sha256 = sha(body);
-        writeJson(manifestPath, manifest);
         rewriteExecutionIndex(item.project, (rows) => {
           rows[0].source_files[0].local_path = "environment/capture.js";
         });

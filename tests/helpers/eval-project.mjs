@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { deriveWorkloadEvalId } from "../../dist/eval-project.js";
+import { sourceIndexCommitmentSha256 } from "../../dist/evals/source-index.js";
 
 export const sha = (value) => createHash("sha256").update(value).digest("hex");
 export const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
@@ -29,6 +30,7 @@ export function buildEvalProject(root, overrides = {}) {
     local_path: "source/traces/capture.json",
   };
   const sourceIndex = `${JSON.stringify(sourceRow)}\n`;
+  const sourceIndexSha256 = sourceIndexCommitmentSha256([sourceRow]);
   writeFileSync(join(project, "source/index.jsonl"), sourceIndex, { mode: 0o600 });
 
   const task = {
@@ -167,6 +169,7 @@ export function verify({ replay }) {
       cumulative_matched: 1,
       cumulative_exported: 1,
       total_bytes: Buffer.byteLength(traceBody),
+      local_index_sha256: sourceIndexSha256,
       expires_at: "2026-08-30T13:00:00.000Z",
       canonical_scope: sourceWindow,
       source_attestation: "signed-synthetic-source-attestation",
@@ -187,7 +190,7 @@ export function verify({ replay }) {
       capture_count: 1,
       size_bytes: Buffer.byteLength(traceBody),
       index: "source/index.jsonl",
-      index_sha256: sha(sourceIndex),
+      index_sha256: sourceIndexSha256,
       export_proof: "source/export-proof.json",
       export_proof_sha256: sha(proofBody),
       exported_capture_count: 1,

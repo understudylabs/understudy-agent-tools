@@ -28,6 +28,7 @@ import {
 } from "./authoring-contracts.js";
 import { deriveWorkloadEvalId } from "../eval-project.js";
 import { replacePrivateJson } from "./build-state.js";
+import { sourceIndexCommitmentSha256 } from "./source-index.js";
 import { canonicalJson, compareCodeUnits } from "./canonical.js";
 import {
   runInProviderFreeSandbox,
@@ -299,6 +300,9 @@ function assertExactSourceProof(
     receipt.cumulative_exported !== project.source.exported_capture_count ||
     receipt.total_bytes !== project.source.exported_total_bytes
   ) throw new Error("Verified export receipt totals do not match eval-project.json.");
+  if (receipt.local_index_sha256 !== project.source.index_sha256) {
+    throw new Error("Verified export receipt source index commitment does not match eval-project.json.");
+  }
   if (
     project.source.capture_count !== project.source.exported_capture_count ||
     project.source.size_bytes !== project.source.exported_total_bytes
@@ -319,7 +323,6 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
 
   const indexPath = existingProjectPath(projectRoot, project.source.index, "source index");
   const indexBytes = regularFile(indexPath, "source index");
-  if (sha256(indexBytes) !== project.source.index_sha256) throw new Error("Source index hash does not match eval-project.json.");
   const sourceRows = indexBytes.toString("utf8").split(/\r?\n/).filter(Boolean).map((line, index) => {
     let value: unknown;
     try { value = JSON.parse(line); }
@@ -328,6 +331,9 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     if (!parsed.success) throw new Error(`Invalid source index line ${index + 1}: ${z.prettifyError(parsed.error)}`);
     return parsed.data;
   });
+  if (sourceIndexCommitmentSha256(sourceRows) !== project.source.index_sha256) {
+    throw new Error("Source index commitment does not match eval-project.json.");
+  }
   if (sourceRows.length !== project.source.capture_count) throw new Error("Source index capture count does not match eval-project.json.");
   if (sourceRows.reduce((sum, row) => sum + row.size_bytes, 0) !== project.source.size_bytes) throw new Error("Source index byte count does not match eval-project.json.");
   const sourcePaths = new Set<string>();

@@ -58,6 +58,7 @@ test("a repeated capture key across export segments cannot complete a workload e
           cumulative_matched: 2,
           cumulative_exported: 2,
           total_bytes: repeatedCapture.size_bytes * 2,
+          local_index_sha256: "f".repeat(64),
           expires_at: "2026-08-30T13:00:00.000Z",
           canonical_scope: scope,
           source_attestation: "signed-duplicate-segment-source-attestation",

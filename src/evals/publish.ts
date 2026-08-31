@@ -27,6 +27,7 @@ import {
 } from "./authoring-contracts.js";
 import { canonicalJson, compareCodeUnits } from "./canonical.js";
 import { descriptorHash, runEvalCheck } from "./check.js";
+import { sourceIndexCommitmentSha256 } from "./source-index.js";
 import {
   EVAL_RELEASE_MAX_COMPRESSED_BYTES,
   EVAL_RELEASE_MAX_FILE_BYTES,
@@ -227,8 +228,12 @@ function snapshotModuleTree(projectRoot: string, rootPath: string, label: string
   return { root, entries, sha256: digest.digest("hex") };
 }
 
-function parseSourcePaths(index: BundleEntry): Set<string> {
+function parseSourceIndex(index: BundleEntry): {
+  paths: Set<string>;
+  commitmentSha256: string;
+} {
   const paths = new Set<string>();
+  const rows = [];
   for (const [position, line] of decodeUtf8(index.bytes, "source index").split(/\r?\n/).filter(Boolean).entries()) {
     let value: unknown;
     try {
@@ -238,9 +243,10 @@ function parseSourcePaths(index: BundleEntry): Set<string> {
     }
     const parsed = EvalSourceRowSchema.safeParse(value);
     if (!parsed.success) throw new Error(`Invalid source index line ${position + 1}: ${z.prettifyError(parsed.error)}`);
+    rows.push(parsed.data);
     paths.add(normalizeArtifactPath(parsed.data.local_path));
   }
-  return paths;
+  return { paths, commitmentSha256: sourceIndexCommitmentSha256(rows) };
 }
 
 function assertNotPrivateSource(path: string, forbiddenPaths: Set<string>): void {
@@ -363,13 +369,15 @@ export async function prepareEvalPublication(
   const environmentModules = snapshotModuleTree(projectRoot, environmentRoot, "environment module tree");
   const verifierModules = snapshotModuleTree(projectRoot, verifierRoot, "verifier module tree");
   const sourceIndexEntry = readStableFile(projectRoot, project.source.index, "source index", null);
-  assertHash("Source index", sourceIndexEntry.sha256, project.source.index_sha256);
+  const sourceIndex = parseSourceIndex(sourceIndexEntry);
+  assertHash("Source index commitment", sourceIndex.commitmentSha256, project.source.index_sha256);
   const exportProofEntry = readStableFile(projectRoot, project.source.export_proof, "export proof", null);
   assertHash("Export proof", exportProofEntry.sha256, project.source.export_proof_sha256);
   const exportProof = parseJson(exportProofEntry.bytes, EvalExportProofSchema, "source/export-proof.json");
+  assertHash("Verified source index commitment", exportProof.verified_receipt.local_index_sha256, project.source.index_sha256);
   const sourceAttestation = exportProof.verified_receipt.source_attestation;
   const sourceAttestationSha256 = sha256(sourceAttestation);
-  const sourcePaths = parseSourcePaths(sourceIndexEntry);
+  const sourcePaths = sourceIndex.paths;
   const forbiddenPaths = new Set([
     "eval-project.json",
     project.source.index,
@@ -466,6 +474,7 @@ export async function prepareEvalPublication(
     throw new Error("Snapshotted check report does not match the passing eval check.");
   }
   assertHash("Checked source attestation", checkReport.source.export_proof_sha256, sourceAttestationSha256);
+  assertHash("Checked source index commitment", checkReport.source.index_sha256, project.source.index_sha256);
 
   const assertFixtureBinding = (
     label: string,

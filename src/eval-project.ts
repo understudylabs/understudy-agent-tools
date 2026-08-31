@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { compileTraceFoundry, type FoundryResult } from "./trace-foundry.js";
 import { createPrivateDirectory } from "./evals/build-state.js";
+import { sourceIndexCommitmentSha256 } from "./evals/source-index.js";
 import type { WorkloadEvalProject } from "./evals/authoring-contracts.js";
 import type {
   EvalBuildIdentity,
@@ -235,8 +236,7 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
     }
     unique.set(file.capture_key, file);
   }
-  const files = [...unique.values()].sort((left, right) =>
-    left.capture_key.localeCompare(right.capture_key) || left.request_id.localeCompare(right.request_id));
+  const files = [...unique.values()];
   const uniqueTotalBytes = files.reduce((sum, file) => sum + file.size_bytes, 0);
   if (
     files.length !== options.verifiedReceipt.cumulative_exported ||
@@ -245,9 +245,12 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
     throw new Error("Verified export receipt totals do not match unique materialized captures.");
   }
   const indexBody = files.map((file) => JSON.stringify(file)).join("\n") + (files.length > 0 ? "\n" : "");
+  const indexSha256 = sourceIndexCommitmentSha256(files);
+  if (options.verifiedReceipt.local_index_sha256 !== indexSha256) {
+    throw new Error("Verified export receipt source index commitment does not match materialized captures.");
+  }
   const indexPath = join(sourceRoot, "index.jsonl");
   replacePrivateText(indexPath, indexBody);
-  const indexSha256 = createHash("sha256").update(indexBody).digest("hex");
   const proofPath = join(sourceRoot, "export-proof.json");
   const proofBody = `${JSON.stringify({
     schema_version: "understudy.eval-export-proof.v1",

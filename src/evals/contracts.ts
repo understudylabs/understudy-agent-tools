@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { EVAL_SOURCE_ROW_SCHEMA_VERSION } from "./source-index.js";
+
 export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 
 export const CatalogSelectionSchema = z.object({
@@ -115,6 +117,7 @@ export const WorkloadCaptureExportResponseSchema = z.object({
     cumulative_matched: z.number().int().nonnegative(),
     cumulative_exported: z.number().int().nonnegative(),
     cumulative_total_bytes: z.number().int().nonnegative(),
+    local_index_sha256: Sha256Schema,
     terminal: z.boolean(),
     terminal_receipt: z.string().min(1).optional(),
   }),
@@ -132,13 +135,14 @@ export const VerifyWorkloadCaptureExportReceiptResponseSchema = z.object({
   cumulative_matched: z.number().int().nonnegative(),
   cumulative_exported: z.number().int().nonnegative(),
   total_bytes: z.number().int().nonnegative(),
+  local_index_sha256: Sha256Schema,
   expires_at: z.string().datetime(),
   canonical_scope: WorkloadCaptureExportScopeSchema,
   source_attestation: z.string().min(1).max(8_192),
 });
 
 export const VerifiedWorkloadCaptureFileSchema = z.object({
-  schema_version: z.literal("understudy.eval-source-capture.v1"),
+  schema_version: z.literal(EVAL_SOURCE_ROW_SCHEMA_VERSION),
   request_id: z.string().min(1),
   capture_key: z.string().min(1),
   size_bytes: z.number().int().nonnegative(),

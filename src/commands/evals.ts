@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { confirm } from "@inquirer/prompts";
 import { Command } from "commander";
@@ -38,6 +38,7 @@ import {
   EXPORT_EXPIRES_SECONDS,
   materializeWorkloadExportSegment,
 } from "../evals/materialize.js";
+import { sourceIndexCommitmentSha256 } from "../evals/source-index.js";
 import { request } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 import { resolveProject, type ProjectResolutionOptions } from "../internal/projects.js";
@@ -404,6 +405,7 @@ async function runBuildWithLease(
   }
 
   while (state.status === "downloading") {
+    state = resetInterruptedInitialWorkloadExport(staging, state);
     const segment = await fetchWorkloadExportSegment(context, state);
     if (state.source.ingestion_cutoff === null) {
       assertInitialWorkloadExportScopeMatchesState(segment, state);
@@ -433,6 +435,9 @@ async function runBuildWithLease(
         }
       },
     });
+    if (sourceIndexCommitmentSha256(state.transport.verified_files) !== segment.chain.local_index_sha256) {
+      throw new Error("Capture export source index commitment does not match its manifest items.");
+    }
     state = persistWorkloadBuildState(staging, {
       ...state,
       status: segment.chain.terminal ? "receipt_pending" : "downloading",
@@ -456,7 +461,8 @@ async function runBuildWithLease(
     receipt.chain_id !== state.transport.chain_id ||
     receipt.cumulative_exported !== state.transport.cumulative_exported ||
     receipt.total_bytes !== state.transport.cumulative_total_bytes ||
-    receipt.manifest_sha256 !== state.transport.previous_manifest_sha256
+    receipt.manifest_sha256 !== state.transport.previous_manifest_sha256 ||
+    receipt.local_index_sha256 !== sourceIndexCommitmentSha256(state.transport.verified_files)
   ) throw new Error("Verified capture export receipt does not match the downloaded source chain.");
 
   const project = buildWorkloadEvalProject({
@@ -480,6 +486,9 @@ async function fetchWorkloadExportSegment(
   context: Awaited<ReturnType<typeof resolveContext>>,
   state: EvalWorkloadBuildState,
 ): Promise<WorkloadCaptureExportResponse> {
+  if (state.transport.resume_cursor !== null && state.source.ingestion_cutoff === null) {
+    throw new Error("Resumed capture export is missing its frozen ingestion cutoff.");
+  }
   const response = await request({
     url: `${context.base}/eval-capture-export`,
     method: "POST",
@@ -488,14 +497,40 @@ async function fetchWorkloadExportSegment(
     body: {
       from: state.source.from,
       to: state.source.to,
-      ...(state.source.ingestion_cutoff === null
-        ? {}
-        : { ingestion_cutoff: state.source.ingestion_cutoff }),
       expires_seconds: EXPORT_EXPIRES_SECONDS,
-      ...(state.transport.resume_cursor ? { resume_cursor: state.transport.resume_cursor } : {}),
+      ...(state.transport.resume_cursor === null
+        ? {}
+        : {
+            ingestion_cutoff: state.source.ingestion_cutoff,
+            resume_cursor: state.transport.resume_cursor,
+          }),
     },
   }, WorkloadCaptureExportResponseSchema);
   return response.data;
+}
+
+function resetInterruptedInitialWorkloadExport(
+  staging: string,
+  state: EvalWorkloadBuildState,
+): EvalWorkloadBuildState {
+  if (state.transport.resume_cursor !== null || state.source.ingestion_cutoff === null) return state;
+  if (
+    state.transport.next_segment_index !== 0 ||
+    state.transport.chain_id !== null ||
+    state.transport.previous_manifest_sha256 !== null ||
+    state.transport.segment_manifest_sha256.length !== 0 ||
+    state.transport.cumulative_exported !== 0 ||
+    state.transport.cumulative_total_bytes !== 0 ||
+    state.transport.terminal_receipt !== null
+  ) {
+    throw new Error("Interrupted initial capture export has inconsistent chain state.");
+  }
+  rmSync(join(staging, "source", "traces"), { recursive: true, force: true });
+  return persistWorkloadBuildState(staging, {
+    ...state,
+    source: { ...state.source, ingestion_cutoff: null },
+    transport: { ...state.transport, verified_files: [] },
+  });
 }
 
 async function verifyWorkloadExportReceipt(

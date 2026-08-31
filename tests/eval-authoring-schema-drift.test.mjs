@@ -224,6 +224,7 @@ const samples = {
         cumulative_matched: 1,
         cumulative_exported: 1,
         total_bytes: 12,
+        local_index_sha256: sha,
         expires_at: timestamp,
         canonical_scope: scope,
         source_attestation: sourceAttestation,
