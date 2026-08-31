@@ -4288,6 +4288,8 @@ class ScoreWithFeedback:
       assert.doesNotMatch(built.stdout + built.stderr, /SECRET_PROMPT|SECRET_COMPLETION/);
       const project = JSON.parse(readFileSync(join(outputDir, "eval-project.json"), "utf8"));
       assert.equal(project.schema_version, "understudy.eval-project.v2");
+      assert.match(project.eval_id, /^eval_[a-f0-9]{24}$/);
+      assert.equal(project.name, "complete-week");
       assert.equal(project.status, "source_materialized");
       assert.equal(project.source.capture_count, 2);
       assert.equal(project.source.terminal_receipt_verified, true);

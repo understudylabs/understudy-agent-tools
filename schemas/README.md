@@ -3,6 +3,16 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## Local workload eval authoring
+
+The `understudy.eval-project.v2`, export-proof, execution-index-row, metric,
+coverage, harness, environment, splits, check-fixtures, check-report, and approval schemas define the private
+coding-agent workspace checked by `understudy evals check`. The workload
+profile remains Markdown; its exact bytes are bound by both intent approval and
+the deterministic check-input hash. These contracts require a provider-free
+local environment replay, independent good/wrong evidence, explicit lineage
+coverage, and a separate post-check owner approval.
+
 ## Outcome-first replacement contracts
 
 Four draft-2020-12 contracts form the fail-closed evidence boundary for an

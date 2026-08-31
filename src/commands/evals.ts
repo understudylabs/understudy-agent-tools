@@ -5,6 +5,7 @@ import { Command } from "commander";
 import kleur from "kleur";
 
 import { buildWorkloadEvalProject, type WorkloadEvalProjectBuildResult } from "../eval-project.js";
+import { runEvalCheck } from "../evals/check.js";
 import {
   acquireEvalBuildLease,
   assertWorkloadBuildStateMatches,
@@ -87,6 +88,9 @@ interface BuildOpts extends WorkloadOpts {
   maxAgeDays?: string;
   batchSize: string;
 }
+interface CheckOpts {
+  project: string;
+}
 
 export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
@@ -113,6 +117,13 @@ export function registerEvalsCommand(program: Command): void {
     .option("--yes", "Approve downloading payload-bearing traces without prompting."))
     .action(async function (this: Command, opts: BuildOpts) {
       await runAction(this, () => runBuild(this, opts));
+    });
+
+  evals.command("check")
+    .description("Check a locally authored eval, its verifier fixtures, artifact hashes, and owner approvals without a model call.")
+    .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
+    .action(async function (this: Command, opts: CheckOpts) {
+      await runAction(this, () => runCheck(this, opts));
     });
 
   addWorkloadOptions(evals.command("catalog")
@@ -148,6 +159,27 @@ export function registerEvalsCommand(program: Command): void {
     .action(async function (this: Command, cohortId: string, opts: CohortExportOpts) {
       await runAction(this, () => runCohortExport(this, cohortId, opts));
     });
+}
+
+async function runCheck(cmd: Command, opts: CheckOpts): Promise<void> {
+  const result = await runEvalCheck(resolve(opts.project));
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+  process.stdout.write(`${kleur.green("✓")} Eval schemas, source hashes, representative replay, oracle, and wrong-answer rejection passed.\n`);
+  process.stdout.write(`Check report: ${result.report_file}\n`);
+  process.stdout.write(`Lineage: ${result.coverage.lineage.complete} complete, ${result.coverage.lineage.ambiguous} ambiguous, ${result.coverage.lineage.unlinked} unlinked.\n`);
+  const acceptedGaps = [...result.coverage.execution_modes, ...result.coverage.failure_classes]
+    .filter((entry) => entry.disposition === "owner_accepted_uncovered")
+    .map((entry) => `${entry.name} (${entry.observed_count})`);
+  process.stdout.write(`Owner-accepted coverage gaps: ${acceptedGaps.length > 0 ? acceptedGaps.join(", ") : "none"}.\n`);
+  process.stdout.write(`Verifier feedback: representative — ${result.report.representative_replay.feedback}; oracle — ${result.report.oracle_fixture.feedback}; wrong answer — ${result.report.wrong_fixture.feedback}.\n`);
+  process.stdout.write("Approval hashes:\n");
+  for (const [name, value] of Object.entries(result.hashes)) process.stdout.write(`  ${name}: ${value}\n`);
+  process.stdout.write(result.publishable
+    ? `${kleur.green("✓")} Final owner approval matches the checked artifact hashes.\n`
+    : `${kleur.yellow("next")}: review coverage and these artifact hashes, then record the owner's final approval in approval.json.\n`);
 }
 
 function addWorkloadOptions(command: Command): Command {
@@ -370,6 +402,7 @@ async function runBuildWithLease(
 
   const project = buildWorkloadEvalProject({
     output: staging,
+    name: state.name,
     identity: state.identity,
     canonicalScope: receipt.canonical_scope,
     verifiedFiles: state.transport.verified_files,

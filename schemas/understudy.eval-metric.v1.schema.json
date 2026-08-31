@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-metric.v1.schema.json",
+  "title": "understudy.eval-metric.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "description", "validator", "pass_threshold", "failure_taxonomy", "approved", "approved_by", "approved_at"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-metric.v1" },
+    "name": { "$ref": "#/$defs/nonempty" },
+    "description": { "$ref": "#/$defs/nonempty" },
+    "validator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "entrypoint"],
+      "properties": {
+        "kind": { "const": "local_verifier" },
+        "entrypoint": { "$ref": "#/$defs/path" }
+      }
+    },
+    "pass_threshold": { "type": "number", "minimum": 0, "maximum": 1 },
+    "failure_taxonomy": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonempty" } },
+    "approved": { "const": true },
+    "approved_by": { "$ref": "#/$defs/nonempty" },
+    "approved_at": { "$ref": "#/$defs/timestamp" }
+  },
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" }
+  }
+}

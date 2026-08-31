@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { compileTraceFoundry, type FoundryResult } from "./trace-foundry.js";
 import { createPrivateDirectory } from "./evals/build-state.js";
+import type { WorkloadEvalProject } from "./evals/authoring-contracts.js";
 import type {
   EvalBuildIdentity,
   VerifiedWorkloadCaptureFile,
@@ -71,7 +72,9 @@ export interface EvalProjectBuildResult extends EvalProjectManifest {
 
 export interface WorkloadEvalProjectManifest {
   schema_version: "understudy.eval-project.v2";
-  status: "source_materialized";
+  eval_id: string;
+  name: string;
+  status: WorkloadEvalProject["status"];
   created_at: string;
   identity: EvalBuildIdentity;
   source: {
@@ -81,10 +84,12 @@ export interface WorkloadEvalProjectManifest {
     index: string;
     index_sha256: string;
     export_proof: string;
+    export_proof_sha256: string;
     exported_capture_count: number;
     exported_total_bytes: number;
     terminal_receipt_verified: true;
   };
+  artifacts: WorkloadEvalProject["artifacts"];
   authoring: {
     owner: "coding_agent";
     semantic_preparation_performed: false;
@@ -94,6 +99,7 @@ export interface WorkloadEvalProjectManifest {
 
 export interface BuildWorkloadEvalProjectOptions {
   output: string;
+  name: string;
   identity: EvalBuildIdentity;
   canonicalScope: WorkloadCaptureExportScope;
   verifiedFiles: VerifiedWorkloadCaptureFile[];
@@ -105,6 +111,33 @@ export interface BuildWorkloadEvalProjectOptions {
 
 export interface WorkloadEvalProjectBuildResult extends WorkloadEvalProjectManifest {
   project_file: string;
+}
+
+export function deriveWorkloadEvalId(input: {
+  name: string;
+  identity: EvalBuildIdentity;
+  sourceWindow: WorkloadCaptureExportScope;
+}): string {
+  return `eval_${createHash("sha256").update(JSON.stringify({
+    schema_version: "understudy.eval-identity.v1",
+    name: input.name,
+    identity: {
+      org_id: input.identity.org_id,
+      project_id: input.identity.project_id,
+      workload_id: input.identity.workload_id,
+      workload_name: input.identity.workload_name,
+    },
+    source_window: {
+      schema_version: input.sourceWindow.schema_version,
+      selector: input.sourceWindow.selector,
+      org_id: input.sourceWindow.org_id,
+      project_id: input.sourceWindow.project_id,
+      workload_id: input.sourceWindow.workload_id,
+      from: input.sourceWindow.from,
+      to: input.sourceWindow.to,
+      ingestion_cutoff: input.sourceWindow.ingestion_cutoff,
+    },
+  })).digest("hex").slice(0, 24)}`;
 }
 
 function portableRelative(root: string, path: string): string {
@@ -209,17 +242,25 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
   replacePrivateText(indexPath, indexBody);
   const indexSha256 = createHash("sha256").update(indexBody).digest("hex");
   const proofPath = join(sourceRoot, "export-proof.json");
-  replacePrivateText(proofPath, `${JSON.stringify({
+  const proofBody = `${JSON.stringify({
     schema_version: "understudy.eval-export-proof.v1",
     canonical_scope: options.canonicalScope,
     segment_manifest_sha256: options.segmentManifestSha256,
     terminal_receipt: options.terminalReceipt,
     verified_receipt: options.verifiedReceipt,
-  }, null, 2)}\n`);
+  }, null, 2)}\n`;
+  replacePrivateText(proofPath, proofBody);
 
   const projectFile = join(projectRoot, "eval-project.json");
+  const evalId = deriveWorkloadEvalId({
+    name: options.name,
+    identity: options.identity,
+    sourceWindow: options.canonicalScope,
+  });
   const project: WorkloadEvalProjectManifest = {
     schema_version: "understudy.eval-project.v2",
+    eval_id: evalId,
+    name: options.name,
     status: "source_materialized",
     created_at: options.now.toISOString(),
     identity: options.identity,
@@ -230,9 +271,24 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
       index: portableRelative(projectRoot, indexPath),
       index_sha256: indexSha256,
       export_proof: portableRelative(projectRoot, proofPath),
+      export_proof_sha256: createHash("sha256").update(proofBody).digest("hex"),
       exported_capture_count: options.verifiedReceipt.cumulative_exported,
       exported_total_bytes: options.verifiedReceipt.total_bytes,
       terminal_receipt_verified: true,
+    },
+    artifacts: {
+      workload_profile: "workload-profile.md",
+      coverage: "coverage.json",
+      harness: "harness.json",
+      environment: "environment.json",
+      metric: "metric.json",
+      splits: "splits.json",
+      tasks: "benchmark/tasks.jsonl",
+      execution_index: "benchmark/execution-index.jsonl",
+      analysis: "benchmark/analysis.md",
+      verifier: "verifier",
+      approval: "approval.json",
+      check_report: "checks/report.json",
     },
     authoring: { owner: "coding_agent", semantic_preparation_performed: false },
     privacy: {

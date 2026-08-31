@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-environment.v1.schema.json",
+  "title": "understudy.eval-environment.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "description", "adapter", "fixtures", "provider_calls"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-environment.v1" },
+    "kind": { "enum": ["basic", "seeded_simulation"] },
+    "description": { "type": "string", "minLength": 1 },
+    "adapter": { "$ref": "#/$defs/path" },
+    "fixtures": { "$ref": "#/$defs/path" },
+    "provider_calls": { "const": false }
+  },
+  "$defs": {
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-splits.v1.schema.json",
+  "title": "understudy.eval-splits.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "construction", "fit", "heldout"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-splits.v1" },
+    "construction": { "$ref": "#/$defs/task_ids" },
+    "fit": { "$ref": "#/$defs/task_ids" },
+    "heldout": { "$ref": "#/$defs/task_ids" }
+  },
+  "$defs": {
+    "task_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}

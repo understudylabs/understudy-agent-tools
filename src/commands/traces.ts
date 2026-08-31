@@ -33,8 +33,13 @@ export function registerTracesCommand(program: Command): void {
     .option("--max-age-days <days>", "Fail closed on stale captures", "3")
     .option("--workload <name>", "Compile only captures matching workload id or name")
     .option("--batch-size <count>", "Resumable processing batch size", "10")
-    .action((options: { source: string; output: string; maxAgeDays: string; workload?: string; batchSize: string }) => {
-      const result = compileTraceFoundry(resolve(options.source), resolve(options.output), Number(options.maxAgeDays), new Date(), { workload: options.workload, batchSize: Number(options.batchSize) });
+    .option("--reference-time <iso>", "Reference time for freshness (hosted evals use eval-project.json source.window.to)")
+    .option("--provable-lineage-only", "Exclude ambiguous and unlinked executions from generated tasks")
+    .option("--source-index <path>", "Frozen eval source/index.jsonl that binds every hosted capture file")
+    .action((options: { source: string; output: string; maxAgeDays: string; workload?: string; batchSize: string; referenceTime?: string; provableLineageOnly?: boolean; sourceIndex?: string }) => {
+      const referenceTime = options.referenceTime === undefined ? new Date() : new Date(options.referenceTime);
+      if (Number.isNaN(referenceTime.valueOf())) throw new Error("--reference-time must be an ISO-8601 timestamp");
+      const result = compileTraceFoundry(resolve(options.source), resolve(options.output), Number(options.maxAgeDays), referenceTime, { workload: options.workload, batchSize: Number(options.batchSize), requireProvableLineage: options.provableLineageOnly === true, sourceIndex: options.sourceIndex === undefined ? undefined : resolve(options.sourceIndex) });
       console.log(JSON.stringify(result, null, 2));
       console.error(`viewer: ${join(result.output_dir, "viewer", "index.html")}`);
     });

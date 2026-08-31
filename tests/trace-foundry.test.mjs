@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -56,6 +57,65 @@ test("builds a fresh generic DAG, self-contained viewer, and raw/parsed inspecto
   assert.ok(captures.every((name) => /^[a-f0-9]{40}\.json$/.test(name)));
   const first = captures.map((name) => JSON.parse(readFileSync(join(output, "viewer", "data", "captures", name), "utf8"))).find((row) => row.capture_id === "round-1");
   assert.equal(first.response.encoding, "json"); assert.equal(first.response.body.note, "data:image/png;base64,not-sse"); assert.ok(first.raw);
+});
+
+test("hosted eval lineage reports complete, ambiguous, and unlinked executions and excludes uncertainty", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-lineage-"));
+  const project = join(root, "eval"), source = join(project, "source", "traces"), output = join(project, "benchmark");
+  mkdirSync(source, { recursive: true });
+  const traced = capture("complete", "2026-07-14T12:00:00Z", [{ role: "user", content: "Complete task" }], { content: [{ type: "text", text: "Done" }] });
+  traced.trace_id = "11111111111111111111111111111111";
+  traced.trace_context_status = "valid";
+  const ambiguousA = capture("ambiguous-a", "2026-07-20T12:00:01Z", [{ role: "user", content: "Branch A" }], { content: [{ type: "tool_use", id: "call-a", name: "update-record", input: { id: 1 } }] });
+  const ambiguousB = capture("ambiguous-b", "2026-07-20T12:00:02Z", [{ role: "user", content: "Branch B" }], { content: [{ type: "text", text: "B done" }] });
+  const ambiguousAFinal = capture("ambiguous-a-final", "2026-07-20T12:00:03Z", [
+    { role: "user", content: "Branch A" },
+    { role: "assistant", content: [{ type: "tool_use", id: "call-a", name: "update-record", input: { id: 1 } }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "call-a", content: "ok" }] },
+  ], { content: [{ type: "text", text: "A done" }] });
+  for (const row of [ambiguousA, ambiguousB, ambiguousAFinal]) {
+    row.trace_id = "22222222222222222222222222222222";
+    row.trace_context_status = "valid";
+  }
+  const unlinked = capture("unlinked", "2026-07-20T12:00:03Z", [{ role: "user", content: "No trace context" }], { content: [{ type: "text", text: "Done" }] });
+  const stale = capture("stale", "2026-07-13T11:59:59Z", [{ role: "user", content: "Outside the week" }], { content: [{ type: "text", text: "Old" }] });
+  const malformed = capture("malformed", undefined, [{ role: "user", content: "Missing time" }], { content: [{ type: "text", text: "Unknown" }] });
+  const sourceRows = [traced, ambiguousA, ambiguousB, ambiguousAFinal, unlinked, stale, malformed].map((row, index) => {
+    const body = `${JSON.stringify(row)}\n`;
+    const localPath = `source/traces/capture-${index}.jsonl`;
+    writeFileSync(join(project, localPath), body);
+    return {
+      schema_version: "understudy.eval-source-capture.v1",
+      request_id: row.request_id,
+      capture_key: `captures/test/${index}`,
+      size_bytes: Buffer.byteLength(body),
+      content_sha256: createHash("sha256").update(body).digest("hex"),
+      local_path: localPath,
+    };
+  });
+  const sourceIndex = join(project, "source", "index.jsonl");
+  writeFileSync(sourceIndex, sourceRows.map(JSON.stringify).join("\n") + "\n");
+
+  const result = compileTraceFoundry(source, output, 7, new Date("2026-07-21T12:00:00Z"), { requireProvableLineage: true, sourceIndex });
+  assert.equal(result.freshness.cutoff_utc, "2026-07-14T12:00:00.000Z", "the exact start of the frozen seven-day window remains eligible");
+  assert.deepEqual(result.lineage.counts, { complete: 1, ambiguous: 1, unlinked: 1 });
+  assert.equal(result.counts.tasks, 1);
+  const executionIndex = readFileSync(join(output, "execution-index.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  assert.deepEqual(new Set(executionIndex.filter((row) => row.source_status === "included").map((row) => row.lineage_status)), new Set(["complete", "ambiguous", "unlinked"]));
+  assert.deepEqual(
+    new Set(executionIndex.flatMap((row) => row.source_files.map((file) => `${file.local_path}:${file.content_sha256}`))),
+    new Set(sourceRows.map((row) => `${row.local_path}:${row.content_sha256}`)),
+    "every frozen source file is bound exactly once",
+  );
+  assert.deepEqual(new Set(executionIndex.filter((row) => row.source_status === "excluded").flatMap((row) => row.exclusion_reasons)), new Set(["stale", "missing_timestamp"]));
+  assert.match(readFileSync(join(output, "analysis.md"), "utf8"), /Complete \| 1[\s\S]*Ambiguous \| 1[\s\S]*Unlinked \| 1/);
+  assert.equal(JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8")).execution_group, executionIndex.find((row) => row.lineage_status === "complete").execution_group);
+  const offline = JSON.parse(readFileSync(join(output, "environment/offline-validation.json"), "utf8"));
+  assert.equal(offline.oracle_authority, "independent_evidence_required");
+  assert.equal(offline.tasks[0].oracle.status, "independent_evidence_required");
+  assert.equal(existsSync(join(output, "environment/gold.json")), false, "hosted provable-lineage mode never labels incumbent output as gold");
+  assert.equal(result.fixtures_split.gold_ref, null);
+  assert.match(readFileSync(join(output, "environment/README.md"), "utf8"), /No `gold\.json` is emitted/);
 });
 
 test("does not derive viewer paths from capture-controlled request IDs", () => {

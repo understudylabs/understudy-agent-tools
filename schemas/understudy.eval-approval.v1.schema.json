@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-approval.v1.schema.json",
+  "title": "understudy.eval-approval.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approver", "intent_confirmed_at", "workload_profile_sha256", "metric_sha256"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-approval.v1" },
+    "approver": { "type": "string", "minLength": 1 },
+    "intent_confirmed_at": { "$ref": "#/$defs/timestamp" },
+    "workload_profile_sha256": { "$ref": "#/$defs/sha" },
+    "metric_sha256": { "$ref": "#/$defs/sha" },
+    "approved_at": { "$ref": "#/$defs/timestamp" },
+    "eval_set_sha256": { "$ref": "#/$defs/sha" },
+    "coverage_sha256": { "$ref": "#/$defs/sha" },
+    "environment_sha256": { "$ref": "#/$defs/sha" },
+    "verifier_sha256": { "$ref": "#/$defs/sha" },
+    "check_report_sha256": { "$ref": "#/$defs/sha" }
+  },
+  "oneOf": [
+    { "required": ["approved_at", "eval_set_sha256", "coverage_sha256", "environment_sha256", "verifier_sha256", "check_report_sha256"] },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["approved_at"] },
+          { "required": ["eval_set_sha256"] },
+          { "required": ["coverage_sha256"] },
+          { "required": ["environment_sha256"] },
+          { "required": ["verifier_sha256"] },
+          { "required": ["check_report_sha256"] }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}
