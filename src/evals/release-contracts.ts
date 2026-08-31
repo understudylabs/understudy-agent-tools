@@ -202,6 +202,15 @@ function validateEvalReleasePayload(
   if (paths.some((path, index) => index > 0 && compareCodeUnits(paths[index - 1]!, path) >= 0)) {
     context.addIssue({ code: "custom", path: ["bundle_files"], message: "bundle files must be sorted by path" });
   }
+  const pathSet = new Set(paths);
+  for (const path of paths) {
+    for (let separator = path.indexOf("/"); separator !== -1; separator = path.indexOf("/", separator + 1)) {
+      if (pathSet.has(path.slice(0, separator))) {
+        context.addIssue({ code: "custom", path: ["bundle_files"], message: "bundle files must not be ancestors of other files" });
+        break;
+      }
+    }
+  }
   const required = new Set([
     ...corePaths,
     layout.fixtures.representative.candidate,

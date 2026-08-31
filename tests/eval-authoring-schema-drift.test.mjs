@@ -344,6 +344,16 @@ test("release JSON schemas delegate cross-field inventory invariants to the expo
       },
     },
     {
+      name: "file ancestor paths",
+      mutate(value) {
+        value.bundle_files.push(
+          { path: "verifier/helpers.js", size_bytes: 1, sha256: sha },
+          { path: "verifier/helpers.js/nested.js", size_bytes: 1, sha256: sha },
+        );
+        value.bundle_files.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+      },
+    },
+    {
       name: "missing required artifacts",
       mutate(value) {
         value.bundle_files = value.bundle_files.filter((file) => file.path !== value.artifact_layout.approval);
