@@ -6,6 +6,7 @@ import kleur from "kleur";
 
 import { buildWorkloadEvalProject, type WorkloadEvalProjectBuildResult } from "../eval-project.js";
 import { runEvalCheck } from "../evals/check.js";
+import { previewEvalPublication, publishEvalRelease } from "../evals/publish.js";
 import {
   acquireEvalBuildLease,
   assertWorkloadBuildStateMatches,
@@ -28,6 +29,7 @@ import {
   type CatalogItem,
   type EvalWorkloadBuildState,
   type WorkloadCaptureExportResponse,
+  type WorkloadCaptureExportScope,
 } from "../evals/contracts.js";
 import {
   assertEquivalentExport,
@@ -91,10 +93,15 @@ interface BuildOpts extends WorkloadOpts {
 interface CheckOpts {
   project: string;
 }
+interface PublishOpts {
+  project: string;
+  preview?: boolean;
+  expectReleaseId?: string;
+}
 
 export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
-    .description("Select, freeze, and materialize workload-scoped evaluation cohorts.");
+    .description("Build, check, publish, and manage workload-scoped evaluations for coding agents.");
 
   addWorkloadOptions(addRecentSelectionOptions(
     evals.command("create").description("Create a frozen eval set from a recent workload window."),
@@ -124,6 +131,15 @@ export function registerEvalsCommand(program: Command): void {
     .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
     .action(async function (this: Command, opts: CheckOpts) {
       await runAction(this, () => runCheck(this, opts));
+    });
+
+  evals.command("publish")
+    .description("Publish a final owner-approved eval release without uploading its raw source traces.")
+    .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
+    .option("--preview", "Prepare and print the exact manifest and bundle inventory without uploading.")
+    .option("--expect-release-id <id>", "Upload only when the prepared release still matches this preview identity.")
+    .action(async function (this: Command, opts: PublishOpts) {
+      await runAction(this, () => runPublish(this, opts));
     });
 
   addWorkloadOptions(evals.command("catalog")
@@ -180,6 +196,39 @@ async function runCheck(cmd: Command, opts: CheckOpts): Promise<void> {
   process.stdout.write(result.publishable
     ? `${kleur.green("✓")} Final owner approval matches the checked artifact hashes.\n`
     : `${kleur.yellow("next")}: review coverage and these artifact hashes, then record the owner's final approval in approval.json.\n`);
+}
+
+async function runPublish(cmd: Command, opts: PublishOpts): Promise<void> {
+  const project = resolve(opts.project);
+  if (opts.preview) {
+    const preview = await previewEvalPublication(project);
+    if (isJsonMode(cmd)) {
+      process.stdout.write(`${JSON.stringify(preview)}\n`);
+      return;
+    }
+    process.stdout.write(`${kleur.green("✓")} Prepared exact eval release preview. Nothing was uploaded.\n`);
+    process.stdout.write(`Expected release ID: ${preview.expected_release_id}\n`);
+    process.stdout.write(`Manifest SHA-256: ${preview.manifest_sha256} (${preview.manifest_size_bytes} bytes)\n`);
+    process.stdout.write(`Bundle SHA-256: ${preview.bundle.sha256} (${preview.bundle.size_bytes} bytes)\n`);
+    process.stdout.write(`Bundle destination: ${preview.bundle.r2_key}\n`);
+    process.stdout.write(`Outgoing manifest and ordered ${preview.bundle.files.length}-file inventory:\n`);
+    process.stdout.write(`${JSON.stringify(preview.manifest, null, 2)}\n`);
+    process.stdout.write(`Local-only rule: ${preview.local_only.policy}\n`);
+    for (const path of preview.local_only.explicitly_excluded) process.stdout.write(`  - ${path}\n`);
+    process.stdout.write(`Next: obtain upload permission for this exact preview, then rerun with --expect-release-id ${preview.expected_release_id}.\n`);
+    return;
+  }
+  if (opts.expectReleaseId === undefined) {
+    throw new Error("Run `understudy evals publish --preview` first, review its exact contents, then rerun with `--expect-release-id <expected_release_id>`.");
+  }
+  const release = await publishEvalRelease(project, { expectedReleaseId: opts.expectReleaseId });
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify(release)}\n`);
+    return;
+  }
+  process.stdout.write(`${kleur.green("✓")} Published eval release ${release.release_id} (release ${release.release_number}).\n`);
+  process.stdout.write(`Bundle: ${release.artifacts.bundle_r2_key}\n`);
+  process.stdout.write("Live workload routing and prompts were not changed.\n");
 }
 
 function addWorkloadOptions(command: Command): Command {
@@ -439,14 +488,7 @@ async function verifyWorkloadExportReceipt(
   context: Awaited<ReturnType<typeof resolveContext>>,
   state: EvalWorkloadBuildState,
 ) {
-  const canonicalScope = {
-    schema_version: "understudy.export-scope.v1" as const,
-    selector: "workload-window" as const,
-    org_id: state.identity.org_id,
-    project_id: state.identity.project_id,
-    workload_id: state.identity.workload_id,
-    ...state.source,
-  };
+  const canonicalScope = workloadExportScope(state);
   const response = await request({
     url: `${context.base}/eval-capture-export/verify`,
     method: "POST",
@@ -460,18 +502,22 @@ async function verifyWorkloadExportReceipt(
   return response.data;
 }
 
-function assertWorkloadExportSegmentMatchesState(
-  segment: WorkloadCaptureExportResponse,
-  state: EvalWorkloadBuildState,
-): void {
-  const expectedScope = {
-    schema_version: "understudy.export-scope.v1",
-    selector: "workload-window",
+function workloadExportScope(state: EvalWorkloadBuildState): WorkloadCaptureExportScope {
+  return {
+    schema_version: "understudy.export-scope.v1" as const,
+    selector: "workload-window" as const,
     org_id: state.identity.org_id,
     project_id: state.identity.project_id,
     workload_id: state.identity.workload_id,
     ...state.source,
   };
+}
+
+function assertWorkloadExportSegmentMatchesState(
+  segment: WorkloadCaptureExportResponse,
+  state: EvalWorkloadBuildState,
+): void {
+  const expectedScope = workloadExportScope(state);
   if (JSON.stringify(segment.canonical_scope) !== JSON.stringify(expectedScope)) {
     throw new Error("Capture export response does not match the frozen workload window.");
   }

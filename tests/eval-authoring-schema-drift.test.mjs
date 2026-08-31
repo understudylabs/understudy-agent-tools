@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -16,9 +17,16 @@ import {
   EvalSplitsSchema,
   WorkloadEvalProjectSchema,
 } from "../dist/evals/authoring-contracts.js";
+import {
+  EvalPublicationSchema,
+  EvalReleaseSchema,
+} from "../dist/evals/release-contracts.js";
 
 const sha = "a".repeat(64);
 const timestamp = "2026-08-30T12:00:00.000Z";
+// Keep these digests in sync with the server-side release contract test.
+const GOLDEN_PUBLICATION_SHA256 = "ea23f583ef6c56ff6ff96c2560e560462a12740f08cd18749094b7ec31ced06d";
+const GOLDEN_RELEASE_SHA256 = "4364ad5486f3d84b2195436f066cd63d2af9fa1f1cce9f1ef6c75ef00700a0f2";
 const pathPatternValue = "environment/replay.mjs";
 const scope = { schema_version: "understudy.export-scope.v1", selector: "workload-window", org_id: "org", project_id: "project", workload_id: "workload", from: timestamp, to: timestamp, ingestion_cutoff: timestamp };
 
@@ -88,6 +96,82 @@ const outcome = {
   replay_sha256: sha,
   result: "passed",
   feedback: "correct",
+};
+const releaseLayout = {
+  workload_profile: "workload-profile.md",
+  coverage: "coverage.json",
+  harness: "harness.json",
+  environment: "environment.json",
+  metric: "metric.json",
+  splits: "splits.json",
+  tasks: "benchmark/tasks.jsonl",
+  check_fixtures: "checks/fixtures.json",
+  approval: "approval.json",
+  check_report: "checks/report.json",
+  fixtures: {
+    representative: { candidate: "fixtures/good.json" },
+    known_good: { candidate: "fixtures/good.json" },
+    intentionally_wrong: { candidate: "fixtures/wrong.json" },
+  },
+  environment_root: "environment",
+  verifier_root: "verifier",
+};
+const releaseBundleFiles = [
+  "approval.json", "benchmark/tasks.jsonl", "checks/fixtures.json", "checks/report.json",
+  "coverage.json", "environment.json", "environment/replay.mjs", "fixtures/good.json",
+  "fixtures/wrong.json", "harness.json", "metric.json", "splits.json",
+  "verifier/check.mjs", "workload-profile.md",
+].map((path) => ({ path, size_bytes: 1, sha256: sha }));
+const publicationValue = {
+  schema_version: "understudy.eval-publication.v1",
+  org_id: "org",
+  project_id: "project",
+  workload_id: "workload",
+  eval_id: "eval_0123456789abcdef01234567",
+  name: "weekly eval",
+  source: {
+    from: "2026-08-23T12:00:00.000Z",
+    to: timestamp,
+    ingestion_cutoff: timestamp,
+    capture_count: 1,
+    total_bytes: 12,
+    local_index_sha256: sha,
+  },
+  artifacts: {
+    eval_set_sha256: sha,
+    coverage_sha256: sha,
+    environment_sha256: sha,
+    verifier_sha256: sha,
+    check_report_sha256: sha,
+    approval_sha256: sha,
+    bundle_sha256: sha,
+    bundle_r2_key: `eval-release-bundles/${sha}.tar.gz`,
+  },
+  runtime: { format: "local_module.v1", environment_entrypoint: "environment/replay.mjs", verifier_entrypoint: "verifier/check.mjs" },
+  skills: [{ name: "capture-evidence", version: "0.6.41" }],
+  approval: {
+    schema_version: "understudy.eval-approval.v1",
+    approver: "owner",
+    intent_confirmed_at: "2026-08-30T11:00:00.000Z",
+    workload_profile_sha256: sha,
+    metric_sha256: sha,
+    approved_at: timestamp,
+    eval_set_sha256: sha,
+    coverage_sha256: sha,
+    environment_sha256: sha,
+    verifier_sha256: sha,
+    check_report_sha256: sha,
+  },
+  artifact_layout: releaseLayout,
+  bundle_files: releaseBundleFiles,
+};
+const releaseValue = {
+  ...publicationValue,
+  schema_version: "understudy.eval-release.v1",
+  release_id: "release_0123456789abcdef01234567",
+  release_number: 1,
+  sealed_by_user_id: "api_key:key-test",
+  sealed_at: "2026-08-30T13:00:00.000Z",
 };
 const samples = {
   "project.v2": {
@@ -181,7 +265,23 @@ const samples = {
     value: { schema_version: "understudy.eval-check.v1", checked_at: timestamp, status: "passed", task_count: 1, representative_replay: { ...outcome, provider_called: false }, oracle_fixture: outcome, wrong_fixture: { ...outcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, export_proof_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha },
     reject: (value) => { value.wrong_fixture.result = "passed"; },
   },
+  "publication.v1": {
+    runtime: EvalPublicationSchema,
+    value: publicationValue,
+    reject: (value) => { value.runtime.format = "verifiers"; },
+  },
+  "release.v1": {
+    runtime: EvalReleaseSchema,
+    value: releaseValue,
+    reject: (value) => { value.sealed_by_user_id = "unscoped-user"; },
+  },
 };
+
+test("publication and release golden bytes match the cross-repository digests", () => {
+  const digest = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  assert.equal(digest(publicationValue), GOLDEN_PUBLICATION_SHA256);
+  assert.equal(digest(releaseValue), GOLDEN_RELEASE_SHA256);
+});
 
 for (const [name, sample] of Object.entries(samples)) {
   test(`${name} packaged schema and runtime contract accept and reject the same golden artifacts`, () => {

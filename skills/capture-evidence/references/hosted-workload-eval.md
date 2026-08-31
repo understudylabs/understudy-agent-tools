@@ -134,5 +134,39 @@ The final release approval is bound to the check-report hash and remains
 separate from intent confirmation. Re-running `evals check` may validate final
 approval, but must not create it or alter a matching report.
 
-Publication is a later explicit action. Permission to download or check traces
-does not authorize upload, model execution, prompt changes, or serving changes.
+Publication is a separate, explicit action. Permission to download or check
+traces does not authorize it. Only after the owner has recorded the final,
+artifact-bound approval above, prepare the non-uploading preview:
+
+```sh
+understudy --json evals publish \
+  --project .understudy/evals/<eval-dir> \
+  --preview
+```
+
+This reruns the complete local check but performs no network request. Show the
+owner its exact manifest, expected release ID, manifest SHA-256 and size,
+bundle SHA-256 and size, and ordered file inventory with every file hash. State
+the local-only rule from the preview: exactly two objects leave the machine—the
+shown publication manifest and one gzip bundle containing exactly
+`manifest.bundle_files`. Every other local file remains local. In particular,
+`source/`, raw traces, export proof,
+`eval-project.json`, execution index, analysis, and every unreferenced file
+stay local.
+
+Then ask, "May I upload this manifest and checked bundle to Understudy now?"
+Wait for an explicit yes. Final artifact approval alone is not permission to
+perform the external upload. Only after that separate permission, carry the
+preview's `expected_release_id` into the upload:
+
+```sh
+understudy evals publish \
+  --project .understudy/evals/<eval-dir> \
+  --expect-release-id <expected_release_id>
+```
+
+The command reruns the complete local check, refuses stale or incomplete final
+approval, and uploads only those two reviewed objects. If the recomputed release
+does not match the approved preview, it fails before upload; run a new preview,
+show the changed evidence, and obtain permission again. Publication does not
+execute a model, change a prompt, or alter serving.

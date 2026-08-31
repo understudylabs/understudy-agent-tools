@@ -50,6 +50,10 @@ test("hosted workload eval authoring stays project-local, provider-free, and tre
   assert.match(hosted, /no incumbent baseline|null floor|provider model/is);
   assert.match(hosted, /independent correctness evidence/i);
   assert.match(hosted, /final.*approval.*check-report hash/is);
+  assert.match(hosted, /publish.*--preview/is);
+  assert.match(hosted, /--expect-release-id <expected_release_id>/i);
+  assert.match(hosted, /does not match.*preview.*before.*upload/is);
+  assert.match(hosted, /exactly two objects.*publication manifest.*gzip bundle/is);
   assert.match(hosted, /--source-index .*source\/index\.jsonl/i);
   assert.match(hosted, /--out \.understudy\/evals\/<eval-dir>/i);
 });

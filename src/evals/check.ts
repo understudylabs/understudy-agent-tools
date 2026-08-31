@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -6,9 +6,6 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { z, type ZodType } from "zod";
@@ -30,6 +27,8 @@ import {
   type EvalCheckReport,
 } from "./authoring-contracts.js";
 import { deriveWorkloadEvalId } from "../eval-project.js";
+import { replacePrivateJson } from "./build-state.js";
+import { canonicalJson, compareCodeUnits } from "./canonical.js";
 import {
   runInProviderFreeSandbox,
   snapshotModuleTree,
@@ -242,33 +241,14 @@ async function runFixture(
   };
 }
 
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as JsonObject).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "null";
-}
-
-function descriptorHash(entries: { path: string; sha256: string }[]): string {
-  return sha256(canonicalJson([...entries].sort((left, right) => left.path.localeCompare(right.path))));
+export function descriptorHash(entries: { path: string; sha256: string }[]): string {
+  return sha256(canonicalJson([...entries].sort((left, right) => compareCodeUnits(left.path, right.path))));
 }
 
 function sameReport(left: EvalCheckReport, right: EvalCheckReport): boolean {
   const { checked_at: _leftAt, ...leftStable } = left;
   const { checked_at: _rightAt, ...rightStable } = right;
   return JSON.stringify(leftStable) === JSON.stringify(rightStable);
-}
-
-function replacePrivateJson(path: string, value: unknown): void {
-  const temporary = `${path}.tmp-${randomUUID()}`;
-  try {
-    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    renameSync(temporary, path);
-    chmodSync(path, 0o600);
-  } finally {
-    rmSync(temporary, { force: true });
-  }
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

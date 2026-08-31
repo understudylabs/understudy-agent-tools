@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { extname, relative, resolve, sep } from "node:path";
 
+import { compareCodeUnits } from "./canonical.js";
+
 const MAX_MODULE_FILES = 256;
 const MAX_MODULE_FILE_BYTES = 256 * 1024;
 const MAX_MODULE_TREE_BYTES = 2 * 1024 * 1024;
@@ -71,7 +73,7 @@ export function snapshotModuleTree(root: string, entrypoint: string, label: stri
   let totalBytes = 0;
 
   const visit = (directory: string): void => {
-    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((left, right) => compareCodeUnits(left.name, right.name))) {
       const path = resolve(directory, entry.name);
       if (entry.isSymbolicLink()) throw new Error(`${label} cannot contain symbolic links.`);
       if (entry.isDirectory()) {
@@ -94,6 +96,7 @@ export function snapshotModuleTree(root: string, entrypoint: string, label: stri
     }
   };
   visit(root);
+  files.sort((left, right) => compareCodeUnits(left.path, right.path));
   if (files.length === 0) throw new Error(`${label} is empty.`);
   if (!files.some((file) => file.path === entrypointRelative)) {
     throw new Error(`${label} does not contain its declared entrypoint.`);
@@ -239,7 +242,7 @@ function validateTree(tree, label) {
   }
   if (!files.has(tree.entrypoint)) throw new Error(label + " snapshot is missing its entrypoint.");
   const treeDigest = createHash("sha256");
-  for (const [modulePath, source] of [...files].sort(([left], [right]) => left.localeCompare(right))) {
+  for (const [modulePath, source] of [...files].sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) {
     treeDigest.update(modulePath).update("\0").update(createHash("sha256").update(source).digest("hex")).update("\n");
   }
   if (treeDigest.digest("hex") !== tree.sha256) throw new Error(label + " snapshot tree digest is invalid.");
