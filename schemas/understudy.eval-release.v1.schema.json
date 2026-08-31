@@ -33,10 +33,11 @@
     "path": { "type": "string", "minLength": 1, "maxLength": 240, "pattern": "^(?!.*\\u0000)(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)(?:\\.|\\.\\.)(?:/|$))(?!.*//)(?!.*\/$).+$" },
     "source": {
       "type": "object", "additionalProperties": false,
-      "required": ["from", "to", "ingestion_cutoff", "capture_count", "total_bytes", "local_index_sha256"],
+      "required": ["from", "to", "ingestion_cutoff", "capture_count", "total_bytes", "local_index_sha256", "export_proof_sha256", "source_attestation"],
       "properties": {
         "from": { "$ref": "#/$defs/timestamp" }, "to": { "$ref": "#/$defs/timestamp" }, "ingestion_cutoff": { "$ref": "#/$defs/timestamp" },
-        "capture_count": { "type": "integer", "minimum": 0 }, "total_bytes": { "type": "integer", "minimum": 0 }, "local_index_sha256": { "$ref": "#/$defs/sha" }
+        "capture_count": { "type": "integer", "minimum": 0 }, "total_bytes": { "type": "integer", "minimum": 0 }, "local_index_sha256": { "$ref": "#/$defs/sha" },
+        "export_proof_sha256": { "$ref": "#/$defs/sha" }, "source_attestation": { "type": "string", "minLength": 1, "maxLength": 8192 }
       }
     },
     "artifacts": {

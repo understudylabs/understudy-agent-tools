@@ -13,7 +13,7 @@
     "verified_receipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verified", "scope_hash", "chain_id", "segment_id", "segment_index", "manifest_sha256", "previous_manifest_sha256", "cumulative_scanned", "cumulative_matched", "cumulative_exported", "total_bytes", "expires_at", "canonical_scope"],
+      "required": ["verified", "scope_hash", "chain_id", "segment_id", "segment_index", "manifest_sha256", "previous_manifest_sha256", "cumulative_scanned", "cumulative_matched", "cumulative_exported", "total_bytes", "expires_at", "canonical_scope", "source_attestation"],
       "properties": {
         "verified": { "const": true },
         "scope_hash": { "$ref": "#/$defs/sha" },
@@ -27,7 +27,8 @@
         "cumulative_exported": { "$ref": "#/$defs/count" },
         "total_bytes": { "$ref": "#/$defs/count" },
         "expires_at": { "$ref": "#/$defs/timestamp" },
-        "canonical_scope": { "$ref": "#/$defs/scope" }
+        "canonical_scope": { "$ref": "#/$defs/scope" },
+        "source_attestation": { "type": "string", "minLength": 1, "maxLength": 8192 }
       }
     }
   },

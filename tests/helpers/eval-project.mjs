@@ -169,6 +169,7 @@ export function verify({ replay }) {
       total_bytes: Buffer.byteLength(traceBody),
       expires_at: "2026-08-30T13:00:00.000Z",
       canonical_scope: sourceWindow,
+      source_attestation: "signed-synthetic-source-attestation",
     },
   };
   const proofBody = `${JSON.stringify(proof, null, 2)}\n`;

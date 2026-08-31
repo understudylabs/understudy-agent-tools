@@ -24,10 +24,12 @@ import {
 } from "../dist/evals/release-contracts.js";
 
 const sha = "a".repeat(64);
+const sourceAttestation = "signed-source-attestation";
+const sourceAttestationSha = createHash("sha256").update(sourceAttestation).digest("hex");
 const timestamp = "2026-08-30T12:00:00.000Z";
 // Keep these digests in sync with the server-side release contract test.
-const GOLDEN_PUBLICATION_SHA256 = "ea23f583ef6c56ff6ff96c2560e560462a12740f08cd18749094b7ec31ced06d";
-const GOLDEN_RELEASE_SHA256 = "4364ad5486f3d84b2195436f066cd63d2af9fa1f1cce9f1ef6c75ef00700a0f2";
+const GOLDEN_PUBLICATION_SHA256 = "e5f1300027c2ec46607243b47b205efd48d0bc0aacf3ec14bfb8db9d736dd24a";
+const GOLDEN_RELEASE_SHA256 = "f3f4efaea8d188ab02a00200e88d426577686a1e7e00dfb2b502750f9868e35e";
 const pathPatternValue = "environment/replay.mjs";
 const scope = { schema_version: "understudy.export-scope.v1", selector: "workload-window", org_id: "org", project_id: "project", workload_id: "workload", from: timestamp, to: timestamp, ingestion_cutoff: timestamp };
 
@@ -137,6 +139,8 @@ const publicationValue = {
     capture_count: 1,
     total_bytes: 12,
     local_index_sha256: sha,
+    export_proof_sha256: sourceAttestationSha,
+    source_attestation: sourceAttestation,
   },
   artifacts: {
     eval_set_sha256: sha,
@@ -222,6 +226,7 @@ const samples = {
         total_bytes: 12,
         expires_at: timestamp,
         canonical_scope: scope,
+        source_attestation: sourceAttestation,
       },
     },
     reject: (value) => { value.verified_receipt.verified = false; },

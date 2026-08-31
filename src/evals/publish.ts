@@ -20,6 +20,7 @@ import {
   EvalCheckFixturesSchema,
   EvalCheckReportSchema,
   EvalEnvironmentSchema,
+  EvalExportProofSchema,
   EvalHarnessSchema,
   EvalSourceRowSchema,
   WorkloadEvalProjectSchema,
@@ -363,6 +364,11 @@ export async function prepareEvalPublication(
   const verifierModules = snapshotModuleTree(projectRoot, verifierRoot, "verifier module tree");
   const sourceIndexEntry = readStableFile(projectRoot, project.source.index, "source index", null);
   assertHash("Source index", sourceIndexEntry.sha256, project.source.index_sha256);
+  const exportProofEntry = readStableFile(projectRoot, project.source.export_proof, "export proof", null);
+  assertHash("Export proof", exportProofEntry.sha256, project.source.export_proof_sha256);
+  const exportProof = parseJson(exportProofEntry.bytes, EvalExportProofSchema, "source/export-proof.json");
+  const sourceAttestation = exportProof.verified_receipt.source_attestation;
+  const sourceAttestationSha256 = sha256(sourceAttestation);
   const sourcePaths = parseSourcePaths(sourceIndexEntry);
   const forbiddenPaths = new Set([
     "eval-project.json",
@@ -459,6 +465,7 @@ export async function prepareEvalPublication(
   if (canonicalJson(checkReport) !== canonicalJson(checked.report)) {
     throw new Error("Snapshotted check report does not match the passing eval check.");
   }
+  assertHash("Checked source attestation", checkReport.source.export_proof_sha256, sourceAttestationSha256);
 
   const assertFixtureBinding = (
     label: string,
@@ -506,6 +513,8 @@ export async function prepareEvalPublication(
       capture_count: project.source.capture_count,
       total_bytes: project.source.size_bytes,
       local_index_sha256: project.source.index_sha256,
+      export_proof_sha256: sourceAttestationSha256,
+      source_attestation: sourceAttestation,
     },
     artifacts: {
       eval_set_sha256: checked.hashes.eval_set_sha256,

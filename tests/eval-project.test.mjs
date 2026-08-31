@@ -60,6 +60,7 @@ test("a repeated capture key across export segments cannot complete a workload e
           total_bytes: repeatedCapture.size_bytes * 2,
           expires_at: "2026-08-30T13:00:00.000Z",
           canonical_scope: scope,
+          source_attestation: "signed-duplicate-segment-source-attestation",
         },
         now: new Date("2026-08-30T12:00:00.000Z"),
       }),

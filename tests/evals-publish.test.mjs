@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { gunzipSync } from "node:zlib";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -67,6 +68,11 @@ function multipartFile(body, contentType, name) {
   return body.subarray(bodyStart, bodyEnd);
 }
 
+function multipartFieldNames(body) {
+  return [...body.toString("latin1").matchAll(/Content-Disposition: form-data; name="([^"]+)"/g)]
+    .map((match) => match[1]);
+}
+
 function releaseFor(publication, overrides = {}) {
   const { schema_version: _schemaVersion, ...payload } = publication;
   const release = {
@@ -108,6 +114,11 @@ test("evals publish preview exposes the exact non-uploaded release and binds the
     assert.equal(preview.bundle.size_bytes > 0, true);
     assert.equal(preview.bundle.r2_key, preview.manifest.artifacts.bundle_r2_key);
     assert.deepEqual(preview.bundle.files, preview.manifest.bundle_files);
+    assert.equal(preview.manifest.source.source_attestation, "signed-synthetic-source-attestation");
+    assert.equal(
+      preview.manifest.source.export_proof_sha256,
+      createHash("sha256").update(preview.manifest.source.source_attestation).digest("hex"),
+    );
     assert.match(preview.local_only.policy, /exactly two objects.*publication manifest.*gzip bundle.*every other file.*stays local/i);
     assert.deepEqual(preview.local_only.explicitly_excluded, [
       ".understudy/",
@@ -290,6 +301,15 @@ test("evals publish reruns the check and refuses stale approval or symlinked rel
       /source index changed after the passing eval check/i,
     );
 
+    const exportProofMutation = buildEvalProject(join(root, "export-proof-mutation"));
+    await finalizeApproval(exportProofMutation.project);
+    await assert.rejects(
+      () => prepareEvalPublication(exportProofMutation.project, {
+        afterCheck: () => writeFileSync(join(exportProofMutation.project, "source/export-proof.json"), "\n", { flag: "a" }),
+      }),
+      /export proof changed after the passing eval check/i,
+    );
+
     const moduleMutation = buildEvalProject(join(root, "module-mutation"));
     await finalizeApproval(moduleMutation.project);
     await assert.rejects(
@@ -381,6 +401,7 @@ test("evals publish sends raw multipart bytes and fails closed on a mismatched r
     assert.equal(received.url, "/admin/v1/orgs/org_synthetic/projects/proj_synthetic/workloads/workload_synthetic/eval-releases");
     assert.equal(received.authorization, "Bearer sk_synthetic");
     assert.match(received.contentType, /^multipart\/form-data; boundary=/);
+    assert.deepEqual(multipartFieldNames(received.body), ["manifest", "bundle"]);
     assert.match(received.body.toString("latin1"), /name="manifest"/);
     assert.match(received.body.toString("latin1"), /name="bundle"; filename="eval_[a-f0-9]{24}\.tar\.gz"/);
     assert.deepEqual(

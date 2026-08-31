@@ -350,8 +350,11 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   const proofPath = existingProjectPath(projectRoot, project.source.export_proof, "export proof");
   const proofBytes = regularFile(proofPath, "export proof");
   const proof = parseJson(proofPath, EvalExportProofSchema, "export-proof.json");
-  const exportProofSha256 = sha256(proofBytes);
-  assertExactSourceProof(project, proof, exportProofSha256);
+  const localExportProofSha256 = sha256(proofBytes);
+  assertExactSourceProof(project, proof, localExportProofSha256);
+  // The project hash protects the private proof file. The report field with
+  // the same legacy name is the durable backend-verifiable attestation hash.
+  const sourceAttestationSha256 = sha256(proof.verified_receipt.source_attestation);
 
   const profilePath = existingProjectPath(projectRoot, project.artifacts.workload_profile, "workload profile");
   const profileBytes = regularFile(profilePath, "workload profile");
@@ -528,7 +531,7 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     scope: project.source.window,
     scope_sha256: proof.verified_receipt.scope_hash,
     index_sha256: project.source.index_sha256,
-    export_proof_sha256: exportProofSha256,
+    export_proof_sha256: sourceAttestationSha256,
     capture_count: project.source.capture_count,
     size_bytes: project.source.size_bytes,
   };

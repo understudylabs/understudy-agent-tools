@@ -150,9 +150,11 @@ bundle SHA-256 and size, and ordered file inventory with every file hash. State
 the local-only rule from the preview: exactly two objects leave the machine—the
 shown publication manifest and one gzip bundle containing exactly
 `manifest.bundle_files`. Every other local file remains local. In particular,
-`source/`, raw traces, export proof,
+`source/`, raw traces, the expiring receipt and export proof,
 `eval-project.json`, execution index, analysis, and every unreferenced file
-stay local.
+stay local. The manifest carries only the compact backend-verifiable
+`source_attestation` and the SHA-256 of that exact token, so Understudy can bind
+the checked report to the verified export without uploading the local proof.
 
 Then ask, "May I upload this manifest and checked bundle to Understudy now?"
 Wait for an explicit yes. Final artifact approval alone is not permission to

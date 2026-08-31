@@ -607,6 +607,7 @@ async function withHostedFixture(fn) {
         total_bytes: state.captures.slice(0, 2).reduce((sum, capture) => sum + Buffer.byteLength(`${JSON.stringify(capture)}\n`), 0),
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         canonical_scope: body.canonical_scope,
+        source_attestation: "signed-cli-source-attestation",
       });
     }
     if (req.method === "GET" && state.evalWorkloadManifests.has(url.pathname)) {

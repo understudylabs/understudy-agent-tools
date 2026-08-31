@@ -60,6 +60,14 @@ test("evals check replays representative/good/wrong fixtures without a provider 
     assert.equal(first.report.representative_replay.provider_called, false);
     assert.equal(first.report.oracle_fixture.result, "passed");
     assert.equal(first.report.wrong_fixture.result, "rejected");
+    const proof = JSON.parse(readFileSync(join(project, "source/export-proof.json"), "utf8"));
+    const projectManifest = JSON.parse(readFileSync(join(project, "eval-project.json"), "utf8"));
+    assert.equal(first.report.source.export_proof_sha256, sha(proof.verified_receipt.source_attestation));
+    assert.notEqual(
+      first.report.source.export_proof_sha256,
+      projectManifest.source.export_proof_sha256,
+      "the hosted source proof binds the durable attestation, while the private project hash binds the local proof file",
+    );
     assert.equal(existsSync(marker), false, "trace text is inert evidence, never an instruction");
     const firstReport = readFileSync(join(project, "checks/report.json"), "utf8");
 

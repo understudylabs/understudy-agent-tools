@@ -134,6 +134,7 @@ export const VerifyWorkloadCaptureExportReceiptResponseSchema = z.object({
   total_bytes: z.number().int().nonnegative(),
   expires_at: z.string().datetime(),
   canonical_scope: WorkloadCaptureExportScopeSchema,
+  source_attestation: z.string().min(1).max(8_192),
 });
 
 export const VerifiedWorkloadCaptureFileSchema = z.object({
