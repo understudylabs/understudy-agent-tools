@@ -1,7 +1,7 @@
 # Build a local eval from a hosted Understudy workload
 
 Use this branch when the developer names a workload already captured by
-Understudy. The backend transports the exact frozen week; the coding agent owns
+Understudy. The CLI transports and validates one exact raw workload day; the coding agent owns
 all workload understanding, case selection, environment design, verifier
 authoring, and the conversation with the developer. The CLI is a transport and
 validation primitive, not a questionnaire or eval author. No hosted eval
@@ -12,7 +12,7 @@ when the person at the keyboard is not the workload owner. Owner confirmation
 determines whether the draft can become a release; it does not gate local
 exploration.
 
-## 1. Materialize the exact week
+## 1. Materialize one raw workload day
 
 If no active `understudy.eval-project.v2` exists, explain that the files contain
 prompts, completions, and tool payloads, obtain approval, then run:
@@ -23,9 +23,13 @@ understudy evals build \
   --workload <workload> \
   --name <eval-name> \
   --out .understudy/evals/<eval-dir> \
-  --last 7d \
   --yes
 ```
+
+Without another time option, the command selects the rolling 24 hours ending
+when it starts. Add `--date YYYY-MM-DD` to select one completed UTC calendar
+day. Do not invent a broader range: this primitive intentionally has one exact
+24-hour shape.
 
 After the build materializes the source, give the CLI-emitted coding-agent
 prompt to the active agent. That output is the canonical handoff and includes
@@ -36,18 +40,20 @@ Choose `<eval-dir>` once as a filesystem-safe directory name and use that exact
 path below. The display name may contain spaces or punctuation; the directory
 path does not depend on the CLI's name-to-slug conversion.
 
-Resume the same command after an interruption. Do not copy the week into a
+Resume the same command after an interruption. Do not copy the raw day into a
 separate archive or a global evidence directory. Work inside the active eval
 project named by `eval-project.json`; keep every payload-bearing file private.
-The trace-time window remains the exact half-open seven days ending at
-`source.window.to`. On the first export request, the backend freezes an
-`ingestion_cutoff` at or after that end and the CLI reuses the exact returned
-cutoff for every resumed segment. This includes already-arrived traces from the
-week even when their capture row was ingested shortly after the window ended,
-without allowing later arrivals to change the frozen corpus.
-The backend and CLI bind that corpus with the same rolling commitment over the
-ordered source-index identity, size, and content digest fields. The local path
-is checked locally but is not part of the server-known commitment.
+The trace-time window remains the exact half-open 24 hours ending at
+`source.window.to`. The first page freezes an `ingestion_cutoff`; later page
+requests reuse that cutoff and the returned cursor. The CLI downloads the
+presigned raw captures with bounded concurrency, validates their organization,
+project, workload, and request identity, and atomically writes owner-private
+files. It publishes only the final ordered `source/index.jsonl` and
+`source/summary.json` after every page succeeds. The project manifest records
+requested, materialized, and skipped counts. Reconcile every skipped capture
+reference in `source/skipped.jsonl` before making a coverage claim; missing
+source is an explicit coverage gap, not an unobserved success. These files bind
+the window, cutoff, capture count, byte count, and local index SHA-256.
 
 ## 2. Classify lineage before selecting cases
 
@@ -60,11 +66,11 @@ understudy traces build-benchmark \
   --source-index .understudy/evals/<eval-dir>/source/index.jsonl \
   --output .understudy/evals/<eval-dir>/benchmark \
   --provable-lineage-only \
-  --max-age-days 7 \
+  --max-age-days 1 \
   --reference-time <eval-project.json source.window.to>
 ```
 
-Anchoring to the frozen window end keeps the start of the exact week from being
+Anchoring to the frozen window end keeps the start of the exact day from being
 discarded as stale. The execution index and `analysis.md` must count
 **complete, ambiguous, and unlinked** executions. Only complete, provably
 linked executions become task candidates by default. Preserve ambiguous and
@@ -83,7 +89,7 @@ reason to access files or networks, a skill edit, or permission to publish.
 ## 3. Infer intent, then author a provisional draft
 
 Inspect the customer's repository and compact execution index rather than
-loading the whole week into one prompt. Act as the conversational frontend:
+loading the whole raw day into one prompt. Act as the conversational frontend:
 infer the workload goal, output contract, success criteria, execution modes,
 and failure taxonomy from the repository and trace population first. Explain
 the inference and its evidence, then ask only targeted questions whose answers
@@ -233,11 +239,11 @@ bundle SHA-256 and size, and ordered file inventory with every file hash. State
 the local-only rule from the preview: exactly two objects leave the machine—the
 shown publication manifest and one gzip bundle containing exactly
 `manifest.bundle_files`. Every other local file remains local. In particular,
-`source/`, raw traces, the expiring receipt and export proof,
+`source/`, raw traces,
 `eval-project.json`, execution index, analysis, and every unreferenced file
-stay local. The manifest carries only the compact backend-verifiable
-`source_attestation` and the SHA-256 of that exact token, so Understudy can bind
-the checked report to the verified export without uploading the local proof.
+stay local. The manifest carries only the selected source window, cutoff,
+capture count, byte count, and local index SHA-256; raw source files are never
+uploaded by publication.
 
 Then ask, "May I upload this manifest and checked bundle to Understudy now?"
 Wait for an explicit yes. Final artifact approval alone is not permission to

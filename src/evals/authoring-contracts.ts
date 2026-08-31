@@ -2,8 +2,7 @@ import { z } from "zod";
 
 import {
   Sha256Schema,
-  VerifiedWorkloadCaptureFileSchema,
-  VerifyWorkloadCaptureExportReceiptResponseSchema,
+  WorkloadSourceRowSchema,
   WorkloadCaptureExportScopeSchema,
 } from "./contracts.js";
 import { EvalReleaseArtifactPathSchema } from "./release-contracts.js";
@@ -40,16 +39,22 @@ export const WorkloadEvalProjectSchema = z.object({
   }).strict(),
   source: z.object({
     window: WorkloadCaptureExportScopeSchema.strict(),
+    requested_count: z.number().int().nonnegative(),
+    materialized_count: z.number().int().nonnegative(),
+    skipped_count: z.number().int().nonnegative(),
+    skipped_index: RelativeArtifactPathSchema,
     capture_count: z.number().int().nonnegative(),
     size_bytes: z.number().int().nonnegative(),
     index: RelativeArtifactPathSchema,
     index_sha256: Sha256Schema,
-    export_proof: RelativeArtifactPathSchema,
-    export_proof_sha256: Sha256Schema,
-    exported_capture_count: z.number().int().nonnegative(),
-    exported_total_bytes: z.number().int().nonnegative(),
-    terminal_receipt_verified: z.literal(true),
-  }).strict(),
+  }).strict().superRefine((source, context) => {
+    if (source.capture_count !== source.materialized_count) {
+      context.addIssue({ code: "custom", message: "capture_count must equal materialized_count" });
+    }
+    if (source.requested_count !== source.materialized_count + source.skipped_count) {
+      context.addIssue({ code: "custom", message: "requested_count must equal materialized_count plus skipped_count" });
+    }
+  }),
   artifacts: EvalProjectArtifactsSchema,
   authoring: z.object({
     owner: z.literal("coding_agent"),
@@ -63,16 +68,8 @@ export const WorkloadEvalProjectSchema = z.object({
   }).strict(),
 }).strict();
 
-export const EvalSourceRowSchema = VerifiedWorkloadCaptureFileSchema.strict();
-
-export const EvalExportProofSchema = z.object({
-  schema_version: z.literal("understudy.eval-export-proof.v1"),
-  canonical_scope: WorkloadCaptureExportScopeSchema.strict(),
-  segment_manifest_sha256: z.array(Sha256Schema).min(1),
-  terminal_receipt: z.string().min(1),
-  verified_receipt: VerifyWorkloadCaptureExportReceiptResponseSchema.extend({
-    canonical_scope: WorkloadCaptureExportScopeSchema.strict(),
-  }).strict(),
+export const EvalSourceRowSchema = WorkloadSourceRowSchema.extend({
+  local_path: RelativeArtifactPathSchema,
 }).strict();
 
 const EvalExecutionSourceFileSchema = z.object({
@@ -325,7 +322,6 @@ export const EvalCheckReportSchema = z.object({
     scope: WorkloadCaptureExportScopeSchema.strict(),
     scope_sha256: Sha256Schema,
     index_sha256: Sha256Schema,
-    export_proof_sha256: Sha256Schema,
     capture_count: z.number().int().nonnegative(),
     size_bytes: z.number().int().nonnegative(),
   }).strict(),
@@ -373,5 +369,4 @@ export type EvalApproval = z.infer<typeof EvalApprovalSchema>;
 export type EvalCheckReport = z.infer<typeof EvalCheckReportSchema>;
 export type EvalDraftSemanticAssumption = z.infer<typeof EvalDraftSemanticAssumptionSchema>;
 export type EvalDraftCheckReport = z.infer<typeof EvalDraftCheckReportSchema>;
-export type EvalExportProof = z.infer<typeof EvalExportProofSchema>;
 export type EvalExecutionIndexRow = z.infer<typeof EvalExecutionIndexRowSchema>;

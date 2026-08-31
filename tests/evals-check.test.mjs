@@ -14,18 +14,6 @@ import { buildEvalProject as buildProject } from "./helpers/eval-project.mjs";
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 
-function rewriteProof(project, mutate) {
-  const manifestPath = join(project, "eval-project.json");
-  const proofPath = join(project, "source/export-proof.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const proof = JSON.parse(readFileSync(proofPath, "utf8"));
-  mutate({ manifest, proof });
-  const body = `${JSON.stringify(proof, null, 2)}\n`;
-  writeFileSync(proofPath, body, { mode: 0o600 });
-  manifest.source.export_proof_sha256 = sha(body);
-  writeJson(manifestPath, manifest);
-}
-
 function rewriteExecutionIndex(project, mutate) {
   const indexPath = join(project, "benchmark/execution-index.jsonl");
   const rows = readFileSync(indexPath, "utf8").trim().split("\n").map(JSON.parse);
@@ -202,14 +190,9 @@ test("evals check replays representative/good/wrong fixtures without a provider 
     assert.equal(first.report.representative_replay.provider_called, false);
     assert.equal(first.report.oracle_fixture.result, "passed");
     assert.equal(first.report.wrong_fixture.result, "rejected");
-    const proof = JSON.parse(readFileSync(join(project, "source/export-proof.json"), "utf8"));
     const projectManifest = JSON.parse(readFileSync(join(project, "eval-project.json"), "utf8"));
-    assert.equal(first.report.source.export_proof_sha256, sha(proof.verified_receipt.source_attestation));
-    assert.notEqual(
-      first.report.source.export_proof_sha256,
-      projectManifest.source.export_proof_sha256,
-      "the hosted source proof binds the durable attestation, while the private project hash binds the local proof file",
-    );
+    assert.equal(first.report.source.scope_sha256, sha(JSON.stringify(projectManifest.source.window)));
+    assert.equal(first.report.source.index_sha256, projectManifest.source.index_sha256);
     assert.equal(existsSync(marker), false, "trace text is inert evidence, never an instruction");
     const firstReport = readFileSync(join(project, "checks/report.json"), "utf8");
 
@@ -442,7 +425,7 @@ test("evals check rejects unknown task references, mismatched lineage, and dupli
   }
 });
 
-test("evals check binds deterministic identity and the exact verified seven-day export proof", async () => {
+test("evals check binds deterministic identity and exact one-day local source provenance", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-evals-check-proof-"));
   try {
     const stable = buildProject(join(root, "stable"));
@@ -458,31 +441,31 @@ test("evals check binds deterministic identity and the exact verified seven-day 
     );
 
     const delayedIngestion = buildProject(join(root, "delayed-ingestion"));
-    rewriteProof(delayedIngestion.project, ({ manifest, proof }) => {
+    {
+      const path = join(delayedIngestion.project, "eval-project.json");
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
       manifest.source.window.ingestion_cutoff = "2026-08-30T12:00:01.000Z";
-      proof.canonical_scope = manifest.source.window;
-      proof.verified_receipt.canonical_scope = proof.canonical_scope;
-      proof.verified_receipt.scope_hash = sha(JSON.stringify(proof.canonical_scope));
       manifest.eval_id = deriveWorkloadEvalId({
         name: manifest.name,
         identity: manifest.identity,
         sourceWindow: manifest.source.window,
       });
-    });
+      writeJson(path, manifest);
+    }
     assert.equal((await runEvalCheck(delayedIngestion.project)).status, "passed");
 
     const prematureCutoff = buildProject(join(root, "premature-cutoff"));
-    rewriteProof(prematureCutoff.project, ({ manifest, proof }) => {
+    {
+      const path = join(prematureCutoff.project, "eval-project.json");
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
       manifest.source.window.ingestion_cutoff = "2026-08-30T11:59:59.999Z";
-      proof.canonical_scope = manifest.source.window;
-      proof.verified_receipt.canonical_scope = proof.canonical_scope;
-      proof.verified_receipt.scope_hash = sha(JSON.stringify(proof.canonical_scope));
       manifest.eval_id = deriveWorkloadEvalId({
         name: manifest.name,
         identity: manifest.identity,
         sourceWindow: manifest.source.window,
       });
-    });
+      writeJson(path, manifest);
+    }
     await assert.rejects(
       () => runEvalCheck(prematureCutoff.project),
       /ingestion cutoff must be at or after the frozen window end/i,
@@ -503,53 +486,31 @@ test("evals check binds deterministic identity and the exact verified seven-day 
     await assert.rejects(() => runEvalCheck(renamed.project), /Eval id does not match/);
 
     const shortWindow = buildProject(join(root, "window"));
-    rewriteProof(shortWindow.project, ({ manifest, proof }) => {
-      manifest.source.window.from = "2026-08-24T12:00:00.000Z";
-      proof.canonical_scope = manifest.source.window;
-      proof.verified_receipt.canonical_scope = manifest.source.window;
+    {
+      const path = join(shortWindow.project, "eval-project.json");
+      const manifest = JSON.parse(readFileSync(path, "utf8"));
+      manifest.source.window.from = "2026-08-29T13:00:00.000Z";
       manifest.eval_id = deriveWorkloadEvalId({ name: manifest.name, identity: manifest.identity, sourceWindow: manifest.source.window });
-    });
-    await assert.rejects(() => runEvalCheck(shortWindow.project), /exactly seven days/);
+      writeJson(path, manifest);
+    }
+    await assert.rejects(() => runEvalCheck(shortWindow.project), /exactly 24 hours/);
 
     const scopeMismatch = buildProject(join(root, "scope"));
-    rewriteProof(scopeMismatch.project, ({ proof }) => {
-      proof.canonical_scope = { ...proof.canonical_scope, workload_id: "different-workload" };
-      proof.verified_receipt.canonical_scope = proof.canonical_scope;
-    });
-    await assert.rejects(() => runEvalCheck(scopeMismatch.project), /proof canonical scope does not match/i);
-
-    const unverified = buildProject(join(root, "unverified"));
-    rewriteProof(unverified.project, ({ proof }) => { proof.verified_receipt.verified = false; });
-    await assert.rejects(() => runEvalCheck(unverified.project), /Invalid export-proof|verified/i);
-
-    const chain = buildProject(join(root, "chain"));
-    rewriteProof(chain.project, ({ proof }) => { proof.verified_receipt.manifest_sha256 = "d".repeat(64); });
-    await assert.rejects(() => runEvalCheck(chain.project), /terminal manifest does not match/i);
-
-    const scopeHash = buildProject(join(root, "scope-hash"));
-    rewriteProof(scopeHash.project, ({ proof }) => { proof.verified_receipt.scope_hash = "b".repeat(64); });
-    await assert.rejects(() => runEvalCheck(scopeHash.project), /receipt scope hash does not match/i);
-
-    const substitutedCorpus = buildProject(join(root, "substituted-corpus"));
-    const substitutedIndexPath = join(substitutedCorpus.project, "source/index.jsonl");
-    const substitutedRows = readFileSync(substitutedIndexPath, "utf8").trim().split("\n").map(JSON.parse);
-    substitutedRows[0].capture_key = "captures/substituted/capture.json";
-    writeFileSync(substitutedIndexPath, `${substitutedRows.map(JSON.stringify).join("\n")}\n`, { mode: 0o600 });
-    const substitutedManifestPath = join(substitutedCorpus.project, "eval-project.json");
-    const substitutedManifest = JSON.parse(readFileSync(substitutedManifestPath, "utf8"));
-    substitutedManifest.source.index_sha256 = sourceIndexCommitmentSha256(substitutedRows);
-    writeJson(substitutedManifestPath, substitutedManifest);
-    await assert.rejects(
-      () => runEvalCheck(substitutedCorpus.project),
-      /receipt source index commitment does not match/i,
-    );
+    const scopeManifestPath = join(scopeMismatch.project, "eval-project.json");
+    const scopeManifest = JSON.parse(readFileSync(scopeManifestPath, "utf8"));
+    scopeManifest.source.window.workload_id = "different-workload";
+    scopeManifest.eval_id = deriveWorkloadEvalId({ name: scopeManifest.name, identity: scopeManifest.identity, sourceWindow: scopeManifest.source.window });
+    writeJson(scopeManifestPath, scopeManifest);
+    await assert.rejects(() => runEvalCheck(scopeMismatch.project), /window workload_id does not match project identity/i);
 
     const totals = buildProject(join(root, "totals"));
-    rewriteProof(totals.project, ({ manifest, proof }) => {
-      manifest.source.exported_capture_count = 2;
-      proof.verified_receipt.cumulative_exported = 2;
-    });
-    await assert.rejects(() => runEvalCheck(totals.project), /Local eval source totals do not match/i);
+    const totalsPath = join(totals.project, "eval-project.json");
+    const totalsManifest = JSON.parse(readFileSync(totalsPath, "utf8"));
+    totalsManifest.source.capture_count = 2;
+    totalsManifest.source.materialized_count = 2;
+    totalsManifest.source.requested_count = 2;
+    writeJson(totalsPath, totalsManifest);
+    await assert.rejects(() => runEvalCheck(totals.project), /source index capture count/i);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -591,22 +552,21 @@ test("evals check reconciles every execution row to every frozen source file exa
       schema_version: "understudy.eval-source-capture.v1",
       request_id: "req-synthetic-2",
       capture_key: "captures/synthetic/capture-2.json",
+      captured_at: "2026-08-29T13:00:00.000Z",
       size_bytes: Buffer.byteLength(secondBody),
       content_sha256: sha(secondBody),
       local_path: "source/traces/capture-2.json",
     });
     const sourceIndexBody = `${sourceRows.map(JSON.stringify).join("\n")}\n`;
     writeFileSync(sourceIndexPath, sourceIndexBody, { mode: 0o600 });
-    rewriteProof(omitted.project, ({ manifest, proof }) => {
-      manifest.source.capture_count = 2;
-      manifest.source.size_bytes += Buffer.byteLength(secondBody);
-      manifest.source.index_sha256 = sourceIndexCommitmentSha256(sourceRows);
-      manifest.source.exported_capture_count = 2;
-      manifest.source.exported_total_bytes = manifest.source.size_bytes;
-      proof.verified_receipt.cumulative_exported = 2;
-      proof.verified_receipt.total_bytes = manifest.source.size_bytes;
-      proof.verified_receipt.local_index_sha256 = manifest.source.index_sha256;
-    });
+    const omittedManifestPath = join(omitted.project, "eval-project.json");
+    const omittedManifest = JSON.parse(readFileSync(omittedManifestPath, "utf8"));
+    omittedManifest.source.capture_count = 2;
+    omittedManifest.source.materialized_count = 2;
+    omittedManifest.source.requested_count = 2;
+    omittedManifest.source.size_bytes += Buffer.byteLength(secondBody);
+    omittedManifest.source.index_sha256 = sourceIndexCommitmentSha256(sourceRows);
+    writeJson(omittedManifestPath, omittedManifest);
     await assert.rejects(() => runEvalCheck(omitted.project), /capture total does not match|does not account for every frozen source file/i);
   } finally {
     rmSync(root, { recursive: true, force: true });

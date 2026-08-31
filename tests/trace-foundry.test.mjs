@@ -88,6 +88,7 @@ test("hosted eval lineage reports complete, ambiguous, and unlinked executions a
       schema_version: "understudy.eval-source-capture.v1",
       request_id: row.request_id,
       capture_key: `captures/test/${index}`,
+      captured_at: row.ts ?? "2026-07-20T12:00:00.000Z",
       size_bytes: Buffer.byteLength(body),
       content_sha256: createHash("sha256").update(body).digest("hex"),
       local_path: localPath,

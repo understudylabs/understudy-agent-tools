@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { Command } from "commander";
 import kleur from "kleur";
 import { z } from "zod";
@@ -14,11 +14,20 @@ import {
 } from "./captures.js";
 import { request, UnderstudyApiError } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
+import { acquireEvalBuildLease } from "../evals/build-state.js";
 import {
   resolveProject,
   type ProjectResolutionOptions,
 } from "../internal/projects.js";
 import { resolveWorkload } from "../internal/workloads.js";
+import {
+  DEFAULT_WORKLOAD_TRACE_CONCURRENCY,
+  DEFAULT_WORKLOAD_TRACE_RETRIES,
+  exportWorkloadTraceWindow,
+  MAX_WORKLOAD_TRACE_CONCURRENCY,
+  MAX_WORKLOAD_TRACE_RETRIES,
+  resolveWorkloadTraceWindow,
+} from "../workload-trace-export.js";
 
 const TRACE_EXPORT_SCHEMA = "understudy.trace_export.v1";
 const DEFAULT_EXPORT_CONCURRENCY = 4;
@@ -37,6 +46,8 @@ interface TraceExportOpts extends ProjectResolutionOptions {
   workload?: string;
   out: string;
   traceIdsFile?: string;
+  date?: string;
+  last?: string;
   includePayload?: boolean;
   yes?: boolean;
   concurrency?: string;
@@ -54,16 +65,18 @@ interface TraceExportResult {
 
 export function registerHostedTraceExportCommand(traces: Command): void {
   traces.command("export [trace-id]")
-    .description("Resolve hosted trace request ids and export their captures privately.")
+    .description("Export explicit hosted traces or one workload day privately.")
     .requiredOption("--out <directory>", "Private output directory.")
     .option("--trace-ids-file <path>", "Batch export: one explicit trace id per line.")
+    .option("--date <YYYY-MM-DD>", "Workload mode: one complete UTC calendar day.")
+    .option("--last <duration>", "Workload mode: rolling window (currently exactly 1d).")
     .option("--project-id <id>", "Project id from `understudy projects list --json`.")
     .option("--project <slug>", "Project slug to resolve to an id.")
     .option("--workload <name-or-id>", "Optional workload name or id.")
     .option("--org <id>", "Org id to use (default: local config or only org in credentials).")
     .option("--concurrency <n>", `Capture-fetch concurrency, max ${MAX_EXPORT_CONCURRENCY}.`, String(DEFAULT_EXPORT_CONCURRENCY))
     .option("--retries <n>", `Retries for transient lookup or capture failures, max ${MAX_EXPORT_RETRIES}.`, String(DEFAULT_EXPORT_RETRIES))
-    .option("--no-resume", "Re-download capture files that already exist.")
+    .option("--no-resume", "Explicit trace mode: re-download capture files that already exist.")
     .option("--include-payload", "Write full captures, including prompt/completion payloads.")
     .option("--yes", "Confirm full payload export without prompting.")
     .action(async function (this: Command, traceId: string | undefined, opts: TraceExportOpts) {
@@ -78,10 +91,17 @@ async function runTraceExport(
 ): Promise<void> {
   const traceId = traceIdInput?.trim();
   const traceIdsFile = opts.traceIdsFile?.trim();
-  if (Boolean(traceId) === Boolean(traceIdsFile)) {
+  if (traceId && traceIdsFile) {
     throw new Error(
-      "Provide exactly one of <trace-id> or --trace-ids-file <path>.",
+      "Provide only one of <trace-id> or --trace-ids-file <path>.",
     );
+  }
+  if (!traceId && !traceIdsFile) {
+    await runWorkloadTraceExport(cmd, opts);
+    return;
+  }
+  if (opts.date !== undefined || opts.last !== undefined) {
+    throw new Error("--date and --last are only valid for workload-day export without explicit trace ids.");
   }
   if (traceId) validateTraceId(traceId);
   if (opts.includePayload && !opts.yes) {
@@ -240,6 +260,91 @@ async function runTraceExport(
   }
 
   if (retryTraceIds.length > 0) process.exitCode = 1;
+}
+
+async function runWorkloadTraceExport(cmd: Command, opts: TraceExportOpts): Promise<void> {
+  if (!opts.workload) {
+    throw new Error("Workload-day trace export requires --workload when no trace id is provided.");
+  }
+  if (!opts.includePayload || !opts.yes) {
+    throw new Error(
+      "Workload-day export contains raw prompts/completions. Re-run with --include-payload --yes to write it privately.",
+    );
+  }
+  if (opts.resume === false) {
+    throw new Error("--no-resume is only valid for explicit trace ids. Choose a fresh --out directory for a new workload-day export.");
+  }
+  const window = resolveWorkloadTraceWindow({ date: opts.date, last: opts.last });
+  const concurrency = parseBoundedInteger(
+    opts.concurrency,
+    "--concurrency",
+    1,
+    MAX_WORKLOAD_TRACE_CONCURRENCY,
+    DEFAULT_WORKLOAD_TRACE_CONCURRENCY,
+  );
+  const retries = parseBoundedInteger(
+    opts.retries,
+    "--retries",
+    0,
+    MAX_WORKLOAD_TRACE_RETRIES,
+    DEFAULT_WORKLOAD_TRACE_RETRIES,
+  );
+  const outputDirectory = resolve(opts.out);
+  const releaseOutputLease = acquireEvalBuildLease(outputDirectory);
+  try {
+    const project = await resolveProject(opts);
+    const workload = await resolveWorkload(project, opts.workload);
+    const result = await exportWorkloadTraceWindow({
+      orgId: project.auth.orgId,
+      projectId: project.projectId,
+      workloadId: workload.id,
+      outputDirectory,
+      gatewayUrl: project.auth.gatewayUrl,
+      concurrency,
+      retries,
+      reuseStoredWindow: opts.date === undefined,
+      ...window,
+      onProgress: isJsonMode(cmd)
+        ? undefined
+        : (completed) => {
+            if (completed % 100 === 0) process.stderr.write(`Processed ${completed} raw capture references...\n`);
+          },
+    });
+    const source = {
+      window: result.canonicalScope,
+      requested_count: result.requestedCount,
+      materialized_count: result.captureCount,
+      skipped_count: result.skippedCount,
+      capture_count: result.captureCount,
+      size_bytes: result.sizeBytes,
+      index: "source/index.jsonl",
+      index_sha256: result.indexSha256,
+    };
+    if (isJsonMode(cmd)) {
+      process.stdout.write(`${JSON.stringify({
+        ok: true,
+        mode: "workload_window",
+        org_id: project.auth.orgId,
+        project_id: project.projectId,
+        workload_id: workload.id,
+        output_directory: result.outputDirectory,
+        source,
+        written: result.writtenCount,
+        adopted: result.adoptedCount,
+        skipped: result.skippedCount,
+        warning: "files may contain prompts, completions, or tool payloads",
+      })}\n`);
+      return;
+    }
+    process.stdout.write(
+      `${kleur.green("✓")} Exported ${result.captureCount}/${result.requestedCount} raw workload captures` +
+      `${result.skippedCount > 0 ? ` (${result.skippedCount} no longer available)` : ""} -> ${result.outputDirectory}\n`,
+    );
+    process.stdout.write(`Source index: ${result.indexPath}\n`);
+    process.stdout.write(`${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`);
+  } finally {
+    releaseOutputLease();
+  }
 }
 
 async function fetchTraceRequestIdsWithRetry(

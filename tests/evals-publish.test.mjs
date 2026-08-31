@@ -114,11 +114,10 @@ test("evals publish preview exposes the exact non-uploaded release and binds the
     assert.equal(preview.bundle.size_bytes > 0, true);
     assert.equal(preview.bundle.r2_key, preview.manifest.artifacts.bundle_r2_key);
     assert.deepEqual(preview.bundle.files, preview.manifest.bundle_files);
-    assert.equal(preview.manifest.source.source_attestation, "signed-synthetic-source-attestation");
-    assert.equal(
-      preview.manifest.source.export_proof_sha256,
-      createHash("sha256").update(preview.manifest.source.source_attestation).digest("hex"),
-    );
+    assert.deepEqual(Object.keys(preview.manifest.source).sort(), [
+      "capture_count", "from", "ingestion_cutoff", "local_index_sha256", "to", "total_bytes",
+    ]);
+    assert.equal(Date.parse(preview.manifest.source.to) - Date.parse(preview.manifest.source.from), 86_400_000);
     assert.match(preview.local_only.policy, /exactly two objects.*publication manifest.*gzip bundle.*every other file.*stays local/i);
     assert.deepEqual(preview.local_only.explicitly_excluded, [
       ".understudy/",
@@ -223,7 +222,6 @@ test("evals publish deterministically packages exactly the checked release allow
     for (const forbidden of [
       "eval-project.json",
       "source/index.jsonl",
-      "source/export-proof.json",
       "source/traces/capture.json",
       "benchmark/execution-index.jsonl",
       "benchmark/analysis.md",
@@ -304,15 +302,6 @@ test("evals publish reruns the check and refuses stale approval or symlinked rel
         },
       }),
       /source index commitment changed after the passing eval check/i,
-    );
-
-    const exportProofMutation = buildEvalProject(join(root, "export-proof-mutation"));
-    await finalizeApproval(exportProofMutation.project);
-    await assert.rejects(
-      () => prepareEvalPublication(exportProofMutation.project, {
-        afterCheck: () => writeFileSync(join(exportProofMutation.project, "source/export-proof.json"), "\n", { flag: "a" }),
-      }),
-      /export proof changed after the passing eval check/i,
     );
 
     const moduleMutation = buildEvalProject(join(root, "module-mutation"));

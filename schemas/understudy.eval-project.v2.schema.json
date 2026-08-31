@@ -25,7 +25,7 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["window", "capture_count", "size_bytes", "index", "index_sha256", "export_proof", "export_proof_sha256", "exported_capture_count", "exported_total_bytes", "terminal_receipt_verified"],
+      "required": ["window", "requested_count", "materialized_count", "skipped_count", "skipped_index", "capture_count", "size_bytes", "index", "index_sha256"],
       "properties": {
         "window": {
           "type": "object",
@@ -42,15 +42,14 @@
             "ingestion_cutoff": { "$ref": "#/$defs/timestamp" }
           }
         },
+        "requested_count": { "$ref": "#/$defs/count" },
+        "materialized_count": { "$ref": "#/$defs/count" },
+        "skipped_count": { "$ref": "#/$defs/count" },
+        "skipped_index": { "$ref": "#/$defs/path" },
         "capture_count": { "$ref": "#/$defs/count" },
         "size_bytes": { "$ref": "#/$defs/count" },
         "index": { "$ref": "#/$defs/path" },
-        "index_sha256": { "$ref": "#/$defs/sha" },
-        "export_proof": { "$ref": "#/$defs/path" },
-        "export_proof_sha256": { "$ref": "#/$defs/sha" },
-        "exported_capture_count": { "$ref": "#/$defs/count" },
-        "exported_total_bytes": { "$ref": "#/$defs/count" },
-        "terminal_receipt_verified": { "const": true }
+        "index_sha256": { "$ref": "#/$defs/sha" }
       }
     },
     "artifacts": {

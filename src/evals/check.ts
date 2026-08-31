@@ -21,7 +21,6 @@ import {
   EvalDraftMetricSchema,
   EvalEnvironmentSchema,
   EvalExecutionIndexRowSchema,
-  EvalExportProofSchema,
   EvalHarnessSchema,
   EvalMetricSchema,
   EvalSourceRowSchema,
@@ -276,18 +275,10 @@ function sameReport(left: EvalCheckReportResult, right: EvalCheckReportResult): 
   return JSON.stringify(leftStable) === JSON.stringify(rightStable);
 }
 
-function sameJson(left: unknown, right: unknown): boolean {
-  return canonicalJson(left) === canonicalJson(right);
-}
-
-function assertExactSourceProof(
-  project: ReturnType<typeof WorkloadEvalProjectSchema.parse>,
-  proof: ReturnType<typeof EvalExportProofSchema.parse>,
-  proofSha256: string,
-): void {
+function assertExactSource(project: ReturnType<typeof WorkloadEvalProjectSchema.parse>): void {
   const windowStart = new Date(project.source.window.from).valueOf();
   const windowEnd = new Date(project.source.window.to).valueOf();
-  if (windowEnd - windowStart !== 7 * 86_400_000) throw new Error("Eval source window must be exactly seven days.");
+  if (windowEnd - windowStart !== 86_400_000) throw new Error("Eval source window must be exactly 24 hours.");
   if (Date.parse(project.source.window.ingestion_cutoff) < windowEnd) {
     throw new Error("Eval source ingestion cutoff must be at or after the frozen window end.");
   }
@@ -296,40 +287,6 @@ function assertExactSourceProof(
       throw new Error(`Eval source window ${key} does not match project identity.`);
     }
   }
-  if (proofSha256 !== project.source.export_proof_sha256) throw new Error("Export proof hash does not match eval-project.json.");
-  if (!sameJson(proof.canonical_scope, project.source.window)) throw new Error("Export proof canonical scope does not match eval-project.json.");
-  if (!sameJson(proof.verified_receipt.canonical_scope, proof.canonical_scope)) {
-    throw new Error("Verified export receipt canonical scope does not match its proof.");
-  }
-  const receipt = proof.verified_receipt;
-  const expectedScopeHash = sha256(JSON.stringify(proof.canonical_scope));
-  if (receipt.scope_hash !== expectedScopeHash) {
-    throw new Error("Verified export receipt scope hash does not match the canonical scope.");
-  }
-  if (proof.segment_manifest_sha256.length !== receipt.segment_index + 1) {
-    throw new Error("Export proof manifest chain length does not match the verified terminal segment.");
-  }
-  if (new Set(proof.segment_manifest_sha256).size !== proof.segment_manifest_sha256.length) {
-    throw new Error("Export proof manifest chain contains duplicate segment hashes.");
-  }
-  if (proof.segment_manifest_sha256.at(-1) !== receipt.manifest_sha256) {
-    throw new Error("Export proof terminal manifest does not match the verified receipt.");
-  }
-  const expectedPrevious = receipt.segment_index === 0 ? null : proof.segment_manifest_sha256.at(-2) ?? null;
-  if (receipt.previous_manifest_sha256 !== expectedPrevious) {
-    throw new Error("Export proof previous manifest does not match the verified receipt chain.");
-  }
-  if (
-    receipt.cumulative_exported !== project.source.exported_capture_count ||
-    receipt.total_bytes !== project.source.exported_total_bytes
-  ) throw new Error("Verified export receipt totals do not match eval-project.json.");
-  if (receipt.local_index_sha256 !== project.source.index_sha256) {
-    throw new Error("Verified export receipt source index commitment does not match eval-project.json.");
-  }
-  if (
-    project.source.capture_count !== project.source.exported_capture_count ||
-    project.source.size_bytes !== project.source.exported_total_bytes
-  ) throw new Error("Local eval source totals do not match the verified export totals.");
 }
 
 export async function runEvalCheck(projectInput: string, options: RunEvalCheckOptions = {}): Promise<EvalCheckResult> {
@@ -342,7 +299,8 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   }
   const expectedEvalId = deriveWorkloadEvalId({ name: project.name, identity: project.identity, sourceWindow: project.source.window });
   if (project.eval_id !== expectedEvalId) throw new Error("Eval id does not match the project name, identity, and frozen source window.");
-  const declaredPaths = [project.source.index, project.source.export_proof, ...Object.values(project.artifacts)];
+  assertExactSource(project);
+  const declaredPaths = [project.source.index, project.source.skipped_index, ...Object.values(project.artifacts)];
   if (new Set(declaredPaths).size !== declaredPaths.length) throw new Error("Eval project artifact paths must be unique; duplicate aliases are not allowed.");
   if (declaredPaths.includes(DRAFT_CHECK_REPORT_PATH)) {
     throw new Error(`${DRAFT_CHECK_REPORT_PATH} is reserved for the distinct local draft check report.`);
@@ -350,6 +308,12 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
 
   const indexPath = existingProjectPath(projectRoot, project.source.index, "source index");
   const indexBytes = regularFile(indexPath, "source index");
+  const skippedIndexPath = existingProjectPath(projectRoot, project.source.skipped_index, "skipped source index");
+  const skippedRows = regularFile(skippedIndexPath, "skipped source index")
+    .toString("utf8").split(/\r?\n/).filter(Boolean);
+  if (skippedRows.length !== project.source.skipped_count) {
+    throw new Error("Skipped source index count does not match eval-project.json.");
+  }
   const sourceRows = indexBytes.toString("utf8").split(/\r?\n/).filter(Boolean).map((line, index) => {
     let value: unknown;
     try { value = JSON.parse(line); }
@@ -368,6 +332,10 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   const sourceRowsByPath = new Map<string, (typeof sourceRows)[number]>();
   const sourceCapturePaths: string[] = [];
   for (const row of sourceRows) {
+    const capturedAt = Date.parse(row.captured_at);
+    if (capturedAt < Date.parse(project.source.window.from) || capturedAt >= Date.parse(project.source.window.to)) {
+      throw new Error(`Source capture ${row.request_id} falls outside the eval source window.`);
+    }
     if (sourcePaths.has(row.local_path)) throw new Error(`Source index contains duplicate local path ${row.local_path}.`);
     if (sourceCaptureKeys.has(row.capture_key)) throw new Error(`Source index contains duplicate capture key ${row.capture_key}.`);
     sourcePaths.add(row.local_path);
@@ -380,15 +348,6 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
       throw new Error(`Source capture integrity check failed for request ${row.request_id}.`);
     }
   }
-  const proofPath = existingProjectPath(projectRoot, project.source.export_proof, "export proof");
-  const proofBytes = regularFile(proofPath, "export proof");
-  const proof = parseJson(proofPath, EvalExportProofSchema, "export-proof.json");
-  const localExportProofSha256 = sha256(proofBytes);
-  assertExactSourceProof(project, proof, localExportProofSha256);
-  // The project hash protects the private proof file. The report field with
-  // the same legacy name is the durable backend-verifiable attestation hash.
-  const sourceAttestationSha256 = sha256(proof.verified_receipt.source_attestation);
-
   const profilePath = existingProjectPath(projectRoot, project.artifacts.workload_profile, "workload profile");
   const profileBytes = regularFile(profilePath, "workload profile");
   if (profileBytes.toString("utf8").trim().length < 20) throw new Error("Workload profile is missing or too short to record inferred or confirmed intent.");
@@ -539,12 +498,11 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     resolve(projectRoot, project.artifacts.check_report),
     resolve(projectRoot, DRAFT_CHECK_REPORT_PATH),
   ]);
-  if ([indexPath, proofPath, ...sourceCapturePaths, ...fixtureDataPaths].some((path) => generatedReportPaths.has(path))) {
+  if ([indexPath, ...sourceCapturePaths, ...fixtureDataPaths].some((path) => generatedReportPaths.has(path))) {
     throw new Error("Source and fixture data cannot alias generated check report paths.");
   }
   const protectedPaths = [
     indexPath,
-    proofPath,
     ...sourceCapturePaths,
     ...fixtureDataPaths,
     ...generatedReportPaths,
@@ -587,9 +545,8 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   const verifierSha256 = execution.verifier.sha256;
   const sourceBinding = {
     scope: project.source.window,
-    scope_sha256: proof.verified_receipt.scope_hash,
+    scope_sha256: sha256(JSON.stringify(project.source.window)),
     index_sha256: project.source.index_sha256,
-    export_proof_sha256: sourceAttestationSha256,
     capture_count: project.source.capture_count,
     size_bytes: project.source.size_bytes,
   };

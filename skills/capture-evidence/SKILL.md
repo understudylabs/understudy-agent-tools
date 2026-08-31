@@ -22,10 +22,12 @@ When the developer names a workload already captured by Understudy and the
 active credentials can read it, use the hosted-workload front door in
 [`references/hosted-workload-eval.md`](references/hosted-workload-eval.md).
 An active `understudy.eval-project.v2` is a separate, project-local branch: use
-its exact seven-day source, author only inside that eval project, and make the
+its exact one-day raw source, author only inside that eval project, and make the
 coding agent—not the CLI—the conversational frontend. Infer the goal, metric,
 and failure taxonomy from the traces and repository before asking targeted gap
-questions. Even without owner confirmation, continue to an explicitly
+questions. Reconcile any capture references recorded in
+`source/skipped.jsonl` before making coverage claims. Even without owner
+confirmation, continue to an explicitly
 provisional local draft and run `understudy evals check --draft`.
 Do not run the incumbent baseline, null floor, a provider model, or a hosted
 EvalWorkspace on that branch. Strict `understudy evals check`, final approval,
@@ -205,10 +207,13 @@ understudy evals build \
   --project <project> \
   --workload <workload> \
   --name <eval-name> \
-  --out .understudy/evals/<eval-dir>
+  --out .understudy/evals/<eval-dir> \
+  --yes
 ```
 
-This is a local-authoring operation: the service selects and freezes the source
+By default this downloads the rolling 24 hours ending when the command starts;
+add `--date YYYY-MM-DD` for one completed UTC calendar day. This is a
+local-authoring operation: the CLI mechanically transports and validates raw
 captures, while the coding agent owns lineage reconstruction, tool-call
 interpretation, task and contract proposals, verifier generation, and review.
 Do not silently substitute an older server-generated environment for the local

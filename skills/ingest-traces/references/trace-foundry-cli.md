@@ -4,8 +4,8 @@ Use these helpers instead of rewriting normalization, DAG construction,
 benchmark manifests, review application, environment packages, or replay loops.
 
 When the source is a named workload already captured by Understudy, the
-one-command front door freezes and downloads an immutable cohort before invoking
-this same compiler locally:
+one-command front door downloads one exact raw workload day before handing the
+source to the coding agent and this compiler locally:
 
 ```sh
 understudy evals build \
@@ -13,6 +13,9 @@ understudy evals build \
   --workload <workload> \
   --name <eval-name>
 ```
+
+It defaults to the rolling 24 hours ending when the command starts. Add
+`--date YYYY-MM-DD` to select one completed UTC calendar day.
 
 See
 [`../../capture-evidence/references/hosted-workload-eval.md`](../../capture-evidence/references/hosted-workload-eval.md)

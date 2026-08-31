@@ -1,17 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { compileTraceFoundry, type FoundryResult } from "./trace-foundry.js";
-import { createPrivateDirectory } from "./evals/build-state.js";
-import { sourceIndexCommitmentSha256 } from "./evals/source-index.js";
 import type { WorkloadEvalProject } from "./evals/authoring-contracts.js";
-import type {
-  EvalBuildIdentity,
-  VerifiedWorkloadCaptureFile,
-  VerifyWorkloadCaptureExportReceiptResponse,
-  WorkloadCaptureExportScope,
-} from "./evals/contracts.js";
+import type { EvalBuildIdentity } from "./evals/contracts.js";
+import { replacePrivateText } from "./evals/build-state.js";
+import type { WorkloadTraceExportResult, WorkloadTraceExportScope } from "./workload-trace-export.js";
 
 export interface EvalProjectIdentity {
   orgId: string;
@@ -79,16 +74,15 @@ export interface WorkloadEvalProjectManifest {
   created_at: string;
   identity: EvalBuildIdentity;
   source: {
-    window: WorkloadCaptureExportScope;
+    window: WorkloadTraceExportScope;
+    requested_count: number;
+    materialized_count: number;
+    skipped_count: number;
+    skipped_index: string;
     capture_count: number;
     size_bytes: number;
     index: string;
     index_sha256: string;
-    export_proof: string;
-    export_proof_sha256: string;
-    exported_capture_count: number;
-    exported_total_bytes: number;
-    terminal_receipt_verified: true;
   };
   artifacts: WorkloadEvalProject["artifacts"];
   authoring: {
@@ -102,11 +96,7 @@ export interface BuildWorkloadEvalProjectOptions {
   output: string;
   name: string;
   identity: EvalBuildIdentity;
-  canonicalScope: WorkloadCaptureExportScope;
-  verifiedFiles: VerifiedWorkloadCaptureFile[];
-  segmentManifestSha256: string[];
-  terminalReceipt: string;
-  verifiedReceipt: VerifyWorkloadCaptureExportReceiptResponse;
+  source: WorkloadTraceExportResult;
   now: Date;
 }
 
@@ -117,7 +107,7 @@ export interface WorkloadEvalProjectBuildResult extends WorkloadEvalProjectManif
 export function deriveWorkloadEvalId(input: {
   name: string;
   identity: EvalBuildIdentity;
-  sourceWindow: WorkloadCaptureExportScope;
+  sourceWindow: WorkloadTraceExportScope;
 }): string {
   return `eval_${createHash("sha256").update(JSON.stringify({
     schema_version: "understudy.eval-identity.v1",
@@ -219,56 +209,29 @@ export function buildEvalProject(options: BuildEvalProjectOptions): EvalProjectB
 }
 
 export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOptions): WorkloadEvalProjectBuildResult {
-  if (options.verifiedReceipt.cumulative_exported === 0) {
+  if (options.source.captureCount === 0) {
     throw new Error("No captures were exported for the frozen workload window; refusing to create an empty eval project.");
   }
+  if (options.source.requestedCount !== options.source.captureCount + options.source.skippedCount) {
+    throw new Error("Raw trace source requested count must equal its materialized and skipped capture counts.");
+  }
   const projectRoot = resolve(options.output);
-  const sourceRoot = join(projectRoot, "source");
-  createPrivateDirectory(sourceRoot);
+  const scope = options.source.canonicalScope;
   if (
-    JSON.stringify(options.verifiedReceipt.canonical_scope) !== JSON.stringify(options.canonicalScope) ||
-    options.verifiedReceipt.chain_id.length === 0 ||
-    options.verifiedReceipt.manifest_sha256 !== options.segmentManifestSha256.at(-1)
-  ) throw new Error("Verified export receipt does not match the materialized source chain.");
-
-  const unique = new Map<string, VerifiedWorkloadCaptureFile>();
-  for (const file of options.verifiedFiles) {
-    const previous = unique.get(file.capture_key);
-    if (previous && JSON.stringify(previous) !== JSON.stringify(file)) {
-      throw new Error(`Capture source ledger conflicts for ${file.capture_key}.`);
-    }
-    unique.set(file.capture_key, file);
+    scope.org_id !== options.identity.org_id ||
+    scope.project_id !== options.identity.project_id ||
+    scope.workload_id !== options.identity.workload_id
+  ) throw new Error("Raw trace source scope does not match the eval project identity.");
+  const indexPath = resolve(options.source.indexPath);
+  if (indexPath !== join(projectRoot, "source", "index.jsonl")) {
+    throw new Error("Raw trace source index must be source/index.jsonl inside the eval project.");
   }
-  const files = [...unique.values()];
-  const uniqueTotalBytes = files.reduce((sum, file) => sum + file.size_bytes, 0);
-  if (
-    files.length !== options.verifiedReceipt.cumulative_exported ||
-    uniqueTotalBytes !== options.verifiedReceipt.total_bytes
-  ) {
-    throw new Error("Verified export receipt totals do not match unique materialized captures.");
-  }
-  const indexBody = files.map((file) => JSON.stringify(file)).join("\n") + (files.length > 0 ? "\n" : "");
-  const indexSha256 = sourceIndexCommitmentSha256(files);
-  if (options.verifiedReceipt.local_index_sha256 !== indexSha256) {
-    throw new Error("Verified export receipt source index commitment does not match materialized captures.");
-  }
-  const indexPath = join(sourceRoot, "index.jsonl");
-  replacePrivateText(indexPath, indexBody);
-  const proofPath = join(sourceRoot, "export-proof.json");
-  const proofBody = `${JSON.stringify({
-    schema_version: "understudy.eval-export-proof.v1",
-    canonical_scope: options.canonicalScope,
-    segment_manifest_sha256: options.segmentManifestSha256,
-    terminal_receipt: options.terminalReceipt,
-    verified_receipt: options.verifiedReceipt,
-  }, null, 2)}\n`;
-  replacePrivateText(proofPath, proofBody);
 
   const projectFile = join(projectRoot, "eval-project.json");
   const evalId = deriveWorkloadEvalId({
     name: options.name,
     identity: options.identity,
-    sourceWindow: options.canonicalScope,
+    sourceWindow: scope,
   });
   const project: WorkloadEvalProjectManifest = {
     schema_version: "understudy.eval-project.v2",
@@ -278,16 +241,15 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
     created_at: options.now.toISOString(),
     identity: options.identity,
     source: {
-      window: options.canonicalScope,
-      capture_count: files.length,
-      size_bytes: uniqueTotalBytes,
+      window: scope,
+      requested_count: options.source.requestedCount,
+      materialized_count: options.source.captureCount,
+      skipped_count: options.source.skippedCount,
+      skipped_index: portableRelative(projectRoot, join(projectRoot, "source", "skipped.jsonl")),
+      capture_count: options.source.captureCount,
+      size_bytes: options.source.sizeBytes,
       index: portableRelative(projectRoot, indexPath),
-      index_sha256: indexSha256,
-      export_proof: portableRelative(projectRoot, proofPath),
-      export_proof_sha256: createHash("sha256").update(proofBody).digest("hex"),
-      exported_capture_count: options.verifiedReceipt.cumulative_exported,
-      exported_total_bytes: options.verifiedReceipt.total_bytes,
-      terminal_receipt_verified: true,
+      index_sha256: options.source.indexSha256,
     },
     artifacts: {
       workload_profile: "workload-profile.md",
@@ -313,15 +275,4 @@ export function buildWorkloadEvalProject(options: BuildWorkloadEvalProjectOption
   };
   replacePrivateText(projectFile, `${JSON.stringify(project, null, 2)}\n`);
   return { ...project, project_file: projectFile };
-}
-
-function replacePrivateText(path: string, body: string): void {
-  const temporary = `${path}.tmp-${randomUUID()}`;
-  try {
-    writeFileSync(temporary, body, { encoding: "utf8", mode: 0o600, flag: "wx" });
-    renameSync(temporary, path);
-    chmodSync(path, 0o600);
-  } finally {
-    rmSync(temporary, { force: true });
-  }
 }

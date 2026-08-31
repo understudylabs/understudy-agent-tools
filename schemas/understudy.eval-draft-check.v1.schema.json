@@ -29,12 +29,11 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["scope", "scope_sha256", "index_sha256", "export_proof_sha256", "capture_count", "size_bytes"],
+      "required": ["scope", "scope_sha256", "index_sha256", "capture_count", "size_bytes"],
       "properties": {
         "scope": { "$ref": "#/$defs/scope" },
         "scope_sha256": { "$ref": "#/$defs/sha" },
         "index_sha256": { "$ref": "#/$defs/sha" },
-        "export_proof_sha256": { "$ref": "#/$defs/sha" },
         "capture_count": { "type": "integer", "minimum": 0 },
         "size_bytes": { "type": "integer", "minimum": 0 }
       }

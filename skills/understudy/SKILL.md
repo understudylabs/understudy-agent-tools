@@ -151,8 +151,10 @@ Identify the developer's current stage and load exactly one:
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
   (also owns repo inspection + eval-harness discovery/build). For a named
-  workload already captured by Understudy, this route uses `understudy evals
-  build` to freeze the source cohort and construct the verifier draft locally.
+  workload already captured by Understudy, the recommended route is
+  `understudy evals build`: it downloads one raw workload day and hands that
+  source to the coding agent for local verifier authoring. Do not use the
+  legacy sampled-cohort `evals create` path for this workflow.
 - **App is running but no traces exist yet** — the developer wants capture
   flowing in minutes with no app-code changes ("instrument my app", "start
   capturing my LLM calls") → [`../instrument/SKILL.md`](../instrument/SKILL.md)

@@ -15,7 +15,6 @@ import {
   EvalDraftMetricSchema,
   EvalEnvironmentSchema,
   EvalExecutionIndexRowSchema,
-  EvalExportProofSchema,
   EvalHarnessSchema,
   EvalMetricSchema,
   EvalSplitsSchema,
@@ -28,12 +27,10 @@ import {
 } from "../dist/evals/release-contracts.js";
 
 const sha = "a".repeat(64);
-const sourceAttestation = "signed-source-attestation";
-const sourceAttestationSha = createHash("sha256").update(sourceAttestation).digest("hex");
 const timestamp = "2026-08-30T12:00:00.000Z";
 // Keep these digests in sync with the server-side release contract test.
-const GOLDEN_PUBLICATION_SHA256 = "e5f1300027c2ec46607243b47b205efd48d0bc0aacf3ec14bfb8db9d736dd24a";
-const GOLDEN_RELEASE_SHA256 = "f3f4efaea8d188ab02a00200e88d426577686a1e7e00dfb2b502750f9868e35e";
+const GOLDEN_PUBLICATION_SHA256 = "3582d4a8c497191edb1ae68cf5949bed1371315a39b1e6dbb7685a19fd4e84e2";
+const GOLDEN_RELEASE_SHA256 = "ae1899288cd0869bf81453e8bc817e1b2e6e15aea4c5b2d2276348b0dc2ca23c";
 const pathPatternValue = "environment/replay.mjs";
 const scope = { schema_version: "understudy.export-scope.v1", selector: "workload-window", org_id: "org", project_id: "project", workload_id: "workload", from: timestamp, to: timestamp, ingestion_cutoff: timestamp };
 
@@ -139,14 +136,12 @@ const publicationValue = {
   eval_id: "eval_0123456789abcdef01234567",
   name: "weekly eval",
   source: {
-    from: "2026-08-23T12:00:00.000Z",
+    from: "2026-08-29T12:00:00.000Z",
     to: timestamp,
     ingestion_cutoff: timestamp,
     capture_count: 1,
     total_bytes: 12,
     local_index_sha256: sha,
-    export_proof_sha256: sourceAttestationSha,
-    source_attestation: sourceAttestation,
   },
   artifacts: {
     eval_set_sha256: sha,
@@ -196,9 +191,11 @@ const samples = {
       identity: { org_id: "org", project_id: "project", workload_id: "workload", workload_name: "support" },
       source: {
         window: scope,
+        requested_count: 1,
+        materialized_count: 1,
+        skipped_count: 0,
+        skipped_index: "source/skipped.jsonl",
         capture_count: 1, size_bytes: 12, index: "source/index.jsonl", index_sha256: sha,
-        export_proof: "source/export-proof.json", export_proof_sha256: sha, exported_capture_count: 1, exported_total_bytes: 12,
-        terminal_receipt_verified: true,
       },
       artifacts: { workload_profile: "workload-profile.md", coverage: "coverage.json", harness: "harness.json", environment: "environment.json", metric: "metric.json", splits: "splits.json", tasks: "benchmark/tasks.jsonl", execution_index: "benchmark/execution-index.jsonl", analysis: "benchmark/analysis.md", verifier: "verifier", approval: "approval.json", check_report: "checks/report.json" },
       authoring: { owner: "coding_agent", semantic_preparation_performed: true },
@@ -215,33 +212,6 @@ const samples = {
     runtime: EvalDraftCoverageSchema,
     value: { schema_version: "understudy.eval-draft-coverage.v1", lineage: { execution_index_sha256: sha, counts: { complete: 1, ambiguous: 0, unlinked: 0 } }, execution_modes: [{ name: "write", observed_count: 1, task_ids: ["task-1"], disposition: "covered" }], failure_classes: [{ name: "wrong", observed_count: 0, task_ids: [], disposition: "agent_proposed_uncovered", agent_note: "No independently confirmed negative exists yet." }] },
     reject: (value) => { value.failure_classes[0].agent_note = ""; },
-  },
-  "export-proof.v1": {
-    runtime: EvalExportProofSchema,
-    value: {
-      schema_version: "understudy.eval-export-proof.v1",
-      canonical_scope: scope,
-      segment_manifest_sha256: [sha],
-      terminal_receipt: "signed receipt",
-      verified_receipt: {
-        verified: true,
-        scope_hash: sha,
-        chain_id: "chain",
-        segment_id: sha,
-        segment_index: 0,
-        manifest_sha256: sha,
-        previous_manifest_sha256: null,
-        cumulative_scanned: 1,
-        cumulative_matched: 1,
-        cumulative_exported: 1,
-        total_bytes: 12,
-        local_index_sha256: sha,
-        expires_at: timestamp,
-        canonical_scope: scope,
-        source_attestation: sourceAttestation,
-      },
-    },
-    reject: (value) => { value.verified_receipt.verified = false; },
   },
   "execution-index-row.v1": {
     runtime: EvalExecutionIndexRowSchema,
@@ -290,12 +260,12 @@ const samples = {
   },
   "check.v1": {
     runtime: EvalCheckReportSchema,
-    value: { schema_version: "understudy.eval-check.v1", checked_at: timestamp, status: "passed", task_count: 1, representative_replay: { ...outcome, provider_called: false }, oracle_fixture: outcome, wrong_fixture: { ...outcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, export_proof_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha },
+    value: { schema_version: "understudy.eval-check.v1", checked_at: timestamp, status: "passed", task_count: 1, representative_replay: { ...outcome, provider_called: false }, oracle_fixture: outcome, wrong_fixture: { ...outcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha },
     reject: (value) => { value.wrong_fixture.result = "passed"; },
   },
   "draft-check.v1": {
     runtime: EvalDraftCheckReportSchema,
-    value: { schema_version: "understudy.eval-draft-check.v1", checked_at: timestamp, status: "passed", publishable: false, task_count: 1, representative_replay: { ...draftOutcome, provider_called: false }, oracle_fixture: draftOutcome, wrong_fixture: { ...draftOutcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, export_proof_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha, semantic_assumptions: [{ kind: "workload_goal", reference: "workload-profile.md", statement: "The inferred workload goal still needs owner confirmation." }] },
+    value: { schema_version: "understudy.eval-draft-check.v1", checked_at: timestamp, status: "passed", publishable: false, task_count: 1, representative_replay: { ...draftOutcome, provider_called: false }, oracle_fixture: draftOutcome, wrong_fixture: { ...draftOutcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha, semantic_assumptions: [{ kind: "workload_goal", reference: "workload-profile.md", statement: "The inferred workload goal still needs owner confirmation." }] },
     reject: (value) => { value.publishable = true; },
   },
   "publication.v1": {
@@ -316,7 +286,7 @@ test("publication and release golden bytes match the cross-repository digests", 
   assert.equal(digest(releaseValue), GOLDEN_RELEASE_SHA256);
 });
 
-test("release sources preserve a backend cutoff at or after the exact seven-day window", () => {
+test("release sources preserve a backend cutoff at or after the exact 24-hour window", () => {
   const delayed = structuredClone(publicationValue);
   delayed.source.ingestion_cutoff = "2026-08-30T12:00:01.000Z";
   assert.equal(EvalPublicationSchema.safeParse(delayed).success, true);
