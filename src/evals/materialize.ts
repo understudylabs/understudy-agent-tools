@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
-import { closeSync, openSync, renameSync, rmSync, writeSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { closeSync, createReadStream, lstatSync, openSync, renameSync, rmSync, writeSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { createPrivateDirectory, pathExists, writePrivateJson } from "./build-state.js";
-import type { CohortExport } from "./contracts.js";
+import {
+  WorkloadCaptureExportManifestHeaderSchema,
+  WorkloadCaptureExportManifestItemSchema,
+  type CohortExport,
+  type VerifiedWorkloadCaptureFile,
+  type WorkloadCaptureExportManifestHeader,
+  type WorkloadCaptureExportManifestItem,
+  type WorkloadCaptureExportResponse,
+} from "./contracts.js";
 
 export const EXPORT_EXPIRES_SECONDS = 3600;
 const CAPTURE_DOWNLOAD_TIMEOUT_MS = 60_000;
@@ -181,6 +189,234 @@ export function reserveDownloadedChunk(
   }
   aggregateBudget.used += chunkBytes;
   return captureBytes + chunkBytes;
+}
+
+export function reserveReceiptDrivenChunk(
+  requestId: string,
+  captureBytes: number,
+  chunkBytes: number,
+  expectedBytes: number,
+): number {
+  const next = captureBytes + chunkBytes;
+  if (
+    !Number.isSafeInteger(captureBytes) || captureBytes < 0 ||
+    !Number.isSafeInteger(chunkBytes) || chunkBytes < 0 ||
+    !Number.isSafeInteger(expectedBytes) || expectedBytes < 0 ||
+    !Number.isSafeInteger(next) || next > expectedBytes
+  ) {
+    throw new Error(`Capture ${requestId} exceeds its authenticated ${expectedBytes}-byte manifest size.`);
+  }
+  return next;
+}
+
+export async function materializeWorkloadExportSegment(input: {
+  exportData: WorkloadCaptureExportResponse;
+  tracesDirectory: string;
+  gatewayUrl: string;
+  verifiedFiles: VerifiedWorkloadCaptureFile[];
+  onVerified: (file: VerifiedWorkloadCaptureFile) => void | Promise<void>;
+}): Promise<{
+  header: WorkloadCaptureExportManifestHeader;
+  items: WorkloadCaptureExportManifestItem[];
+  manifest_sha256: string;
+}> {
+  const manifestUrl = allowedCaptureUrl(input.exportData.manifest_url, input.gatewayUrl);
+  const manifestResponse = await fetch(manifestUrl, {
+    headers: { Accept: "application/x-ndjson" },
+    redirect: "error",
+    signal: AbortSignal.timeout(CAPTURE_DOWNLOAD_TIMEOUT_MS),
+  });
+  if (!manifestResponse.ok) {
+    throw new Error(`Capture export manifest download failed with status ${manifestResponse.status}.`);
+  }
+  const manifestBody = await manifestResponse.text();
+  const manifestSha256 = createHash("sha256").update(manifestBody).digest("hex");
+  if (manifestSha256 !== input.exportData.chain.manifest_sha256) {
+    throw new Error("Capture export manifest failed SHA-256 verification.");
+  }
+  const lines = manifestBody.split("\n").filter((line) => line.length > 0);
+  if (lines.length === 0) throw new Error("Capture export manifest is empty.");
+  const header = WorkloadCaptureExportManifestHeaderSchema.parse(JSON.parse(lines[0]!));
+  const items = lines.slice(1).map((line) => WorkloadCaptureExportManifestItemSchema.parse(JSON.parse(line)));
+  assertWorkloadManifestLineage(input.exportData, header, items, manifestSha256);
+
+  const tracesDirectory = resolve(input.tracesDirectory);
+  const projectRoot = dirname(dirname(tracesDirectory));
+  createPrivateDirectory(tracesDirectory);
+  const verifiedByKey = new Map<string, VerifiedWorkloadCaptureFile>();
+  for (const file of input.verifiedFiles) {
+    const previous = verifiedByKey.get(file.capture_key);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(file)) {
+      throw new Error(`Verified capture ledger contains conflicting entries for ${file.capture_key}.`);
+    }
+    verifiedByKey.set(file.capture_key, file);
+  }
+
+  for (const item of items) {
+    const fileName = portableCaptureFileName(
+      item.request_id,
+      `-${createHash("sha256").update(item.key).digest("hex").slice(0, 12)}`,
+    );
+    const expectedLocalPath = relative(projectRoot, join(tracesDirectory, fileName)).split(sep).join("/");
+    const existing = verifiedByKey.get(item.key);
+    if (existing) {
+      if (
+        existing.request_id !== item.request_id || existing.size_bytes !== item.size ||
+        existing.content_sha256 !== item.content_sha256 || existing.local_path !== expectedLocalPath
+      ) throw new Error(`Verified capture ledger does not match export item ${item.request_id}.`);
+      const existingPath = resolveLedgerPath(projectRoot, existing.local_path);
+      const hashed = await hashLocalCapture(existingPath);
+      if (hashed.sizeBytes !== existing.size_bytes || hashed.digest !== existing.content_sha256) {
+        throw new Error(`Verified local capture ${item.request_id} no longer matches its ledger.`);
+      }
+      continue;
+    }
+
+    const finalPath = join(tracesDirectory, fileName);
+    if (pathExists(finalPath)) {
+      const recovered = await hashLocalCapture(finalPath);
+      if (recovered.sizeBytes !== item.size || recovered.digest !== item.content_sha256) {
+        throw new Error(`Untracked capture file does not match export item ${item.request_id}.`);
+      }
+      const verified: VerifiedWorkloadCaptureFile = {
+        schema_version: "understudy.eval-source-capture.v1",
+        request_id: item.request_id,
+        capture_key: item.key,
+        size_bytes: recovered.sizeBytes,
+        content_sha256: recovered.digest,
+        local_path: expectedLocalPath,
+      };
+      verifiedByKey.set(item.key, verified);
+      await input.onVerified(verified);
+      continue;
+    }
+    const downloaded = await downloadReceiptDrivenCapture(item, finalPath, input.gatewayUrl);
+    const verified: VerifiedWorkloadCaptureFile = {
+      schema_version: "understudy.eval-source-capture.v1",
+      request_id: item.request_id,
+      capture_key: item.key,
+      size_bytes: downloaded.sizeBytes,
+      content_sha256: downloaded.digest,
+      local_path: expectedLocalPath,
+    };
+    verifiedByKey.set(item.key, verified);
+    await input.onVerified(verified);
+  }
+  return { header, items, manifest_sha256: manifestSha256 };
+}
+
+function assertWorkloadManifestLineage(
+  exportData: WorkloadCaptureExportResponse,
+  header: WorkloadCaptureExportManifestHeader,
+  items: WorkloadCaptureExportManifestItem[],
+  manifestSha256: string,
+): void {
+  const chain = exportData.chain;
+  for (const key of ["chain_id", "segment_id", "segment_index", "previous_manifest_sha256", "terminal"] as const) {
+    if (header[key] !== chain[key]) throw new Error(`Capture export manifest ${key} does not match its response.`);
+  }
+  if (
+    manifestSha256 !== chain.manifest_sha256 ||
+    header.cumulative_scanned !== chain.cumulative_scanned ||
+    header.cumulative_matched !== chain.cumulative_matched ||
+    header.cumulative_exported !== chain.cumulative_exported ||
+    header.cumulative_total_bytes !== chain.cumulative_total_bytes
+  ) throw new Error("Capture export manifest cumulative lineage does not match its response.");
+  const totalBytes = items.reduce((sum, item) => sum + item.size, 0);
+  if (items.length !== exportData.count || totalBytes !== exportData.total_bytes) {
+    throw new Error("Capture export manifest totals do not match its response.");
+  }
+  if (chain.terminal === exportData.truncated) {
+    throw new Error("Capture export terminal state is inconsistent.");
+  }
+  if (chain.terminal) {
+    if (!chain.terminal_receipt || exportData.resume_cursor) {
+      throw new Error("Terminal capture export segment is missing its receipt.");
+    }
+  } else if (!exportData.resume_cursor || chain.terminal_receipt) {
+    throw new Error("Non-terminal capture export segment is missing its resume cursor.");
+  }
+}
+
+async function downloadReceiptDrivenCapture(
+  item: WorkloadCaptureExportManifestItem,
+  finalPath: string,
+  gatewayUrl: string,
+): Promise<{ digest: string; sizeBytes: number }> {
+  const url = allowedCaptureUrl(item.url, gatewayUrl);
+  const partialPath = `${finalPath}.partial`;
+  let descriptor: number | null = null;
+  let complete = false;
+  try {
+    const download = await fetch(url, {
+      headers: { Accept: "application/x-ndjson" },
+      redirect: "error",
+      signal: AbortSignal.timeout(CAPTURE_DOWNLOAD_TIMEOUT_MS),
+    });
+    if (!download.ok) throw new Error(`Capture ${item.request_id} download failed with status ${download.status}.`);
+    const declaredLength = download.headers.get("content-length");
+    if (declaredLength !== null && Number(declaredLength) !== item.size) {
+      throw new Error(`Capture ${item.request_id} content length does not match its authenticated manifest size.`);
+    }
+    if (!download.body) throw new Error(`Capture ${item.request_id} download returned no body.`);
+    descriptor = openSync(partialPath, "wx", 0o600);
+    const hash = createHash("sha256");
+    const reader = download.body.getReader();
+    let sizeBytes = 0;
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      try {
+        sizeBytes = reserveReceiptDrivenChunk(item.request_id, sizeBytes, chunk.value.byteLength, item.size);
+      } catch (error) {
+        await reader.cancel();
+        throw error;
+      }
+      hash.update(chunk.value);
+      let written = 0;
+      while (written < chunk.value.byteLength) {
+        const count = writeSync(descriptor, chunk.value, written, chunk.value.byteLength - written);
+        if (count <= 0) throw new Error(`Capture ${item.request_id} could not be written completely.`);
+        written += count;
+      }
+    }
+    if (sizeBytes !== item.size) {
+      throw new Error(`Capture ${item.request_id} ended before its authenticated manifest size.`);
+    }
+    closeSync(descriptor);
+    descriptor = null;
+    const digest = hash.digest("hex");
+    if (digest !== item.content_sha256) {
+      throw new Error(`Capture ${item.request_id} failed authenticated SHA-256 verification.`);
+    }
+    renameSync(partialPath, finalPath);
+    complete = true;
+    return { digest, sizeBytes };
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+    if (!complete) rmSync(partialPath, { force: true });
+  }
+}
+
+function resolveLedgerPath(projectRoot: string, localPath: string): string {
+  const absolute = resolve(projectRoot, localPath);
+  const relativePath = relative(projectRoot, absolute);
+  if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`)) {
+    throw new Error("Verified capture ledger path leaves the eval project.");
+  }
+  return absolute;
+}
+
+async function hashLocalCapture(path: string): Promise<{ digest: string; sizeBytes: number }> {
+  const stat = lstatSync(path);
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error(`Verified capture must be a real file: ${path}.`);
+  const hash = createHash("sha256");
+  let sizeBytes = 0;
+  for await (const chunk of createReadStream(path)) {
+    sizeBytes += chunk.length;
+    hash.update(chunk);
+  }
+  return { digest: hash.digest("hex"), sizeBytes };
 }
 
 function allowedCaptureUrl(raw: string, gatewayUrl: string): string {

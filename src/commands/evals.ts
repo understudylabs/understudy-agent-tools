@@ -1,16 +1,17 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { confirm } from "@inquirer/prompts";
 import { Command } from "commander";
 import kleur from "kleur";
 
-import { buildEvalProject } from "../eval-project.js";
+import { buildWorkloadEvalProject, type WorkloadEvalProjectBuildResult } from "../eval-project.js";
+import { runEvalCheck } from "../evals/check.js";
+import { previewEvalPublication, publishEvalRelease } from "../evals/publish.js";
 import {
   acquireEvalBuildLease,
-  assertBuildStateMatches,
-  buildState,
-  cohortFromResponse,
-  creatingBuildState,
+  assertWorkloadBuildStateMatches,
+  creatingWorkloadBuildState,
+  ensureUnderstudyGitExcluded,
   initializeBuildCheckpoint,
   pathExists,
   readEvalBuildState,
@@ -22,19 +23,22 @@ import {
   CatalogResponseSchema,
   CohortExportSchema,
   CohortSchema,
+  EvalWorkloadBuildStateSchema,
+  VerifyWorkloadCaptureExportReceiptResponseSchema,
+  WorkloadCaptureExportResponseSchema,
   type CatalogItem,
-  type Cohort,
-  type EvalBuildCreatingState,
-  type EvalBuildIdentity,
-  type EvalBuildSelection,
-  type FrozenCohort,
+  type EvalWorkloadBuildState,
+  type WorkloadCaptureExportResponse,
+  type WorkloadCaptureExportScope,
 } from "../evals/contracts.js";
 import {
   assertEquivalentExport,
   assertExportLineage,
   downloadExport,
   EXPORT_EXPIRES_SECONDS,
+  materializeWorkloadExportSegment,
 } from "../evals/materialize.js";
+import { sourceIndexCommitmentSha256 } from "../evals/source-index.js";
 import { request } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 import { resolveProject, type ProjectResolutionOptions } from "../internal/projects.js";
@@ -79,14 +83,27 @@ interface GuidedCreateOpts extends WorkloadOpts {
   download: boolean;
   yes?: boolean;
 }
-interface BuildOpts extends Omit<GuidedCreateOpts, "download"> {
+interface BuildOpts extends WorkloadOpts {
+  name: string;
+  last: string;
+  out?: string;
+  yes?: boolean;
   maxAgeDays?: string;
   batchSize: string;
+}
+interface CheckOpts {
+  project: string;
+  draft?: boolean;
+}
+interface PublishOpts {
+  project: string;
+  preview?: boolean;
+  expectReleaseId?: string;
 }
 
 export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
-    .description("Select, freeze, and materialize workload-scoped evaluation cohorts.");
+    .description("Build, check, publish, and manage workload-scoped evaluations for coding agents.");
 
   addWorkloadOptions(addRecentSelectionOptions(
     evals.command("create").description("Create a frozen eval set from a recent workload window."),
@@ -99,16 +116,33 @@ export function registerEvalsCommand(program: Command): void {
       await runAction(this, () => runGuidedCreate(this, opts));
     });
 
-  addWorkloadOptions(addRecentSelectionOptions(
-    evals.command("build").description("Build a private local draft eval project from a frozen workload cohort."),
-    "Local eval project and cohort name.",
-  )
+  addWorkloadOptions(evals.command("build")
+    .description("Download a complete seven-day workload source for a coding agent to turn into an eval.")
+    .requiredOption("--name <name>", "Local eval project name.")
+    .option("--last <duration>", "Complete capture window (currently exactly 7d).", "7d")
     .option("--out <directory>", "Destination directory (default: .understudy/evals/<safe-name>).")
-    .option("--max-age-days <days>", "Override freshness cutoff (must cover --last; default: derive from --last).")
-    .option("--batch-size <count>", "Local trace-foundry processing batch size.", "10")
-    .option("--yes", "Approve freezing and downloading payload-bearing traces without prompting."))
+    .option("--max-age-days <days>", "Record the source freshness horizon (default: 7).")
+    .option("--batch-size <count>", "Record the coding-agent processing batch size.", "10")
+    .option("--yes", "Approve downloading payload-bearing traces without prompting."))
     .action(async function (this: Command, opts: BuildOpts) {
       await runAction(this, () => runBuild(this, opts));
+    });
+
+  evals.command("check")
+    .description("Check a locally authored eval, its verifier fixtures, and artifact hashes without a model call.")
+    .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
+    .option("--draft", "Validate a provisional agent-authored draft without requiring owner approval.")
+    .action(async function (this: Command, opts: CheckOpts) {
+      await runAction(this, () => runCheck(this, opts));
+    });
+
+  evals.command("publish")
+    .description("Publish a final owner-approved eval release without uploading its raw source traces.")
+    .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
+    .option("--preview", "Prepare and print the exact manifest and bundle inventory without uploading.")
+    .option("--expect-release-id <id>", "Upload only when the prepared release still matches this preview identity.")
+    .action(async function (this: Command, opts: PublishOpts) {
+      await runAction(this, () => runPublish(this, opts));
     });
 
   addWorkloadOptions(evals.command("catalog")
@@ -144,6 +178,78 @@ export function registerEvalsCommand(program: Command): void {
     .action(async function (this: Command, cohortId: string, opts: CohortExportOpts) {
       await runAction(this, () => runCohortExport(this, cohortId, opts));
     });
+}
+
+async function runCheck(cmd: Command, opts: CheckOpts): Promise<void> {
+  const result = await runEvalCheck(resolve(opts.project), { draft: opts.draft === true });
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+  if (result.mode === "draft") {
+    process.stdout.write(`${kleur.green("✓")} Draft schemas, source hashes, deterministic fixture replays, and verifier behavior passed.\n`);
+    process.stdout.write(`Draft report: ${result.report_file}\n`);
+    process.stdout.write(`Lineage: ${result.coverage.lineage.complete} complete, ${result.coverage.lineage.ambiguous} ambiguous, ${result.coverage.lineage.unlinked} unlinked.\n`);
+    const proposedGaps = [...result.coverage.execution_modes, ...result.coverage.failure_classes]
+      .filter((entry) => entry.disposition === "agent_proposed_uncovered")
+      .map((entry) => `${entry.name} (${entry.observed_count})`);
+    process.stdout.write(`Agent-proposed coverage gaps: ${proposedGaps.length > 0 ? proposedGaps.join(", ") : "none"}.\n`);
+    process.stdout.write(`Verifier feedback: representative — ${result.report.representative_replay.feedback}; proposed good — ${result.report.oracle_fixture.feedback}; proposed wrong — ${result.report.wrong_fixture.feedback}.\n`);
+    process.stdout.write("Semantic assumptions needing owner confirmation:\n");
+    for (const assumption of result.semantic_assumptions) {
+      process.stdout.write(`  - ${assumption.kind}: ${assumption.statement} (${assumption.reference})\n`);
+    }
+    process.stdout.write("Draft artifact hashes (not valid for publication approval):\n");
+    for (const [name, value] of Object.entries(result.hashes)) process.stdout.write(`  ${name}: ${value}\n`);
+    process.stdout.write(`${kleur.yellow("next")}: ask the workload owner to correct or confirm these assumptions, replace provisional evidence, then run the strict eval check.\n`);
+    return;
+  }
+  process.stdout.write(`${kleur.green("✓")} Eval schemas, source hashes, representative replay, oracle, and wrong-answer rejection passed.\n`);
+  process.stdout.write(`Check report: ${result.report_file}\n`);
+  process.stdout.write(`Lineage: ${result.coverage.lineage.complete} complete, ${result.coverage.lineage.ambiguous} ambiguous, ${result.coverage.lineage.unlinked} unlinked.\n`);
+  const acceptedGaps = [...result.coverage.execution_modes, ...result.coverage.failure_classes]
+    .filter((entry) => entry.disposition === "owner_accepted_uncovered")
+    .map((entry) => `${entry.name} (${entry.observed_count})`);
+  process.stdout.write(`Owner-accepted coverage gaps: ${acceptedGaps.length > 0 ? acceptedGaps.join(", ") : "none"}.\n`);
+  process.stdout.write(`Verifier feedback: representative — ${result.report.representative_replay.feedback}; oracle — ${result.report.oracle_fixture.feedback}; wrong answer — ${result.report.wrong_fixture.feedback}.\n`);
+  process.stdout.write("Approval hashes:\n");
+  for (const [name, value] of Object.entries(result.hashes)) process.stdout.write(`  ${name}: ${value}\n`);
+  process.stdout.write(result.publishable
+    ? `${kleur.green("✓")} Final owner approval matches the checked artifact hashes.\n`
+    : `${kleur.yellow("next")}: review coverage and these artifact hashes, then record the owner's final approval in approval.json.\n`);
+}
+
+async function runPublish(cmd: Command, opts: PublishOpts): Promise<void> {
+  const project = resolve(opts.project);
+  if (opts.preview) {
+    const preview = await previewEvalPublication(project);
+    if (isJsonMode(cmd)) {
+      process.stdout.write(`${JSON.stringify(preview)}\n`);
+      return;
+    }
+    process.stdout.write(`${kleur.green("✓")} Prepared exact eval release preview. Nothing was uploaded.\n`);
+    process.stdout.write(`Expected release ID: ${preview.expected_release_id}\n`);
+    process.stdout.write(`Manifest SHA-256: ${preview.manifest_sha256} (${preview.manifest_size_bytes} bytes)\n`);
+    process.stdout.write(`Bundle SHA-256: ${preview.bundle.sha256} (${preview.bundle.size_bytes} bytes)\n`);
+    process.stdout.write(`Bundle destination: ${preview.bundle.r2_key}\n`);
+    process.stdout.write(`Outgoing manifest and ordered ${preview.bundle.files.length}-file inventory:\n`);
+    process.stdout.write(`${JSON.stringify(preview.manifest, null, 2)}\n`);
+    process.stdout.write(`Local-only rule: ${preview.local_only.policy}\n`);
+    for (const path of preview.local_only.explicitly_excluded) process.stdout.write(`  - ${path}\n`);
+    process.stdout.write(`Next: obtain upload permission for this exact preview, then rerun with --expect-release-id ${preview.expected_release_id}.\n`);
+    return;
+  }
+  if (opts.expectReleaseId === undefined) {
+    throw new Error("Run `understudy evals publish --preview` first, review its exact contents, then rerun with `--expect-release-id <expected_release_id>`.");
+  }
+  const release = await publishEvalRelease(project, { expectedReleaseId: opts.expectReleaseId });
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify(release)}\n`);
+    return;
+  }
+  process.stdout.write(`${kleur.green("✓")} Published eval release ${release.release_id} (release ${release.release_number}).\n`);
+  process.stdout.write(`Bundle: ${release.artifacts.bundle_r2_key}\n`);
+  process.stdout.write("Live workload routing and prompts were not changed.\n");
 }
 
 function addWorkloadOptions(command: Command): Command {
@@ -240,27 +346,30 @@ async function runGuidedCreate(cmd: Command, opts: GuidedCreateOpts): Promise<vo
 async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
   const batchSize = parsePositiveInteger("--batch-size", opts.batchSize);
   const windowMs = parseDuration(opts.last);
-  const selectionDays = Math.ceil(windowMs / 86_400_000);
+  if (windowMs !== 7 * 86_400_000) {
+    throw new Error("understudy evals build currently requires the complete --last 7d window.");
+  }
+  const selectionDays = 7;
   const maxAgeDays = opts.maxAgeDays === undefined
     ? selectionDays
     : parsePositiveInteger("--max-age-days", opts.maxAgeDays);
   if (maxAgeDays < selectionDays) {
     throw new Error(`--max-age-days must cover --last (${selectionDays} day(s)).`);
   }
-  const selection = buildSelectionFromOptions(opts);
   if (isJsonMode(cmd) && !opts.yes) {
-    throw new Error("JSON mode cannot prompt. Re-run with --yes to approve freezing and local trace download.");
+    throw new Error("JSON mode cannot prompt. Re-run with --yes to approve the complete local trace download.");
   }
   if (!opts.yes && !process.stdin.isTTY) {
-    throw new Error("Non-interactive eval builds cannot prompt. Re-run with --yes to approve freezing and local trace download.");
+    throw new Error("Non-interactive eval builds cannot prompt. Re-run with --yes to approve the complete local trace download.");
   }
   const output = resolve(opts.out ?? join(".understudy", "evals", safeFileStem(opts.name)));
   if (pathExists(output)) {
     throw new Error(`Eval build destination already exists: ${output}. Choose a fresh --out directory.`);
   }
+  ensureUnderstudyGitExcluded(output);
   const releaseLease = acquireEvalBuildLease(output);
   try {
-    await runBuildWithLease(cmd, opts, { batchSize, windowMs, maxAgeDays, output, selection });
+    await runBuildWithLease(cmd, opts, { batchSize, windowMs, maxAgeDays, output });
   } finally {
     releaseLease();
   }
@@ -269,124 +378,280 @@ async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
 async function runBuildWithLease(
   cmd: Command,
   opts: BuildOpts,
-  build: { batchSize: number; windowMs: number; maxAgeDays: number; output: string; selection: EvalBuildSelection },
+  build: { batchSize: number; windowMs: number; maxAgeDays: number; output: string },
 ): Promise<void> {
-  const { batchSize, windowMs, maxAgeDays, output, selection } = build;
+  const { batchSize, windowMs, maxAgeDays, output } = build;
   if (pathExists(output)) {
     throw new Error(`Eval build destination already exists: ${output}. Choose a fresh --out directory.`);
   }
   const staging = join(dirname(output), `.${basename(output)}.eval-build`);
   const pending = pathExists(staging) ? readEvalBuildState(staging) : null;
-  const to = new Date();
-  let context: Awaited<ReturnType<typeof resolveContext>>;
-  let cohort: FrozenCohort;
-  let identity: EvalBuildIdentity;
-
+  const context = await resolveContext(opts);
+  const currentIdentity = identityFromContext(context);
+  let state: EvalWorkloadBuildState;
   if (pending) {
-    context = await resolveContext(opts);
-    const currentIdentity = identityFromContext(context);
-    assertBuildStateMatches(pending, opts.name, currentIdentity, selection, maxAgeDays, batchSize);
-    identity = pending.identity;
-    if (pending.status === "cohort_creating") {
-      const created = await createOrRecoverBuildCohort(context, pending);
-      cohort = cohortFromResponse(created);
-      replacePrivateJson(
-        join(staging, "build-state.json"),
-        buildState("cohort_frozen", opts.name, identity, cohort, selection, maxAgeDays, batchSize, new Date(pending.created_at)),
-      );
-    } else {
-      cohort = pending.cohort;
-    }
-    if (!isJsonMode(cmd)) {
-      process.stdout.write(`Resuming frozen cohort ${cohort.id} (${cohort.capture_count} captures).\n`);
-    }
-    if (!opts.yes) {
-      const approved = await confirm({
-        message: `Resume downloading ${cohort.capture_count} payload-bearing captures for local draft “${opts.name}” (16 MiB each, 256 MiB total maximum)?`,
-        default: false,
-      });
-      if (!approved) throw new Error("Eval build resume cancelled before payload download.");
-    }
+    assertWorkloadBuildStateMatches(pending, opts.name, currentIdentity, maxAgeDays, batchSize);
+    state = pending;
   } else {
-    const from = new Date(to.getTime() - windowMs);
-    const catalog = await fetchCatalog(opts, from.toISOString(), to.toISOString());
-    if (catalog.response.captures.length === 0) {
-      throw new Error(`No eligible captures found for ${catalog.workload.name} in the last ${opts.last}.`);
-    }
-    if (!isJsonMode(cmd)) printCatalogSummary(catalog.workload.name, catalog.response.captures);
-    if (!opts.yes) {
-      const approved = await confirm({
-        message: `Freeze these ${catalog.response.captures.length} captures and download their payloads to build local draft “${opts.name}”? The files may contain prompts, completions, and tool payloads (16 MiB each, 256 MiB total maximum).`,
-        default: false,
-      });
-      if (!approved) throw new Error("Eval build cancelled before payload download.");
-    }
-    context = catalog;
-    identity = identityFromContext(context);
-    const creating = creatingBuildState(opts.name, opts.description, identity, catalog.response, selection, maxAgeDays, batchSize, to);
-    initializeBuildCheckpoint(staging, creating);
-    const created = await createOrRecoverBuildCohort(context, creating);
-    cohort = cohortFromResponse(created);
-    replacePrivateJson(
-      join(staging, "build-state.json"),
-      buildState("cohort_frozen", opts.name, identity, cohort, selection, maxAgeDays, batchSize, to),
-    );
-  }
-
-  const attempts = join(staging, "attempts");
-  // An interrupted process may have left payload-bearing partial attempts.
-  // The frozen cohort state lives outside this directory, so retries can
-  // safely clear them instead of accumulating customer data.
-  rmSync(attempts, { recursive: true, force: true });
-  mkdirSync(attempts, { recursive: true, mode: 0o700 });
-  chmodSync(attempts, 0o700);
-  const attempt = mkdtempSync(join(attempts, "attempt-"));
-  chmodSync(attempt, 0o700);
-  const buildNow = pending ? new Date(pending.created_at) : to;
-  let published = false;
-  let project!: ReturnType<typeof buildEvalProject>;
-  try {
-    const materialized = await materializeCohort(
-      context,
-      cohort.id,
-      cohort.cohort_sha256,
-      join(attempt, "captures"),
-      cohort.capture_count,
-    );
-    project = buildEvalProject({
-      output: attempt,
-      identity: {
-        orgId: identity.org_id,
-        projectId: identity.project_id,
-        workloadId: identity.workload_id,
-        workloadName: identity.workload_name,
-      },
-      cohort: {
-        id: cohort.id,
-        cohortSha256: cohort.cohort_sha256,
-        captureCount: cohort.capture_count,
-        materializationManifest: materialized.manifest,
+    const to = new Date();
+    state = creatingWorkloadBuildState({
+      name: opts.name,
+      identity: currentIdentity,
+      source: {
+        from: new Date(to.getTime() - windowMs).toISOString(),
+        to: to.toISOString(),
+        ingestion_cutoff: null,
       },
       maxAgeDays,
       batchSize,
-      now: buildNow,
+      now: to,
     });
-    writePrivateJson(join(attempt, "build-state.json"), buildState("complete", opts.name, identity, cohort, selection, maxAgeDays, batchSize, buildNow));
-    renameSync(attempt, output);
-    published = true;
-  } finally {
-    if (!published) rmSync(attempt, { recursive: true, force: true });
+    initializeBuildCheckpoint(staging, state);
   }
-  rmSync(staging, { recursive: true, force: true });
-  project.project_file = join(output, "eval-project.json");
+  if (!opts.yes) {
+    const approved = await confirm({
+      message: `${pending ? "Resume" : "Download"} every retrievable capture in the frozen seven-day window for local eval “${opts.name}”? Files may contain prompts, completions, and tool payloads.`,
+      default: false,
+    });
+    if (!approved) throw new Error("Eval build cancelled before payload download.");
+  }
 
+  if (state.status === "complete") {
+    const recovered = JSON.parse(readFileSync(join(staging, "eval-project.json"), "utf8")) as WorkloadEvalProjectBuildResult;
+    renameSync(staging, output);
+    recovered.project_file = join(output, "eval-project.json");
+    emitWorkloadBuildResult(cmd, output, recovered);
+    return;
+  }
+
+  while (state.status === "downloading") {
+    state = resetInterruptedInitialWorkloadExport(staging, state);
+    const segment = await fetchWorkloadExportSegment(context, state);
+    if (state.source.ingestion_cutoff === null) {
+      assertInitialWorkloadExportScopeMatchesState(segment, state);
+      state = persistWorkloadBuildState(staging, {
+        ...state,
+        source: {
+          ...state.source,
+          ingestion_cutoff: segment.canonical_scope.ingestion_cutoff,
+        },
+      });
+    }
+    assertWorkloadExportSegmentMatchesState(segment, state);
+    await materializeWorkloadExportSegment({
+      exportData: segment,
+      tracesDirectory: join(staging, "source", "traces"),
+      gatewayUrl: context.project.auth.gatewayUrl,
+      verifiedFiles: state.transport.verified_files,
+      onVerified(file) {
+        if (!state.transport.verified_files.some((existing) => existing.capture_key === file.capture_key)) {
+          state = persistWorkloadBuildState(staging, {
+            ...state,
+            transport: {
+              ...state.transport,
+              verified_files: [...state.transport.verified_files, file],
+            },
+          });
+        }
+      },
+    });
+    if (sourceIndexCommitmentSha256(state.transport.verified_files) !== segment.chain.local_index_sha256) {
+      throw new Error("Capture export source index commitment does not match its manifest items.");
+    }
+    state = persistWorkloadBuildState(staging, {
+      ...state,
+      status: segment.chain.terminal ? "receipt_pending" : "downloading",
+      transport: {
+        ...state.transport,
+        resume_cursor: segment.resume_cursor ?? null,
+        chain_id: segment.chain.chain_id,
+        next_segment_index: segment.chain.segment_index + 1,
+        previous_manifest_sha256: segment.chain.manifest_sha256,
+        segment_manifest_sha256: [...state.transport.segment_manifest_sha256, segment.chain.manifest_sha256],
+        cumulative_exported: segment.chain.cumulative_exported,
+        cumulative_total_bytes: segment.chain.cumulative_total_bytes,
+        terminal_receipt: segment.chain.terminal_receipt ?? null,
+      },
+    });
+  }
+
+  if (!state.transport.terminal_receipt) throw new Error("Complete capture export is missing its terminal receipt.");
+  const receipt = await verifyWorkloadExportReceipt(context, state);
+  if (
+    receipt.chain_id !== state.transport.chain_id ||
+    receipt.cumulative_exported !== state.transport.cumulative_exported ||
+    receipt.total_bytes !== state.transport.cumulative_total_bytes ||
+    receipt.manifest_sha256 !== state.transport.previous_manifest_sha256 ||
+    receipt.local_index_sha256 !== sourceIndexCommitmentSha256(state.transport.verified_files)
+  ) throw new Error("Verified capture export receipt does not match the downloaded source chain.");
+
+  const project = buildWorkloadEvalProject({
+    output: staging,
+    name: state.name,
+    identity: state.identity,
+    canonicalScope: receipt.canonical_scope,
+    verifiedFiles: state.transport.verified_files,
+    segmentManifestSha256: state.transport.segment_manifest_sha256,
+    terminalReceipt: state.transport.terminal_receipt,
+    verifiedReceipt: receipt,
+    now: new Date(state.created_at),
+  });
+  state = persistWorkloadBuildState(staging, { ...state, status: "complete" });
+  renameSync(staging, output);
+  project.project_file = join(output, "eval-project.json");
+  emitWorkloadBuildResult(cmd, output, project);
+}
+
+async function fetchWorkloadExportSegment(
+  context: Awaited<ReturnType<typeof resolveContext>>,
+  state: EvalWorkloadBuildState,
+): Promise<WorkloadCaptureExportResponse> {
+  if (state.transport.resume_cursor !== null && state.source.ingestion_cutoff === null) {
+    throw new Error("Resumed capture export is missing its frozen ingestion cutoff.");
+  }
+  const response = await request({
+    url: `${context.base}/eval-capture-export`,
+    method: "POST",
+    orgId: context.project.auth.orgId,
+    signal: AbortSignal.timeout(60_000),
+    body: {
+      from: state.source.from,
+      to: state.source.to,
+      expires_seconds: EXPORT_EXPIRES_SECONDS,
+      ...(state.transport.resume_cursor === null
+        ? {}
+        : {
+            ingestion_cutoff: state.source.ingestion_cutoff,
+            resume_cursor: state.transport.resume_cursor,
+          }),
+    },
+  }, WorkloadCaptureExportResponseSchema);
+  return response.data;
+}
+
+function resetInterruptedInitialWorkloadExport(
+  staging: string,
+  state: EvalWorkloadBuildState,
+): EvalWorkloadBuildState {
+  if (state.transport.resume_cursor !== null || state.source.ingestion_cutoff === null) return state;
+  if (
+    state.transport.next_segment_index !== 0 ||
+    state.transport.chain_id !== null ||
+    state.transport.previous_manifest_sha256 !== null ||
+    state.transport.segment_manifest_sha256.length !== 0 ||
+    state.transport.cumulative_exported !== 0 ||
+    state.transport.cumulative_total_bytes !== 0 ||
+    state.transport.terminal_receipt !== null
+  ) {
+    throw new Error("Interrupted initial capture export has inconsistent chain state.");
+  }
+  rmSync(join(staging, "source", "traces"), { recursive: true, force: true });
+  return persistWorkloadBuildState(staging, {
+    ...state,
+    source: { ...state.source, ingestion_cutoff: null },
+    transport: { ...state.transport, verified_files: [] },
+  });
+}
+
+async function verifyWorkloadExportReceipt(
+  context: Awaited<ReturnType<typeof resolveContext>>,
+  state: EvalWorkloadBuildState,
+) {
+  const canonicalScope = workloadExportScope(state);
+  const response = await request({
+    url: `${context.base}/eval-capture-export/verify`,
+    method: "POST",
+    orgId: context.project.auth.orgId,
+    signal: AbortSignal.timeout(60_000),
+    body: { terminal_receipt: state.transport.terminal_receipt, canonical_scope: canonicalScope },
+  }, VerifyWorkloadCaptureExportReceiptResponseSchema);
+  if (JSON.stringify(response.data.canonical_scope) !== JSON.stringify(canonicalScope)) {
+    throw new Error("Verified capture export receipt returned a different canonical scope.");
+  }
+  return response.data;
+}
+
+function workloadExportScope(state: EvalWorkloadBuildState): WorkloadCaptureExportScope {
+  const ingestionCutoff = state.source.ingestion_cutoff;
+  if (ingestionCutoff === null) {
+    throw new Error("Capture export has not returned its frozen ingestion cutoff.");
+  }
+  return {
+    schema_version: "understudy.export-scope.v1" as const,
+    selector: "workload-window" as const,
+    org_id: state.identity.org_id,
+    project_id: state.identity.project_id,
+    workload_id: state.identity.workload_id,
+    from: state.source.from,
+    to: state.source.to,
+    ingestion_cutoff: ingestionCutoff,
+  };
+}
+
+function assertInitialWorkloadExportScopeMatchesState(
+  segment: WorkloadCaptureExportResponse,
+  state: EvalWorkloadBuildState,
+): void {
+  const scope = segment.canonical_scope;
+  const ingestionCutoffMs = Date.parse(scope.ingestion_cutoff);
+  if (
+    scope.org_id !== state.identity.org_id ||
+    scope.project_id !== state.identity.project_id ||
+    scope.workload_id !== state.identity.workload_id ||
+    scope.from !== state.source.from ||
+    scope.to !== state.source.to ||
+    ingestionCutoffMs < Date.parse(scope.to) ||
+    ingestionCutoffMs > Date.now() + 60_000
+  ) {
+    throw new Error("Capture export response does not match the requested workload window.");
+  }
+}
+
+function assertWorkloadExportSegmentMatchesState(
+  segment: WorkloadCaptureExportResponse,
+  state: EvalWorkloadBuildState,
+): void {
+  const expectedScope = workloadExportScope(state);
+  if (JSON.stringify(segment.canonical_scope) !== JSON.stringify(expectedScope)) {
+    throw new Error("Capture export response does not match the frozen workload window.");
+  }
+  if (
+    segment.chain.segment_index !== state.transport.next_segment_index ||
+    segment.chain.previous_manifest_sha256 !== state.transport.previous_manifest_sha256 ||
+    (state.transport.chain_id !== null && segment.chain.chain_id !== state.transport.chain_id) ||
+    segment.chain.cumulative_exported !== state.transport.cumulative_exported + segment.count ||
+    segment.chain.cumulative_total_bytes !== state.transport.cumulative_total_bytes + segment.total_bytes
+  ) throw new Error("Capture export segment does not continue the persisted source chain.");
+}
+
+function persistWorkloadBuildState(staging: string, candidate: EvalWorkloadBuildState): EvalWorkloadBuildState {
+  const state = EvalWorkloadBuildStateSchema.parse(candidate);
+  replacePrivateJson(join(staging, "build-state.json"), state);
+  return state;
+}
+
+function emitWorkloadBuildResult(cmd: Command, output: string, project: WorkloadEvalProjectBuildResult): void {
+  const checkArgs = ["evals", "check", "--draft", "--project", output];
+  const nextAction = {
+    kind: "coding_agent_prompt" as const,
+    command: { executable: "understudy", args: checkArgs },
+    prompt: [
+      `Use the Understudy capture-evidence skill to build a provisional eval from the complete seven-day traces at ${output}.`,
+      "Infer the workload goal, output contract, success criteria, execution modes, and failure taxonomy from these traces and the current repository.",
+      "Explain your evidence and ask only targeted questions whose answers would materially change the metric, environment, or case selection.",
+      "Author the project-local eval artifacts and mark unconfirmed semantics as provisional.",
+      `Run the draft check by invoking “understudy” with this exact argument array: ${JSON.stringify(checkArgs)}.`,
+      "Do not publish the eval.",
+    ].join(" "),
+  };
   if (isJsonMode(cmd)) {
-    process.stdout.write(`${JSON.stringify(project)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...project, next_action: nextAction })}\n`);
   } else {
-    process.stdout.write(`${kleur.green("✓")} Created local draft eval project at ${output}\n`);
+    process.stdout.write(`${kleur.green("✓")} Materialized the complete seven-day source at ${output}\n`);
     process.stdout.write(`Project manifest: ${project.project_file}\n`);
-    process.stdout.write(`Review viewer: ${join(output, project.foundry.artifacts.viewer)}\n`);
     process.stdout.write(`${kleur.yellow("warning")}: local files contain prompts, completions, or tool payloads; nothing was uploaded and no model provider was called\n`);
+    process.stdout.write("Next, give this prompt to your coding agent:\n\n");
+    process.stdout.write(`${nextAction.prompt}\n`);
   }
 }
 
@@ -422,39 +687,6 @@ async function createCohort(
     },
   }, CohortSchema);
   return response.data;
-}
-
-async function createOrRecoverBuildCohort(
-  context: Awaited<ReturnType<typeof resolveContext>>,
-  state: EvalBuildCreatingState,
-): Promise<Cohort> {
-  let response: { data: Cohort } | null = null;
-  let createError: unknown;
-  for (let attempt = 0; attempt < 2 && response === null; attempt += 1) {
-    try {
-      response = await request({
-        url: `${context.base}/eval-cohorts`,
-        method: "POST",
-        orgId: context.project.auth.orgId,
-        signal: AbortSignal.timeout(60_000),
-        body: state.create_request,
-      }, CohortSchema);
-    } catch (error) {
-      createError = error;
-    }
-  }
-  if (response === null) throw createError;
-  const cohort = response.data;
-  if (
-    cohort.operation_id !== state.create_request.operation_id ||
-    cohort.org_id !== context.project.auth.orgId ||
-    cohort.project_id !== context.project.projectId ||
-    cohort.workload_id !== context.workload.id ||
-    cohort.capture_count !== state.create_request.captures.length
-  ) {
-    throw new Error(`Created cohort ${cohort.id} does not match the persisted eval build selection.`);
-  }
-  return cohort;
 }
 
 async function materializeCohort(
@@ -612,22 +844,6 @@ function validateStatusCode(value?: string): void {
   if (!Number.isInteger(status) || status < 100 || status > 599) {
     throw new Error(`Expected --status-code between 100 and 599, got: ${value}`);
   }
-}
-
-function buildSelectionFromOptions(opts: BuildOpts): EvalBuildSelection {
-  const limit = parseLimit(opts.limit);
-  validateStatusCode(opts.statusCode);
-  return {
-    last: opts.last,
-    limit,
-    seed: opts.seed,
-    description: opts.description ?? null,
-    requested_model: opts.requestedModel ?? null,
-    served_model: opts.servedModel ?? null,
-    status_code: opts.statusCode === undefined ? null : Number(opts.statusCode),
-    requires_tools: opts.requiresTools ?? false,
-    requires_structured_output: opts.requiresStructuredOutput ?? false,
-  };
 }
 
 function parseDuration(value: string): number {

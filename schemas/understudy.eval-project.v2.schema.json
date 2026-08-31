@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-project.v2.schema.json",
+  "title": "understudy.eval-project.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "eval_id", "name", "status", "created_at", "identity", "source", "artifacts", "authoring", "privacy"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-project.v2" },
+    "eval_id": { "type": "string", "pattern": "^eval_[a-f0-9]{24}$" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "status": { "enum": ["source_materialized", "authoring", "checked"] },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["org_id", "project_id", "workload_id", "workload_name"],
+      "properties": {
+        "org_id": { "$ref": "#/$defs/nonempty" },
+        "project_id": { "$ref": "#/$defs/nonempty" },
+        "workload_id": { "$ref": "#/$defs/nonempty" },
+        "workload_name": { "$ref": "#/$defs/nonempty" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["window", "capture_count", "size_bytes", "index", "index_sha256", "export_proof", "export_proof_sha256", "exported_capture_count", "exported_total_bytes", "terminal_receipt_verified"],
+      "properties": {
+        "window": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "selector", "org_id", "project_id", "workload_id", "from", "to", "ingestion_cutoff"],
+          "properties": {
+            "schema_version": { "const": "understudy.export-scope.v1" },
+            "selector": { "const": "workload-window" },
+            "org_id": { "$ref": "#/$defs/nonempty" },
+            "project_id": { "$ref": "#/$defs/nonempty" },
+            "workload_id": { "$ref": "#/$defs/nonempty" },
+            "from": { "$ref": "#/$defs/timestamp" },
+            "to": { "$ref": "#/$defs/timestamp" },
+            "ingestion_cutoff": { "$ref": "#/$defs/timestamp" }
+          }
+        },
+        "capture_count": { "$ref": "#/$defs/count" },
+        "size_bytes": { "$ref": "#/$defs/count" },
+        "index": { "$ref": "#/$defs/path" },
+        "index_sha256": { "$ref": "#/$defs/sha" },
+        "export_proof": { "$ref": "#/$defs/path" },
+        "export_proof_sha256": { "$ref": "#/$defs/sha" },
+        "exported_capture_count": { "$ref": "#/$defs/count" },
+        "exported_total_bytes": { "$ref": "#/$defs/count" },
+        "terminal_receipt_verified": { "const": true }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workload_profile", "coverage", "harness", "environment", "metric", "splits", "tasks", "execution_index", "analysis", "verifier", "approval", "check_report"],
+      "properties": {
+        "workload_profile": { "$ref": "#/$defs/path" },
+        "coverage": { "$ref": "#/$defs/path" },
+        "harness": { "$ref": "#/$defs/path" },
+        "environment": { "$ref": "#/$defs/path" },
+        "metric": { "$ref": "#/$defs/path" },
+        "splits": { "$ref": "#/$defs/path" },
+        "tasks": { "$ref": "#/$defs/path" },
+        "execution_index": { "$ref": "#/$defs/path" },
+        "analysis": { "$ref": "#/$defs/path" },
+        "verifier": { "$ref": "#/$defs/path" },
+        "approval": { "$ref": "#/$defs/path" },
+        "check_report": { "$ref": "#/$defs/path" }
+      }
+    },
+    "authoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "semantic_preparation_performed"],
+      "properties": {
+        "owner": { "const": "coding_agent" },
+        "semantic_preparation_performed": { "type": "boolean" }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_only", "contains_customer_payloads", "upload_performed", "provider_called"],
+      "properties": {
+        "local_only": { "const": true },
+        "contains_customer_payloads": { "const": true },
+        "upload_performed": { "const": false },
+        "provider_called": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" }
+  }
+}

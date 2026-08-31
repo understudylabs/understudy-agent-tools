@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-check.v1.schema.json",
+  "title": "understudy.eval-check.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "checked_at", "status", "task_count", "representative_replay", "oracle_fixture", "wrong_fixture", "source", "check_input_sha256", "eval_set_sha256", "coverage_sha256", "environment_sha256", "verifier_sha256"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-check.v1" },
+    "checked_at": { "$ref": "#/$defs/timestamp" },
+    "status": { "const": "passed" },
+    "task_count": { "type": "integer", "minimum": 1 },
+    "representative_replay": { "$ref": "#/$defs/representative" },
+    "oracle_fixture": { "$ref": "#/$defs/passed" },
+    "wrong_fixture": { "$ref": "#/$defs/rejected" },
+    "source": { "$ref": "#/$defs/source" },
+    "check_input_sha256": { "$ref": "#/$defs/sha" },
+    "eval_set_sha256": { "$ref": "#/$defs/sha" },
+    "coverage_sha256": { "$ref": "#/$defs/sha" },
+    "environment_sha256": { "$ref": "#/$defs/sha" },
+    "verifier_sha256": { "$ref": "#/$defs/sha" }
+  },
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "timestamp": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope", "scope_sha256", "index_sha256", "export_proof_sha256", "capture_count", "size_bytes"],
+      "properties": {
+        "scope": { "$ref": "#/$defs/scope" },
+        "scope_sha256": { "$ref": "#/$defs/sha" },
+        "index_sha256": { "$ref": "#/$defs/sha" },
+        "export_proof_sha256": { "$ref": "#/$defs/sha" },
+        "capture_count": { "type": "integer", "minimum": 0 },
+        "size_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "selector", "org_id", "project_id", "workload_id", "from", "to", "ingestion_cutoff"],
+      "properties": {
+        "schema_version": { "const": "understudy.export-scope.v1" },
+        "selector": { "const": "workload-window" },
+        "org_id": { "$ref": "#/$defs/nonempty" },
+        "project_id": { "$ref": "#/$defs/nonempty" },
+        "workload_id": { "$ref": "#/$defs/nonempty" },
+        "from": { "$ref": "#/$defs/timestamp" },
+        "to": { "$ref": "#/$defs/timestamp" },
+        "ingestion_cutoff": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference", "statement"],
+      "properties": {
+        "kind": { "enum": ["owner_confirmation", "terminal_state_receipt", "workload_invariant"] },
+        "reference": { "$ref": "#/$defs/nonempty" },
+        "statement": { "$ref": "#/$defs/nonempty" }
+      }
+    },
+    "representative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "input_provenance", "evidence", "candidate_sha256", "state_sha256", "replay_sha256", "result", "feedback", "provider_called"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nonempty" },
+        "input_provenance": { "$ref": "#/$defs/nonempty" },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "candidate_sha256": { "$ref": "#/$defs/sha" },
+        "state_sha256": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+        "replay_sha256": { "$ref": "#/$defs/sha" },
+        "result": { "const": "passed" },
+        "feedback": { "$ref": "#/$defs/nonempty" },
+        "provider_called": { "const": false }
+      }
+    },
+    "passed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "input_provenance", "evidence", "candidate_sha256", "state_sha256", "replay_sha256", "result", "feedback"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nonempty" },
+        "input_provenance": { "$ref": "#/$defs/nonempty" },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "candidate_sha256": { "$ref": "#/$defs/sha" },
+        "state_sha256": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+        "replay_sha256": { "$ref": "#/$defs/sha" },
+        "result": { "const": "passed" },
+        "feedback": { "$ref": "#/$defs/nonempty" }
+      }
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "input_provenance", "evidence", "candidate_sha256", "state_sha256", "replay_sha256", "result", "feedback"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nonempty" },
+        "input_provenance": { "$ref": "#/$defs/nonempty" },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "candidate_sha256": { "$ref": "#/$defs/sha" },
+        "state_sha256": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+        "replay_sha256": { "$ref": "#/$defs/sha" },
+        "result": { "const": "rejected" },
+        "feedback": { "$ref": "#/$defs/nonempty" }
+      }
+    }
+  }
+}

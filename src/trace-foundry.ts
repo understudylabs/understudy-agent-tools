@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { bumpVersion, classifyTaskChange, computeTaskContentHashes, validateBenchmarkManifest } from "./benchmark.js";
 import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readJsonlFile, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 import { buildRejectionGuidance, loadGuidanceFile } from "./rejection-guidance.js";
+import { VerifiedWorkloadCaptureFileSchema } from "./evals/contracts.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
@@ -29,6 +30,11 @@ export type FoundryResult = {
   artifacts: Record<string, string>;
   source_scope?: { requested_workload: string | null; metadata_available: boolean; filter_applied: boolean; filter_note: string | null; known_rows: number; unknown_rows: number; exact_matches: number; explicit_mismatches: number; unknown_exclusions: number };
   quarantines?: { execution_group: string; code: string; edge_count: number }[];
+  lineage: {
+    policy: "include_uncertain" | "provable_only";
+    counts: { complete: number; ambiguous: number; unlinked: number };
+    included_task_count: number;
+  };
   privacy: { local_only: true; contains_customer_payloads: true; upload_performed: false; provider_called: false };
   /** Generation-time structural self-check (understudy.foundry_self_check.v1): per-task failures + environment scan. */
   self_check?: Record<string, unknown>;
@@ -43,6 +49,10 @@ export type FoundryResult = {
 export type TraceFoundryOptions = {
   workload?: string;
   batchSize?: number;
+  /** Hosted eval authoring sets this so only W3C-linked, unambiguous executions become tasks. */
+  requireProvableLineage?: boolean;
+  /** Hosted eval source ledger. Required with requireProvableLineage. */
+  sourceIndex?: string;
 };
 
 const mutationPrefixes = ["add-", "apply-", "archive-", "cancel-", "create-", "delete-", "draft-", "mark-", "move-", "notify-", "promote-", "reassign-", "remove-", "save-", "send-", "set-", "share-", "update-", "write-"];
@@ -83,8 +93,7 @@ function isCaptureEnvelope(value: Obj): boolean {
   return hasRequest && hasResponse && value.request_id !== undefined;
 }
 
-function envelopes(path: string): Obj[] {
-  const text = readFileSync(path, "utf8");
+function envelopesFromText(path: string, text: string): Obj[] {
   if (path.endsWith(".json")) {
     const parsed = JSON.parse(text);
     if (Array.isArray(parsed)) return parsed.map(asObject);
@@ -93,6 +102,71 @@ function envelopes(path: string): Obj[] {
     return Array.isArray(rows) ? rows.map(asObject) : [object];
   }
   return text.split(/\r?\n/).filter(Boolean).map((line) => asObject(JSON.parse(line)));
+}
+
+type FoundrySourceFile = {
+  absolute_path: string;
+  local_path: string;
+  content_sha256: string;
+  size_bytes: number;
+  envelopes: Obj[] | null;
+  parse_error: boolean;
+};
+
+type FoundrySourceAccounting = {
+  local_path: string;
+  content_sha256: string;
+  disposition: "included" | "excluded";
+  exclusion_reasons: string[];
+};
+
+function insidePath(root: string, candidate: string): boolean {
+  const value = relative(root, candidate);
+  return value === "" || (value !== ".." && !value.startsWith(`..${sep}`));
+}
+
+function hostedSourceFiles(source: string, files: string[], sourceIndexInput: string): FoundrySourceFile[] {
+  const sourceIndex = resolve(sourceIndexInput);
+  const projectRoot = dirname(dirname(sourceIndex));
+  const indexRows = readFileSync(sourceIndex, "utf8").split(/\r?\n/).filter(Boolean).map((line, index) => {
+    let value: unknown;
+    try { value = JSON.parse(line); }
+    catch (error) { throw new Error(`Invalid hosted source index line ${index + 1}: ${error instanceof Error ? error.message : String(error)}`); }
+    const parsed = VerifiedWorkloadCaptureFileSchema.strict().safeParse(value);
+    if (!parsed.success) throw new Error(`Invalid hosted source index line ${index + 1}.`);
+    return parsed.data;
+  });
+  const byAbsolute = new Map<string, (typeof indexRows)[number]>();
+  for (const row of indexRows) {
+    if (row.local_path.startsWith("/") || row.local_path.includes("\\") || row.local_path.split("/").includes("..")) {
+      throw new Error(`Hosted source index path must be project-relative: ${row.local_path}.`);
+    }
+    const absolute = resolve(projectRoot, row.local_path);
+    if (!insidePath(projectRoot, absolute) || !insidePath(source, absolute)) {
+      throw new Error(`Hosted source index path is outside the declared source directory: ${row.local_path}.`);
+    }
+    if (byAbsolute.has(absolute)) throw new Error(`Hosted source index contains duplicate path ${row.local_path}.`);
+    byAbsolute.set(absolute, row);
+  }
+  if (files.length !== byAbsolute.size || files.some((file) => !byAbsolute.has(resolve(file)))) {
+    throw new Error("Hosted source directory must contain exactly the files declared by source/index.jsonl.");
+  }
+  return files.map((file) => {
+    const row = byAbsolute.get(resolve(file))!;
+    const bytes = readFileSync(file);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.byteLength !== row.size_bytes || digest !== row.content_sha256) {
+      throw new Error(`Hosted source file no longer matches source/index.jsonl: ${row.local_path}.`);
+    }
+    try {
+      const parsed = envelopesFromText(file, new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      if (parsed.length !== 1) throw new Error(`Hosted eval compilation requires exactly one capture object per source file: ${row.local_path}.`);
+      return { absolute_path: file, local_path: row.local_path, content_sha256: digest, size_bytes: bytes.byteLength, envelopes: parsed, parse_error: false };
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Hosted eval compilation requires exactly one")) throw error;
+      return { absolute_path: file, local_path: row.local_path, content_sha256: digest, size_bytes: bytes.byteLength, envelopes: null, parse_error: true };
+    }
+  });
 }
 
 function responseProjection(raw: unknown): Obj {
@@ -466,7 +540,7 @@ export function manifestIncumbent(tasks: Obj[]): Obj | null {
   return { model: models[0].model, provider: models[0].provider, observed_calls: models[0].observed_calls, models };
 }
 
-function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
+function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = [], requireProvableLineage = false): Obj[] {
   const byId = new Map(rows.map((row) => [row.capture_key, row]));
   const quarantinedGroups = new Set<string>((dag.quarantined_groups ?? []).map(String));
   const rootTexts = new Map<string, string>(
@@ -480,6 +554,7 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
   const distinctiveTitles = taskTitles(rootTexts);
   return dag.groups.flatMap((group: Obj) => {
     if (quarantinedGroups.has(String(group.id))) return [];
+    if (requireProvableLineage && group.trace_id == null) return [];
     const nodes = dag.nodes.filter((node: Obj) => node.execution_group === group.id).sort((a: Obj, b: Obj) => a.captured_at.localeCompare(b.captured_at));
     const captures = nodes.map((node: Obj) => byId.get(node.id)).filter(Boolean) as Obj[];
     const outgoing = new Set(dag.edges.filter((edge: Obj) => edge.execution_group === group.id).map((edge: Obj) => String(edge.from)));
@@ -520,6 +595,102 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
     return [task];
   });
+}
+
+function lineageRows(dag: Obj, tasks: Obj[], sourceAccounting: FoundrySourceAccounting[] | null = null): Obj[] {
+  const quarantined = new Map<string, string[]>();
+  for (const entry of dag.quarantines ?? []) {
+    const group = String(entry.execution_group);
+    quarantined.set(group, [...(quarantined.get(group) ?? []), String(entry.code)]);
+  }
+  const taskByGroup = new Map(tasks.map((task) => [String(task.execution_group), String(task.task_id)]));
+  const executionRows = (dag.groups ?? []).map((group: Obj) => {
+    const codes = quarantined.get(String(group.id)) ?? [];
+    const lineageStatus = codes.length > 0 ? "ambiguous" : group.trace_id == null ? "unlinked" : "complete";
+    if (sourceAccounting !== null) {
+      const sourceFiles = [...new Map<string, { local_path: string; content_sha256: string }>(
+        (dag.nodes ?? [])
+          .filter((node: Obj) => node.execution_group === group.id)
+          .map((node: Obj) => {
+            const source = asObject(node.source);
+            return [String(source.local_path), { local_path: String(source.local_path), content_sha256: String(source.content_sha256) }];
+          }),
+      ).values()].sort((left, right) => left.local_path.localeCompare(right.local_path));
+      if (sourceFiles.length !== Number(group.capture_count ?? 0)) {
+        throw new Error(`Hosted execution ${String(group.id)} does not bind every capture to one source file.`);
+      }
+      return {
+        schema_version: "understudy.eval-execution-index-row.v1",
+        source_status: "included",
+        execution_group: String(group.id),
+        lineage_status: lineageStatus,
+        capture_count: sourceFiles.length,
+        source_files: sourceFiles,
+        task_id: taskByGroup.get(String(group.id)) ?? null,
+        exclusion_reasons: lineageStatus === "ambiguous" ? codes : lineageStatus === "unlinked" ? ["missing_valid_trace_context"] : [],
+      };
+    }
+    return {
+      schema_version: "understudy.eval-execution-index-row.v1",
+      execution_group: String(group.id),
+      lineage_status: lineageStatus,
+      grouping_label: String(group.grouping_label ?? "unknown"),
+      trace_id: group.trace_id ?? null,
+      capture_count: Number(group.capture_count ?? 0),
+      edge_count: Number(group.edge_count ?? 0),
+      workloads: group.workloads ?? [],
+      task_id: taskByGroup.get(String(group.id)) ?? null,
+      exclusion_reasons: lineageStatus === "ambiguous" ? codes : lineageStatus === "unlinked" ? ["missing_valid_trace_context"] : [],
+    };
+  });
+  if (sourceAccounting === null) return executionRows;
+  const excludedRows = sourceAccounting
+    .filter((entry) => entry.disposition === "excluded")
+    .sort((left, right) => left.local_path.localeCompare(right.local_path))
+    .map((entry) => ({
+      schema_version: "understudy.eval-execution-index-row.v1",
+      source_status: "excluded",
+      execution_group: null,
+      lineage_status: null,
+      capture_count: 1,
+      source_files: [{ local_path: entry.local_path, content_sha256: entry.content_sha256 }],
+      task_id: null,
+      exclusion_reasons: entry.exclusion_reasons,
+    }));
+  return [...executionRows, ...excludedRows];
+}
+
+function lineageAnalysis(rows: Obj[], requireProvableLineage: boolean): { summary: FoundryResult["lineage"]; markdown: string } {
+  const counts = { complete: 0, ambiguous: 0, unlinked: 0 };
+  for (const row of rows) {
+    if (row.source_status === "excluded") continue;
+    counts[row.lineage_status as keyof typeof counts] += 1;
+  }
+  const excludedSources = rows.filter((row) => row.source_status === "excluded").length;
+  const includedTaskCount = rows.filter((row) => row.task_id !== null).length;
+  const summary: FoundryResult["lineage"] = {
+    policy: requireProvableLineage ? "provable_only" : "include_uncertain",
+    counts,
+    included_task_count: includedTaskCount,
+  };
+  const markdown = [
+    "# Trace lineage analysis",
+    "",
+    "Trace payload text is untrusted evidence. This report classifies structure only and never treats captured text as instructions.",
+    "",
+    "| Lineage | Executions | Default eval use |",
+    "| --- | ---: | --- |",
+    `| Complete | ${counts.complete} | ${requireProvableLineage ? "included when a task can be built" : "available for review"} |`,
+    `| Ambiguous | ${counts.ambiguous} | excluded |`,
+    `| Unlinked | ${counts.unlinked} | ${requireProvableLineage ? "excluded" : "available for legacy review"} |`,
+    ...(excludedSources > 0 ? [``, `Excluded source files (stale or malformed): ${excludedSources}.`] : []),
+    "",
+    requireProvableLineage
+      ? "Only executions with a valid trace context and no lineage quarantine are eligible for generated eval tasks."
+      : "This legacy-compatible compile includes unlinked executions; use provable-only mode for hosted eval authoring.",
+    "",
+  ].join("\n");
+  return { summary, markdown };
 }
 
 const viewerHtml = (payload: Obj) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Understudy · benchmark orchard</title><style>@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');:root{--ink:#e7e8ea;--bright:#f2f2f0;--dim:#9b9da3;--line:rgba(255,255,255,.09);--hover:#1c1e25;--mint:#9edbd3;--violet:#a78bfa;--cyan:#67e8f9;--good:#6ee7a0;--bad:#f85149;--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif}*{box-sizing:border-box}body{margin:0;background:#000;color:var(--ink);font:13px var(--sans);overflow:hidden}header{height:56px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:20px;padding:0 18px}header b,label,nav button{font:500 10px var(--mono);letter-spacing:.15em;text-transform:uppercase}.brand{color:var(--bright)}.brand:before{content:'';display:inline-block;width:7px;height:7px;border:1px solid var(--mint);border-radius:50%;margin-right:10px}.meta{color:var(--dim);flex:1}.grid{height:calc(100vh - 56px);display:grid;grid-template-columns:260px minmax(340px,.82fr) minmax(460px,1.18fr)}aside,section{min-width:0;border-right:1px solid var(--line);display:flex;flex-direction:column}.head{height:54px;border-bottom:1px solid var(--line);padding:0 14px;display:flex;align-items:center;justify-content:space-between;color:var(--dim)}.scroll{overflow:auto;min-height:0}.tasks{padding:7px}.task{width:100%;display:grid;grid-template-columns:30px 1fr;gap:8px;text-align:left;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);padding:11px 8px;cursor:pointer}.task:hover,.task.on{background:var(--hover)}.num,.sub{font:10px var(--mono);color:var(--dim)}.title{font-size:12px;line-height:1.45}.lineage{position:relative;padding:26px 20px}.lineage:before{content:'';position:absolute;left:40px;top:26px;bottom:30px;width:1px;background:linear-gradient(var(--violet),var(--cyan),transparent)}.node{position:relative;padding-left:40px;margin-bottom:9px}.node:before{content:'';position:absolute;left:14px;top:15px;width:11px;height:11px;border:1px solid var(--violet);border-radius:50%;background:#000;z-index:2}.node.on:before{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 16px #67e8f966}.node button{width:100%;text-align:left;border:1px solid var(--line);border-radius:8px;background:none;color:var(--ink);padding:10px;cursor:pointer}.node.on button{border-color:#67e8f977;background:#67e8f90b}.edge{display:block;margin-top:6px;color:var(--violet);font:9px var(--mono);text-transform:uppercase;letter-spacing:.08em}.inspect-head{padding:13px 17px 0;border-bottom:1px solid var(--line)}.eyebrow{color:var(--mint);font:10px var(--mono);text-transform:uppercase;letter-spacing:.12em}h1{font:400 18px/1.35 var(--mono);margin:8px 0 12px;color:var(--bright)}nav{display:flex;gap:18px}nav button{border:0;border-bottom:1px solid transparent;background:none;color:var(--dim);padding:9px 0;cursor:pointer}nav button.on{color:var(--bright);border-color:var(--mint)}.body{padding:20px 20px 95px}.lede{font-size:14px;line-height:1.6;color:var(--bright)}.facts{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:8px;margin:18px 0}.fact{padding:12px;border-right:1px solid var(--line)}.fact:last-child{border:0}.fact b{display:block;margin-top:5px;font:13px var(--mono)}details{border-top:1px solid var(--line)}summary{padding:12px 0;cursor:pointer;font:500 10px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}pre{white-space:pre-wrap;word-break:break-word;max-height:50vh;overflow:auto;background:#08090b;border:1px solid var(--line);border-radius:8px;padding:13px;font:11px/1.55 var(--mono)}.mode{display:flex;justify-content:flex-end;gap:5px}.mode button,.review button,header button{border:1px solid var(--line);border-radius:8px;background:none;color:var(--ink);padding:7px 9px;cursor:pointer}.mode button.on{background:var(--hover)}.review{position:sticky;bottom:0;margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);background:#0e0f12ee;display:flex;justify-content:flex-end;gap:6px}.review .accept{color:var(--good);border-color:var(--good)}@media(max-width:850px){.grid{grid-template-columns:220px 300px 1fr}}</style></head><body><header><b class="brand">benchmark orchard</b><span class="meta" id="meta"></span><button onclick="exportReviews()">Export reviews</button></header><main class="grid"><aside><div class="head"><label>Task inbox</label><span id="tc"></span></div><div class="tasks scroll" id="tasks"></div></aside><section><div class="head"><label>Source lineage</label><span id="nc"></span></div><div class="lineage scroll" id="dag"></div></section><section><div class="inspect-head"><div class="eyebrow" id="eye"></div><h1 id="title"></h1><nav id="tabs"></nav></div><div class="body scroll" id="body"></div><div class="review"><button class="accept" onclick="judge('accept')">Accept</button><button onclick="judge('restrict')">Restrict</button><button onclick="judge('needs_more')">Needs more</button><button onclick="judge('reject')">Reject</button></div></section></main><script>const D=${JSON.stringify(payload).replaceAll("</", "<\\\\/")};let task=D.tasks[0],node=task.candidate_boundary,tab='task',mode='parsed';const cache={},reviews=JSON.parse(localStorage.getItem('understudy-reviews')||'{}'),e=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c])),p=x=>e(JSON.stringify(x,null,2));async function load(){if(!cache[node])cache[node]=await fetch(D.captures[node].path).then(r=>r.json())}function render(){document.querySelector('#meta').textContent=D.tasks.length+' tasks · '+D.nodes.length+' captures · local evidence';document.querySelector('#tc').textContent=D.tasks.length+' tasks';document.querySelector('#tasks').innerHTML=D.tasks.map((t,i)=>'<button class="task '+(t.task_id===task.task_id?'on':'')+'" onclick="pickTask(\\''+t.task_id+'\\')"><span class="num">'+String(i+1).padStart(2,'0')+'</span><span><span class="title">'+e(t.title)+'</span><br><span class="sub">'+e(t.split)+' · '+e(reviews[t.task_id]?.decision||t.status)+'</span></span></button>').join('');const ids=new Set(task.source.node_ids),ns=D.nodes.filter(n=>ids.has(n.id)).sort((a,b)=>a.captured_at.localeCompare(b.captured_at));document.querySelector('#nc').textContent=ns.length+' rounds';document.querySelector('#dag').innerHTML=ns.map((n,i)=>{const x=task.source.edges.find(x=>x.to===n.id);return '<div class="node '+(n.id===node?'on':'')+'"><button onclick="pickNode(\\''+n.id+'\\')"><span class="sub">round '+String(i+1).padStart(2,'0')+' · '+n.id.slice(0,8)+'</span><br>'+n.message_count+' messages<span class="edge">'+e(x?.type||'root boundary')+'</span></button></div>'}).join('');document.querySelector('#eye').textContent=task.task_id+' · '+task.machine_confidence+' confidence';document.querySelector('#title').textContent=task.title;document.querySelector('#tabs').innerHTML=['task','request','response','contract'].map(x=>'<button class="'+(tab===x?'on':'')+'" onclick="setTab(\\''+x+'\\')">'+x+'</button>').join('');const c=cache[node]||{};if(tab==='task')document.querySelector('#body').innerHTML='<p class="lede">The machine assembled this task from '+task.source.node_ids.length+' captured rounds and proposed a stateful verifier. Human judgment controls final promotion.</p><div class="facts"><div class="fact"><label>Confidence</label><b>'+task.machine_confidence+'</b></div><div class="fact"><label>Split</label><b>'+task.split+'</b></div><div class="fact"><label>Tools</label><b>'+task.tool_surface.length+'</b></div></div><details open><summary>Machine claims</summary><pre>'+p(task.claims)+'</pre></details>';else if(tab==='contract')document.querySelector('#body').innerHTML='<p class="lede">Grade the resulting state—not an exact historical trajectory.</p><details open><summary>Outcome contract</summary><pre>'+p(task.outcome_contract)+'</pre></details><details><summary>World model</summary><pre>'+p(task.world_model)+'</pre></details>';else{const value=c[tab]||{},raw=c.raw?.[tab],rawText=typeof raw==='string'?raw:JSON.stringify(raw??value,null,2);document.querySelector('#body').innerHTML='<div class="mode"><button class="'+(mode==='parsed'?'on':'')+'" onclick="setMode(\\\'parsed\\\')">Parsed JSON</button><button class="'+(mode==='raw'?'on':'')+'" onclick="setMode(\\\'raw\\\')">Raw</button></div>'+(mode==='raw'?'<p class="sub">'+(raw!=null?'preserved source representation':'canonical serialization · original unavailable')+'</p><pre>'+e(rawText)+'</pre>':Object.entries(value).map(([k,v])=>'<details open><summary>'+e(k)+'</summary><pre>'+p(v)+'</pre></details>').join(''))}}async function pickTask(id){task=D.tasks.find(t=>t.task_id===id);node=task.candidate_boundary;tab='task';await load();render()}async function pickNode(id){node=id;tab='request';mode='parsed';await load();render()}function setTab(x){tab=x;mode='parsed';render()}function setMode(x){mode=x;render()}function judge(x){reviews[task.task_id]={decision:x,reviewed_at:new Date().toISOString()};localStorage.setItem('understudy-reviews',JSON.stringify(reviews));render()}function exportReviews(){const s=Object.entries(reviews).map(([task_id,r])=>JSON.stringify({task_id,...r})).join('\\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([s+'\\n'],{type:'application/x-ndjson'}));a.download='benchmark-reviews.jsonl';a.click()}load().then(render)</script></body></html>`;
@@ -1636,8 +1807,16 @@ export function splitTaskObservations(task: Obj, capturesByKey?: Map<string, Obj
   return boundary === -1 ? { pre: observations, post: [] } : { pre: observations.slice(0, boundary), post: observations.slice(boundary) };
 }
 
-export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string, rows: Obj[] = [], options: { guidanceOverridePath?: string } = {}): Obj {
+export function writeVerifiersEnvironment(
+  output: string,
+  tasks: Obj[],
+  sourceContext: Map<string, Obj>,
+  auditedCommit: string,
+  rows: Obj[] = [],
+  options: { guidanceOverridePath?: string; oracleAuthority?: "captured_incumbent" | "independent_evidence_required" } = {},
+): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
+  const oracleAuthority = options.oracleAuthority ?? "captured_incumbent";
   mkdirSync(servers, { recursive: true });
   const toolNames = [...new Set<string>(tasks.flatMap((task) => (task.tool_surface ?? []).map(String)))].sort();
   const observedByTool = new Map<string, Obj>();
@@ -1767,10 +1946,16 @@ export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceCo
   // true/false/null (Python spells them True/False/None; a real customer
   // environment died with `NameError: name 'false' is not defined`).
   writeJson(join(servers, "fixtures.json"), fixtures);
-  // Scorer-side gold: expected post-state observations, OUTSIDE the pip
-  // package (never shipped in the wheel, never read by world.py) — the
-  // scoring path's provenance for what the incumbent's writes produced.
-  writeJson(join(root, "gold.json"), { schema_version: "understudy.environment_gold.v1", note: "Scorer-side only. Expected post-state tool results (the incumbent's writes and post-write reads). world.py never serves this file; candidate rollouts must not read it.", tasks: goldRows });
+  // The legacy foundry can retain incumbent post-state as diagnostic scorer
+  // gold. Hosted eval authoring cannot: independent owner/invariant evidence
+  // has not been supplied yet, so emitting gold.json would overstate what the
+  // trace proves. Remove a stale legacy file when recompiling in hosted mode.
+  const goldPath = join(root, "gold.json");
+  if (oracleAuthority === "captured_incumbent") {
+    writeJson(goldPath, { schema_version: "understudy.environment_gold.v1", note: "Scorer-side only. Expected post-state tool results (the incumbent's writes and post-write reads). world.py never serves this file; candidate rollouts must not read it.", tasks: goldRows });
+  } else if (existsSync(goldPath)) {
+    rmSync(goldPath);
+  }
   // _accept: schema validation gates every call (rejects are recorded as
   // status=error events — never writes — and still journal live, so recovery
   // after a rejected call is visible in the watch view, AutomationBench-style).
@@ -1784,20 +1969,25 @@ export function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceCo
   finalizePrimeVerifierV021Package(pkg);
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
   writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.metadata]\nallow-direct-references = true\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
-  // Response/value obligations are oracle-verified against the CAPTURED
-  // incumbent final response (the real gold) whenever the build has the
-  // normalized captures; without them the legacy synthesized oracle stands.
-  const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas, capturesByKey.size > 0 ? goldFinalResponseFor(task, capturesByKey) : undefined));
-  writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
+  // Legacy foundry flows retain their captured-incumbent diagnostic. Hosted
+  // eval authoring deliberately does not promote a historical output to gold:
+  // evals check requires owner/invariant/terminal-state evidence instead.
+  const validation = oracleAuthority === "independent_evidence_required"
+    ? tasks.map((task) => ({ task_id: task.task_id, oracle: { score: null, status: "independent_evidence_required" }, sentinels: {} }))
+    : tasks.map((task) => offlineValidationRow(task, validationSchemas, capturesByKey.size > 0 ? goldFinalResponseFor(task, capturesByKey) : undefined));
+  writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", oracle_authority: oracleAuthority, verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
   // Layout documentation for humans and downstream agents (the split is a
   // layout change: pre-split environments had post-state results inside
   // fixtures.json and no gold.json; readers must tolerate both).
-  writeFileSync(join(root, "README.md"), `# Generated verifiers environment\n\nLayout (fixtures-state-split, \`understudy.environment_gold.v1\`):\n\n- \`understudy_trace_env/servers/fixtures.json\` — CANDIDATE-READABLE. Pre-state only:\n  tool results the incumbent observed BEFORE its first mutating (gold) call.\n  Each fixture is tagged with its \`task_id\`; world.py serves a rollout only its\n  own task's fixtures (untagged fixtures from pre-split environments are served\n  to every task).\n- \`understudy_trace_env/servers/guidance.json\` — CANDIDATE-READABLE. Rejection\n  guidance templates (\`understudy.rejection_guidance.v1\`): the messages\n  world.py serves when validation rejects a call. DATA, not code — edit or\n  regenerate freely; test variants via\n  \`understudy traces regenerate-env --guidance <file>\` (see\n  docs/rejection-guidance.md). Audited for gold leakage like schemas.json.\n- \`gold.json\` — SCORER-SIDE ONLY. Expected post-state observations (the gold\n  writes' echoes and post-write reads), grouped per task. Never read by\n  world.py, never shipped in the pip package, never served to a candidate.\n- \`understudy_trace_env/tasks.json\` — prompts + outcome contracts (contracts are\n  consumed by the scoring path in taskset.py, not surfaced as model input).\n- \`offline-validation.json\` — oracle/sentinel validation rows.\n\nOlder environments (generated before the split) have no \`gold.json\` and may\ncarry post-state results in fixtures.json; \`understudy traces regenerate-env\`\nrebuilds them into this layout. Readers must treat \`gold.json\` as optional.\n`, { mode: 0o600 });
+  const goldDocumentation = oracleAuthority === "captured_incumbent"
+    ? "- `gold.json` — SCORER-SIDE ONLY legacy diagnostic. It contains incumbent post-state observations, is never read by world.py, and is not independent correctness evidence.\n"
+    : "- No `gold.json` is emitted. Hosted provable-lineage mode treats incumbent output only as historical evidence; owner/invariant/terminal-state evidence must author the oracle later.\n";
+  writeFileSync(join(root, "README.md"), `# Generated verifiers environment\n\nLayout (fixtures-state-split):\n\n- \`understudy_trace_env/servers/fixtures.json\` — CANDIDATE-READABLE. Pre-state only:\n  tool results the incumbent observed BEFORE its first mutating call.\n  Each fixture is tagged with its \`task_id\`; world.py serves a rollout only its\n  own task's fixtures (untagged fixtures from pre-split environments are served\n  to every task).\n- \`understudy_trace_env/servers/guidance.json\` — CANDIDATE-READABLE. Rejection\n  guidance templates (\`understudy.rejection_guidance.v1\`): the messages\n  world.py serves when validation rejects a call. DATA, not code — edit or\n  regenerate freely; test variants via\n  \`understudy traces regenerate-env --guidance <file>\` (see\n  docs/rejection-guidance.md). Audited for gold leakage like schemas.json.\n${goldDocumentation}- \`understudy_trace_env/tasks.json\` — prompts + outcome contracts (contracts are\n  consumed by the scoring path in taskset.py, not surfaced as model input).\n- \`offline-validation.json\` — oracle/sentinel validation rows.\n`, { mode: 0o600 });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "servers", "fixtures.json"), join(pkg, "servers", "guidance.json"), join(pkg, "tasks.json")];
   // Gold-leakage audit over the exact artifacts just written (report-only).
   const leakageAudit = auditGoldLeakage(tasks, taskRows, fixtures, validationSchemas, undefined, rejectionGuidance as unknown as Obj);
   printLeakageAudit(leakageAudit);
-  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)), leakage_audit: leakageAudit, rejection_guidance: { path: "understudy_trace_env/servers/guidance.json", schema_version: rejectionGuidance.schema_version, override: options.guidanceOverridePath !== undefined, tools: Object.keys(rejectionGuidance.tools).length }, fixtures_split: { layout: "prestate_only.v1", pre_state_fixtures: fixtures.length, post_state_gold_observations: goldRows.reduce((count, row) => count + row.post_state_observations.length, 0), gold_ref: "gold.json" } };
+  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_authority: oracleAuthority, oracle_pass: oracleAuthority === "captured_incumbent" && validation.every((row) => row.oracle.score === 1), sentinel_pass: oracleAuthority === "captured_incumbent" && validation.every((row) => Object.values(asObject(row.sentinels)).every((sentinel) => Number(asObject(sentinel).score ?? 0) < 1)), leakage_audit: leakageAudit, rejection_guidance: { path: "understudy_trace_env/servers/guidance.json", schema_version: rejectionGuidance.schema_version, override: options.guidanceOverridePath !== undefined, tools: Object.keys(rejectionGuidance.tools).length }, fixtures_split: { layout: "prestate_only.v1", pre_state_fixtures: fixtures.length, post_state_gold_observations: oracleAuthority === "captured_incumbent" ? goldRows.reduce((count, row) => count + row.post_state_observations.length, 0) : 0, gold_ref: oracleAuthority === "captured_incumbent" ? "gold.json" : null, incumbent_post_state_observations_omitted: oracleAuthority === "independent_evidence_required" ? goldRows.reduce((count, row) => count + row.post_state_observations.length, 0) : 0 } };
 }
 
 export type ManifestOptions = {
@@ -2078,6 +2268,12 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   const batchSize = options.batchSize ?? 10;
   if (!Number.isInteger(batchSize) || batchSize <= 0) throw new Error("--batch-size must be a positive integer");
   const source = resolve(sourceInput), output = resolve(outputInput), files = sourceFiles(source), cutoff = new Date(now.valueOf() - maxAgeDays * 86_400_000);
+  if (options.requireProvableLineage === true && !options.sourceIndex) {
+    throw new Error("--provable-lineage-only requires --source-index from the frozen eval project.");
+  }
+  const hostedFiles = options.requireProvableLineage === true
+    ? hostedSourceFiles(source, files, options.sourceIndex!)
+    : null;
   const priorLedger = readJsonl(join(output, "capture-ledger.jsonl"));
   const knownHashes = new Set(priorLedger.map((entry) => entry.source_sha256));
 
@@ -2094,14 +2290,38 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   // malformed (the historical bucket lumped every drop under one label).
   const filteredReasons = { missing_timestamp: 0, malformed_timestamp: 0 };
   const scopeCensus = { known_rows: 0, unknown_rows: 0, exact_matches: 0, explicit_mismatches: 0, unknown_exclusions: 0 };
-  for (const file of files) for (const [index, envelope] of envelopes(file).entries()) {
-    if (!isCaptureEnvelope(envelope)) continue;
-    const row = normalize(envelope, `${relative(source, file) || file}#L${index + 1}`);
-    if (row === null) {
-      const tsRaw = envelope.ts ?? envelope.created_at ?? envelope.uploaded;
-      filteredReasons[tsRaw == null || String(tsRaw).trim() === "" ? "missing_timestamp" : "malformed_timestamp"] += 1;
+  const sourceAccounting: FoundrySourceAccounting[] = [];
+  const inputs = hostedFiles ?? files.map((file): FoundrySourceFile => {
+    const bytes = readFileSync(file);
+    return {
+      absolute_path: file,
+      local_path: relative(source, file).split(sep).join("/"),
+      content_sha256: createHash("sha256").update(bytes).digest("hex"),
+      size_bytes: bytes.byteLength,
+      envelopes: envelopesFromText(file, bytes.toString("utf8")),
+      parse_error: false,
+    };
+  });
+  for (const input of inputs) {
+    if (input.parse_error || input.envelopes === null) {
+      sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "excluded", exclusion_reasons: ["malformed_source"] });
       continue;
     }
+    for (const [index, envelope] of input.envelopes.entries()) {
+      if (!isCaptureEnvelope(envelope)) {
+        if (hostedFiles) sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "excluded", exclusion_reasons: ["not_capture_envelope"] });
+        continue;
+      }
+      const row = normalize(envelope, `${relative(source, input.absolute_path) || input.absolute_path}#L${index + 1}`);
+    if (row === null) {
+      const tsRaw = envelope.ts ?? envelope.created_at ?? envelope.uploaded;
+      const reason = tsRaw == null || String(tsRaw).trim() === "" ? "missing_timestamp" : "malformed_timestamp";
+      filteredReasons[reason] += 1;
+      if (hostedFiles) sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "excluded", exclusion_reasons: [reason] });
+      continue;
+    }
+    row.source.local_path = input.local_path;
+    row.source.content_sha256 = input.content_sha256;
     // Only a --workload-filtered build can silently hide part of a trace; an
     // unfiltered build keeps every sibling episode as its own task, so the
     // census is threaded through (and tasks flagged) only when filtering.
@@ -2114,9 +2334,19 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
     if (options.workload && matches) scopeCensus.exact_matches += 1;
     else if (options.workload && hasScope) scopeCensus.explicit_mismatches += 1;
     else if (options.workload) scopeCensus.unknown_exclusions += 1;
-    if (!options.workload || matches) all.push(row);
+    if (options.workload && !matches) {
+      if (hostedFiles) sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "excluded", exclusion_reasons: [hasScope ? "workload_mismatch" : "missing_workload_scope"] });
+      continue;
+    }
+    if (hostedFiles && new Date(row.captured_at) < cutoff) {
+      sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "excluded", exclusion_reasons: ["stale"] });
+      continue;
+    }
+    if (hostedFiles) sourceAccounting.push({ local_path: input.local_path, content_sha256: input.content_sha256, disposition: "included", exclusion_reasons: [] });
+    all.push(row);
+    }
   }
-  const fresh = all.filter((row) => new Date(row.captured_at) >= cutoff);
+  const fresh = hostedFiles ? all : all.filter((row) => new Date(row.captured_at) >= cutoff);
   let rows = fresh.filter((row) => knownHashes.has(row.source.sha256));
   let queuedRows = fresh.filter((row) => !knownHashes.has(row.source.sha256));
   const metadataAvailable = scopeCensus.known_rows > 0;
@@ -2136,7 +2366,7 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
     queuedRows = queuedRows.slice(batchSize);
     rows = [...rows, ...take];
     dag = buildDag(rows, traceWorkloads);
-    tasks = tasksFrom(dag, rows, priorCatalog);
+    tasks = tasksFrom(dag, rows, priorCatalog, options.requireProvableLineage === true);
     priorCatalog = tasks;
     const newLedger = take.map((row) => ({ source_sha256: row.source.sha256, source_pointer: row.source.pointer, capture_key: row.capture_key, ingested_at: now.toISOString() }));
     appendJsonl(join(output, "capture-ledger.jsonl"), newLedger);
@@ -2153,7 +2383,10 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   if (queuedRows.length > 0) {
     throw new Error(`${rows.length} of ${rows.length + queuedRows.length} captures compiled before the batch loop stopped; resume with: understudy traces build-benchmark --source ${source} --output ${output}`);
   }
-  return writeFoundryArtifacts({ source, output, files, cutoff, maxAgeDays, now, options, rows, dag, tasks, staleFiltered: all.length - fresh.length, filteredReasons, sourceScope: { requested_workload: options.workload ?? null, metadata_available: metadataAvailable, filter_applied: Boolean(options.workload), filter_note: options.workload ? null : metadataAvailable ? null : "unfiltered_exact_source_missing_workload_metadata", ...scopeCensus } });
+  const staleFiltered = hostedFiles
+    ? sourceAccounting.filter((entry) => entry.exclusion_reasons.includes("stale")).length
+    : all.length - fresh.length;
+  return writeFoundryArtifacts({ source, output, files, cutoff, maxAgeDays, now, options, rows, dag, tasks, staleFiltered, filteredReasons, sourceAccounting: hostedFiles ? sourceAccounting : null, sourceScope: { requested_workload: options.workload ?? null, metadata_available: metadataAvailable, filter_applied: Boolean(options.workload), filter_note: options.workload ? null : metadataAvailable ? null : "unfiltered_exact_source_missing_workload_metadata", ...scopeCensus } });
 }
 
 /* ------------------------------------------------------------------------- *
@@ -2234,8 +2467,8 @@ export function stampInitialVersionsLog(output: string, benchmark: Obj, now: Dat
 }
 
 
-function writeFoundryArtifacts(ctx: { source: string; output: string; files: string[]; cutoff: Date; maxAgeDays: number; now: Date; options: TraceFoundryOptions; rows: Obj[]; dag: Obj; tasks: Obj[]; staleFiltered: number; filteredReasons: { missing_timestamp: number; malformed_timestamp: number }; sourceScope: FoundryResult["source_scope"] }): FoundryResult {
-  const { source, output, files, cutoff, now, options, rows, dag, tasks, staleFiltered, filteredReasons } = ctx;
+function writeFoundryArtifacts(ctx: { source: string; output: string; files: string[]; cutoff: Date; maxAgeDays: number; now: Date; options: TraceFoundryOptions; rows: Obj[]; dag: Obj; tasks: Obj[]; staleFiltered: number; filteredReasons: { missing_timestamp: number; malformed_timestamp: number }; sourceAccounting: FoundrySourceAccounting[] | null; sourceScope: FoundryResult["source_scope"] }): FoundryResult {
+  const { source, output, files, cutoff, now, options, rows, dag, tasks, staleFiltered, filteredReasons, sourceAccounting } = ctx;
   const notNormalizableFiltered = filteredReasons.missing_timestamp + filteredReasons.malformed_timestamp;
   const viewer = join(output, "viewer"), capturesDir = join(viewer, "data", "captures");
   mkdirSync(capturesDir, { recursive: true });
@@ -2261,7 +2494,18 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   // version-bump against what was on disk instead of being reborn at 1.0.0.
   const priorTasks = readJsonl(join(output, "tasks.jsonl"));
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
-  const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: requestSystemPrompt(asObject(row?.request)), messages: row?.request.messages ?? [] }]; })), "ab65b6e8d34b03d162408d4bcb854430a86809e6", rows);
+  const executions = lineageRows(dag, tasks, sourceAccounting);
+  const lineage = lineageAnalysis(executions, options.requireProvableLineage === true);
+  writeJsonl(join(output, "execution-index.jsonl"), executions);
+  writeFileSync(join(output, "analysis.md"), lineage.markdown, { mode: 0o600 });
+  const environment = writeVerifiersEnvironment(
+    output,
+    tasks,
+    new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: requestSystemPrompt(asObject(row?.request)), messages: row?.request.messages ?? [] }]; })),
+    "ab65b6e8d34b03d162408d4bcb854430a86809e6",
+    rows,
+    { oracleAuthority: options.requireProvableLineage === true ? "independent_evidence_required" : "captured_incumbent" },
+  );
   // Generation-time self-check: structural sentinels over every generated
   // task + the environment package; stamps task.self_check and rewrites
   // tasks.jsonl, and the summary lands on the manifest below.
@@ -2291,7 +2535,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, status: TRACE_FOUNDRY_DRAFT_STATUS, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, source_scope: ctx.sourceScope, quarantines: dag.quarantines ?? [], self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
+  const result: FoundryResult = { schema_version: TRACE_FOUNDRY_SCHEMA, status: TRACE_FOUNDRY_DRAFT_STATUS, source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: notNormalizableFiltered, not_normalizable_filtered: notNormalizableFiltered, filtered_reasons: filteredReasons }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", execution_index: "execution-index.jsonl", analysis: "analysis.md", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false }, source_scope: ctx.sourceScope, quarantines: dag.quarantines ?? [], lineage: lineage.summary, self_check: selfCheck, leakage_audit: environment.leakage_audit, fixtures_split: environment.fixtures_split, versioning: { bumps: versionBumps } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 

@@ -21,9 +21,17 @@ workload into auditable artifacts and can answer the named decision.
 When the developer names a workload already captured by Understudy and the
 active credentials can read it, use the hosted-workload front door in
 [`references/hosted-workload-eval.md`](references/hosted-workload-eval.md).
-It freezes the exact source cohort, downloads payloads with approval, and runs
-the same local trace foundry. A hosted eval workspace is not required to author
-the verifier.
+An active `understudy.eval-project.v2` is a separate, project-local branch: use
+its exact seven-day source, author only inside that eval project, and make the
+coding agent—not the CLI—the conversational frontend. Infer the goal, metric,
+and failure taxonomy from the traces and repository before asking targeted gap
+questions. Even without owner confirmation, continue to an explicitly
+provisional local draft and run `understudy evals check --draft`.
+Do not run the incumbent baseline, null floor, a provider model, or a hosted
+EvalWorkspace on that branch. Strict `understudy evals check`, final approval,
+and publication are later, separate steps reserved for an owner-confirmed
+release; publication still requires its own explicit upload permission. This
+hosted branch stops after `understudy evals check --draft`.
 
 ## Safety Gates
 
@@ -44,7 +52,9 @@ commit, or transmit secrets; do not send data beyond the activated destination.
 
 ## Goal
 
-Create or refresh these artifacts under `.understudy/capture-evidence/`:
+For ordinary local evidence capture, create or refresh these artifacts under
+`.understudy/capture-evidence/` (the hosted v2 layout is defined in the linked
+reference):
 
 ```text
 workload-profile.md
@@ -194,7 +204,8 @@ For a named hosted workload, prefer:
 understudy evals build \
   --project <project> \
   --workload <workload> \
-  --name <eval-name>
+  --name <eval-name> \
+  --out .understudy/evals/<eval-dir>
 ```
 
 This is a local-authoring operation: the service selects and freezes the source

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-execution-index-row.v1.schema.json",
+  "title": "understudy.eval-execution-index-row.v1",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "source_status", "execution_group", "lineage_status", "capture_count", "source_files", "task_id", "exclusion_reasons"],
+      "properties": {
+        "schema_version": { "const": "understudy.eval-execution-index-row.v1" },
+        "source_status": { "const": "included" },
+        "execution_group": { "$ref": "#/$defs/nonempty" },
+        "lineage_status": { "enum": ["complete", "ambiguous", "unlinked"] },
+        "capture_count": { "type": "integer", "minimum": 1 },
+        "source_files": { "$ref": "#/$defs/source_files" },
+        "task_id": { "oneOf": [{ "$ref": "#/$defs/nonempty" }, { "type": "null" }] },
+        "exclusion_reasons": { "type": "array", "items": { "$ref": "#/$defs/nonempty" } }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "source_status", "execution_group", "lineage_status", "capture_count", "source_files", "task_id", "exclusion_reasons"],
+      "properties": {
+        "schema_version": { "const": "understudy.eval-execution-index-row.v1" },
+        "source_status": { "const": "excluded" },
+        "execution_group": { "type": "null" },
+        "lineage_status": { "type": "null" },
+        "capture_count": { "type": "integer", "minimum": 1 },
+        "source_files": { "$ref": "#/$defs/source_files" },
+        "task_id": { "type": "null" },
+        "exclusion_reasons": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonempty" } }
+      }
+    }
+  ],
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" },
+    "source_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["local_path", "content_sha256"],
+        "properties": {
+          "local_path": { "$ref": "#/$defs/path" },
+          "content_sha256": { "$ref": "#/$defs/sha" }
+        }
+      }
+    }
+  }
+}

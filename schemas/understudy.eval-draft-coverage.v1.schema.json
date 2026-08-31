@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-draft-coverage.v1.schema.json",
+  "title": "understudy.eval-draft-coverage.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "lineage", "execution_modes", "failure_classes"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-draft-coverage.v1" },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_index_sha256", "counts"],
+      "properties": {
+        "execution_index_sha256": { "$ref": "#/$defs/sha" },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["complete", "ambiguous", "unlinked"],
+          "properties": {
+            "complete": { "$ref": "#/$defs/count" },
+            "ambiguous": { "$ref": "#/$defs/count" },
+            "unlinked": { "$ref": "#/$defs/count" }
+          }
+        }
+      }
+    },
+    "execution_modes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/entry" } },
+    "failure_classes": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "observed_count", "task_ids", "disposition"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "observed_count": { "$ref": "#/$defs/count" },
+        "task_ids": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "disposition": { "enum": ["covered", "owner_accepted_uncovered", "agent_proposed_uncovered"] },
+        "owner_note": { "type": "string", "minLength": 1 },
+        "agent_note": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "disposition": { "const": "covered" } }, "required": ["disposition"] },
+          "then": {
+            "properties": { "task_ids": { "minItems": 1 } },
+            "not": { "anyOf": [{ "required": ["owner_note"] }, { "required": ["agent_note"] }] }
+          }
+        },
+        {
+          "if": { "properties": { "disposition": { "const": "owner_accepted_uncovered" } }, "required": ["disposition"] },
+          "then": {
+            "required": ["owner_note"],
+            "properties": { "task_ids": { "maxItems": 0 } },
+            "not": { "required": ["agent_note"] }
+          }
+        },
+        {
+          "if": { "properties": { "disposition": { "const": "agent_proposed_uncovered" } }, "required": ["disposition"] },
+          "then": {
+            "required": ["agent_note"],
+            "properties": { "task_ids": { "maxItems": 0 } },
+            "not": { "required": ["owner_note"] }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-harness.v1.schema.json",
+  "title": "understudy.eval-harness.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "format", "environment_entrypoint", "verifier_entrypoint", "timeout_ms"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-harness.v1" },
+    "format": { "const": "local_module.v1" },
+    "environment_entrypoint": { "$ref": "#/$defs/path" },
+    "verifier_entrypoint": { "$ref": "#/$defs/path" },
+    "timeout_ms": { "type": "integer", "exclusiveMinimum": 0, "maximum": 60000 }
+  },
+  "$defs": {
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" }
+  }
+}

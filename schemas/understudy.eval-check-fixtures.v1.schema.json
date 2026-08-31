@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-check-fixtures.v1.schema.json",
+  "title": "understudy.eval-check-fixtures.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "representative", "known_good", "intentionally_wrong"],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-check-fixtures.v1" },
+    "representative": { "$ref": "#/$defs/good" },
+    "known_good": { "$ref": "#/$defs/good" },
+    "intentionally_wrong": { "$ref": "#/$defs/wrong" }
+  },
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:[\\\\/])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "reference", "statement"],
+      "properties": {
+        "kind": { "enum": ["owner_confirmation", "terminal_state_receipt", "workload_invariant"] },
+        "reference": { "$ref": "#/$defs/nonempty" },
+        "statement": { "$ref": "#/$defs/nonempty" }
+      }
+    },
+    "good": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "input_provenance", "candidate", "correctness_evidence"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nonempty" },
+        "input_provenance": { "$ref": "#/$defs/nonempty" },
+        "candidate": { "$ref": "#/$defs/path" },
+        "state": { "$ref": "#/$defs/path" },
+        "correctness_evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "wrong": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "input_provenance", "candidate", "incorrectness_evidence"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/nonempty" },
+        "input_provenance": { "$ref": "#/$defs/nonempty" },
+        "candidate": { "$ref": "#/$defs/path" },
+        "state": { "$ref": "#/$defs/path" },
+        "incorrectness_evidence": { "$ref": "#/$defs/evidence" }
+      }
+    }
+  }
+}

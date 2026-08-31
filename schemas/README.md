@@ -3,6 +3,38 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## Local workload eval authoring
+
+The `understudy.eval-project.v2`, export-proof, execution-index-row, metric,
+coverage, harness, environment, splits, check-fixtures, check-report, and approval schemas define the private
+coding-agent workspace checked by `understudy evals check`. The workload
+profile remains Markdown; its exact bytes are bound by both intent approval and
+the deterministic check-input hash. These contracts require a provider-free
+local environment replay, independent good/wrong evidence, explicit lineage
+coverage, and a separate post-check owner approval.
+
+The `understudy.eval-publication.v1` and `understudy.eval-release.v1` JSON
+Schemas define the structural hosted boundary for this workflow. Publication
+carries the checked hashes, a compact backend-verifiable source attestation,
+final approval, executable layout, and bundle inventory. The server response
+adds the immutable release seal. Neither contract contains raw source traces,
+the expiring export receipt, the local export-proof file, or mutable authoring
+state.
+
+Within the private project manifest, `source.export_proof_sha256` binds the
+exact local export-proof file. Within the check report and hosted
+publication/release source, that field instead binds the exact opaque
+`source_attestation` token. The CLI verifies both links before upload, and the
+backend verifies the attestation itself before sealing a release.
+
+These Draft 2020-12 schemas do not express the release contract's cross-field
+path rules. Consumers must also parse publications with the package's exported
+`EvalPublicationSchema` and releases with `EvalReleaseSchema`. Those semantic
+validators require a unique, code-unit-sorted bundle inventory, every declared
+artifact and entrypoint, disjoint executable roots, entrypoints inside their
+declared roots, and no undeclared files outside the executable module trees.
+The CLI applies them before upload and to every hosted response.
+
 ## Outcome-first replacement contracts
 
 Four draft-2020-12 contracts form the fail-closed evidence boundary for an

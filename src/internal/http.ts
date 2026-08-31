@@ -83,6 +83,8 @@ export interface RequestInput {
   headers?: Record<string, string>;
   /** Anything JSON-serializable. Caller does not stringify. */
   body?: unknown;
+  /** Caller-owned non-JSON request body, such as FormData. Mutually exclusive with body. */
+  rawBody?: BodyInit;
   /** Optional caller-owned cancellation or timeout signal. */
   signal?: AbortSignal;
   /** Org id whose credential is used. Defaults to the only org if there's
@@ -242,7 +244,11 @@ export async function request<T>(
     ...(input.headers ?? {}),
   };
 
-  let body: string | undefined;
+  if (input.body !== undefined && input.rawBody !== undefined) {
+    throw new Error("Request body and rawBody are mutually exclusive.");
+  }
+
+  let body: BodyInit | undefined = input.rawBody;
   if (input.body !== undefined) {
     body = JSON.stringify(input.body);
     headers["Content-Type"] = headers["Content-Type"] ?? "application/json";
