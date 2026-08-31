@@ -93,6 +93,7 @@ interface BuildOpts extends WorkloadOpts {
 }
 interface CheckOpts {
   project: string;
+  draft?: boolean;
 }
 interface PublishOpts {
   project: string;
@@ -128,8 +129,9 @@ export function registerEvalsCommand(program: Command): void {
     });
 
   evals.command("check")
-    .description("Check a locally authored eval, its verifier fixtures, artifact hashes, and owner approvals without a model call.")
+    .description("Check a locally authored eval, its verifier fixtures, and artifact hashes without a model call.")
     .option("--project <directory>", "Eval project directory containing eval-project.json.", ".")
+    .option("--draft", "Validate a provisional agent-authored draft without requiring owner approval.")
     .action(async function (this: Command, opts: CheckOpts) {
       await runAction(this, () => runCheck(this, opts));
     });
@@ -179,9 +181,27 @@ export function registerEvalsCommand(program: Command): void {
 }
 
 async function runCheck(cmd: Command, opts: CheckOpts): Promise<void> {
-  const result = await runEvalCheck(resolve(opts.project));
+  const result = await runEvalCheck(resolve(opts.project), { draft: opts.draft === true });
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
+    return;
+  }
+  if (result.mode === "draft") {
+    process.stdout.write(`${kleur.green("✓")} Draft schemas, source hashes, deterministic fixture replays, and verifier behavior passed.\n`);
+    process.stdout.write(`Draft report: ${result.report_file}\n`);
+    process.stdout.write(`Lineage: ${result.coverage.lineage.complete} complete, ${result.coverage.lineage.ambiguous} ambiguous, ${result.coverage.lineage.unlinked} unlinked.\n`);
+    const proposedGaps = [...result.coverage.execution_modes, ...result.coverage.failure_classes]
+      .filter((entry) => entry.disposition === "agent_proposed_uncovered")
+      .map((entry) => `${entry.name} (${entry.observed_count})`);
+    process.stdout.write(`Agent-proposed coverage gaps: ${proposedGaps.length > 0 ? proposedGaps.join(", ") : "none"}.\n`);
+    process.stdout.write(`Verifier feedback: representative — ${result.report.representative_replay.feedback}; proposed good — ${result.report.oracle_fixture.feedback}; proposed wrong — ${result.report.wrong_fixture.feedback}.\n`);
+    process.stdout.write("Semantic assumptions needing owner confirmation:\n");
+    for (const assumption of result.semantic_assumptions) {
+      process.stdout.write(`  - ${assumption.kind}: ${assumption.statement} (${assumption.reference})\n`);
+    }
+    process.stdout.write("Draft artifact hashes (not valid for publication approval):\n");
+    for (const [name, value] of Object.entries(result.hashes)) process.stdout.write(`  ${name}: ${value}\n`);
+    process.stdout.write(`${kleur.yellow("next")}: ask the workload owner to correct or confirm these assumptions, replace provisional evidence, then run the strict eval check.\n`);
     return;
   }
   process.stdout.write(`${kleur.green("✓")} Eval schemas, source hashes, representative replay, oracle, and wrong-answer rejection passed.\n`);
@@ -611,12 +631,27 @@ function persistWorkloadBuildState(staging: string, candidate: EvalWorkloadBuild
 }
 
 function emitWorkloadBuildResult(cmd: Command, output: string, project: WorkloadEvalProjectBuildResult): void {
+  const checkArgs = ["evals", "check", "--draft", "--project", output];
+  const nextAction = {
+    kind: "coding_agent_prompt" as const,
+    command: { executable: "understudy", args: checkArgs },
+    prompt: [
+      `Use the Understudy capture-evidence skill to build a provisional eval from the complete seven-day traces at ${output}.`,
+      "Infer the workload goal, output contract, success criteria, execution modes, and failure taxonomy from these traces and the current repository.",
+      "Explain your evidence and ask only targeted questions whose answers would materially change the metric, environment, or case selection.",
+      "Author the project-local eval artifacts and mark unconfirmed semantics as provisional.",
+      `Run the draft check by invoking “understudy” with this exact argument array: ${JSON.stringify(checkArgs)}.`,
+      "Do not publish the eval.",
+    ].join(" "),
+  };
   if (isJsonMode(cmd)) {
-    process.stdout.write(`${JSON.stringify(project)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...project, next_action: nextAction })}\n`);
   } else {
     process.stdout.write(`${kleur.green("✓")} Materialized the complete seven-day source at ${output}\n`);
     process.stdout.write(`Project manifest: ${project.project_file}\n`);
     process.stdout.write(`${kleur.yellow("warning")}: local files contain prompts, completions, or tool payloads; nothing was uploaded and no model provider was called\n`);
+    process.stdout.write("Next, give this prompt to your coding agent:\n\n");
+    process.stdout.write(`${nextAction.prompt}\n`);
   }
 }
 

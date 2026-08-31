@@ -22,11 +22,16 @@ When the developer names a workload already captured by Understudy and the
 active credentials can read it, use the hosted-workload front door in
 [`references/hosted-workload-eval.md`](references/hosted-workload-eval.md).
 An active `understudy.eval-project.v2` is a separate, project-local branch: use
-its exact seven-day source, author only inside that eval project, and stop after
-`understudy evals check`. Do not run the incumbent baseline, null floor, a
-provider model, or a hosted EvalWorkspace on that branch.
-This hosted branch stops after `evals check`; publication requires a separate
-explicit action.
+its exact seven-day source, author only inside that eval project, and make the
+coding agent—not the CLI—the conversational frontend. Infer the goal, metric,
+and failure taxonomy from the traces and repository before asking targeted gap
+questions. Even without owner confirmation, continue to an explicitly
+provisional local draft and run `understudy evals check --draft`.
+Do not run the incumbent baseline, null floor, a provider model, or a hosted
+EvalWorkspace on that branch. Strict `understudy evals check`, final approval,
+and publication are later, separate steps reserved for an owner-confirmed
+release; publication still requires its own explicit upload permission. This
+hosted branch stops after `understudy evals check --draft`.
 
 ## Safety Gates
 

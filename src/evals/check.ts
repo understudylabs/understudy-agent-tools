@@ -15,6 +15,10 @@ import {
   EvalCheckFixturesSchema,
   EvalCheckReportSchema,
   EvalCoverageSchema,
+  EvalDraftCheckFixturesSchema,
+  EvalDraftCheckReportSchema,
+  EvalDraftCoverageSchema,
+  EvalDraftMetricSchema,
   EvalEnvironmentSchema,
   EvalExecutionIndexRowSchema,
   EvalExportProofSchema,
@@ -25,6 +29,9 @@ import {
   WorkloadEvalProjectSchema,
   type EvalCheckFixtures,
   type EvalCheckReport,
+  type EvalDraftCheckFixtures,
+  type EvalDraftCheckReport,
+  type EvalDraftSemanticAssumption,
 } from "./authoring-contracts.js";
 import { deriveWorkloadEvalId } from "../eval-project.js";
 import { replacePrivateJson } from "./build-state.js";
@@ -39,15 +46,21 @@ import { EvalReleaseArtifactPathSchema } from "./release-contracts.js";
 
 type JsonObject = Record<string, unknown>;
 
+type EvalCheckMode = "draft" | "release";
+type EvalCheckReportResult = EvalCheckReport | EvalDraftCheckReport;
+type CoverageDisposition = "covered" | "owner_accepted_uncovered" | "agent_proposed_uncovered";
+
 export interface EvalCheckResult {
   status: "passed";
+  mode: EvalCheckMode;
   publishable: boolean;
-  report: EvalCheckReport;
+  report: EvalCheckReportResult;
   report_file: string;
+  semantic_assumptions: EvalDraftSemanticAssumption[];
   coverage: {
     lineage: { complete: number; ambiguous: number; unlinked: number };
-    execution_modes: Array<{ name: string; observed_count: number; disposition: "covered" | "owner_accepted_uncovered" }>;
-    failure_classes: Array<{ name: string; observed_count: number; disposition: "covered" | "owner_accepted_uncovered" }>;
+    execution_modes: Array<{ name: string; observed_count: number; disposition: CoverageDisposition }>;
+    failure_classes: Array<{ name: string; observed_count: number; disposition: CoverageDisposition }>;
   };
   hashes: {
     workload_profile_sha256: string;
@@ -62,7 +75,13 @@ export interface EvalCheckResult {
 
 export interface RunEvalCheckOptions {
   now?: Date;
+  draft?: boolean;
 }
+
+const DRAFT_CHECK_REPORT_PATH = "checks/draft-report.json";
+const EvalDraftMetricInputSchema = z.union([EvalMetricSchema, EvalDraftMetricSchema]);
+const EvalDraftCoverageInputSchema = z.union([EvalCoverageSchema, EvalDraftCoverageSchema]);
+const EvalDraftFixturesInputSchema = z.union([EvalCheckFixturesSchema, EvalDraftCheckFixturesSchema]);
 
 const BenchmarkTaskSchema = z.object({
   schema_version: z.literal("understudy.benchmark_task.v1"),
@@ -167,7 +186,7 @@ function readJsonl(path: string, schema: ZodType): unknown[] {
 }
 
 function validateCoverageTaskIds(
-  coverage: ReturnType<typeof EvalCoverageSchema.parse>,
+  coverage: ReturnType<typeof EvalCoverageSchema.parse> | ReturnType<typeof EvalDraftCoverageSchema.parse>,
   taskIds: Set<string>,
   failureTaxonomy: string[],
 ): void {
@@ -211,7 +230,11 @@ interface CheckExecutionTree {
 
 async function runFixture(
   projectRoot: string,
-  fixture: EvalCheckFixtures["representative"] | EvalCheckFixtures["intentionally_wrong"],
+  fixture:
+    | EvalCheckFixtures["representative"]
+    | EvalCheckFixtures["intentionally_wrong"]
+    | EvalDraftCheckFixtures["representative"]
+    | EvalDraftCheckFixtures["intentionally_wrong"],
   tasks: Map<string, unknown>,
   execution: CheckExecutionTree,
   timeoutMs: number,
@@ -247,7 +270,7 @@ export function descriptorHash(entries: { path: string; sha256: string }[]): str
   return sha256(canonicalJson([...entries].sort((left, right) => compareCodeUnits(left.path, right.path))));
 }
 
-function sameReport(left: EvalCheckReport, right: EvalCheckReport): boolean {
+function sameReport(left: EvalCheckReportResult, right: EvalCheckReportResult): boolean {
   const { checked_at: _leftAt, ...leftStable } = left;
   const { checked_at: _rightAt, ...rightStable } = right;
   return JSON.stringify(leftStable) === JSON.stringify(rightStable);
@@ -310,6 +333,7 @@ function assertExactSourceProof(
 }
 
 export async function runEvalCheck(projectInput: string, options: RunEvalCheckOptions = {}): Promise<EvalCheckResult> {
+  const draft = options.draft === true;
   const projectRoot = realpathSync(resolve(projectInput));
   if (!lstatSync(projectRoot).isDirectory()) throw new Error("Eval project must be a directory.");
   const project = parseJson(existingProjectPath(projectRoot, "eval-project.json", "eval project"), WorkloadEvalProjectSchema, "eval-project.json");
@@ -320,6 +344,9 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   if (project.eval_id !== expectedEvalId) throw new Error("Eval id does not match the project name, identity, and frozen source window.");
   const declaredPaths = [project.source.index, project.source.export_proof, ...Object.values(project.artifacts)];
   if (new Set(declaredPaths).size !== declaredPaths.length) throw new Error("Eval project artifact paths must be unique; duplicate aliases are not allowed.");
+  if (declaredPaths.includes(DRAFT_CHECK_REPORT_PATH)) {
+    throw new Error(`${DRAFT_CHECK_REPORT_PATH} is reserved for the distinct local draft check report.`);
+  }
 
   const indexPath = existingProjectPath(projectRoot, project.source.index, "source index");
   const indexBytes = regularFile(indexPath, "source index");
@@ -364,24 +391,35 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
 
   const profilePath = existingProjectPath(projectRoot, project.artifacts.workload_profile, "workload profile");
   const profileBytes = regularFile(profilePath, "workload profile");
-  if (profileBytes.toString("utf8").trim().length < 20) throw new Error("Workload profile is missing or too short to record confirmed intent.");
+  if (profileBytes.toString("utf8").trim().length < 20) throw new Error("Workload profile is missing or too short to record inferred or confirmed intent.");
   const metricPath = existingProjectPath(projectRoot, project.artifacts.metric, "metric");
   const metricBytes = regularFile(metricPath, "metric");
-  const metric = parseJson(metricPath, EvalMetricSchema, "metric.json");
-  const approvalPath = existingProjectPath(projectRoot, project.artifacts.approval, "approval");
-  const approval = parseJson(approvalPath, EvalApprovalSchema, "approval.json");
+  const metric = draft
+    ? parseJson(metricPath, EvalDraftMetricInputSchema, "metric.json")
+    : parseJson(metricPath, EvalMetricSchema, "metric.json");
   const workloadProfileSha256 = sha256(profileBytes);
   const metricSha256 = sha256(metricBytes);
-  if (approval.workload_profile_sha256 !== workloadProfileSha256) throw new Error("Intent approval does not match the current workload profile hash.");
-  if (approval.metric_sha256 !== metricSha256) throw new Error("Intent approval does not match the current metric hash.");
-  if (approval.approver !== metric.approved_by) throw new Error("Metric approval and workload intent must be confirmed by the same owner identity.");
   const checkTime = options.now ?? new Date();
-  const createdAt = new Date(project.created_at).valueOf();
-  const metricApprovedAt = new Date(metric.approved_at).valueOf();
-  const intentConfirmedAt = new Date(approval.intent_confirmed_at).valueOf();
-  if (createdAt > metricApprovedAt) throw new Error("Metric approval cannot occur before eval project creation.");
-  if (metricApprovedAt > intentConfirmedAt) throw new Error("Intent confirmation cannot occur before metric approval.");
-  if (intentConfirmedAt > checkTime.valueOf()) throw new Error("Intent confirmation cannot occur after the eval check.");
+  const approval = draft
+    ? null
+    : parseJson(
+      existingProjectPath(projectRoot, project.artifacts.approval, "approval"),
+      EvalApprovalSchema,
+      "approval.json",
+    );
+  if (approval !== null) {
+    if (approval.workload_profile_sha256 !== workloadProfileSha256) throw new Error("Intent approval does not match the current workload profile hash.");
+    if (approval.metric_sha256 !== metricSha256) throw new Error("Intent approval does not match the current metric hash.");
+    if (metric.approved !== true || approval.approver !== metric.approved_by) {
+      throw new Error("Metric approval and workload intent must be confirmed by the same owner identity.");
+    }
+    const createdAt = new Date(project.created_at).valueOf();
+    const metricApprovedAt = new Date(metric.approved_at).valueOf();
+    const intentConfirmedAt = new Date(approval.intent_confirmed_at).valueOf();
+    if (createdAt > metricApprovedAt) throw new Error("Metric approval cannot occur before eval project creation.");
+    if (metricApprovedAt > intentConfirmedAt) throw new Error("Intent confirmation cannot occur before metric approval.");
+    if (intentConfirmedAt > checkTime.valueOf()) throw new Error("Intent confirmation cannot occur after the eval check.");
+  }
 
   const tasksPath = existingProjectPath(projectRoot, project.artifacts.tasks, "tasks");
   const tasksBytes = regularFile(tasksPath, "tasks");
@@ -392,7 +430,9 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
 
   const coveragePath = existingProjectPath(projectRoot, project.artifacts.coverage, "coverage");
   const coverageBytes = regularFile(coveragePath, "coverage");
-  const coverage = parseJson(coveragePath, EvalCoverageSchema, "coverage.json");
+  const coverage = draft
+    ? parseJson(coveragePath, EvalDraftCoverageInputSchema, "coverage.json")
+    : parseJson(coveragePath, EvalCoverageSchema, "coverage.json");
   validateCoverageTaskIds(coverage, taskIds, metric.failure_taxonomy);
   const executionIndexPath = existingProjectPath(projectRoot, project.artifacts.execution_index, "execution index");
   const executionIndexBytes = regularFile(executionIndexPath, "execution index");
@@ -483,19 +523,31 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     throw new Error("Environment and verifier module directories must be disjoint and cannot contain one another.");
   }
   const fixturePath = existingProjectPath(projectRoot, environment.fixtures, "check fixtures");
+  if (draft && fixturePath === resolve(projectRoot, DRAFT_CHECK_REPORT_PATH)) {
+    throw new Error(`${DRAFT_CHECK_REPORT_PATH} is reserved for the distinct local draft check report.`);
+  }
   const fixtureBytes = regularFile(fixturePath, "check fixtures");
-  const fixtures = parseJson(fixturePath, EvalCheckFixturesSchema, "check fixtures (independent correctness evidence is required)");
+  const fixtures = draft
+    ? parseJson(fixturePath, EvalDraftFixturesInputSchema, "draft check fixtures")
+    : parseJson(fixturePath, EvalCheckFixturesSchema, "check fixtures (independent correctness evidence is required)");
   const fixtureDataPaths = [fixturePath];
   for (const fixture of [fixtures.representative, fixtures.known_good, fixtures.intentionally_wrong]) {
     fixtureDataPaths.push(existingProjectPath(projectRoot, fixture.candidate, "fixture candidate"));
     if (fixture.state !== undefined) fixtureDataPaths.push(existingProjectPath(projectRoot, fixture.state, "fixture state"));
+  }
+  const generatedReportPaths = new Set([
+    resolve(projectRoot, project.artifacts.check_report),
+    resolve(projectRoot, DRAFT_CHECK_REPORT_PATH),
+  ]);
+  if ([indexPath, proofPath, ...sourceCapturePaths, ...fixtureDataPaths].some((path) => generatedReportPaths.has(path))) {
+    throw new Error("Source and fixture data cannot alias generated check report paths.");
   }
   const protectedPaths = [
     indexPath,
     proofPath,
     ...sourceCapturePaths,
     ...fixtureDataPaths,
-    resolve(projectRoot, project.artifacts.check_report),
+    ...generatedReportPaths,
   ];
   for (const protectedPath of protectedPaths) {
     if (inside(environmentRoot, protectedPath) || inside(verifierRoot, protectedPath)) {
@@ -541,7 +593,50 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     capture_count: project.source.capture_count,
     size_bytes: project.source.size_bytes,
   };
-  const checkInputSha256 = sha256(canonicalJson({
+  const semanticAssumptions: EvalDraftSemanticAssumption[] = [];
+  if (draft) {
+    semanticAssumptions.push({
+      kind: "workload_goal",
+      reference: project.artifacts.workload_profile,
+      statement: "Draft checking does not certify the inferred workload goal; a workload owner or delegated domain expert must confirm it before release.",
+    });
+    if (metric.approved === false) {
+      semanticAssumptions.push({
+        kind: "metric",
+        reference: project.artifacts.metric,
+        statement: `The proposed metric “${metric.name}”, pass threshold, and failure taxonomy still need owner confirmation.`,
+      });
+    } else {
+      semanticAssumptions.push({
+        kind: "metric",
+        reference: project.artifacts.metric,
+        statement: `Draft checking did not verify the approval claim for metric “${metric.name}”; strict checking must bind it to matching owner approval evidence before release.`,
+      });
+    }
+    for (const [name, evidence] of [
+      ["representative", fixtures.representative.correctness_evidence],
+      ["known_good", fixtures.known_good.correctness_evidence],
+      ["intentionally_wrong", fixtures.intentionally_wrong.incorrectness_evidence],
+    ] as const) {
+      if (evidence.kind === "agent_inference") {
+        semanticAssumptions.push({
+          kind: "fixture_judgment",
+          reference: `${environment.fixtures}#${name}`,
+          statement: `${evidence.statement} Proposed evidence: ${evidence.reference}.`,
+        });
+      }
+    }
+    for (const entry of [...coverage.execution_modes, ...coverage.failure_classes]) {
+      if (entry.disposition === "agent_proposed_uncovered") {
+        semanticAssumptions.push({
+          kind: "coverage_gap",
+          reference: `${project.artifacts.coverage}#${entry.name}`,
+          statement: entry.agent_note!,
+        });
+      }
+    }
+  }
+  const commonCheckInput = {
     source: sourceBinding,
     workload_profile_sha256: workloadProfileSha256,
     metric_sha256: metricSha256,
@@ -552,12 +647,25 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     verifier_sha256: verifierSha256,
     fixtures_sha256: sha256(fixtureBytes),
     fixture_files: [representative, oracle, wrong].map((outcome) => ({ candidate_sha256: outcome.candidateSha256, state_sha256: outcome.stateSha256 })),
-    intent: { approver: approval.approver, intent_confirmed_at: approval.intent_confirmed_at, workload_profile_sha256: approval.workload_profile_sha256, metric_sha256: approval.metric_sha256 },
-  }));
-  const candidateReport = EvalCheckReportSchema.parse({
-    schema_version: "understudy.eval-check.v1",
+  };
+  let semanticCheckInput: JsonObject;
+  if (draft) {
+    semanticCheckInput = { draft: { semantic_assumptions: semanticAssumptions } };
+  } else {
+    if (approval === null) throw new Error("Strict eval checking requires owner intent approval.");
+    semanticCheckInput = {
+      intent: {
+        approver: approval.approver,
+        intent_confirmed_at: approval.intent_confirmed_at,
+        workload_profile_sha256: approval.workload_profile_sha256,
+        metric_sha256: approval.metric_sha256,
+      },
+    };
+  }
+  const checkInputSha256 = sha256(canonicalJson({ ...commonCheckInput, ...semanticCheckInput }));
+  const reportBody = {
     checked_at: checkTime.toISOString(),
-    status: "passed",
+    status: "passed" as const,
     task_count: taskRows.length,
     representative_replay: {
       task_id: fixtures.representative.task_id,
@@ -596,11 +704,21 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     coverage_sha256: coverageSha256,
     environment_sha256: environmentSha256,
     verifier_sha256: verifierSha256,
-  });
-  const checkReportPath = reportPath(projectRoot, project.artifacts.check_report);
-  let report = candidateReport;
+  };
+  const candidateReport: EvalCheckReportResult = draft
+    ? EvalDraftCheckReportSchema.parse({
+      schema_version: "understudy.eval-draft-check.v1",
+      publishable: false,
+      ...reportBody,
+      semantic_assumptions: semanticAssumptions,
+    })
+    : EvalCheckReportSchema.parse({ schema_version: "understudy.eval-check.v1", ...reportBody });
+  const checkReportPath = reportPath(projectRoot, draft ? DRAFT_CHECK_REPORT_PATH : project.artifacts.check_report);
+  let report: EvalCheckReportResult = candidateReport;
   try {
-    const existing = parseJson(checkReportPath, EvalCheckReportSchema, "checks/report.json");
+    const existing: EvalCheckReportResult = draft
+      ? parseJson(checkReportPath, EvalDraftCheckReportSchema, DRAFT_CHECK_REPORT_PATH)
+      : parseJson(checkReportPath, EvalCheckReportSchema, project.artifacts.check_report);
     if (sameReport(existing, candidateReport) && Date.parse(existing.checked_at) <= checkTime.valueOf()) report = existing;
     else replacePrivateJson(checkReportPath, candidateReport);
   } catch (error) {
@@ -617,13 +735,13 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
     verifier_sha256: verifierSha256,
     check_report_sha256: checkReportSha256,
   };
-  if (new Date(approval.intent_confirmed_at).valueOf() > new Date(report.checked_at).valueOf()) {
+  if (approval !== null && new Date(approval.intent_confirmed_at).valueOf() > new Date(report.checked_at).valueOf()) {
     throw new Error("Intent confirmation must occur on or before the current check report.");
   }
   if (report.coverage_sha256 !== hashes.coverage_sha256) throw new Error("Check report does not bind the current coverage map.");
 
   let publishable = false;
-  if (approval.approved_at !== undefined) {
+  if (!draft && approval !== null && approval.approved_at !== undefined) {
     for (const [key, value] of Object.entries({
       eval_set_sha256: approval.eval_set_sha256,
       coverage_sha256: approval.coverage_sha256,
@@ -643,9 +761,11 @@ export async function runEvalCheck(projectInput: string, options: RunEvalCheckOp
   }
   return {
     status: "passed",
+    mode: draft ? "draft" : "release",
     publishable,
     report,
     report_file: checkReportPath,
+    semantic_assumptions: semanticAssumptions,
     coverage: {
       lineage: coverage.lineage.counts,
       execution_modes: coverage.execution_modes.map(({ name, observed_count, disposition }) => ({ name, observed_count, disposition })),

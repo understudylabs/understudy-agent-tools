@@ -4289,7 +4289,7 @@ class ScoreWithFeedback:
     await withHostedFixture(async ({ gatewayUrl, home, repo, requests, state }) => {
       const env = { HOME: home, USERPROFILE: home };
       assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
-      const outputDir = join(repo, ".understudy", "evals", "complete-week");
+      const outputDir = join(repo, ".understudy", "evals", "complete week's draft");
 
       const reservedOutput = join(repo, ".understudy");
       rmSync(reservedOutput, { recursive: true, force: true });
@@ -4320,7 +4320,7 @@ class ScoreWithFeedback:
       ], env, repo);
       assert.notEqual(interrupted.status, 0);
       assert.equal(existsSync(outputDir), false);
-      const checkpointPath = join(repo, ".understudy", "evals", ".complete-week.eval-build", "build-state.json");
+      const checkpointPath = join(repo, ".understudy", "evals", ".complete week's draft.eval-build", "build-state.json");
       assert.equal(existsSync(checkpointPath), true);
       const interruptedState = JSON.parse(readFileSync(checkpointPath, "utf8"));
       assert.ok(Date.parse(interruptedState.source.ingestion_cutoff) > Date.parse(interruptedState.source.to));
@@ -4331,6 +4331,15 @@ class ScoreWithFeedback:
       ], env, repo);
       assert.equal(built.status, 0, built.stderr);
       assert.doesNotMatch(built.stdout + built.stderr, /SECRET_PROMPT|SECRET_COMPLETION/);
+      const builtPayload = JSON.parse(built.stdout);
+      assert.equal(builtPayload.next_action.kind, "coding_agent_prompt");
+      assert.deepEqual(builtPayload.next_action.command, {
+        executable: "understudy",
+        args: ["evals", "check", "--draft", "--project", outputDir],
+      });
+      assert.match(builtPayload.next_action.prompt, /infer the workload goal/i);
+      assert.match(builtPayload.next_action.prompt, /exact argument array/i);
+      assert.match(builtPayload.next_action.prompt, new RegExp(outputDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       const project = JSON.parse(readFileSync(join(outputDir, "eval-project.json"), "utf8"));
       assert.equal(project.schema_version, "understudy.eval-project.v2");
       assert.match(project.eval_id, /^eval_[a-f0-9]{24}$/);

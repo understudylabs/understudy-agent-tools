@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { runEvalCheck } from "../dist/evals/check.js";
@@ -46,6 +47,146 @@ test("evals check hashes module trees in global code-unit path order", async () 
     writeFileSync(join(project, "environment/a/z.mjs"), "export const nested = true;\n");
     const result = await runEvalCheck(project, { now: new Date("2026-08-30T13:00:00.000Z") });
     assert.equal(result.status, "passed");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("evals check --draft validates provisional semantics without owner approval and writes a distinct non-publishable report", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-evals-draft-check-"));
+  try {
+    const { project } = buildProject(root);
+    const metricPath = join(project, "metric.json");
+    const metric = JSON.parse(readFileSync(metricPath, "utf8"));
+    metric.schema_version = "understudy.eval-draft-metric.v1";
+    delete metric.approved_by;
+    delete metric.approved_at;
+    metric.approved = false;
+    writeJson(metricPath, metric);
+    rmSync(join(project, "approval.json"));
+
+    const fixturesPath = join(project, "checks/fixtures.json");
+    const fixtures = JSON.parse(readFileSync(fixturesPath, "utf8"));
+    fixtures.schema_version = "understudy.eval-draft-check-fixtures.v1";
+    fixtures.representative.correctness_evidence = {
+      kind: "agent_inference",
+      reference: "source/traces/capture.json#response_body",
+      statement: "The agent inferred this candidate represents the observed successful behavior.",
+    };
+    fixtures.known_good.correctness_evidence = {
+      kind: "agent_inference",
+      reference: "benchmark/tasks.jsonl#task-synthetic-write",
+      statement: "The agent proposes this as the positive fixture until the owner confirms it.",
+    };
+    fixtures.intentionally_wrong.incorrectness_evidence = {
+      kind: "agent_inference",
+      reference: "metric.json#failure_taxonomy",
+      statement: "The agent proposes writing another record as the negative fixture.",
+    };
+    writeJson(fixturesPath, fixtures);
+
+    const coveragePath = join(project, "coverage.json");
+    const coverage = JSON.parse(readFileSync(coveragePath, "utf8"));
+    coverage.schema_version = "understudy.eval-draft-coverage.v1";
+    coverage.failure_classes[2] = {
+      name: "wrong_status",
+      observed_count: 1,
+      task_ids: [],
+      disposition: "agent_proposed_uncovered",
+      agent_note: "No independently confirmed wrong-status case is available yet.",
+    };
+    writeJson(coveragePath, coverage);
+
+    const result = await runEvalCheck(project, { draft: true, now: new Date("2026-08-30T13:00:00.000Z") });
+    assert.equal(result.mode, "draft");
+    assert.equal(result.publishable, false);
+    assert.equal(result.report.schema_version, "understudy.eval-draft-check.v1");
+    assert.match(result.report_file, /\/checks\/draft-report\.json$/);
+    assert.equal(existsSync(join(project, "checks/draft-report.json")), true);
+    assert.equal(existsSync(join(project, "checks/report.json")), false, "a draft check never creates the publishable report");
+    assert.ok(result.semantic_assumptions.some((entry) => entry.kind === "workload_goal"));
+    assert.ok(result.semantic_assumptions.some((entry) => entry.kind === "metric"));
+    assert.equal(result.semantic_assumptions.filter((entry) => entry.kind === "fixture_judgment").length, 3);
+    assert.ok(result.semantic_assumptions.some((entry) => entry.kind === "coverage_gap" && entry.reference === "coverage.json#wrong_status"));
+
+    const cli = spawnSync(process.execPath, [resolve("dist/bin.js"), "--json", "evals", "check", "--draft", "--project", project], {
+      encoding: "utf8",
+      env: { ...process.env, UNDERSTUDY_TELEMETRY: "0" },
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    const cliResult = JSON.parse(cli.stdout);
+    assert.equal(cliResult.mode, "draft");
+    assert.equal(cliResult.publishable, false);
+
+    const collidingFixtures = JSON.parse(readFileSync(fixturesPath, "utf8"));
+    collidingFixtures.representative.candidate = "checks/draft-report.json";
+    writeJson(fixturesPath, collidingFixtures);
+    await assert.rejects(
+      () => runEvalCheck(project, { draft: true }),
+      /source and fixture data cannot alias generated check report paths/i,
+    );
+
+    const strictMetric = buildProject(join(root, "strict-metric"));
+    const strictMetricPath = join(strictMetric.project, "metric.json");
+    const proposedMetric = JSON.parse(readFileSync(strictMetricPath, "utf8"));
+    proposedMetric.schema_version = "understudy.eval-draft-metric.v1";
+    delete proposedMetric.approved_by;
+    delete proposedMetric.approved_at;
+    proposedMetric.approved = false;
+    writeJson(strictMetricPath, proposedMetric);
+    await assert.rejects(() => runEvalCheck(strictMetric.project), /Invalid metric\.json|approved/i);
+
+    const strictFixtures = buildProject(join(root, "strict-fixtures"));
+    const strictFixturesPath = join(strictFixtures.project, "checks/fixtures.json");
+    const inferredFixtures = JSON.parse(readFileSync(strictFixturesPath, "utf8"));
+    inferredFixtures.schema_version = "understudy.eval-draft-check-fixtures.v1";
+    inferredFixtures.known_good.correctness_evidence = fixtures.known_good.correctness_evidence;
+    writeJson(strictFixturesPath, inferredFixtures);
+    await assert.rejects(() => runEvalCheck(strictFixtures.project), /independent correctness evidence|Invalid check fixtures/i);
+
+    const strictCoverage = buildProject(join(root, "strict-coverage"));
+    const strictCoveragePath = join(strictCoverage.project, "coverage.json");
+    const proposedCoverage = JSON.parse(readFileSync(strictCoveragePath, "utf8"));
+    proposedCoverage.schema_version = "understudy.eval-draft-coverage.v1";
+    proposedCoverage.failure_classes[2] = coverage.failure_classes[2];
+    writeJson(strictCoveragePath, proposedCoverage);
+    await assert.rejects(() => runEvalCheck(strictCoverage.project), /Invalid coverage\.json|agent_proposed_uncovered/i);
+
+    const reservedDraftReport = buildProject(join(root, "reserved-draft-report"));
+    const reservedManifestPath = join(reservedDraftReport.project, "eval-project.json");
+    const reservedManifest = JSON.parse(readFileSync(reservedManifestPath, "utf8"));
+    reservedManifest.artifacts.check_report = "checks/draft-report.json";
+    writeJson(reservedManifestPath, reservedManifest);
+    await assert.rejects(
+      () => runEvalCheck(reservedDraftReport.project),
+      /checks\/draft-report\.json is reserved for the distinct local draft check report/i,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("draft checking never reuses or changes a release-candidate report", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-evals-draft-isolation-"));
+  try {
+    const { project } = buildProject(root);
+    const release = await runEvalCheck(project, { now: new Date("2026-08-30T13:00:00.000Z") });
+    const releaseReport = readFileSync(release.report_file, "utf8");
+    const approvalPath = join(project, "approval.json");
+    writeJson(approvalPath, {
+      ...JSON.parse(readFileSync(approvalPath, "utf8")),
+      approved_at: "2026-08-30T13:05:00.000Z",
+      eval_set_sha256: release.hashes.eval_set_sha256,
+      coverage_sha256: release.hashes.coverage_sha256,
+      environment_sha256: release.hashes.environment_sha256,
+      verifier_sha256: release.hashes.verifier_sha256,
+      check_report_sha256: release.hashes.check_report_sha256,
+    });
+    const draft = await runEvalCheck(project, { draft: true, now: new Date("2026-08-30T14:00:00.000Z") });
+    assert.equal(draft.publishable, false);
+    assert.notEqual(draft.report_file, release.report_file);
+    assert.ok(draft.semantic_assumptions.some((entry) => entry.kind === "metric" && /did not verify the approval claim/i.test(entry.statement)));
+    assert.equal(readFileSync(release.report_file, "utf8"), releaseReport);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

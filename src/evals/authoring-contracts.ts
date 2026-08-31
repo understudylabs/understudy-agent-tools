@@ -118,6 +118,31 @@ const CoverageEntrySchema = z.object({
   }
 });
 
+const DraftCoverageEntrySchema = z.object({
+  name: z.string().min(1),
+  observed_count: z.number().int().nonnegative(),
+  task_ids: z.array(z.string().min(1)),
+  disposition: z.enum(["covered", "owner_accepted_uncovered", "agent_proposed_uncovered"]),
+  owner_note: z.string().min(1).optional(),
+  agent_note: z.string().min(1).optional(),
+}).strict().superRefine((entry, context) => {
+  if (entry.disposition === "covered" && entry.task_ids.length === 0) {
+    context.addIssue({ code: "custom", message: "covered entries require at least one task id" });
+  }
+  if (entry.disposition === "owner_accepted_uncovered" && !entry.owner_note) {
+    context.addIssue({ code: "custom", message: "owner-accepted uncovered entries require an owner note" });
+  }
+  if (entry.disposition === "agent_proposed_uncovered" && !entry.agent_note) {
+    context.addIssue({ code: "custom", message: "agent-proposed uncovered entries require an agent note" });
+  }
+  if (entry.disposition !== "owner_accepted_uncovered" && entry.owner_note !== undefined) {
+    context.addIssue({ code: "custom", message: "owner notes are only valid for owner-accepted uncovered entries" });
+  }
+  if (entry.disposition !== "agent_proposed_uncovered" && entry.agent_note !== undefined) {
+    context.addIssue({ code: "custom", message: "agent notes are only valid for agent-proposed uncovered entries" });
+  }
+});
+
 export const EvalCoverageSchema = z.object({
   schema_version: z.literal("understudy.eval-coverage.v1"),
   lineage: z.object({
@@ -139,6 +164,27 @@ export const EvalCoverageSchema = z.object({
   }
 });
 
+export const EvalDraftCoverageSchema = z.object({
+  schema_version: z.literal("understudy.eval-draft-coverage.v1"),
+  lineage: z.object({
+    execution_index_sha256: Sha256Schema,
+    counts: z.object({
+      complete: z.number().int().nonnegative(),
+      ambiguous: z.number().int().nonnegative(),
+      unlinked: z.number().int().nonnegative(),
+    }).strict(),
+  }).strict(),
+  execution_modes: z.array(DraftCoverageEntrySchema).min(1),
+  failure_classes: z.array(DraftCoverageEntrySchema),
+}).strict().superRefine((coverage, context) => {
+  for (const entries of [coverage.execution_modes, coverage.failure_classes]) {
+    for (const entry of entries) {
+      if (new Set(entry.task_ids).size !== entry.task_ids.length) context.addIssue({ code: "custom", message: `${entry.name} contains duplicate task ids` });
+      if (entry.disposition !== "covered" && entry.task_ids.length > 0) context.addIssue({ code: "custom", message: `${entry.name} is uncovered and cannot list task ids` });
+    }
+  }
+});
+
 export const EvalMetricSchema = z.object({
   schema_version: z.literal("understudy.eval-metric.v1"),
   name: z.string().min(1),
@@ -153,6 +199,13 @@ export const EvalMetricSchema = z.object({
   approved_by: z.string().min(1),
   approved_at: TimestampSchema,
 }).strict();
+
+const ProposedEvalMetricSchema = EvalMetricSchema.extend({
+  schema_version: z.literal("understudy.eval-draft-metric.v1"),
+  approved: z.literal(false),
+}).omit({ approved_by: true, approved_at: true });
+
+export const EvalDraftMetricSchema = ProposedEvalMetricSchema;
 
 export const EvalHarnessSchema = z.object({
   schema_version: z.literal("understudy.eval-harness.v1"),
@@ -184,6 +237,12 @@ export const IndependentOutcomeEvidenceSchema = z.object({
   statement: z.string().min(1),
 }).strict();
 
+export const AgentInferenceOutcomeEvidenceSchema = IndependentOutcomeEvidenceSchema.extend({
+  kind: z.literal("agent_inference"),
+});
+
+const DraftOutcomeEvidenceSchema = z.union([IndependentOutcomeEvidenceSchema, AgentInferenceOutcomeEvidenceSchema]);
+
 const FixtureBaseSchema = z.object({
   task_id: z.string().min(1),
   input_provenance: z.string().min(1),
@@ -197,6 +256,13 @@ export const EvalCheckFixturesSchema = z.object({
   known_good: FixtureBaseSchema.extend({ correctness_evidence: IndependentOutcomeEvidenceSchema }),
   intentionally_wrong: FixtureBaseSchema.extend({ incorrectness_evidence: IndependentOutcomeEvidenceSchema }),
 }).strict();
+
+export const EvalDraftCheckFixturesSchema = EvalCheckFixturesSchema.extend({
+  schema_version: z.literal("understudy.eval-draft-check-fixtures.v1"),
+  representative: FixtureBaseSchema.extend({ correctness_evidence: DraftOutcomeEvidenceSchema }),
+  known_good: FixtureBaseSchema.extend({ correctness_evidence: DraftOutcomeEvidenceSchema }),
+  intentionally_wrong: FixtureBaseSchema.extend({ incorrectness_evidence: DraftOutcomeEvidenceSchema }),
+});
 
 const FinalApprovalHashesSchema = z.object({
   eval_set_sha256: Sha256Schema,
@@ -270,15 +336,42 @@ export const EvalCheckReportSchema = z.object({
   verifier_sha256: Sha256Schema,
 }).strict();
 
+export const EvalDraftSemanticAssumptionSchema = z.object({
+  kind: z.enum(["workload_goal", "metric", "fixture_judgment", "coverage_gap"]),
+  reference: z.string().min(1),
+  statement: z.string().min(1),
+}).strict();
+
+const DraftCheckOutcomeSchema = CheckOutcomeSchema.extend({
+  evidence: DraftOutcomeEvidenceSchema,
+});
+
+export const EvalDraftCheckReportSchema = EvalCheckReportSchema.extend({
+  schema_version: z.literal("understudy.eval-draft-check.v1"),
+  publishable: z.literal(false),
+  representative_replay: DraftCheckOutcomeSchema.extend({
+    result: z.literal("passed"),
+    provider_called: z.literal(false),
+  }),
+  oracle_fixture: DraftCheckOutcomeSchema.extend({ result: z.literal("passed") }),
+  wrong_fixture: DraftCheckOutcomeSchema.extend({ result: z.literal("rejected") }),
+  semantic_assumptions: z.array(EvalDraftSemanticAssumptionSchema).min(1),
+});
+
 export const FinalApprovalHashes = FinalApprovalHashesSchema;
 
 export type WorkloadEvalProject = z.infer<typeof WorkloadEvalProjectSchema>;
 export type EvalCoverage = z.infer<typeof EvalCoverageSchema>;
+export type EvalDraftCoverage = z.infer<typeof EvalDraftCoverageSchema>;
 export type EvalMetric = z.infer<typeof EvalMetricSchema>;
+export type EvalDraftMetric = z.infer<typeof EvalDraftMetricSchema>;
 export type EvalHarness = z.infer<typeof EvalHarnessSchema>;
 export type EvalEnvironment = z.infer<typeof EvalEnvironmentSchema>;
 export type EvalCheckFixtures = z.infer<typeof EvalCheckFixturesSchema>;
+export type EvalDraftCheckFixtures = z.infer<typeof EvalDraftCheckFixturesSchema>;
 export type EvalApproval = z.infer<typeof EvalApprovalSchema>;
 export type EvalCheckReport = z.infer<typeof EvalCheckReportSchema>;
+export type EvalDraftSemanticAssumption = z.infer<typeof EvalDraftSemanticAssumptionSchema>;
+export type EvalDraftCheckReport = z.infer<typeof EvalDraftCheckReportSchema>;
 export type EvalExportProof = z.infer<typeof EvalExportProofSchema>;
 export type EvalExecutionIndexRow = z.infer<typeof EvalExecutionIndexRowSchema>;

@@ -9,6 +9,10 @@ import {
   EvalCheckFixturesSchema,
   EvalCheckReportSchema,
   EvalCoverageSchema,
+  EvalDraftCheckFixturesSchema,
+  EvalDraftCheckReportSchema,
+  EvalDraftCoverageSchema,
+  EvalDraftMetricSchema,
   EvalEnvironmentSchema,
   EvalExecutionIndexRowSchema,
   EvalExportProofSchema,
@@ -90,6 +94,7 @@ function schemaAccepts(root, value) {
 }
 
 const evidence = { kind: "workload_invariant", reference: "metric#invariant", statement: "The invariant independently establishes correctness." };
+const agentEvidence = { kind: "agent_inference", reference: "source/index.jsonl#task-1", statement: "The agent inferred this outcome from the local source." };
 const outcome = {
   task_id: "task-1",
   input_provenance: "owner-fixture",
@@ -100,6 +105,7 @@ const outcome = {
   result: "passed",
   feedback: "correct",
 };
+const draftOutcome = { ...outcome, evidence: agentEvidence };
 const releaseLayout = {
   workload_profile: "workload-profile.md",
   coverage: "coverage.json",
@@ -205,6 +211,11 @@ const samples = {
     value: { schema_version: "understudy.eval-coverage.v1", lineage: { execution_index_sha256: sha, counts: { complete: 1, ambiguous: 0, unlinked: 0 } }, execution_modes: [{ name: "write", observed_count: 1, task_ids: ["task-1"], disposition: "covered" }], failure_classes: [{ name: "wrong", observed_count: 0, task_ids: [], disposition: "owner_accepted_uncovered", owner_note: "Owner accepts this current gap." }] },
     reject: (value) => { value.execution_modes = []; },
   },
+  "draft-coverage.v1": {
+    runtime: EvalDraftCoverageSchema,
+    value: { schema_version: "understudy.eval-draft-coverage.v1", lineage: { execution_index_sha256: sha, counts: { complete: 1, ambiguous: 0, unlinked: 0 } }, execution_modes: [{ name: "write", observed_count: 1, task_ids: ["task-1"], disposition: "covered" }], failure_classes: [{ name: "wrong", observed_count: 0, task_ids: [], disposition: "agent_proposed_uncovered", agent_note: "No independently confirmed negative exists yet." }] },
+    reject: (value) => { value.failure_classes[0].agent_note = ""; },
+  },
   "export-proof.v1": {
     runtime: EvalExportProofSchema,
     value: {
@@ -242,6 +253,11 @@ const samples = {
     value: { schema_version: "understudy.eval-metric.v1", name: "state", description: "State matches", validator: { kind: "local_verifier", entrypoint: "verifier/check.mjs" }, pass_threshold: 1, failure_taxonomy: ["wrong"], approved: true, approved_by: "owner", approved_at: timestamp },
     reject: (value) => { value.validator.entrypoint = "../outside.mjs"; },
   },
+  "draft-metric.v1": {
+    runtime: EvalDraftMetricSchema,
+    value: { schema_version: "understudy.eval-draft-metric.v1", name: "state", description: "State matches", validator: { kind: "local_verifier", entrypoint: "verifier/check.mjs" }, pass_threshold: 1, failure_taxonomy: ["wrong"], approved: false },
+    reject: (value) => { value.approved = true; },
+  },
   "harness.v1": {
     runtime: EvalHarnessSchema,
     value: { schema_version: "understudy.eval-harness.v1", format: "local_module.v1", environment_entrypoint: pathPatternValue, verifier_entrypoint: "verifier/check.mjs", timeout_ms: 5_000 },
@@ -262,6 +278,11 @@ const samples = {
     value: { schema_version: "understudy.eval-check-fixtures.v1", representative: { task_id: "task-1", input_provenance: "trace", candidate: "fixtures/good.json", correctness_evidence: evidence }, known_good: { task_id: "task-1", input_provenance: "owner", candidate: "fixtures/good.json", correctness_evidence: evidence }, intentionally_wrong: { task_id: "task-1", input_provenance: "owner", candidate: "fixtures/wrong.json", incorrectness_evidence: evidence } },
     reject: (value) => { value.known_good.correctness_evidence.kind = "incumbent_trace"; },
   },
+  "draft-check-fixtures.v1": {
+    runtime: EvalDraftCheckFixturesSchema,
+    value: { schema_version: "understudy.eval-draft-check-fixtures.v1", representative: { task_id: "task-1", input_provenance: "trace", candidate: "fixtures/good.json", correctness_evidence: agentEvidence }, known_good: { task_id: "task-1", input_provenance: "trace", candidate: "fixtures/good.json", correctness_evidence: agentEvidence }, intentionally_wrong: { task_id: "task-1", input_provenance: "inference", candidate: "fixtures/wrong.json", incorrectness_evidence: agentEvidence } },
+    reject: (value) => { value.known_good.correctness_evidence.kind = "incumbent_trace"; },
+  },
   "approval.v1": {
     runtime: EvalApprovalSchema,
     value: { schema_version: "understudy.eval-approval.v1", approver: "owner", intent_confirmed_at: timestamp, workload_profile_sha256: sha, metric_sha256: sha },
@@ -271,6 +292,11 @@ const samples = {
     runtime: EvalCheckReportSchema,
     value: { schema_version: "understudy.eval-check.v1", checked_at: timestamp, status: "passed", task_count: 1, representative_replay: { ...outcome, provider_called: false }, oracle_fixture: outcome, wrong_fixture: { ...outcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, export_proof_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha },
     reject: (value) => { value.wrong_fixture.result = "passed"; },
+  },
+  "draft-check.v1": {
+    runtime: EvalDraftCheckReportSchema,
+    value: { schema_version: "understudy.eval-draft-check.v1", checked_at: timestamp, status: "passed", publishable: false, task_count: 1, representative_replay: { ...draftOutcome, provider_called: false }, oracle_fixture: draftOutcome, wrong_fixture: { ...draftOutcome, result: "rejected", feedback: "wrong" }, source: { scope, scope_sha256: sha, index_sha256: sha, export_proof_sha256: sha, capture_count: 1, size_bytes: 12 }, check_input_sha256: sha, eval_set_sha256: sha, coverage_sha256: sha, environment_sha256: sha, verifier_sha256: sha, semantic_assumptions: [{ kind: "workload_goal", reference: "workload-profile.md", statement: "The inferred workload goal still needs owner confirmation." }] },
+    reject: (value) => { value.publishable = true; },
   },
   "publication.v1": {
     runtime: EvalPublicationSchema,
@@ -409,3 +435,10 @@ for (const [name, sample] of Object.entries(samples)) {
     assert.equal(schemaAccepts(schema, extra), false, "packaged schema rejects undeclared fields");
   });
 }
+
+test("draft metric schema does not also describe an approved release metric", () => {
+  const draftSchema = JSON.parse(readFileSync(resolve("schemas", "understudy.eval-draft-metric.v1.schema.json"), "utf8"));
+  const releaseMetric = samples["metric.v1"].value;
+  assert.equal(EvalDraftMetricSchema.safeParse(releaseMetric).success, false);
+  assert.equal(schemaAccepts(draftSchema, releaseMetric), false);
+});

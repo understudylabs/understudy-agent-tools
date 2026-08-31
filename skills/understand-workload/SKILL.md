@@ -17,10 +17,14 @@ what their workload is meant to accomplish, what data it represents, and how a
 request moves through the app. This skill turns traces, prompt files, datasets,
 and code paths into a *shared mental model* — purpose, inputs, outputs, steps,
 tool-call flow, data shape, failure modes, and success criteria — built **with**
-the user through Q&A.
+the user through inference-first, targeted Q&A.
 
 Every workload is different, so this is a skill, not a script: the agent
-extracts structure from traces and code; the user confirms the task meaning.
+acts as the conversational frontend, extracts structure and a proposed task
+meaning from traces and code, and asks the user only about material uncertainty.
+When this understanding feeds a hosted eval and the owner is unavailable,
+preserve uncertainty explicitly and continue to a provisional local draft
+rather than blocking useful analysis.
 
 ## Safety Gates
 
@@ -105,20 +109,31 @@ extracts structure from traces and code; the user confirms the task meaning.
    [`../ingest-traces/references/trace-viewer.md`](../ingest-traces/references/trace-viewer.md)
    and keep its payload-bearing output under `.understudy/`.
 
-7. **Q&A discovery — build the understanding WITH the user.** Use `AskUserQuestion`
-   to confirm and fill gaps you can't infer from structure alone, e.g.:
+7. **Targeted Q&A — infer first, then ask only about consequential gaps.** Show
+   the proposed purpose, success criteria, execution modes, and failure taxonomy
+   with the local evidence behind each inference. Do not ask the user to restate
+   information already present in the repository or traces. Use
+   `AskUserQuestion` only for gaps whose answers would materially change the
+   metric, environment, or case selection, e.g.:
    - "Is the goal *extraction* (read→structured output) or *orchestration*
      (read→decide→write)? I inferred X from the tools — right?"
    - "Which step is the one that actually matters for success?"
    - "What counts as a correct outcome here — and what's an unacceptable failure
      (e.g. a wrong write vs a missed item)?"
    - "Where does the big token cost come from — fixed context or per-item input?"
-   Iterate until the user says the picture is right.
+   Incorporate answers when available. If the person at the keyboard is not the
+   workload owner or cannot answer, label the affected statements provisional,
+   and list the smallest owner decisions still needed. When this feeds the
+   hosted-eval path, continue authoring the local eval draft; otherwise finish
+   the provisional workload brief. Never turn an unanswered question into a
+   fabricated owner confirmation.
 
-8. **Write the success criteria** — the rubric axes for *this* workload, beyond
-   cost/latency: final-state correctness, extraction recall/precision, policy
-   compliance, no-bad-writes, schema validity. These become the metric
-   `capture-evidence` and downstream local/optimizer runs use.
+8. **Write the proposed success criteria** — the rubric axes for *this*
+   workload, beyond cost/latency: final-state correctness, extraction
+   recall/precision, policy compliance, no-bad-writes, schema validity. These
+   become the metric `capture-evidence` and downstream local/optimizer runs use.
+   Mark them provisional until a workload owner or delegated domain expert
+   confirms them; trace outputs are observations, never correctness authority.
 
 9. **Use the shared understanding to test or improve models.** Primary path:
    freeze a workload contract with [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
@@ -130,12 +145,20 @@ extracts structure from traces and code; the user confirms the task meaning.
    local-vs-frontier feel check. For a whole-case test a small model cannot one-shot, build a simulated
    environment only when no real resettable workload exists.
 
+For a workload hosted by Understudy, follow the draft-first branch in
+[`../capture-evidence/references/hosted-workload-eval.md`](../capture-evidence/references/hosted-workload-eval.md).
+Use the exact frozen seven-day corpus and repository to create the local draft,
+then run `understudy evals check --draft`. Keep raw traces local. Strict checking,
+final approval, and publication remain separate owner-confirmed release steps.
+
 ## Output Standard
 
 End with: workload surface inspected; representative trace(s)/dataset rows
 chosen and their size; the request/response code path; data/trace profile; the
 seven-facet explanation; the mermaid flow; success criteria agreed with the
-user; artifact paths for the local workload brief; and the next evidence action.
+user or explicitly marked provisional; unresolved assumptions and the smallest
+owner decisions still needed; artifact paths for the local workload brief; and
+the next evidence action.
 If you include ladder vibe-check questions, mark them optional and tie each to a
 real step or criterion. Keep the decomposition doc local; only synthetic
 questions leave.
