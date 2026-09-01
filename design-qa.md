@@ -70,7 +70,6 @@ final result: passed
 
 ## Local classifier training progress
 
-- Source visual truth: Fable training flow at `http://localhost:1423/cedar/flows/training`
 - Reference capture: `outputs/training-design-qa/reference-training-1180x820.png`
 - Native capture: `eb95f01c-8835-49bd-b5d4-a53ed860e243-screenshot.png`
 - Combined comparison: `outputs/training-design-qa/comparison-reference-native.png`

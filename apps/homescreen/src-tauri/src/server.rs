@@ -2584,7 +2584,7 @@ async fn a2a_card(
         "name": "understudy-desktop",
         "description": "Local Understudy control plane: models, routes, traces, and runtime.",
         "version": env!("CARGO_PKG_VERSION"),
-        "url": format!("/a2a"),
+        "url": "/a2a",
         "capabilities": { "streaming": false, "tools": true },
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],

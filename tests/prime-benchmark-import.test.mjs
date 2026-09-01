@@ -284,11 +284,11 @@ test("a nonempty all-error traces.jsonl is rejected and remains resumable", () =
     source_dir: "source",
     rejected_dir: "rejected-runs",
     identity: {
-      benchmark_version: "cedar-v1",
+      benchmark_version: "sample-v1",
       environment_sha256: "abc123",
       verifier_version: "0.2.1",
       model: "gpt-5.5",
-      run_id: "gpt-5.5-cedar-v1",
+      run_id: "gpt-5.5-sample-v1",
     },
     provider_policy: {
       provider: "openai",

@@ -6,8 +6,6 @@
     "dev": "next dev -p 1420",
     "build": "next build",
     "start": "next start -p 1420",
-    "orchard:contract-check": "node scripts/check-orchard-contract.mjs",
-    "orchard:workflow-proxy": "node scripts/orchard-workflow-proxy.mjs",
     "tauri": "tauri",
     "dev:explore": "next dev -p 14300",
     "tauri:dev:explore": "UNDERSTUDY_SERVER_PORT=17791 tauri dev --config src-tauri/tauri.dev-explore.conf.json"
@@ -26,7 +24,6 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-updater": "2.10.1",
     "ai": "^7.0.7",
-    "ajv": "8.17.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

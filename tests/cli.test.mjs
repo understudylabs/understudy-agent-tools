@@ -4234,7 +4234,7 @@ class ScoreWithFeedback:
       const catalog = await runWithEnvAsync([
         "--json", "evals", "catalog", "--project", "rehearsal", "--workload", "classify",
         "--from", "2026-06-01T00:00:00Z", "--to", "2026-06-08T00:00:00Z",
-        "--limit", "50", "--seed", "cedar-july", "--requires-tools", "--out", catalogPath,
+        "--limit", "50", "--seed", "fixture-july", "--requires-tools", "--out", catalogPath,
       ], env, repo);
       assert.equal(catalog.status, 0, catalog.stderr);
       assert.doesNotMatch(catalog.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
@@ -4243,13 +4243,13 @@ class ScoreWithFeedback:
 
       const create = await runWithEnvAsync([
         "--json", "evals", "cohort", "create", "--project", "rehearsal", "--workload", "classify",
-        "--from-catalog", catalogPath, "--name", "cedar-july",
+        "--from-catalog", catalogPath, "--name", "fixture-july",
       ], env, repo);
       assert.equal(create.status, 0, create.stderr);
       assert.equal(JSON.parse(create.stdout).cohort.id, "evc_123");
       const createRequest = requests.find((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST");
       assert.equal(createRequest.body.captures[0].request_id, "req_123");
-      assert.equal(createRequest.body.selection.sampling_seed, "cedar-july");
+      assert.equal(createRequest.body.selection.sampling_seed, "fixture-july");
 
       const blocked = await runWithEnvAsync([
         "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
@@ -5083,7 +5083,7 @@ class ScoreWithFeedback:
     try {
       const source = join(root, "expenses.csv");
       const labels = ["meals", "office_supplies", "travel"];
-      const merchantGroups = ["alder", "birch", "cedar", "dogwood", "elm", "fir"];
+      const merchantGroups = ["alder", "birch", "cypress", "dogwood", "elm", "fir"];
       const rows = Array.from({ length: 90 }, (_, index) => {
         const label = labels[index % labels.length];
         const merchant = merchantGroups[Math.floor(index / labels.length) % merchantGroups.length];

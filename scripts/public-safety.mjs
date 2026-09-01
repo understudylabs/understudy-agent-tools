@@ -1,30 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
-import { extname } from "node:path";
+import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 
-export const privateTerms = [
-  "/Users/luis/",
-  "/understudy-agent/",
-  "understudy-agent/",
-  "understudy-platform",
-  "understudy-knowledge",
-  "raw-notes",
-  "private/runbooks",
-  ".smithers",
-  "Fullcast",
-  "Cedar",
-  "Workgrounds",
-  "Forecast",
-  "Mercado",
-  "Meli",
-  "Super Admin",
-  "super-admin",
-  "D1 mutation",
-  "pool secret",
-  "R2 capture envelope",
-];
+export const privateTermsEnvironmentVariable = "UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS";
 
 export const secretPatterns = [
-  /sk-[A-Za-z0-9_-]{20,}/,
+  /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}/,
   /sk-ant-[A-Za-z0-9_-]{20,}/,
   /gh[pousr]_[A-Za-z0-9_]{20,}/,
   /xox[baprs]-[A-Za-z0-9-]{20,}/,
@@ -49,50 +28,179 @@ export const allowedProductionUrls = new Set([
   "https://api.understudylabs.com",
 ]);
 
-export const textExtensions = new Set([
-  ".json",
-  ".jsonl",
-  ".md",
-  ".mjs",
-  ".sh",
-  ".toml",
-  ".ts",
-  ".tsx",
-  ".txt",
-  ".yaml",
-  ".yml",
-]);
+export function parsePrivateTermPolicy(value = "") {
+  const policy = [];
+  const entriesByTerm = new Map();
+  const safeTokensByTerm = new Map();
+  for (const line of value.split(/\r?\n/)) {
+    const [termField, ...safeTokenFields] = line.split("\t");
+    const term = termField.trim();
+    const key = term.toLowerCase();
+    if (!term) {
+      continue;
+    }
 
-export function isTextPath(path) {
-  return textExtensions.has(extname(path).toLowerCase());
+    let entry = entriesByTerm.get(key);
+    if (!entry) {
+      entry = { term, safeEnclosingTokens: [] };
+      entriesByTerm.set(key, entry);
+      safeTokensByTerm.set(key, new Set());
+      policy.push(entry);
+    }
+
+    const seenSafeTokens = safeTokensByTerm.get(key);
+    for (const safeTokenField of safeTokenFields) {
+      const safeToken = safeTokenField.trim();
+      const safeTokenKey = safeToken.toLowerCase();
+      if (!safeToken || seenSafeTokens.has(safeTokenKey)) {
+        continue;
+      }
+      seenSafeTokens.add(safeTokenKey);
+      entry.safeEnclosingTokens.push(safeToken);
+    }
+  }
+  return policy;
 }
 
-export function validatePublicText(path, { privateLabel = "private review term" } = {}) {
-  if (!existsSync(path) || !isTextPath(path)) {
+export function parsePrivateTerms(value = "") {
+  return parsePrivateTermPolicy(value).map(({ term }) => term);
+}
+
+export function configuredPrivateTermPolicy(environment = process.env) {
+  return parsePrivateTermPolicy(environment[privateTermsEnvironmentVariable] ?? "");
+}
+
+export function configuredPrivateTerms(environment = process.env) {
+  return configuredPrivateTermPolicy(environment).map(({ term }) => term);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function literalRanges(value, literal) {
+  const pattern = new RegExp(escapeRegExp(literal), "giu");
+  return [...value.matchAll(pattern)].map((match) => [match.index, match.index + match[0].length]);
+}
+
+function isAllowedPrivateTermCoincidence(value, start, end, safeEnclosingTokens) {
+  for (const safeToken of safeEnclosingTokens) {
+    for (const [allowedStart, allowedEnd] of literalRanges(value, safeToken)) {
+      const isStrictSubstring = start > allowedStart || end < allowedEnd;
+      if (isStrictSubstring && start >= allowedStart && end <= allowedEnd) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function privateTermRanges(value, { term, safeEnclosingTokens }) {
+  const pattern = new RegExp(escapeRegExp(term), "giu");
+  const ranges = [];
+  for (const match of value.matchAll(pattern)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (!isAllowedPrivateTermCoincidence(value, start, end, safeEnclosingTokens)) {
+      ranges.push([start, end]);
+    }
+  }
+  return ranges;
+}
+
+function containsPrivateTerm(value, privateTermPolicy) {
+  return privateTermPolicy.some((entry) => privateTermRanges(value, entry).length > 0);
+}
+
+function normalizePrivateTermPolicy(privateTermPolicy) {
+  return privateTermPolicy.map((entry) => (
+    typeof entry === "string" ? { term: entry, safeEnclosingTokens: [] } : entry
+  ));
+}
+
+export function redactPrivateTerms(value, privateTermPolicy = configuredPrivateTermPolicy()) {
+  let redacted = value;
+  for (const entry of normalizePrivateTermPolicy(privateTermPolicy)) {
+    const ranges = privateTermRanges(redacted, entry);
+    for (let index = ranges.length - 1; index >= 0; index -= 1) {
+      const [start, end] = ranges[index];
+      redacted = `${redacted.slice(0, start)}[private-term]${redacted.slice(end)}`;
+    }
+  }
+  return redacted;
+}
+
+function readTrackedEntry(path) {
+  try {
+    const metadata = lstatSync(path);
+    if (metadata.isSymbolicLink()) {
+      return readlinkSync(path, "utf8");
+    }
+    if (!metadata.isFile()) {
+      return null;
+    }
+    return readFileSync(path).toString("utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function validatePublicPath(
+  path,
+  options = {},
+) {
+  const {
+    displayPath = path,
+    privateLabel = "private review term",
+  } = options;
+  const privateTermPolicy = normalizePrivateTermPolicy(
+    options.privateTermPolicy ?? options.privateTerms ?? configuredPrivateTermPolicy(),
+  );
+  if (!containsPrivateTerm(path, privateTermPolicy)) {
     return [];
   }
-  const text = readFileSync(path, "utf8");
+  return [`${redactPrivateTerms(displayPath, privateTermPolicy)}: path contains ${privateLabel}`];
+}
+
+export function validatePublicText(
+  path,
+  options = {},
+) {
+  const {
+    displayPath = path,
+    privateLabel = "private review term",
+  } = options;
+  const privateTermPolicy = normalizePrivateTermPolicy(
+    options.privateTermPolicy ?? options.privateTerms ?? configuredPrivateTermPolicy(),
+  );
+  const text = readTrackedEntry(path);
+  if (text === null) {
+    return [];
+  }
+  const safePath = redactPrivateTerms(displayPath, privateTermPolicy);
   const errors = [];
-  for (const term of privateTerms) {
-    if (text.includes(term)) {
-      errors.push(`${path}: contains ${privateLabel} ${JSON.stringify(term)}`);
-    }
+  if (containsPrivateTerm(text, privateTermPolicy)) {
+    errors.push(`${safePath}: contains ${privateLabel}`);
   }
   for (const pattern of secretPatterns) {
     if (pattern.test(text)) {
-      errors.push(`${path}: contains secret-shaped text matching ${pattern.source}`);
+      errors.push(`${safePath}: contains secret-shaped text matching ${pattern.source}`);
     }
   }
   for (const pattern of rawPayloadPatterns) {
     if (pattern.test(text)) {
-      errors.push(`${path}: contains raw payload marker matching ${pattern.source}`);
+      errors.push(`${safePath}: contains raw payload marker matching ${pattern.source}`);
     }
   }
   for (const pattern of productionUrlPatterns) {
-    for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))) {
+    const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+    for (const match of text.matchAll(new RegExp(pattern.source, flags))) {
       const url = match[0].replace(/\/+$/, "");
       if (!allowedProductionUrls.has(url)) {
-        errors.push(`${path}: contains production/control-plane URL matching ${pattern.source}`);
+        errors.push(`${safePath}: contains production/control-plane URL matching ${pattern.source}`);
       }
     }
   }

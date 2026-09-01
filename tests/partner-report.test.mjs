@@ -134,7 +134,7 @@ describe("scrubbing", () => {
   });
 
   it("derives customer-name tokens from the dir slug, skipping generic words", () => {
-    assert.deepEqual(slugNameTokens("cedar-automation"), ["cedar"]);
+    assert.deepEqual(slugNameTokens("sample-automation"), ["sample"]);
     assert.deepEqual(slugNameTokens("trace-benchmark-42"), []);
   });
 });

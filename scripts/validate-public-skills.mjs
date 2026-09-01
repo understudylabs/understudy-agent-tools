@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { validatePublicText } from "./public-safety.mjs";
+import {
+  configuredPrivateTermPolicy,
+  privateTermsEnvironmentVariable,
+  redactPrivateTerms,
+  validatePublicPath,
+  validatePublicText,
+} from "./public-safety.mjs";
 
 const allowedTopLevel = new Set(["name", "description", "license", "allowed-tools", "metadata"]);
 const mvpPublicSkillNames = [
@@ -24,11 +30,13 @@ const mvpRouterTargets = [
 const namePattern = /^[a-z0-9-]+$/;
 
 function parseArgs(argv) {
-  const args = { paths: [], docs: ["docs"], repo: false };
+  const args = { paths: [], docs: ["docs"], release: false, repo: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--repo") {
       args.repo = true;
+    } else if (arg === "--release") {
+      args.release = true;
     } else if (arg === "--docs") {
       args.docs = [];
       while (argv[index + 1] && !argv[index + 1].startsWith("--")) {
@@ -147,7 +155,7 @@ function hasUnsafeGepaHoldoutAccess(text) {
   return false;
 }
 
-function validateSkill(path) {
+function validateSkill(path, privateTermPolicy) {
   const skillMd = join(path, "SKILL.md");
   if (!existsSync(skillMd)) {
     return [`${path}: missing SKILL.md`];
@@ -207,16 +215,16 @@ function validateSkill(path) {
   if (hasUnsafeGepaHoldoutAccess(text)) {
     errors.push(`${skillMd}: GEPA must not touch holdout data`);
   }
-  errors.push(...validatePublicText(skillMd));
+  errors.push(...validatePublicText(skillMd, { privateTermPolicy }));
   return errors;
 }
 
 function gitTrackedFiles() {
-  const result = spawnSync("git", ["ls-files"], { encoding: "utf8" });
+  const result = spawnSync("git", ["ls-files", "-z"], { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(result.stderr || "git ls-files failed");
   }
-  return result.stdout.split("\n").filter(Boolean);
+  return result.stdout.split("\0").filter(Boolean);
 }
 
 function isGitIgnored(path) {
@@ -224,7 +232,19 @@ function isGitIgnored(path) {
   return result.status === 0;
 }
 
-function scanMarkdown(root) {
+function trackedEntryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function scanMarkdown(root, privateTermPolicy) {
   if (!existsSync(root) || isGitIgnored(root)) {
     return [];
   }
@@ -236,7 +256,7 @@ function scanMarkdown(root) {
     }
     const path = join(entry.parentPath ?? root, entry.name);
     if (!isGitIgnored(path)) {
-      errors.push(...validatePublicText(path));
+      errors.push(...validatePublicText(path, { privateTermPolicy }));
     }
   }
   return errors;
@@ -244,6 +264,12 @@ function scanMarkdown(root) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  const privateTermPolicy = configuredPrivateTermPolicy();
+  if (args.release && privateTermPolicy.length === 0) {
+    console.error(`error: --release requires ${privateTermsEnvironmentVariable} to contain at least one private term`);
+    process.exitCode = 1;
+    return;
+  }
   const skillDirs = args.paths.flatMap(skillDirsForRoot);
   const errors = [];
   for (const root of args.paths) {
@@ -252,22 +278,27 @@ function main() {
     }
   }
   for (const skillDir of skillDirs) {
-    errors.push(...validateSkill(skillDir));
+    errors.push(...validateSkill(skillDir, privateTermPolicy));
   }
   for (const docRoot of args.docs) {
-    errors.push(...scanMarkdown(docRoot));
+    errors.push(...scanMarkdown(docRoot, privateTermPolicy));
   }
   if (args.repo) {
-    const exclude = new Set(["scripts/package-smoke.mjs", "scripts/public-safety.mjs", "scripts/validate-public-skills.mjs"]);
     for (const path of gitTrackedFiles()) {
-      if (exclude.has(path) || isGitIgnored(path)) {
+      if (!trackedEntryExists(path) || isGitIgnored(path)) {
         continue;
       }
-      errors.push(...validatePublicText(path));
+      errors.push(...validatePublicPath(path, { privateTermPolicy }));
+      errors.push(...validatePublicText(path, {
+        privateTermPolicy,
+      }));
     }
   }
   for (const error of errors) {
-    console.log(error);
+    console.log(redactPrivateTerms(error, privateTermPolicy));
+  }
+  if (args.repo && privateTermPolicy.length === 0) {
+    console.log("note: private review terms are not configured; private-term checks were skipped");
   }
   if (errors.length === 0) {
     console.log(`ok ${skillDirs.length} public skill(s)`);

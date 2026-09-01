@@ -87,11 +87,11 @@ export function OverviewMetricTile({
 
 // Model palette (design system v2.0), cycled deterministically over the
 // alphabetical rank of a series name within its key set.
-export const CEDAR_PALETTE = ["#9edbd3", "#d97757", "#a78bfa", "#f2b34c", "#67e8f9"] as const;
+export const SERIES_PALETTE = ["#9edbd3", "#d97757", "#a78bfa", "#f2b34c", "#67e8f9"] as const;
 
 export function overviewSeriesColors(keys: string[]): Map<string, string> {
   const ranked = [...keys].sort((a, b) => a.localeCompare(b));
-  return new Map(ranked.map((key, index) => [key, CEDAR_PALETTE[index % CEDAR_PALETTE.length]]));
+  return new Map(ranked.map((key, index) => [key, SERIES_PALETTE[index % SERIES_PALETTE.length]]));
 }
 
 /** Chip-row legend: colored sm-dot + series name, under the chart. */

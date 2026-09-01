@@ -5,7 +5,7 @@ completion token: chosen logprob, argmax logprob, the paper's surprise gap
 d_t = logπ(a_max) − logπ(τ_t), and the score_table "top-2 gap" (top1 − top2).
 Feeds a small standalone `G_spike` proxy for public smoke testing.
 
-This is the missing executor behind `fullcast_pedagogical_forced_likelihood.py`'s
+This is the missing executor behind a pedagogical forced-likelihood runner's
 `forced_token_logprobs_ref`. Pure-local, no provider calls.
 
 Validation (run as __main__): full-pass gather == incremental teacher-forced
