@@ -39,7 +39,7 @@ git ls-files
 Before publishing a package, run:
 
 ```sh
-npm run package:smoke
+npm run package:smoke -- --release
 ```
 
 It runs `npm pack --dry-run --json` and inspects the included files for local
@@ -66,8 +66,9 @@ dispatch again.
 The environment owns these secrets: `APPLE_CERTIFICATE`,
 `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, and
-`TAURI_SIGNING_PRIVATE_KEY`. Rotate them deliberately; never copy them into
-workflow inputs, logs, repository variables, or committed files.
+`TAURI_SIGNING_PRIVATE_KEY`, plus the private release policy
+`UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS`. Rotate them deliberately; never copy
+them into workflow inputs, logs, repository variables, or committed files.
 
 The commands below remain the local break-glass path.
 
@@ -80,6 +81,8 @@ version advances without a newer CLI package. Fetch first, then run the source g
 ```sh
 git fetch origin
 npm run check
+npm run skills:validate -- --release
+npm run package:smoke -- --release
 npm run desktop:release-check -- --stage source
 ```
 

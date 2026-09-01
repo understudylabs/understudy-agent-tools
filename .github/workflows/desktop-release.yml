@@ -90,6 +90,14 @@ jobs:
           npm ci
           bun install --cwd apps/homescreen --frozen-lockfile
 
+      - name: Scan the public release contents
+        if: inputs.mode == 'release'
+        env:
+          UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS: ${{ secrets.UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS }}
+        run: |
+          npm run skills:validate -- --release
+          npm run package:smoke -- --release
+
       - name: Validate release credentials
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}

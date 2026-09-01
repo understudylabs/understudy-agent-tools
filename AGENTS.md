@@ -106,8 +106,10 @@ OSS from the first commit.
   request metadata, or review comments. Use clearly synthetic placeholders.
 - Before a public release, an authorized maintainer must provide the private,
   newline-delimited `UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS` value while running
-  `npm run skills:validate` and `npm run package:smoke`. Untrusted pull-request
-  jobs use synthetic matcher tests and do not receive this private value.
+  `npm run skills:validate -- --release` and
+  `npm run package:smoke -- --release`. A term may be followed on the same line
+  by tab-separated exact safe enclosing tokens. Untrusted pull-request jobs use
+  synthetic matcher tests and do not receive this private value.
 - Examples must use synthetic data or small public fixtures.
 - The desktop connects to the production remote-training control plane
   (`train.understudylabs.com`) as its default. This is no longer experimental:

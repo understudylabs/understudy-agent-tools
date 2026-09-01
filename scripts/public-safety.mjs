@@ -28,74 +28,100 @@ export const allowedProductionUrls = new Set([
   "https://api.understudylabs.com",
 ]);
 
-const allowedPrivateTermCoincidences = new Set([
-  "Timeline",
-  "consumeLine",
-  "decamelize",
-  "eemeli",
-  "producedArtifact",
-  "timeline",
-]);
-
-export function parsePrivateTerms(value = "") {
-  const terms = [];
-  const seen = new Set();
+export function parsePrivateTermPolicy(value = "") {
+  const policy = [];
+  const entriesByTerm = new Map();
+  const safeTokensByTerm = new Map();
   for (const line of value.split(/\r?\n/)) {
-    const term = line.trim();
+    const [termField, ...safeTokenFields] = line.split("\t");
+    const term = termField.trim();
     const key = term.toLowerCase();
-    if (!term || seen.has(key)) {
+    if (!term) {
       continue;
     }
-    seen.add(key);
-    terms.push(term);
+
+    let entry = entriesByTerm.get(key);
+    if (!entry) {
+      entry = { term, safeEnclosingTokens: [] };
+      entriesByTerm.set(key, entry);
+      safeTokensByTerm.set(key, new Set());
+      policy.push(entry);
+    }
+
+    const seenSafeTokens = safeTokensByTerm.get(key);
+    for (const safeTokenField of safeTokenFields) {
+      const safeToken = safeTokenField.trim();
+      const safeTokenKey = safeToken.toLowerCase();
+      if (!safeToken || seenSafeTokens.has(safeTokenKey)) {
+        continue;
+      }
+      seenSafeTokens.add(safeTokenKey);
+      entry.safeEnclosingTokens.push(safeToken);
+    }
   }
-  return terms;
+  return policy;
+}
+
+export function parsePrivateTerms(value = "") {
+  return parsePrivateTermPolicy(value).map(({ term }) => term);
+}
+
+export function configuredPrivateTermPolicy(environment = process.env) {
+  return parsePrivateTermPolicy(environment[privateTermsEnvironmentVariable] ?? "");
 }
 
 export function configuredPrivateTerms(environment = process.env) {
-  return parsePrivateTerms(environment[privateTermsEnvironmentVariable] ?? "");
+  return configuredPrivateTermPolicy(environment).map(({ term }) => term);
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isAllowedPrivateTermCoincidence(value, start, end) {
-  for (const allowed of allowedPrivateTermCoincidences) {
-    let allowedStart = value.indexOf(allowed);
-    while (allowedStart !== -1) {
-      const allowedEnd = allowedStart + allowed.length;
+function literalRanges(value, literal) {
+  const pattern = new RegExp(escapeRegExp(literal), "giu");
+  return [...value.matchAll(pattern)].map((match) => [match.index, match.index + match[0].length]);
+}
+
+function isAllowedPrivateTermCoincidence(value, start, end, safeEnclosingTokens) {
+  for (const safeToken of safeEnclosingTokens) {
+    for (const [allowedStart, allowedEnd] of literalRanges(value, safeToken)) {
       const isStrictSubstring = start > allowedStart || end < allowedEnd;
       if (isStrictSubstring && start >= allowedStart && end <= allowedEnd) {
         return true;
       }
-      allowedStart = value.indexOf(allowed, allowedStart + allowed.length);
     }
   }
   return false;
 }
 
-function privateTermRanges(value, term) {
+function privateTermRanges(value, { term, safeEnclosingTokens }) {
   const pattern = new RegExp(escapeRegExp(term), "giu");
   const ranges = [];
   for (const match of value.matchAll(pattern)) {
     const start = match.index;
     const end = start + match[0].length;
-    if (!isAllowedPrivateTermCoincidence(value, start, end)) {
+    if (!isAllowedPrivateTermCoincidence(value, start, end, safeEnclosingTokens)) {
       ranges.push([start, end]);
     }
   }
   return ranges;
 }
 
-function containsPrivateTerm(value, privateTerms) {
-  return privateTerms.some((term) => privateTermRanges(value, term).length > 0);
+function containsPrivateTerm(value, privateTermPolicy) {
+  return privateTermPolicy.some((entry) => privateTermRanges(value, entry).length > 0);
 }
 
-export function redactPrivateTerms(value, privateTerms = configuredPrivateTerms()) {
+function normalizePrivateTermPolicy(privateTermPolicy) {
+  return privateTermPolicy.map((entry) => (
+    typeof entry === "string" ? { term: entry, safeEnclosingTokens: [] } : entry
+  ));
+}
+
+export function redactPrivateTerms(value, privateTermPolicy = configuredPrivateTermPolicy()) {
   let redacted = value;
-  for (const term of privateTerms) {
-    const ranges = privateTermRanges(redacted, term);
+  for (const entry of normalizePrivateTermPolicy(privateTermPolicy)) {
+    const ranges = privateTermRanges(redacted, entry);
     for (let index = ranges.length - 1; index >= 0; index -= 1) {
       const [start, end] = ranges[index];
       redacted = `${redacted.slice(0, start)}[private-term]${redacted.slice(end)}`;
@@ -124,33 +150,39 @@ function readTrackedEntry(path) {
 
 export function validatePublicPath(
   path,
-  {
+  options = {},
+) {
+  const {
     displayPath = path,
     privateLabel = "private review term",
-    privateTerms = configuredPrivateTerms(),
-  } = {},
-) {
-  if (!containsPrivateTerm(path, privateTerms)) {
+  } = options;
+  const privateTermPolicy = normalizePrivateTermPolicy(
+    options.privateTermPolicy ?? options.privateTerms ?? configuredPrivateTermPolicy(),
+  );
+  if (!containsPrivateTerm(path, privateTermPolicy)) {
     return [];
   }
-  return [`${redactPrivateTerms(displayPath, privateTerms)}: path contains ${privateLabel}`];
+  return [`${redactPrivateTerms(displayPath, privateTermPolicy)}: path contains ${privateLabel}`];
 }
 
 export function validatePublicText(
   path,
-  {
+  options = {},
+) {
+  const {
     displayPath = path,
     privateLabel = "private review term",
-    privateTerms = configuredPrivateTerms(),
-  } = {},
-) {
+  } = options;
+  const privateTermPolicy = normalizePrivateTermPolicy(
+    options.privateTermPolicy ?? options.privateTerms ?? configuredPrivateTermPolicy(),
+  );
   const text = readTrackedEntry(path);
   if (text === null) {
     return [];
   }
-  const safePath = redactPrivateTerms(displayPath, privateTerms);
+  const safePath = redactPrivateTerms(displayPath, privateTermPolicy);
   const errors = [];
-  if (containsPrivateTerm(text, privateTerms)) {
+  if (containsPrivateTerm(text, privateTermPolicy)) {
     errors.push(`${safePath}: contains ${privateLabel}`);
   }
   for (const pattern of secretPatterns) {

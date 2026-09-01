@@ -42,6 +42,7 @@ test("Desktop release automation keeps every trust gate before publication", () 
     "APPLE_SIGNING_IDENTITY",
     "APPLE_TEAM_ID",
     "TAURI_SIGNING_PRIVATE_KEY",
+    "UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS",
   ]) {
     assert.match(workflow, new RegExp(`secrets\\.${secret}`));
   }
@@ -56,7 +57,17 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.doesNotMatch(workflow, /cargo test/);
   assert.match(workflow, /notarytool history/);
   assert.match(workflow, /jq -e '\.history \| type == "array"'/);
-  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 10);
+  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 11);
+  assert.match(workflow, /npm run skills:validate -- --release/);
+  assert.match(workflow, /npm run package:smoke -- --release/);
+  assert.ok(
+    workflow.indexOf("npm ci") <
+      workflow.indexOf("npm run skills:validate -- --release"),
+  );
+  assert.ok(
+    workflow.indexOf("npm run package:smoke -- --release") <
+      workflow.indexOf("gh release create"),
+  );
   assert.match(workflow, /notarytool submit "\$app_zip"/);
   assert.match(workflow, /stapler staple "\$app"/);
   assert.match(

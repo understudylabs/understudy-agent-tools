@@ -2,7 +2,8 @@
 
 import { spawnSync } from "node:child_process";
 import {
-  configuredPrivateTerms,
+  configuredPrivateTermPolicy,
+  privateTermsEnvironmentVariable,
   redactPrivateTerms,
   validatePublicPath,
   validatePublicText,
@@ -57,46 +58,57 @@ function npmPackFiles() {
   return payload[0].files;
 }
 
-const errors = [];
-const privateTerms = configuredPrivateTerms();
-const packageFiles = npmPackFiles();
-const packagePaths = new Set(packageFiles.map((entry) => entry.path));
-for (const required of requiredPackageMembers) {
-  if (!packagePaths.has(required)) {
-    errors.push(`package/${required}: required package file missing`);
+function main() {
+  const release = process.argv.slice(2).includes("--release");
+  const privateTermPolicy = configuredPrivateTermPolicy();
+  if (release && privateTermPolicy.length === 0) {
+    console.error(`error: --release requires ${privateTermsEnvironmentVariable} to contain at least one private term`);
+    process.exitCode = 1;
+    return;
   }
-}
-const cliEntry = packageFiles.find((entry) => entry.path === "dist/bin.js");
-if (cliEntry && (!Number.isInteger(cliEntry.mode) || (cliEntry.mode & 0o111) === 0)) {
-  errors.push("package/dist/bin.js: CLI entry must be executable on Unix");
-}
-for (const entry of packageFiles) {
-  const path = entry.path;
-  const packageName = `package/${path}`;
-  for (const forbidden of forbiddenMemberParts) {
-    if (path.includes(forbidden) || path.endsWith(forbidden)) {
-      errors.push(`${packageName}: forbidden packaged path ${JSON.stringify(forbidden)}`);
+
+  const errors = [];
+  const packageFiles = npmPackFiles();
+  const packagePaths = new Set(packageFiles.map((entry) => entry.path));
+  for (const required of requiredPackageMembers) {
+    if (!packagePaths.has(required)) {
+      errors.push(`package/${required}: required package file missing`);
     }
   }
-  errors.push(...validatePublicPath(path, {
-    displayPath: packageName,
-    privateLabel: "private release term",
-    privateTerms,
-  }));
-  errors.push(...validatePublicText(path, {
-    displayPath: packageName,
-    privateLabel: "private release term",
-    privateTerms,
-  }));
+  const cliEntry = packageFiles.find((entry) => entry.path === "dist/bin.js");
+  if (cliEntry && (!Number.isInteger(cliEntry.mode) || (cliEntry.mode & 0o111) === 0)) {
+    errors.push("package/dist/bin.js: CLI entry must be executable on Unix");
+  }
+  for (const entry of packageFiles) {
+    const path = entry.path;
+    const packageName = `package/${path}`;
+    for (const forbidden of forbiddenMemberParts) {
+      if (path.includes(forbidden) || path.endsWith(forbidden)) {
+        errors.push(`${packageName}: forbidden packaged path ${JSON.stringify(forbidden)}`);
+      }
+    }
+    errors.push(...validatePublicPath(path, {
+      displayPath: packageName,
+      privateLabel: "private release term",
+      privateTermPolicy,
+    }));
+    errors.push(...validatePublicText(path, {
+      displayPath: packageName,
+      privateLabel: "private release term",
+      privateTermPolicy,
+    }));
+  }
+
+  for (const error of errors) {
+    console.log(redactPrivateTerms(error, privateTermPolicy));
+  }
+  if (privateTermPolicy.length === 0) {
+    console.log("note: private release terms are not configured; private-term checks were skipped");
+  }
+  if (errors.length === 0) {
+    console.log("ok npm package dry-run");
+  }
+  process.exitCode = errors.length > 0 ? 1 : 0;
 }
 
-for (const error of errors) {
-  console.log(redactPrivateTerms(error, privateTerms));
-}
-if (privateTerms.length === 0) {
-  console.log("note: private release terms are not configured; private-term checks were skipped");
-}
-if (errors.length === 0) {
-  console.log("ok npm package dry-run");
-}
-process.exitCode = errors.length > 0 ? 1 : 0;
+main();

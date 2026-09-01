@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter as pathDelimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
+  configuredPrivateTermPolicy,
   configuredPrivateTerms,
+  parsePrivateTermPolicy,
   parsePrivateTerms,
   validatePublicPath,
   validatePublicText,
@@ -25,15 +27,43 @@ function writeFixture(t, relativePath, text) {
   return path;
 }
 
-test("private terms are parsed from private, newline-delimited input", () => {
+function environmentWithoutPrivateTermPolicy() {
+  const environment = { ...process.env };
+  delete environment.UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS;
+  return environment;
+}
+
+test("private term policy is parsed from private, newline-delimited input", () => {
+  const configuredValue = [
+    " ExamplePrivateTerm\tSyntheticExamplePrivateTermContainer\tSYNTHETICEXAMPLEPRIVATETERMCONTAINER",
+    "exampleprivateterm\tAnotherExamplePrivateTermContainer",
+    "PlainPrivateTerm",
+    "",
+  ].join("\r\n");
+
   assert.deepEqual(
-    parsePrivateTerms(" ExampleTenant\nexampletenant\r\nExample Partner\n\n"),
-    ["ExampleTenant", "Example Partner"],
+    parsePrivateTermPolicy(configuredValue),
+    [
+      {
+        term: "ExamplePrivateTerm",
+        safeEnclosingTokens: [
+          "SyntheticExamplePrivateTermContainer",
+          "AnotherExamplePrivateTermContainer",
+        ],
+      },
+      { term: "PlainPrivateTerm", safeEnclosingTokens: [] },
+    ],
   );
+  assert.deepEqual(
+    configuredPrivateTermPolicy({ UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS: configuredValue }),
+    parsePrivateTermPolicy(configuredValue),
+  );
+  assert.deepEqual(parsePrivateTerms(configuredValue), ["ExamplePrivateTerm", "PlainPrivateTerm"]);
   assert.deepEqual(
     configuredPrivateTerms({ UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS: "One\nTwo" }),
     ["One", "Two"],
   );
+  assert.deepEqual(configuredPrivateTermPolicy({}), []);
   assert.deepEqual(configuredPrivateTerms({}), []);
 });
 
@@ -72,11 +102,30 @@ test("single-token terms catch concatenated aliases at identifier edges", () => 
   assert.equal(validatePublicPath("apps/myexampleTenantbot.ts", { privateTerms }).length, 1);
 });
 
-test("an explicit known-safe identifier can contain a private-term coincidence", () => {
-  assert.deepEqual(validatePublicPath("apps/producedArtifact.ts", { privateTerms: ["Darti"] }), []);
+test("configured safe enclosing tokens are literal, case-insensitive, strict substrings", () => {
+  const privateTermPolicy = parsePrivateTermPolicy(
+    "ExamplePrivateTerm\tSyntheticExamplePrivateTermContainer\tExamplePrivateTerm",
+  );
+
+  assert.deepEqual(
+    validatePublicPath("apps/SYNTHETICEXAMPLEPRIVATETERMCONTAINER.ts", { privateTermPolicy }),
+    [],
+  );
   assert.equal(
-    validatePublicPath("apps/producedArtifact.ts", { privateTerms: ["producedArtifact"] }).length,
+    validatePublicPath("apps/ExamplePrivateTerm.ts", { privateTermPolicy }).length,
     1,
+  );
+  assert.equal(
+    validatePublicPath("apps/UnlistedExamplePrivateTermContainer.ts", {
+      privateTermPolicy,
+    }).length,
+    1,
+  );
+  assert.deepEqual(
+    validatePublicPath("apps/PrefixSyntheticExamplePrivateTermContainerSuffix.ts", {
+      privateTermPolicy,
+    }),
+    [],
   );
 });
 
@@ -101,9 +150,12 @@ test("repository scanning handles newline-delimited tracked paths", (t) => {
   const root = temporaryRoot(t);
   const privateTerm = "ExampleTenant";
   const path = join(root, `line\n${privateTerm}.css`);
+  const safeToken = `Synthetic${privateTerm}Container`;
+  const safePath = join(root, `${safeToken}.css`);
   writeFileSync(path, "synthetic fixture");
+  writeFileSync(safePath, "synthetic fixture");
   assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: root }).status, 0);
-  assert.equal(spawnSync("git", ["add", "--", path], { cwd: root }).status, 0);
+  assert.equal(spawnSync("git", ["add", "--", path, safePath], { cwd: root }).status, 0);
 
   const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
   const result = spawnSync(
@@ -112,13 +164,95 @@ test("repository scanning handles newline-delimited tracked paths", (t) => {
     {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS: privateTerm },
+      env: {
+        ...process.env,
+        UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS: `${privateTerm}\t${safeToken}`,
+      },
     },
   );
 
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /path contains private review term/);
+  assert.equal(result.stdout.match(/path contains private review term/g)?.length, 1);
   assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /exampletenant/i);
+});
+
+test("release-mode scanners fail closed without a private term policy", (t) => {
+  const root = temporaryRoot(t);
+  const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const environment = environmentWithoutPrivateTermPolicy();
+
+  for (const script of ["validate-public-skills.mjs", "package-smoke.mjs"]) {
+    const result = spawnSync(
+      process.execPath,
+      [join(repositoryRoot, "scripts", script), "--release"],
+      { cwd: root, encoding: "utf8", env: environment },
+    );
+
+    assert.equal(result.status, 1, `${script}: ${result.stderr}`);
+    assert.match(
+      result.stderr,
+      /--release requires UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS to contain at least one private term/,
+    );
+    assert.equal(result.stdout, "");
+    assert.doesNotMatch(result.stderr, /npm pack|not a git repository|ENOENT/i);
+  }
+});
+
+test("ordinary scanners keep the informational skip without a private term policy", (t) => {
+  const root = temporaryRoot(t);
+  const repositoryRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  const environment = environmentWithoutPrivateTermPolicy();
+  assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: root }).status, 0);
+
+  const validator = spawnSync(
+    process.execPath,
+    [join(repositoryRoot, "scripts", "validate-public-skills.mjs"), "--repo", "--docs"],
+    { cwd: root, encoding: "utf8", env: environment },
+  );
+  assert.equal(validator.status, 0, validator.stderr);
+  assert.match(validator.stdout, /private-term checks were skipped/);
+  assert.match(validator.stdout, /ok 0 public skill\(s\)/);
+
+  const fakeBin = join(root, "bin");
+  mkdirSync(fakeBin);
+  const packageFiles = [
+    { path: "dist/bin.js", mode: 0o755 },
+    { path: ".agents/plugins/marketplace.json" },
+    { path: ".codex-plugin/plugin.json" },
+    { path: ".cursor-plugin/plugin.json" },
+    { path: ".opencode/adapter.json" },
+    { path: ".opencode/commands/understudy-onboard.md" },
+    { path: ".hermes/adapter.json" },
+    { path: "skills/install-agent-adapter/SKILL.md" },
+    { path: "skills/install-agent-adapter/reference.md" },
+    { path: "skills/local-distillation-lab/SKILL.md" },
+    { path: "skills/local-distillation-lab/references/pedagogical-arm.md" },
+    { path: "skills/recursive-language-model/SKILL.md" },
+    { path: "skills/recursive-language-model/references/pedagogical-training.md" },
+  ];
+  const fakeNpm = join(fakeBin, "npm");
+  writeFileSync(
+    fakeNpm,
+    `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(JSON.stringify([{ files: packageFiles }]))});\n`,
+  );
+  chmodSync(fakeNpm, 0o755);
+
+  const packageSmoke = spawnSync(
+    process.execPath,
+    [join(repositoryRoot, "scripts", "package-smoke.mjs")],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...environment,
+        PATH: `${fakeBin}${pathDelimiter}${environment.PATH ?? ""}`,
+      },
+    },
+  );
+  assert.equal(packageSmoke.status, 0, packageSmoke.stderr);
+  assert.match(packageSmoke.stdout, /private-term checks were skipped/);
+  assert.match(packageSmoke.stdout, /ok npm package dry-run/);
 });
 
 test("built-in secret, raw-payload, and production URL checks remain active", (t) => {
