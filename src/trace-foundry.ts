@@ -6,7 +6,7 @@ import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { bumpVersion, classifyTaskChange, computeTaskContentHashes, validateBenchmarkManifest } from "./benchmark.js";
 import { FOUNDRY_SELF_CHECK_SCHEMA, REVIEW_DECISIONS, TRACE_FOUNDRY_SCHEMA, captureFileId, readJsonlFile, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 import { buildRejectionGuidance, loadGuidanceFile } from "./rejection-guidance.js";
-import { VerifiedWorkloadCaptureFileSchema } from "./evals/contracts.js";
+import { WorkloadSourceRowSchema } from "./evals/contracts.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
@@ -132,7 +132,7 @@ function hostedSourceFiles(source: string, files: string[], sourceIndexInput: st
     let value: unknown;
     try { value = JSON.parse(line); }
     catch (error) { throw new Error(`Invalid hosted source index line ${index + 1}: ${error instanceof Error ? error.message : String(error)}`); }
-    const parsed = VerifiedWorkloadCaptureFileSchema.strict().safeParse(value);
+    const parsed = WorkloadSourceRowSchema.strict().safeParse(value);
     if (!parsed.success) throw new Error(`Invalid hosted source index line ${index + 1}.`);
     return parsed.data;
   });

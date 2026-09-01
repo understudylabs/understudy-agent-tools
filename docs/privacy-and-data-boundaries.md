@@ -74,16 +74,22 @@ only to local files (mode `600` on Unix), redacted `.summary.json` files cannot
 be mistaken for full-payload `.payload.json` files during resume, and stdout
 contains counts and paths rather than capture content.
 
-`understudy traces export` applies the same rule to one explicit hosted
-`trace_id` or a private file of explicit trace IDs. The CLI resolves membership
-through the customer trace request-ID endpoint and passes the returned IDs to
-the existing bounded capture batch exporter; it never scans project capture
-history and exposes no unbounded `--all` operation. A private `trace.json`
-records membership and counts without raw bodies. Full per-request files require
-`--include-payload --yes`, and stdout still contains only counts and paths.
-Owner-private files, disjoint summary/payload suffixes, bounded concurrency,
-retries, resume, `failed-request-ids.txt`, and `failed-trace-ids.txt` preserve
-the request-export boundary.
+`understudy traces export` supports two bounded modes. Explicit mode accepts one
+hosted `trace_id` or a private file of explicit trace IDs, resolves membership
+through the customer trace request-ID endpoint, and passes those IDs to the
+capture batch exporter. Workload-window mode requires an explicit workload and
+exports exactly 24 hours: `--date YYYY-MM-DD` selects one completed UTC calendar
+day, while omitting it selects the rolling 24 hours ending when the command
+starts. It has no unbounded `--all` operation. Workload-window export always
+contains full payloads and therefore requires `--include-payload --yes`.
+
+Both modes write payloads only to owner-private local files and never print
+prompts, completions, or tool payloads to stdout. Explicit mode records a
+private `trace.json`; workload-window mode records a final ordered
+`source/index.jsonl` and `source/summary.json` only after the complete export.
+Bounded concurrency, retries, atomic writes, and validation of the requested
+organization, project, workload, and request identity preserve the export
+boundary.
 
 Gateway probes are explicit live calls. BYOK provider keys are read only from an
 environment variable named by `--byok-env`; they are not requested in chat, not

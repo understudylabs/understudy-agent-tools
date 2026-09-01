@@ -147,9 +147,11 @@ rather than blocking useful analysis.
 
 For a workload hosted by Understudy, follow the draft-first branch in
 [`../capture-evidence/references/hosted-workload-eval.md`](../capture-evidence/references/hosted-workload-eval.md).
-Use the exact frozen seven-day corpus and repository to create the local draft,
-then run `understudy evals check --draft`. Keep raw traces local. Strict checking,
-final approval, and publication remain separate owner-confirmed release steps.
+Use the exact one-day raw source and repository to create the local draft, then
+run `understudy evals check --draft`. The CLI defaults to the rolling 24 hours
+ending when export starts; `--date YYYY-MM-DD` selects a completed UTC day.
+Keep raw traces local. Strict checking, final approval, and publication remain
+separate owner-confirmed release steps.
 
 ## Output Standard
 

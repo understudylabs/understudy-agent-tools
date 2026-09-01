@@ -20,7 +20,6 @@ import {
   EvalCheckFixturesSchema,
   EvalCheckReportSchema,
   EvalEnvironmentSchema,
-  EvalExportProofSchema,
   EvalHarnessSchema,
   EvalSourceRowSchema,
   WorkloadEvalProjectSchema,
@@ -371,17 +370,10 @@ export async function prepareEvalPublication(
   const sourceIndexEntry = readStableFile(projectRoot, project.source.index, "source index", null);
   const sourceIndex = parseSourceIndex(sourceIndexEntry);
   assertHash("Source index commitment", sourceIndex.commitmentSha256, project.source.index_sha256);
-  const exportProofEntry = readStableFile(projectRoot, project.source.export_proof, "export proof", null);
-  assertHash("Export proof", exportProofEntry.sha256, project.source.export_proof_sha256);
-  const exportProof = parseJson(exportProofEntry.bytes, EvalExportProofSchema, "source/export-proof.json");
-  assertHash("Verified source index commitment", exportProof.verified_receipt.local_index_sha256, project.source.index_sha256);
-  const sourceAttestation = exportProof.verified_receipt.source_attestation;
-  const sourceAttestationSha256 = sha256(sourceAttestation);
   const sourcePaths = sourceIndex.paths;
   const forbiddenPaths = new Set([
     "eval-project.json",
     project.source.index,
-    project.source.export_proof,
     project.artifacts.execution_index,
     project.artifacts.analysis,
     ...sourcePaths,
@@ -473,7 +465,7 @@ export async function prepareEvalPublication(
   if (canonicalJson(checkReport) !== canonicalJson(checked.report)) {
     throw new Error("Snapshotted check report does not match the passing eval check.");
   }
-  assertHash("Checked source attestation", checkReport.source.export_proof_sha256, sourceAttestationSha256);
+  assertHash("Checked source scope", checkReport.source.scope_sha256, sha256(JSON.stringify(project.source.window)));
   assertHash("Checked source index commitment", checkReport.source.index_sha256, project.source.index_sha256);
 
   const assertFixtureBinding = (
@@ -522,8 +514,6 @@ export async function prepareEvalPublication(
       capture_count: project.source.capture_count,
       total_bytes: project.source.size_bytes,
       local_index_sha256: project.source.index_sha256,
-      export_proof_sha256: sourceAttestationSha256,
-      source_attestation: sourceAttestation,
     },
     artifacts: {
       eval_set_sha256: checked.hashes.eval_set_sha256,
@@ -573,7 +563,6 @@ export async function prepareEvalPublication(
     "eval-project.json",
     project.artifacts.analysis,
     project.artifacts.execution_index,
-    project.source.export_proof,
     project.source.index,
     "source/",
     "traces/",

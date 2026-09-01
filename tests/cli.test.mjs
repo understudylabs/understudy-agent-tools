@@ -7,8 +7,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
-import { sourceIndexCommitmentSha256 } from "../dist/evals/source-index.js";
-
 const cli = ["node", resolve("dist/bin.js")];
 const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
 const pythonAvailable = spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0;
@@ -181,11 +179,12 @@ async function withHostedFixture(fn) {
     evalCaptureDeclaredLength: null,
     evalExportCohortSha: "a".repeat(64),
     evalExportExpiries: [],
-    evalWorkloadManifests: new Map(),
-    evalWorkloadIngestionCutoffs: new Map(),
-    evalWorkloadIngestionCutoffOffsetMs: 1_000,
-    evalWorkloadIndexInvalid: false,
-    evalWorkloadReceiptInvalid: false,
+    rawExportPages: new Map(),
+    rawCaptureFailures: 0,
+    rawCaptureUnavailableIndexes: new Set(),
+    rawCaptureDelayMs: 0,
+    rawCaptureActive: 0,
+    rawCaptureMaxActive: 0,
   };
 
   const server = createServer(async (req, res) => {
@@ -527,129 +526,65 @@ async function withHostedFixture(fn) {
     const evalBase = "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify";
     const rawCapture = `${JSON.stringify(state.captures[0])}\n`;
     const rawCaptureSha = createHash("sha256").update(rawCapture).digest("hex");
-    const workloadBodies = state.captures.slice(0, 2).map((capture) => `${JSON.stringify(capture)}\n`);
-    const workloadSourceRows = state.captures.slice(0, 2).map((capture, index) => ({
-      schema_version: "understudy.eval-source-capture.v1",
-      request_id: capture.request_id,
-      capture_key: `org_1/proj_1/key_${index === 0 ? "z" : "a"}/2026/08/30/${capture.request_id}.jsonl`,
-      size_bytes: Buffer.byteLength(workloadBodies[index]),
-      content_sha256: createHash("sha256").update(workloadBodies[index]).digest("hex"),
-    }));
-    if (req.method === "POST" && url.pathname === `${evalBase}/eval-capture-export`) {
-      const sourceKey = `${body.from}|${body.to}`;
-      const frozenIngestionCutoff = state.evalWorkloadIngestionCutoffs.get(sourceKey) ??
-        new Date(Date.parse(body.to) + state.evalWorkloadIngestionCutoffOffsetMs).toISOString();
-      state.evalWorkloadIngestionCutoffs.set(sourceKey, frozenIngestionCutoff);
-      const resume = body.resume_cursor !== undefined;
+    if (req.method === "POST" && url.pathname === `${evalBase}/captures/export`) {
+      const page = body.cursor === undefined ? 0 : 1;
+      const cutoff = state.rawExportPages.get(`${body.from}|${body.to}`)?.cutoff ??
+        new Date(Math.max(Date.parse(body.to), Date.now() - 1_000)).toISOString();
       if (
-        (!resume && body.ingestion_cutoff !== undefined) ||
-        (resume && body.ingestion_cutoff !== frozenIngestionCutoff)
-      ) {
-        return send(400, { message: "synthetic ingestion cutoff mismatch" });
-      }
-      const canonicalScope = {
-        schema_version: "understudy.export-scope.v1",
-        selector: "workload-window",
-        org_id: "org_1",
-        project_id: "proj_1",
-        workload_id: "usp_classify",
-        from: body.from,
-        to: body.to,
-        ingestion_cutoff: frozenIngestionCutoff,
-      };
-      const makeManifest = (segmentIndex, previousManifestSha256) => {
-        const capture = state.captures[segmentIndex];
-        const sourceRow = workloadSourceRows[segmentIndex];
-        const item = {
-          request_id: capture.request_id,
-          key: sourceRow.capture_key,
-          size: sourceRow.size_bytes,
-          content_sha256: sourceRow.content_sha256,
-          url: `${gatewayUrl}/eval-workload-capture-${segmentIndex}`,
-        };
-        const terminal = segmentIndex === 1;
-        const header = {
-          record_type: "understudy_capture_export_chain_v1",
-          chain_id: "chain_fixture",
-          segment_id: (segmentIndex === 0 ? "b" : "c").repeat(64),
-          segment_index: segmentIndex,
-          previous_manifest_sha256: previousManifestSha256,
-          cumulative_scanned: segmentIndex + 1,
-          cumulative_matched: segmentIndex + 1,
-          cumulative_exported: segmentIndex + 1,
-          cumulative_total_bytes: workloadBodies.slice(0, segmentIndex + 1).reduce((sum, value) => sum + Buffer.byteLength(value), 0),
-          terminal,
-        };
-        const manifest = `${JSON.stringify(header)}\n${JSON.stringify(item)}\n`;
-        return { header, item, manifest, sha256: createHash("sha256").update(manifest).digest("hex") };
-      };
-      const first = makeManifest(0, null);
-      const second = makeManifest(1, first.sha256);
-      state.evalWorkloadManifests.set("/eval-workload-manifest-0", first.manifest);
-      state.evalWorkloadManifests.set("/eval-workload-manifest-1", second.manifest);
-      const segmentIndex = resume ? 1 : 0;
-      const segment = segmentIndex === 0 ? first : second;
+        (page === 0 && (body.cursor !== undefined || body.ingestion_cutoff !== undefined)) ||
+        (page === 1 && (body.cursor !== "raw_cursor_1" || body.ingestion_cutoff !== cutoff))
+      ) return send(400, { message: "synthetic raw export cursor mismatch" });
+      state.rawExportPages.set(`${body.from}|${body.to}`, { cutoff });
+      const capture = state.captures[page];
+      const capturedAt = new Date(Date.parse(body.from) + (page + 1) * 1_000).toISOString();
       return send(200, {
-        export_id: `exp_fixture_${segmentIndex}`,
-        count: 1,
-        total_bytes: segment.item.size,
-        manifest_url: `${gatewayUrl}/eval-workload-manifest-${segmentIndex}`,
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        truncated: !segment.header.terminal,
-        ...(segment.header.terminal ? {} : { resume_cursor: "cursor_fixture_1" }),
-        canonical_scope: canonicalScope,
-        chain: {
-          chain_id: segment.header.chain_id,
-          segment_id: segment.header.segment_id,
-          segment_index: segment.header.segment_index,
-          previous_manifest_sha256: segment.header.previous_manifest_sha256,
-          manifest_sha256: segment.sha256,
-          cumulative_scanned: segment.header.cumulative_scanned,
-          cumulative_matched: segment.header.cumulative_matched,
-          cumulative_exported: segment.header.cumulative_exported,
-          cumulative_total_bytes: segment.header.cumulative_total_bytes,
-          local_index_sha256: state.evalWorkloadIndexInvalid
-            ? "f".repeat(64)
-            : sourceIndexCommitmentSha256(workloadSourceRows.slice(0, segmentIndex + 1)),
-          terminal: segment.header.terminal,
-          ...(segment.header.terminal ? { terminal_receipt: "terminal_receipt_fixture" } : {}),
+        canonical_scope: {
+          schema_version: "understudy.export-scope.v1",
+          selector: "workload-window",
+          org_id: "org_1",
+          project_id: "proj_1",
+          workload_id: "usp_classify",
+          from: body.from,
+          to: body.to,
+          ingestion_cutoff: cutoff,
         },
+        captures: [{
+          request_id: capture.request_id,
+          capture_key: `org_1/proj_1/key_raw/2026/08/29/${capture.request_id}.jsonl`,
+          captured_at: capturedAt,
+          url: `${gatewayUrl}/raw-workload-capture-${page}`,
+        }],
+        next_cursor: page === 0 ? "raw_cursor_1" : null,
       });
     }
-    if (req.method === "POST" && url.pathname === `${evalBase}/eval-capture-export/verify`) {
-      const manifests = [0, 1].map((index) => state.evalWorkloadManifests.get(`/eval-workload-manifest-${index}`));
-      const manifestSha256 = createHash("sha256").update(manifests[1]).digest("hex");
-      const previousManifestSha256 = createHash("sha256").update(manifests[0]).digest("hex");
-      return send(200, {
-        verified: true,
-        scope_hash: "d".repeat(64),
-        chain_id: state.evalWorkloadReceiptInvalid ? "wrong_chain" : "chain_fixture",
-        segment_id: "c".repeat(64),
-        segment_index: 1,
-        manifest_sha256: manifestSha256,
-        previous_manifest_sha256: previousManifestSha256,
-        cumulative_scanned: 2,
-        cumulative_matched: 2,
-        cumulative_exported: 2,
-        total_bytes: state.captures.slice(0, 2).reduce((sum, capture) => sum + Buffer.byteLength(`${JSON.stringify(capture)}\n`), 0),
-        local_index_sha256: sourceIndexCommitmentSha256(workloadSourceRows),
-        expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        canonical_scope: body.canonical_scope,
-        source_attestation: "signed-cli-source-attestation",
-      });
-    }
-    if (req.method === "GET" && state.evalWorkloadManifests.has(url.pathname)) {
-      return sendBytes(200, state.evalWorkloadManifests.get(url.pathname));
-    }
-    const evalWorkloadCapture = url.pathname.match(/^\/eval-workload-capture-(\d)$/);
-    if (req.method === "GET" && evalWorkloadCapture) {
-      if (state.evalCaptureDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.evalCaptureDelayMs));
-      if (state.evalCaptureFailures > 0) {
-        state.evalCaptureFailures -= 1;
-        return send(503, { message: "synthetic eval capture failure" });
+    const rawWorkloadCapture = url.pathname.match(/^\/raw-workload-capture-(\d)$/);
+    if (req.method === "GET" && rawWorkloadCapture) {
+      state.rawCaptureActive += 1;
+      state.rawCaptureMaxActive = Math.max(state.rawCaptureMaxActive, state.rawCaptureActive);
+      try {
+        if (state.rawCaptureDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, state.rawCaptureDelayMs));
+        if (state.rawCaptureFailures > 0) {
+          state.rawCaptureFailures -= 1;
+          return send(503, { message: "synthetic raw capture failure" });
+        }
+        const index = Number(rawWorkloadCapture[1]);
+        if (state.rawCaptureUnavailableIndexes.has(index)) {
+          return send(404, { message: "synthetic raw capture is no longer available" });
+        }
+        const capture = state.captures[index];
+        return sendBytes(200, `${JSON.stringify({
+          schema_version: 4,
+          request_id: capture.request_id,
+          ts: capture.ts,
+          workos_org_id: "org_1",
+          project_id: "proj_1",
+          workload_id: "usp_classify",
+          customer_request_body: capture.customer_request_body,
+          response_body: capture.response_body,
+        })}\n`);
+      } finally {
+        state.rawCaptureActive -= 1;
       }
-      const index = Number(evalWorkloadCapture[1]);
-      return sendBytes(200, `${JSON.stringify(state.captures[index])}\n`);
     }
     if (req.method === "GET" && url.pathname === `${evalBase}/eval-capture-catalog`) {
       return send(200, {
@@ -4211,6 +4146,87 @@ class ScoreWithFeedback:
     });
   });
 
+  it("exports one workload day through the generic raw trace endpoint", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const outputDir = join(repo, ".understudy", "traces", "synthetic-day");
+
+      const competingWindow = await runWithEnvAsync([
+        "--json", "traces", "export", "--project", "rehearsal", "--workload", "classify",
+        "--date", "2026-08-29", "--last", "1d", "--out", outputDir,
+        "--include-payload", "--yes",
+      ], env, repo);
+      assert.notEqual(competingWindow.status, 0);
+      assert.match(competingWindow.stderr, /either --date or --last/i);
+      assert.equal(requests.length, 0, "invalid window options fail before hosted reads");
+
+      const noResume = await runWithEnvAsync([
+        "--json", "traces", "export", "--project", "rehearsal", "--workload", "classify",
+        "--date", "2026-08-29", "--out", outputDir, "--no-resume",
+        "--include-payload", "--yes",
+      ], env, repo);
+      assert.notEqual(noResume.status, 0);
+      assert.match(noResume.stderr, /only valid for explicit trace ids.*fresh --out/i);
+      assert.equal(requests.length, 0, "unsupported workload no-resume fails before hosted reads");
+
+      const exported = await runWithEnvAsync([
+        "--json", "traces", "export", "--project", "rehearsal", "--workload", "classify",
+        "--date", "2026-08-29", "--out", outputDir,
+        "--include-payload", "--yes", "--concurrency", "2",
+      ], env, repo);
+      assert.equal(exported.status, 0, exported.stderr);
+      assert.doesNotMatch(exported.stdout + exported.stderr, /SECRET_PROMPT|SECRET_COMPLETION/);
+      const payload = JSON.parse(exported.stdout);
+      assert.equal(payload.mode, "workload_window");
+      assert.equal(payload.source.requested_count, 2);
+      assert.equal(payload.source.materialized_count, 2);
+      assert.equal(payload.source.skipped_count, 0);
+      assert.equal(payload.source.capture_count, 2);
+      assert.equal(payload.skipped, 0);
+      const exportRequests = requests.filter((entry) => entry.path.endsWith("/captures/export"));
+      assert.equal(exportRequests.length, 2);
+      assert.deepEqual(exportRequests[0].body, {
+        from: "2026-08-29T00:00:00.000Z",
+        to: "2026-08-30T00:00:00.000Z",
+      });
+      assert.equal(exportRequests[1].body.cursor, "raw_cursor_1");
+      assert.equal(exportRequests[1].body.ingestion_cutoff, payload.source.window.ingestion_cutoff);
+      const rows = readFileSync(join(outputDir, "source/index.jsonl"), "utf8")
+        .trim().split("\n").map((line) => JSON.parse(line));
+      assert.deepEqual(rows.map((row) => row.request_id), ["req_123", "req_456"]);
+      assert.match(readFileSync(join(outputDir, rows[0].local_path), "utf8"), /SECRET_PROMPT/);
+      assert.equal(existsSync(join(outputDir, "source/summary.json")), true);
+      assert.equal(existsSync(join(outputDir, "build-state.json")), false);
+    });
+  });
+
+  it("excludes concurrent standalone workload exports from the same output", async () => {
+    await withHostedFixture(async ({ home, repo, requests, state }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const outputDir = join(repo, ".understudy", "traces", "concurrent-day");
+      const args = [
+        "--json", "traces", "export", "--project", "rehearsal", "--workload", "classify",
+        "--date", "2026-08-29", "--out", outputDir, "--include-payload", "--yes",
+      ];
+      state.rawCaptureDelayMs = 400;
+      const readsBefore = requests.filter((entry) => entry.path === "/raw-workload-capture-0").length;
+      const first = runWithEnvAsync(args, env, repo);
+      const deadline = Date.now() + 5_000;
+      while (requests.filter((entry) => entry.path === "/raw-workload-capture-0").length === readsBefore) {
+        if (Date.now() > deadline) throw new Error("first standalone export did not reach capture download");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      const second = await runWithEnvAsync(args, env, repo);
+      assert.notEqual(second.status, 0);
+      assert.match(second.stderr, /already owns/);
+      const completed = await first;
+      state.rawCaptureDelayMs = 0;
+      assert.equal(completed.status, 0, completed.stderr);
+      assert.equal(existsSync(join(outputDir, "source", "summary.json")), true);
+    });
+  });
+
   it("selects, freezes, and materializes a workload-scoped eval cohort", async () => {
     await withHostedFixture(async ({ home, repo, requests }) => {
       const env = { HOME: home, USERPROFILE: home };
@@ -4285,11 +4301,18 @@ class ScoreWithFeedback:
     });
   });
 
-  it("builds a receipt-verified v2 project from every segment in a frozen seven-day workload window", async () => {
-    await withHostedFixture(async ({ gatewayUrl, home, repo, requests, state }) => {
+  it("recommends raw-day eval building and labels cohort creation legacy", () => {
+    const help = run(["evals", "--help"]);
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /build \[options\]\s+Recommended:[\s\S]*raw workload day/i);
+    assert.match(help.stdout, /create \[options\]\s+Legacy:[\s\S]*cohort/i);
+  });
+
+  it("builds a v2 eval project from the generic one-day raw trace export", async () => {
+    await withHostedFixture(async ({ gatewayUrl, home, repo, requests }) => {
       const env = { HOME: home, USERPROFILE: home };
       assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
-      const outputDir = join(repo, ".understudy", "evals", "complete week's draft");
+      const outputDir = join(repo, ".understudy", "evals", "one day's draft");
 
       const reservedOutput = join(repo, ".understudy");
       rmSync(reservedOutput, { recursive: true, force: true });
@@ -4303,31 +4326,19 @@ class ScoreWithFeedback:
       assert.equal(requests.length, 0, "the reserved private root fails before hosted reads");
       writeHostedConfig({ home, repo, gatewayUrl });
 
-      const unsafeOutput = join(repo, "evals", "unsafe-week");
+      const unsafeOutput = join(repo, "evals", "unsafe-day");
       const blockedOutput = await runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
-        "--name", "unsafe-week", "--out", unsafeOutput, "--yes",
+        "--name", "unsafe-day", "--out", unsafeOutput, "--yes",
       ], env, repo);
       assert.notEqual(blockedOutput.status, 0);
       assert.match(blockedOutput.stderr, /must use a destination under .*\.understudy/);
       assert.equal(existsSync(unsafeOutput), false);
       assert.equal(requests.length, 0, "unsafe repository paths fail before hosted reads");
 
-      state.evalCaptureFailures = 1;
-      const interrupted = await runWithEnvAsync([
-        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
-        "--name", "complete-week", "--out", outputDir, "--yes",
-      ], env, repo);
-      assert.notEqual(interrupted.status, 0);
-      assert.equal(existsSync(outputDir), false);
-      const checkpointPath = join(repo, ".understudy", "evals", ".complete week's draft.eval-build", "build-state.json");
-      assert.equal(existsSync(checkpointPath), true);
-      const interruptedState = JSON.parse(readFileSync(checkpointPath, "utf8"));
-      assert.ok(Date.parse(interruptedState.source.ingestion_cutoff) > Date.parse(interruptedState.source.to));
-
       const built = await runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
-        "--name", "complete-week", "--out", outputDir, "--yes",
+        "--name", "one-day", "--date", "2026-08-29", "--out", outputDir, "--yes",
       ], env, repo);
       assert.equal(built.status, 0, built.stderr);
       assert.doesNotMatch(built.stdout + built.stderr, /SECRET_PROMPT|SECRET_COMPLETION/);
@@ -4335,86 +4346,82 @@ class ScoreWithFeedback:
       assert.equal(builtPayload.next_action.kind, "coding_agent_prompt");
       assert.deepEqual(builtPayload.next_action.command, {
         executable: "understudy",
-        args: ["evals", "check", "--draft", "--project", outputDir],
+        args: ["--json", "evals", "check", "--draft", "--project", outputDir],
       });
       assert.match(builtPayload.next_action.prompt, /infer the workload goal/i);
+      assert.match(builtPayload.next_action.prompt, /reconcile 0 skipped captures.*source\/skipped\.jsonl.*before.*coverage claims/i);
       assert.match(builtPayload.next_action.prompt, /exact argument array/i);
       assert.match(builtPayload.next_action.prompt, new RegExp(outputDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       const project = JSON.parse(readFileSync(join(outputDir, "eval-project.json"), "utf8"));
       assert.equal(project.schema_version, "understudy.eval-project.v2");
       assert.match(project.eval_id, /^eval_[a-f0-9]{24}$/);
-      assert.equal(project.name, "complete-week");
+      assert.equal(project.name, "one-day");
       assert.equal(project.status, "source_materialized");
+      assert.equal(project.source.requested_count, 2);
+      assert.equal(project.source.materialized_count, 2);
+      assert.equal(project.source.skipped_count, 0);
+      assert.equal(project.source.skipped_index, "source/skipped.jsonl");
       assert.equal(project.source.capture_count, 2);
-      assert.equal(project.source.terminal_receipt_verified, true);
       assert.equal(project.authoring.owner, "coding_agent");
       assert.equal(project.authoring.semantic_preparation_performed, false);
       const indexRows = readFileSync(join(outputDir, "source", "index.jsonl"), "utf8")
         .trim().split("\n").map((line) => JSON.parse(line));
       assert.deepEqual(indexRows.map((row) => row.request_id), ["req_123", "req_456"]);
       assert.ok(indexRows.every((row) => /^[a-f0-9]{64}$/.test(row.content_sha256)));
+      assert.ok(indexRows.every((row) => typeof row.captured_at === "string"));
       assert.match(readFileSync(join(outputDir, indexRows[0].local_path), "utf8"), /SECRET_PROMPT/);
+      assert.equal(existsSync(join(outputDir, "source", "summary.json")), true);
+      assert.equal(existsSync(join(outputDir, "build-state.json")), false);
       assert.equal(
         readFileSync(join(repo, ".git", "info", "exclude"), "utf8")
           .split(/\r?\n/).filter((line) => line === "/.understudy/").length,
         1,
       );
-      const exportRequests = requests.filter((entry) => entry.path.endsWith("/eval-capture-export") && entry.method === "POST");
-      assert.equal(exportRequests.length, 3, "the failed first segment is retried, then its resume cursor fetches segment two");
-      assert.equal(exportRequests.at(-1).body.resume_cursor, "cursor_fixture_1");
+      const exportRequests = requests.filter((entry) => entry.path.endsWith("/captures/export") && entry.method === "POST");
+      assert.equal(exportRequests.length, 2);
+      assert.equal(exportRequests.at(-1).body.cursor, "raw_cursor_1");
       assert.equal(
         Date.parse(exportRequests[0].body.to) - Date.parse(exportRequests[0].body.from),
-        7 * 24 * 60 * 60 * 1000,
+        24 * 60 * 60 * 1000,
       );
-      const initialRequests = exportRequests.filter((request) => request.body.resume_cursor === undefined);
-      assert.equal(initialRequests.length, 2, "an interrupted first page restarts as a server-frozen initial export");
-      assert.ok(initialRequests.every((request) => request.body.ingestion_cutoff === undefined));
-      assert.ok(Date.parse(project.source.window.ingestion_cutoff) > Date.parse(project.source.window.to));
-      for (const request of exportRequests.filter((entry) => entry.body.resume_cursor !== undefined)) {
-        assert.equal(request.body.ingestion_cutoff, project.source.window.ingestion_cutoff, "resumed segments reuse the backend cutoff");
-      }
-      assert.ok(requests.some((entry) => entry.path.endsWith("/eval-capture-export/verify")));
+      assert.deepEqual(
+        { from: exportRequests[0].body.from, to: exportRequests[0].body.to },
+        { from: "2026-08-29T00:00:00.000Z", to: "2026-08-30T00:00:00.000Z" },
+      );
+      assert.equal(exportRequests[0].body.ingestion_cutoff, undefined);
+      assert.equal(exportRequests[1].body.ingestion_cutoff, project.source.window.ingestion_cutoff);
       assert.equal(requests.some((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST"), false);
     });
   });
 
-  it("rejects an implausibly future backend ingestion cutoff", async () => {
+  it("surfaces skipped raw captures in the eval build JSON handoff", async () => {
     await withHostedFixture(async ({ home, repo, state }) => {
       const env = { HOME: home, USERPROFILE: home };
       assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
-      state.evalWorkloadIngestionCutoffOffsetMs = 5 * 60 * 1000;
-      const outputDir = join(repo, ".understudy", "evals", "future-cutoff");
+      state.rawCaptureUnavailableIndexes.add(1);
+      const outputDir = join(repo, ".understudy", "evals", "incomplete-day");
 
-      const result = await runWithEnvAsync([
+      const built = await runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
-        "--name", "future-cutoff", "--out", outputDir, "--yes",
+        "--name", "incomplete-day", "--date", "2026-08-29", "--out", outputDir, "--yes",
       ], env, repo);
+      assert.equal(built.status, 0, built.stderr);
+      const payload = JSON.parse(built.stdout);
+      assert.equal(payload.source.requested_count, 2);
+      assert.equal(payload.source.materialized_count, 1);
+      assert.equal(payload.source.skipped_count, 1);
+      assert.equal(payload.source.skipped_index, "source/skipped.jsonl");
+      assert.match(payload.next_action.prompt, /reconcile 1 skipped capture.*source\/skipped\.jsonl.*before.*coverage claims/i);
 
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /does not match the requested workload window/);
-      assert.equal(existsSync(outputDir), false);
+      const project = JSON.parse(readFileSync(join(outputDir, "eval-project.json"), "utf8"));
+      assert.deepEqual(project.source, payload.source);
+      const skipped = readFileSync(join(outputDir, project.source.skipped_index), "utf8")
+        .trim().split("\n").map(JSON.parse);
+      assert.deepEqual(skipped.map((row) => row.request_id), ["req_456"]);
     });
   });
 
-  it("rejects an export chain that does not bind the downloaded corpus", async () => {
-    await withHostedFixture(async ({ home, repo, state }) => {
-      const env = { HOME: home, USERPROFILE: home };
-      assert.equal(spawnSync("git", ["init", "-q", repo]).status, 0);
-      state.evalWorkloadIndexInvalid = true;
-      const outputDir = join(repo, ".understudy", "evals", "wrong-corpus");
-
-      const result = await runWithEnvAsync([
-        "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
-        "--name", "wrong-corpus", "--out", outputDir, "--yes",
-      ], env, repo);
-
-      assert.notEqual(result.status, 0);
-      assert.match(result.stderr, /source index commitment does not match its manifest items/i);
-      assert.equal(existsSync(outputDir), false);
-    });
-  });
-
-  it("publishes a validated checkpoint and excludes a concurrent builder from the same output", async () => {
+  it("publishes a complete raw dump and excludes a concurrent builder from the same output", async () => {
     await withHostedFixture(async ({ home, repo, requests, state }) => {
       const env = { HOME: home, USERPROFILE: home };
       const invalidOutput = join(repo, ".understudy", "evals", "invalid-checkpoint");
@@ -4422,10 +4429,10 @@ class ScoreWithFeedback:
       const invalid = await runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
         "--name", "invalid-checkpoint", "--out", invalidOutput,
-        "--batch-size", "0", "--yes",
+        "--concurrency", "0", "--yes",
       ], env, repo);
       assert.notEqual(invalid.status, 0);
-      assert.match(invalid.stderr, /--batch-size must be a positive integer/);
+      assert.match(invalid.stderr, /--concurrency must be between 1 and 16/);
       assert.equal(existsSync(invalidStaging), false, "invalid state is never published as a resumable checkpoint");
 
       const corrected = await runWithEnvAsync([
@@ -4453,14 +4460,14 @@ class ScoreWithFeedback:
       rmSync(staleLock, { recursive: true, force: true });
 
       const concurrentOutput = join(repo, ".understudy", "evals", "concurrent-builder");
-      state.evalCaptureDelayMs = 400;
-      const captureReadsBefore = requests.filter((entry) => entry.path === "/eval-workload-capture-0").length;
+      state.rawCaptureDelayMs = 400;
+      const captureReadsBefore = requests.filter((entry) => entry.path === "/raw-workload-capture-0").length;
       const first = runWithEnvAsync([
         "--json", "evals", "build", "--project", "rehearsal", "--workload", "classify",
         "--name", "concurrent-builder", "--out", concurrentOutput, "--yes",
       ], env, repo);
       const deadline = Date.now() + 5_000;
-      while (requests.filter((entry) => entry.path === "/eval-workload-capture-0").length === captureReadsBefore) {
+      while (requests.filter((entry) => entry.path === "/raw-workload-capture-0").length === captureReadsBefore) {
         if (Date.now() > deadline) throw new Error("first eval builder did not reach capture download");
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
@@ -4471,7 +4478,7 @@ class ScoreWithFeedback:
       assert.notEqual(second.status, 0);
       assert.match(second.stderr, /already owns/);
       const completed = await first;
-      state.evalCaptureDelayMs = 0;
+      state.rawCaptureDelayMs = 0;
       assert.equal(completed.status, 0, completed.stderr);
       assert.equal(existsSync(join(concurrentOutput, "eval-project.json")), true);
     });

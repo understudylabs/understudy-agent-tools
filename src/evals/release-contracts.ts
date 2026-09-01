@@ -32,11 +32,9 @@ export const EvalReleaseSourceSchema = z.object({
   capture_count: z.number().int().nonnegative(),
   total_bytes: z.number().int().nonnegative(),
   local_index_sha256: EvalReleaseSha256Schema,
-  export_proof_sha256: EvalReleaseSha256Schema,
-  source_attestation: z.string().min(1).max(8_192),
 }).strict().superRefine((source, context) => {
-  if (Date.parse(source.to) - Date.parse(source.from) !== 7 * 24 * 60 * 60 * 1_000) {
-    context.addIssue({ code: "custom", path: ["to"], message: "the source window must be exactly seven days" });
+  if (Date.parse(source.to) - Date.parse(source.from) !== 24 * 60 * 60 * 1_000) {
+    context.addIssue({ code: "custom", path: ["to"], message: "the source window must be exactly 24 hours" });
   }
   if (Date.parse(source.ingestion_cutoff) < Date.parse(source.to)) {
     context.addIssue({ code: "custom", path: ["ingestion_cutoff"], message: "the frozen ingestion cutoff must be at or after the source window end" });

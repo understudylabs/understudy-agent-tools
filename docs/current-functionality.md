@@ -52,6 +52,8 @@ understudy captures export <request-id> --out .understudy/captures/<request-id>.
 understudy captures export --request-ids-file request-ids.txt --project rehearsal --out .understudy/capture-batch --include-payload --yes
 understudy traces export <trace-id> --project rehearsal --out .understudy/trace-exports --include-payload --yes
 understudy traces export --trace-ids-file trace-ids.txt --project rehearsal --out .understudy/trace-exports --include-payload --yes
+understudy traces export --project rehearsal --workload classify --date 2026-08-29 --out .understudy/trace-exports/day --include-payload --yes
+understudy evals build --project rehearsal --workload classify --name classification-day --out .understudy/evals/classification-day --yes
 understudy routes show classify --project rehearsal
 understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
 understudy routes clear classify --project rehearsal
@@ -150,11 +152,14 @@ model and what remains passthrough/frontier.
 Hosted capture commands are metadata-first. `captures list` and `captures get`
 redact prompt/completion-bearing fields into presence booleans. Full capture
 export is opt-in with `--include-payload --yes`, writes only to a file, and never
-prints raw payloads to stdout. `traces export` calls the customer trace
-request-ID lookup for one explicit `trace_id`, then passes the returned IDs to
-the existing request capture batch exporter. It never walks the project capture
-catalog. Full per-request captures require the same explicit payload opt-in;
-there is no unbounded all-traces operation.
+prints raw payloads to stdout. `traces export` either resolves explicit trace
+IDs through the customer trace request-ID endpoint or downloads one exact raw
+workload day. Workload mode defaults to the rolling latest 24 hours and accepts
+`--date YYYY-MM-DD` for a completed UTC calendar day. It requires the same
+explicit payload opt-in, writes owner-private files, and emits only counts,
+paths, and hashes; there is no unbounded all-traces operation. `evals build`
+uses the same one-day primitive before handing semantic authoring to the coding
+agent.
 
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,

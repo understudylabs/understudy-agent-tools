@@ -24,7 +24,8 @@ export function buildEvalProject(root, overrides = {}) {
   const sourceRow = {
     schema_version: "understudy.eval-source-capture.v1",
     request_id: "req-synthetic-1",
-    capture_key: "captures/synthetic/capture.json",
+    capture_key: "org_synthetic/proj_synthetic/key_synthetic/2026/08/29/req-synthetic-1.jsonl",
+    captured_at: "2026-08-29T12:00:00.000Z",
     size_bytes: Buffer.byteLength(traceBody),
     content_sha256: sha(traceBody),
     local_path: "source/traces/capture.json",
@@ -32,6 +33,7 @@ export function buildEvalProject(root, overrides = {}) {
   const sourceIndex = `${JSON.stringify(sourceRow)}\n`;
   const sourceIndexSha256 = sourceIndexCommitmentSha256([sourceRow]);
   writeFileSync(join(project, "source/index.jsonl"), sourceIndex, { mode: 0o600 });
+  writeFileSync(join(project, "source/skipped.jsonl"), "", { mode: 0o600 });
 
   const task = {
     schema_version: "understudy.benchmark_task.v1",
@@ -151,33 +153,8 @@ export function verify({ replay }) {
   });
 
   const identity = { org_id: "org_synthetic", project_id: "proj_synthetic", workload_id: "workload_synthetic", workload_name: "synthetic" };
-  const sourceWindow = { schema_version: "understudy.export-scope.v1", selector: "workload-window", org_id: "org_synthetic", project_id: "proj_synthetic", workload_id: "workload_synthetic", from: "2026-08-23T12:00:00.000Z", to: "2026-08-30T12:00:00.000Z", ingestion_cutoff: "2026-08-30T12:00:00.000Z" };
-  const proof = {
-    schema_version: "understudy.eval-export-proof.v1",
-    canonical_scope: sourceWindow,
-    segment_manifest_sha256: ["a".repeat(64)],
-    terminal_receipt: "signed-synthetic-terminal-receipt",
-    verified_receipt: {
-      verified: true,
-      scope_hash: sha(JSON.stringify(sourceWindow)),
-      chain_id: "synthetic-chain",
-      segment_id: "c".repeat(64),
-      segment_index: 0,
-      manifest_sha256: "a".repeat(64),
-      previous_manifest_sha256: null,
-      cumulative_scanned: 1,
-      cumulative_matched: 1,
-      cumulative_exported: 1,
-      total_bytes: Buffer.byteLength(traceBody),
-      local_index_sha256: sourceIndexSha256,
-      expires_at: "2026-08-30T13:00:00.000Z",
-      canonical_scope: sourceWindow,
-      source_attestation: "signed-synthetic-source-attestation",
-    },
-  };
-  const proofBody = `${JSON.stringify(proof, null, 2)}\n`;
-  writeFileSync(join(project, "source/export-proof.json"), proofBody, { mode: 0o600 });
-  const projectName = "weekly synthetic eval";
+  const sourceWindow = { schema_version: "understudy.export-scope.v1", selector: "workload-window", org_id: "org_synthetic", project_id: "proj_synthetic", workload_id: "workload_synthetic", from: "2026-08-29T12:00:00.000Z", to: "2026-08-30T12:00:00.000Z", ingestion_cutoff: "2026-08-30T12:00:00.000Z" };
+  const projectName = "one-day synthetic eval";
   const projectManifest = {
     schema_version: "understudy.eval-project.v2",
     eval_id: deriveWorkloadEvalId({ name: projectName, identity, sourceWindow }),
@@ -187,15 +164,14 @@ export function verify({ replay }) {
     identity,
     source: {
       window: sourceWindow,
+      requested_count: 1,
+      materialized_count: 1,
+      skipped_count: 0,
+      skipped_index: "source/skipped.jsonl",
       capture_count: 1,
       size_bytes: Buffer.byteLength(traceBody),
       index: "source/index.jsonl",
       index_sha256: sourceIndexSha256,
-      export_proof: "source/export-proof.json",
-      export_proof_sha256: sha(proofBody),
-      exported_capture_count: 1,
-      exported_total_bytes: Buffer.byteLength(traceBody),
-      terminal_receipt_verified: true,
     },
     artifacts: {
       workload_profile: "workload-profile.md", coverage: "coverage.json", harness: "harness.json",

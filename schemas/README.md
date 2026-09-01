@@ -5,27 +5,23 @@ app, skills, CLI, ladder). One spine, adopted everywhere.
 
 ## Local workload eval authoring
 
-The `understudy.eval-project.v2`, export-proof, execution-index-row, metric,
+The `understudy.eval-project.v2`, execution-index-row, metric,
 coverage, harness, environment, splits, check-fixtures, check-report, and approval schemas define the private
 coding-agent workspace checked by `understudy evals check`. The workload
 profile remains Markdown; its exact bytes are bound by both intent approval and
 the deterministic check-input hash. These contracts require a provider-free
 local environment replay, independent good/wrong evidence, explicit lineage
-coverage, and a separate post-check owner approval.
+coverage, and a separate post-check owner approval. The project source records
+requested, materialized, and skipped capture counts and the private portable
+`source/skipped.jsonl` index so agents can qualify coverage claims when a raw
+object is no longer available.
 
 The `understudy.eval-publication.v1` and `understudy.eval-release.v1` JSON
 Schemas define the structural hosted boundary for this workflow. Publication
-carries the checked hashes, a compact backend-verifiable source attestation,
-final approval, executable layout, and bundle inventory. The server response
-adds the immutable release seal. Neither contract contains raw source traces,
-the expiring export receipt, the local export-proof file, or mutable authoring
-state.
-
-Within the private project manifest, `source.export_proof_sha256` binds the
-exact local export-proof file. Within the check report and hosted
-publication/release source, that field instead binds the exact opaque
-`source_attestation` token. The CLI verifies both links before upload, and the
-backend verifies the attestation itself before sealing a release.
+carries the exact 24-hour source window, local index/count/byte commitments,
+checked hashes, final approval, executable layout, and bundle inventory. The
+server response adds the immutable release seal. Neither contract contains raw
+source traces or mutable authoring state.
 
 These Draft 2020-12 schemas do not express the release contract's cross-field
 path rules. Consumers must also parse publications with the package's exported

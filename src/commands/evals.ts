@@ -9,40 +9,36 @@ import { runEvalCheck } from "../evals/check.js";
 import { previewEvalPublication, publishEvalRelease } from "../evals/publish.js";
 import {
   acquireEvalBuildLease,
-  assertWorkloadBuildStateMatches,
-  creatingWorkloadBuildState,
+  createPrivateDirectory,
   ensureUnderstudyGitExcluded,
-  initializeBuildCheckpoint,
   pathExists,
-  readEvalBuildState,
-  replacePrivateJson,
-  writePrivateJson,
 } from "../evals/build-state.js";
 import {
   CatalogItemSchema,
   CatalogResponseSchema,
   CohortExportSchema,
   CohortSchema,
-  EvalWorkloadBuildStateSchema,
-  VerifyWorkloadCaptureExportReceiptResponseSchema,
-  WorkloadCaptureExportResponseSchema,
   type CatalogItem,
-  type EvalWorkloadBuildState,
-  type WorkloadCaptureExportResponse,
-  type WorkloadCaptureExportScope,
 } from "../evals/contracts.js";
 import {
   assertEquivalentExport,
   assertExportLineage,
   downloadExport,
   EXPORT_EXPIRES_SECONDS,
-  materializeWorkloadExportSegment,
 } from "../evals/materialize.js";
-import { sourceIndexCommitmentSha256 } from "../evals/source-index.js";
 import { request } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 import { resolveProject, type ProjectResolutionOptions } from "../internal/projects.js";
 import { resolveWorkload } from "../internal/workloads.js";
+import {
+  DEFAULT_WORKLOAD_TRACE_CONCURRENCY,
+  DEFAULT_WORKLOAD_TRACE_RETRIES,
+  exportWorkloadTraceWindow,
+  MAX_WORKLOAD_TRACE_CONCURRENCY,
+  MAX_WORKLOAD_TRACE_RETRIES,
+  resolveWorkloadTraceWindow,
+  type WorkloadTraceWindow,
+} from "../workload-trace-export.js";
 
 interface WorkloadOpts extends ProjectResolutionOptions {
   workload: string;
@@ -85,11 +81,12 @@ interface GuidedCreateOpts extends WorkloadOpts {
 }
 interface BuildOpts extends WorkloadOpts {
   name: string;
-  last: string;
+  last?: string;
+  date?: string;
   out?: string;
   yes?: boolean;
-  maxAgeDays?: string;
-  batchSize: string;
+  concurrency: string;
+  retries: string;
 }
 interface CheckOpts {
   project: string;
@@ -105,8 +102,21 @@ export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
     .description("Build, check, publish, and manage workload-scoped evaluations for coding agents.");
 
+  addWorkloadOptions(evals.command("build")
+    .description("Recommended: download one raw workload day for a coding agent to turn into an eval.")
+    .requiredOption("--name <name>", "Local eval project name.")
+    .option("--last <duration>", "Rolling workload window (currently exactly 1d).")
+    .option("--date <YYYY-MM-DD>", "Use one complete UTC calendar day instead of the latest 24 hours.")
+    .option("--out <directory>", "Destination directory (default: .understudy/evals/<safe-name>).")
+    .option("--concurrency <count>", `Raw capture download concurrency, max ${MAX_WORKLOAD_TRACE_CONCURRENCY}.`, String(DEFAULT_WORKLOAD_TRACE_CONCURRENCY))
+    .option("--retries <count>", `Retries for transient page or capture failures, max ${MAX_WORKLOAD_TRACE_RETRIES}.`, String(DEFAULT_WORKLOAD_TRACE_RETRIES))
+    .option("--yes", "Approve downloading payload-bearing traces without prompting."))
+    .action(async function (this: Command, opts: BuildOpts) {
+      await runAction(this, () => runBuild(this, opts));
+    });
+
   addWorkloadOptions(addRecentSelectionOptions(
-    evals.command("create").description("Create a frozen eval set from a recent workload window."),
+    evals.command("create").description("Legacy: create a sampled hosted cohort; use `evals build` for coding-agent eval authoring."),
     "Cohort name.",
   )
     .option("--out <directory>", "Destination directory (default: .understudy/evals/<name>).")
@@ -114,18 +124,6 @@ export function registerEvalsCommand(program: Command): void {
     .option("--yes", "Approve freezing and local trace download without prompting."))
     .action(async function (this: Command, opts: GuidedCreateOpts) {
       await runAction(this, () => runGuidedCreate(this, opts));
-    });
-
-  addWorkloadOptions(evals.command("build")
-    .description("Download a complete seven-day workload source for a coding agent to turn into an eval.")
-    .requiredOption("--name <name>", "Local eval project name.")
-    .option("--last <duration>", "Complete capture window (currently exactly 7d).", "7d")
-    .option("--out <directory>", "Destination directory (default: .understudy/evals/<safe-name>).")
-    .option("--max-age-days <days>", "Record the source freshness horizon (default: 7).")
-    .option("--batch-size <count>", "Record the coding-agent processing batch size.", "10")
-    .option("--yes", "Approve downloading payload-bearing traces without prompting."))
-    .action(async function (this: Command, opts: BuildOpts) {
-      await runAction(this, () => runBuild(this, opts));
     });
 
   evals.command("check")
@@ -344,18 +342,7 @@ async function runGuidedCreate(cmd: Command, opts: GuidedCreateOpts): Promise<vo
 }
 
 async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
-  const batchSize = parsePositiveInteger("--batch-size", opts.batchSize);
-  const windowMs = parseDuration(opts.last);
-  if (windowMs !== 7 * 86_400_000) {
-    throw new Error("understudy evals build currently requires the complete --last 7d window.");
-  }
-  const selectionDays = 7;
-  const maxAgeDays = opts.maxAgeDays === undefined
-    ? selectionDays
-    : parsePositiveInteger("--max-age-days", opts.maxAgeDays);
-  if (maxAgeDays < selectionDays) {
-    throw new Error(`--max-age-days must cover --last (${selectionDays} day(s)).`);
-  }
+  const window = resolveWorkloadTraceWindow({ date: opts.date, last: opts.last });
   if (isJsonMode(cmd) && !opts.yes) {
     throw new Error("JSON mode cannot prompt. Re-run with --yes to approve the complete local trace download.");
   }
@@ -369,7 +356,17 @@ async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
   ensureUnderstudyGitExcluded(output);
   const releaseLease = acquireEvalBuildLease(output);
   try {
-    await runBuildWithLease(cmd, opts, { batchSize, windowMs, maxAgeDays, output });
+    await runBuildWithLease(cmd, opts, {
+      output,
+      window,
+      concurrency: parseBoundedInteger(
+        "--concurrency",
+        opts.concurrency,
+        1,
+        MAX_WORKLOAD_TRACE_CONCURRENCY,
+      ),
+      retries: parseBoundedInteger("--retries", opts.retries, 0, MAX_WORKLOAD_TRACE_RETRIES),
+    });
   } finally {
     releaseLease();
   }
@@ -378,265 +375,65 @@ async function runBuild(cmd: Command, opts: BuildOpts): Promise<void> {
 async function runBuildWithLease(
   cmd: Command,
   opts: BuildOpts,
-  build: { batchSize: number; windowMs: number; maxAgeDays: number; output: string },
+  build: {
+    output: string;
+    window: WorkloadTraceWindow;
+    concurrency: number;
+    retries: number;
+  },
 ): Promise<void> {
-  const { batchSize, windowMs, maxAgeDays, output } = build;
+  const { output, window, concurrency, retries } = build;
   if (pathExists(output)) {
     throw new Error(`Eval build destination already exists: ${output}. Choose a fresh --out directory.`);
   }
   const staging = join(dirname(output), `.${basename(output)}.eval-build`);
-  const pending = pathExists(staging) ? readEvalBuildState(staging) : null;
+  if (pathExists(staging)) createPrivateDirectory(staging);
   const context = await resolveContext(opts);
   const currentIdentity = identityFromContext(context);
-  let state: EvalWorkloadBuildState;
-  if (pending) {
-    assertWorkloadBuildStateMatches(pending, opts.name, currentIdentity, maxAgeDays, batchSize);
-    state = pending;
-  } else {
-    const to = new Date();
-    state = creatingWorkloadBuildState({
-      name: opts.name,
-      identity: currentIdentity,
-      source: {
-        from: new Date(to.getTime() - windowMs).toISOString(),
-        to: to.toISOString(),
-        ingestion_cutoff: null,
-      },
-      maxAgeDays,
-      batchSize,
-      now: to,
-    });
-    initializeBuildCheckpoint(staging, state);
-  }
   if (!opts.yes) {
     const approved = await confirm({
-      message: `${pending ? "Resume" : "Download"} every retrievable capture in the frozen seven-day window for local eval “${opts.name}”? Files may contain prompts, completions, and tool payloads.`,
+      message: `${pathExists(staging) ? "Resume" : "Download"} every retrievable capture in this one-day window for local eval “${opts.name}”? Files may contain prompts, completions, and tool payloads.`,
       default: false,
     });
     if (!approved) throw new Error("Eval build cancelled before payload download.");
   }
-
-  if (state.status === "complete") {
-    const recovered = JSON.parse(readFileSync(join(staging, "eval-project.json"), "utf8")) as WorkloadEvalProjectBuildResult;
-    renameSync(staging, output);
-    recovered.project_file = join(output, "eval-project.json");
-    emitWorkloadBuildResult(cmd, output, recovered);
-    return;
-  }
-
-  while (state.status === "downloading") {
-    state = resetInterruptedInitialWorkloadExport(staging, state);
-    const segment = await fetchWorkloadExportSegment(context, state);
-    if (state.source.ingestion_cutoff === null) {
-      assertInitialWorkloadExportScopeMatchesState(segment, state);
-      state = persistWorkloadBuildState(staging, {
-        ...state,
-        source: {
-          ...state.source,
-          ingestion_cutoff: segment.canonical_scope.ingestion_cutoff,
+  const source = await exportWorkloadTraceWindow({
+    orgId: currentIdentity.org_id,
+    projectId: currentIdentity.project_id,
+    workloadId: currentIdentity.workload_id,
+    outputDirectory: staging,
+    gatewayUrl: context.project.auth.gatewayUrl,
+    concurrency,
+    retries,
+    reuseStoredWindow: opts.date === undefined,
+    ...window,
+    onProgress: isJsonMode(cmd)
+      ? undefined
+      : (completed) => {
+          if (completed % 100 === 0) process.stderr.write(`Exported ${completed} raw captures...\n`);
         },
-      });
-    }
-    assertWorkloadExportSegmentMatchesState(segment, state);
-    await materializeWorkloadExportSegment({
-      exportData: segment,
-      tracesDirectory: join(staging, "source", "traces"),
-      gatewayUrl: context.project.auth.gatewayUrl,
-      verifiedFiles: state.transport.verified_files,
-      onVerified(file) {
-        if (!state.transport.verified_files.some((existing) => existing.capture_key === file.capture_key)) {
-          state = persistWorkloadBuildState(staging, {
-            ...state,
-            transport: {
-              ...state.transport,
-              verified_files: [...state.transport.verified_files, file],
-            },
-          });
-        }
-      },
-    });
-    if (sourceIndexCommitmentSha256(state.transport.verified_files) !== segment.chain.local_index_sha256) {
-      throw new Error("Capture export source index commitment does not match its manifest items.");
-    }
-    state = persistWorkloadBuildState(staging, {
-      ...state,
-      status: segment.chain.terminal ? "receipt_pending" : "downloading",
-      transport: {
-        ...state.transport,
-        resume_cursor: segment.resume_cursor ?? null,
-        chain_id: segment.chain.chain_id,
-        next_segment_index: segment.chain.segment_index + 1,
-        previous_manifest_sha256: segment.chain.manifest_sha256,
-        segment_manifest_sha256: [...state.transport.segment_manifest_sha256, segment.chain.manifest_sha256],
-        cumulative_exported: segment.chain.cumulative_exported,
-        cumulative_total_bytes: segment.chain.cumulative_total_bytes,
-        terminal_receipt: segment.chain.terminal_receipt ?? null,
-      },
-    });
-  }
-
-  if (!state.transport.terminal_receipt) throw new Error("Complete capture export is missing its terminal receipt.");
-  const receipt = await verifyWorkloadExportReceipt(context, state);
-  if (
-    receipt.chain_id !== state.transport.chain_id ||
-    receipt.cumulative_exported !== state.transport.cumulative_exported ||
-    receipt.total_bytes !== state.transport.cumulative_total_bytes ||
-    receipt.manifest_sha256 !== state.transport.previous_manifest_sha256 ||
-    receipt.local_index_sha256 !== sourceIndexCommitmentSha256(state.transport.verified_files)
-  ) throw new Error("Verified capture export receipt does not match the downloaded source chain.");
-
+  });
   const project = buildWorkloadEvalProject({
     output: staging,
-    name: state.name,
-    identity: state.identity,
-    canonicalScope: receipt.canonical_scope,
-    verifiedFiles: state.transport.verified_files,
-    segmentManifestSha256: state.transport.segment_manifest_sha256,
-    terminalReceipt: state.transport.terminal_receipt,
-    verifiedReceipt: receipt,
-    now: new Date(state.created_at),
+    name: opts.name,
+    identity: currentIdentity,
+    source,
+    now: new Date(),
   });
-  state = persistWorkloadBuildState(staging, { ...state, status: "complete" });
   renameSync(staging, output);
   project.project_file = join(output, "eval-project.json");
   emitWorkloadBuildResult(cmd, output, project);
 }
 
-async function fetchWorkloadExportSegment(
-  context: Awaited<ReturnType<typeof resolveContext>>,
-  state: EvalWorkloadBuildState,
-): Promise<WorkloadCaptureExportResponse> {
-  if (state.transport.resume_cursor !== null && state.source.ingestion_cutoff === null) {
-    throw new Error("Resumed capture export is missing its frozen ingestion cutoff.");
-  }
-  const response = await request({
-    url: `${context.base}/eval-capture-export`,
-    method: "POST",
-    orgId: context.project.auth.orgId,
-    signal: AbortSignal.timeout(60_000),
-    body: {
-      from: state.source.from,
-      to: state.source.to,
-      expires_seconds: EXPORT_EXPIRES_SECONDS,
-      ...(state.transport.resume_cursor === null
-        ? {}
-        : {
-            ingestion_cutoff: state.source.ingestion_cutoff,
-            resume_cursor: state.transport.resume_cursor,
-          }),
-    },
-  }, WorkloadCaptureExportResponseSchema);
-  return response.data;
-}
-
-function resetInterruptedInitialWorkloadExport(
-  staging: string,
-  state: EvalWorkloadBuildState,
-): EvalWorkloadBuildState {
-  if (state.transport.resume_cursor !== null || state.source.ingestion_cutoff === null) return state;
-  if (
-    state.transport.next_segment_index !== 0 ||
-    state.transport.chain_id !== null ||
-    state.transport.previous_manifest_sha256 !== null ||
-    state.transport.segment_manifest_sha256.length !== 0 ||
-    state.transport.cumulative_exported !== 0 ||
-    state.transport.cumulative_total_bytes !== 0 ||
-    state.transport.terminal_receipt !== null
-  ) {
-    throw new Error("Interrupted initial capture export has inconsistent chain state.");
-  }
-  rmSync(join(staging, "source", "traces"), { recursive: true, force: true });
-  return persistWorkloadBuildState(staging, {
-    ...state,
-    source: { ...state.source, ingestion_cutoff: null },
-    transport: { ...state.transport, verified_files: [] },
-  });
-}
-
-async function verifyWorkloadExportReceipt(
-  context: Awaited<ReturnType<typeof resolveContext>>,
-  state: EvalWorkloadBuildState,
-) {
-  const canonicalScope = workloadExportScope(state);
-  const response = await request({
-    url: `${context.base}/eval-capture-export/verify`,
-    method: "POST",
-    orgId: context.project.auth.orgId,
-    signal: AbortSignal.timeout(60_000),
-    body: { terminal_receipt: state.transport.terminal_receipt, canonical_scope: canonicalScope },
-  }, VerifyWorkloadCaptureExportReceiptResponseSchema);
-  if (JSON.stringify(response.data.canonical_scope) !== JSON.stringify(canonicalScope)) {
-    throw new Error("Verified capture export receipt returned a different canonical scope.");
-  }
-  return response.data;
-}
-
-function workloadExportScope(state: EvalWorkloadBuildState): WorkloadCaptureExportScope {
-  const ingestionCutoff = state.source.ingestion_cutoff;
-  if (ingestionCutoff === null) {
-    throw new Error("Capture export has not returned its frozen ingestion cutoff.");
-  }
-  return {
-    schema_version: "understudy.export-scope.v1" as const,
-    selector: "workload-window" as const,
-    org_id: state.identity.org_id,
-    project_id: state.identity.project_id,
-    workload_id: state.identity.workload_id,
-    from: state.source.from,
-    to: state.source.to,
-    ingestion_cutoff: ingestionCutoff,
-  };
-}
-
-function assertInitialWorkloadExportScopeMatchesState(
-  segment: WorkloadCaptureExportResponse,
-  state: EvalWorkloadBuildState,
-): void {
-  const scope = segment.canonical_scope;
-  const ingestionCutoffMs = Date.parse(scope.ingestion_cutoff);
-  if (
-    scope.org_id !== state.identity.org_id ||
-    scope.project_id !== state.identity.project_id ||
-    scope.workload_id !== state.identity.workload_id ||
-    scope.from !== state.source.from ||
-    scope.to !== state.source.to ||
-    ingestionCutoffMs < Date.parse(scope.to) ||
-    ingestionCutoffMs > Date.now() + 60_000
-  ) {
-    throw new Error("Capture export response does not match the requested workload window.");
-  }
-}
-
-function assertWorkloadExportSegmentMatchesState(
-  segment: WorkloadCaptureExportResponse,
-  state: EvalWorkloadBuildState,
-): void {
-  const expectedScope = workloadExportScope(state);
-  if (JSON.stringify(segment.canonical_scope) !== JSON.stringify(expectedScope)) {
-    throw new Error("Capture export response does not match the frozen workload window.");
-  }
-  if (
-    segment.chain.segment_index !== state.transport.next_segment_index ||
-    segment.chain.previous_manifest_sha256 !== state.transport.previous_manifest_sha256 ||
-    (state.transport.chain_id !== null && segment.chain.chain_id !== state.transport.chain_id) ||
-    segment.chain.cumulative_exported !== state.transport.cumulative_exported + segment.count ||
-    segment.chain.cumulative_total_bytes !== state.transport.cumulative_total_bytes + segment.total_bytes
-  ) throw new Error("Capture export segment does not continue the persisted source chain.");
-}
-
-function persistWorkloadBuildState(staging: string, candidate: EvalWorkloadBuildState): EvalWorkloadBuildState {
-  const state = EvalWorkloadBuildStateSchema.parse(candidate);
-  replacePrivateJson(join(staging, "build-state.json"), state);
-  return state;
-}
-
 function emitWorkloadBuildResult(cmd: Command, output: string, project: WorkloadEvalProjectBuildResult): void {
-  const checkArgs = ["evals", "check", "--draft", "--project", output];
+  const checkArgs = ["--json", "evals", "check", "--draft", "--project", output];
+  const skippedPath = join(output, project.source.skipped_index);
   const nextAction = {
     kind: "coding_agent_prompt" as const,
     command: { executable: "understudy", args: checkArgs },
     prompt: [
-      `Use the Understudy capture-evidence skill to build a provisional eval from the complete seven-day traces at ${output}.`,
+      `Use the Understudy capture-evidence skill to build a provisional eval from the one-day raw traces at ${output}.`,
+      `Reconcile ${project.source.skipped_count} skipped captures recorded at ${skippedPath} before making coverage claims.`,
       "Infer the workload goal, output contract, success criteria, execution modes, and failure taxonomy from these traces and the current repository.",
       "Explain your evidence and ask only targeted questions whose answers would materially change the metric, environment, or case selection.",
       "Author the project-local eval artifacts and mark unconfirmed semantics as provisional.",
@@ -647,8 +444,9 @@ function emitWorkloadBuildResult(cmd: Command, output: string, project: Workload
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify({ ...project, next_action: nextAction })}\n`);
   } else {
-    process.stdout.write(`${kleur.green("✓")} Materialized the complete seven-day source at ${output}\n`);
+    process.stdout.write(`${kleur.green("✓")} Materialized the one-day raw source at ${output}\n`);
     process.stdout.write(`Project manifest: ${project.project_file}\n`);
+    process.stdout.write(`Source: ${project.source.requested_count} requested, ${project.source.materialized_count} materialized, ${project.source.skipped_count} skipped (${project.source.skipped_index})\n`);
     process.stdout.write(`${kleur.yellow("warning")}: local files contain prompts, completions, or tool payloads; nothing was uploaded and no model provider was called\n`);
     process.stdout.write("Next, give this prompt to your coding agent:\n\n");
     process.stdout.write(`${nextAction.prompt}\n`);
@@ -857,10 +655,10 @@ function parseDuration(value: string): number {
   return durationMs;
 }
 
-function parsePositiveInteger(name: string, value: string): number {
+function parseBoundedInteger(name: string, value: string, minimum: number, maximum: number): number {
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be between ${minimum} and ${maximum}.`);
   }
   return parsed;
 }
