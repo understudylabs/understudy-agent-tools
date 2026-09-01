@@ -1781,8 +1781,8 @@ export function printLeakageAudit(audit: LeakageAudit): void {
  * the first gold effect is legitimately the candidate's starting world;
  * every result at/after that point (the write's own echo, and any re-read of
  * the world the write changed) is expected post-state — serving it would let
- * a candidate copy the answer instead of producing it (the 171-finding
- * gold-leakage class found on the cedar-automation proof run).
+ * a candidate copy the answer instead of producing it (a gold-leakage class
+ * observed in multi-task proof runs).
  *
  * When the normalized captures are available (both build and regenerate paths
  * pass them) the boundary is computed over the full ordered call+result event
@@ -1935,8 +1935,8 @@ export function writeVerifiersEnvironment(
   const capturesByKey = new Map<string, Obj>(rows.map((row) => [String(row.capture_key), row]));
   // task_id on every fixture: fixtures are TASK-SCOPED. A later task's
   // pre-state read of the same underlying object legitimately contains an
-  // earlier task's gold writes (cross-task temporal leakage — 44 of cedar's
-  // findings); the world serves a rollout only its own task's fixtures (plus
+  // earlier task's gold writes (cross-task temporal leakage); the world serves
+  // a rollout only its own task's fixtures (plus
   // untagged old-layout ones), so that overlap is unreachable in-rollout.
   const toFixture = (taskId: string) => (result: Obj): Obj => ({ task_id: taskId, tool: result.tool, arguments: result.arguments ?? {}, status: result.status, content: result.content });
   const observationSplit = tasks.map((task) => { const split = splitTaskObservations(task, capturesByKey); return { task_id: String(task.task_id), pre: split.pre.map(toFixture(String(task.task_id))), post: split.post.map(toFixture(String(task.task_id))) }; });

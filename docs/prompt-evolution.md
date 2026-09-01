@@ -61,12 +61,10 @@ Runs are the expensive unit, not tokens. One invocation queues
 `1 (baseline) + generations + 1 (dev select) + 1 (holdout final)` runs;
 `--budget-runs` hard-caps this and the command stops cleanly when exhausted.
 
-Per-generation cost on a real benchmark ≈
+Per-generation cost on a real benchmark is approximately
 `variants × train_tasks × rollouts_per_task` full agentic rollouts plus one
-authoring call (cents). On a cedar-sized benchmark (~29 tasks/split), a
-3-variant generation is ~90–120 rollouts (the bare arm reruns each
-generation) — wall-clock is dominated by the executor, so budget generations,
-not variants: 2 generations × 3 variants usually beats 6 × 1.
+authoring call. Wall-clock is dominated by the executor, so use the measured
+task count and `--budget-runs` to choose generations and variants.
 
 ## Future hook: rejection-guidance evolution
 

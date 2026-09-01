@@ -101,6 +101,13 @@ OSS from the first commit.
   its data, spend, destination, or production-impact envelope.
 - No customer data, private traces, secrets, private repo names, or internal
   incident notes.
+- Do not put customer or partner names, aliases, workload identifiers, metrics,
+  or derived artifacts in tracked paths or content, branch or commit names, pull
+  request metadata, or review comments. Use clearly synthetic placeholders.
+- Before a public release, an authorized maintainer must provide the private,
+  newline-delimited `UNDERSTUDY_PUBLIC_SAFETY_PRIVATE_TERMS` value while running
+  `npm run skills:validate` and `npm run package:smoke`. Untrusted pull-request
+  jobs use synthetic matcher tests and do not receive this private value.
 - Examples must use synthetic data or small public fixtures.
 - The desktop connects to the production remote-training control plane
   (`train.understudylabs.com`) as its default. This is no longer experimental:

@@ -67,7 +67,7 @@ export type ScrubStats = { names: number; emails: number; urls: number; domains:
 /**
  * Scrub one text field: customer names → [partner], emails/URLs/domains →
  * bracketed placeholders. Name matching is case-insensitive and
- * substring-based ON PURPOSE (e.g. "cedar" also catches "cedarcopilot"):
+ * substring-based ON PURPOSE (e.g. "sample" also catches "samplebot"):
  * over-scrubbing a shared report is cheap, leaking a customer name is not.
  */
 export function scrubText(text: string, names: string[], stats?: ScrubStats): string {
@@ -90,7 +90,7 @@ export function scrubText(text: string, names: string[], stats?: ScrubStats): st
   return out;
 }
 
-/** Candidate customer-name tokens from a benchmark dir basename (e.g. "cedar-automation" → ["cedar"]). */
+/** Candidate customer-name tokens from a benchmark dir basename (e.g. "sample-automation" → ["sample"]). */
 export function slugNameTokens(dirBasename: string): string[] {
   return dirBasename
     .toLowerCase()

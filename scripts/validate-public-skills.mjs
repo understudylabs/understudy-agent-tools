@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { validatePublicText } from "./public-safety.mjs";
+import {
+  configuredPrivateTerms,
+  redactPrivateTerms,
+  validatePublicPath,
+  validatePublicText,
+} from "./public-safety.mjs";
 
 const allowedTopLevel = new Set(["name", "description", "license", "allowed-tools", "metadata"]);
 const mvpPublicSkillNames = [
@@ -212,16 +217,28 @@ function validateSkill(path) {
 }
 
 function gitTrackedFiles() {
-  const result = spawnSync("git", ["ls-files"], { encoding: "utf8" });
+  const result = spawnSync("git", ["ls-files", "-z"], { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(result.stderr || "git ls-files failed");
   }
-  return result.stdout.split("\n").filter(Boolean);
+  return result.stdout.split("\0").filter(Boolean);
 }
 
 function isGitIgnored(path) {
   const result = spawnSync("git", ["check-ignore", "--quiet", path]);
   return result.status === 0;
+}
+
+function trackedEntryExists(path) {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function scanMarkdown(root) {
@@ -244,6 +261,7 @@ function scanMarkdown(root) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  const privateTerms = configuredPrivateTerms();
   const skillDirs = args.paths.flatMap(skillDirsForRoot);
   const errors = [];
   for (const root of args.paths) {
@@ -258,16 +276,21 @@ function main() {
     errors.push(...scanMarkdown(docRoot));
   }
   if (args.repo) {
-    const exclude = new Set(["scripts/package-smoke.mjs", "scripts/public-safety.mjs", "scripts/validate-public-skills.mjs"]);
     for (const path of gitTrackedFiles()) {
-      if (exclude.has(path) || isGitIgnored(path)) {
+      if (!trackedEntryExists(path) || isGitIgnored(path)) {
         continue;
       }
-      errors.push(...validatePublicText(path));
+      errors.push(...validatePublicPath(path, { privateTerms }));
+      errors.push(...validatePublicText(path, {
+        privateTerms,
+      }));
     }
   }
   for (const error of errors) {
-    console.log(error);
+    console.log(redactPrivateTerms(error, privateTerms));
+  }
+  if (args.repo && privateTerms.length === 0) {
+    console.log("note: private review terms are not configured; private-term checks were skipped");
   }
   if (errors.length === 0) {
     console.log(`ok ${skillDirs.length} public skill(s)`);

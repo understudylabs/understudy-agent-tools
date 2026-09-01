@@ -22341,7 +22341,7 @@
               "status": "closed",
               "mailbox_id": null,
               "customer_id": null,
-              "customer_email": "noise_user2@cedarpoint.example.com",
+              "customer_email": "noise_user2@pinepoint.example.com",
               "assigned_to": null,
               "tags": [
                 "import"
@@ -22389,7 +22389,7 @@
               "status": "closed",
               "mailbox_id": null,
               "customer_id": null,
-              "customer_email": "noise_user2@cedarpoint.example.com",
+              "customer_email": "noise_user2@pinepoint.example.com",
               "assigned_to": null,
               "tags": [
                 "widget"
