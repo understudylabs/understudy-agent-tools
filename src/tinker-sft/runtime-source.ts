@@ -211,9 +211,13 @@ async def main(request: dict) -> dict:
                 "total": math.ceil(len(train_datums) / batch_size) * request["epochs"],
             })
 
-    emit({"type": "phase", "phase": "evaluating", "message": "Saving one-hour sampler weights and re-running the same holdout."})
+    emit({"type": "phase", "phase": "checkpointing", "message": "Saving a non-expiring resumable state before creating bounded sampler weights."})
+    training_state = training_client.save_state(
+        name=f"understudy-{request['run_id'][:32]}-state", ttl_seconds=None
+    ).result()
+    emit({"type": "phase", "phase": "evaluating", "message": "Saving 24-hour sampler weights and re-running the same holdout."})
     saved = training_client.save_weights_for_sampler(
-        name=f"understudy-{request['run_id'][:32]}", ttl_seconds=3600
+        name=f"understudy-{request['run_id'][:32]}-sampler", ttl_seconds=86400
     ).result()
     tuned_client = await service.create_sampling_client_async(model_path=saved.path)
     heldout = await evaluate(tuned_client, renderer, heldout_rows, request["max_generation_tokens"], 44)
@@ -242,8 +246,10 @@ async def main(request: dict) -> dict:
         "backend": "tinker",
         "model": model,
         "renderer": renderer_name,
+        "training_state_path": training_state.path,
+        "training_state_ttl_seconds": None,
         "sampler_state_path": saved.path,
-        "checkpoint_ttl_seconds": 3600,
+        "checkpoint_ttl_seconds": 86400,
         "training": {
             "steps": steps,
             "tokens": train_tokens,
