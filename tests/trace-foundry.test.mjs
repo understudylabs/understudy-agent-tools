@@ -7,12 +7,33 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { once } from "node:events";
 import { compileTraceFoundry, createTraceReplayPlan, extractJsonPayload, importTraceReviews, requestSystemPrompt, runTraceReplays } from "../dist/trace-foundry.js";
+import { traceFoundryViewer } from "../dist/trace-foundry-viewer.js";
 import { serveTraceFoundry } from "../dist/trace-foundry-server.js";
 
 const capture = (id, ts, messages, response) => ({
   schema_version: 4, request_id: id, ts, workload_name: "synthetic-automation",
   customer_request_body: JSON.stringify({ system: "Operate a synthetic project board.", messages, tools: [{ name: "update-record", input_schema: { type: "object" } }] }),
   response_body: JSON.stringify(response), status_code: 200,
+});
+
+test("large benchmark viewers keep capture bodies out of the HTML payload", () => {
+  const overByteLimit = {
+    capture: {
+      path: "data/captures/capture.json",
+      bytes: Number.MAX_SAFE_INTEGER,
+      data: { private_marker: "must-not-be-inlined" },
+    },
+  };
+  const overCountLimit = Object.fromEntries(Array.from({ length: 251 }, (_, index) => [
+    `capture-${index}`,
+    { path: `data/captures/${index}.json`, bytes: 0, data: { private_marker: "must-not-be-inlined" } },
+  ]));
+
+  for (const captures of [overByteLimit, overCountLimit]) {
+    const viewer = traceFoundryViewer({ tasks: [], nodes: [], issues: [], captures, benchmark: {} });
+    assert.match(viewer, /understudy traces serve --benchmark/);
+    assert.doesNotMatch(viewer, /must-not-be-inlined/);
+  }
 });
 
 test("builds a fresh generic DAG, self-contained viewer, and raw/parsed inspector", () => {
