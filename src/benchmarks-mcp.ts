@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, delimiter, extname, join, resolve } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -57,15 +57,15 @@ class ToolError extends Error {}
 /**
  * Point the loaders at the requested roots. Default (no extra roots, env
  * unset) is ~/.understudy/benchmarks — data-core's own default. Extra roots
- * are ADDED after the default, via the same colon-separated
+ * are ADDED after the default, via the same path.delimiter-separated
  * BENCHMARK_HUB_DATA_DIR contract the hub honors.
  */
 export function configureBenchmarksMcpRoots(extraRoots: string[]): void {
   if (extraRoots.length === 0) return;
   const defaults = process.env.BENCHMARK_HUB_DATA_DIR
-    ? process.env.BENCHMARK_HUB_DATA_DIR.split(":").filter(Boolean)
+    ? process.env.BENCHMARK_HUB_DATA_DIR.split(delimiter).filter(Boolean)
     : [join(homedir(), ".understudy", "benchmarks")];
-  process.env.BENCHMARK_HUB_DATA_DIR = [...defaults, ...extraRoots.map((r) => resolve(r))].join(":");
+  process.env.BENCHMARK_HUB_DATA_DIR = [...defaults, ...extraRoots.map((r) => resolve(r))].join(delimiter);
 }
 
 /* ---------------- shared summaries ---------------- */
@@ -699,7 +699,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
 function hubPrimaryRoot(): string {
   const roots = (process.env.BENCHMARK_HUB_DATA_DIR ?? join(homedir(), ".understudy", "benchmarks"))
-    .split(":")
+    .split(delimiter)
     .filter(Boolean);
   return roots[0] ?? join(homedir(), ".understudy", "benchmarks");
 }
