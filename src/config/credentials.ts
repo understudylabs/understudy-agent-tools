@@ -71,6 +71,9 @@ export function writeCredentials(credentials: Credentials): void {
 }
 
 function warnIfPermissive(path: string): void {
+  if (process.platform === "win32") {
+    return;
+  }
   try {
     const mode = statSync(path).mode & 0o777;
     if ((mode & 0o077) !== 0) {
