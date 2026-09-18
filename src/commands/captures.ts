@@ -15,6 +15,7 @@ import { Command } from "commander";
 import kleur from "kleur";
 import { z } from "zod";
 
+import { resolveCaptureSearchWindow, searchWorkloadCaptures } from "../capture-search.js";
 import { findProjectRoot } from "../config/paths.js";
 import { request, UnderstudyApiError } from "../internal/http.js";
 import { isJsonMode, runAction } from "../internal/output.js";
@@ -44,6 +45,8 @@ interface CaptureOpts extends ProjectResolutionOptions {
 interface ListOpts extends CaptureOpts {
   limit?: string;
   cursor?: string;
+  from?: string;
+  to?: string;
 }
 
 interface ExportOpts extends CaptureOpts {
@@ -120,8 +123,10 @@ export function registerCapturesCommand(program: Command): void {
 
   addCaptureOptions(captures.command("list")
     .description("List capture metadata for a project or workload.")
-    .option("--limit <n>", "Capture limit, max 100.", "25")
-    .option("--cursor <cursor>", "Pagination cursor."))
+    .option("--limit <n>", "Capture limit, max 100; omit for a time search.", "25")
+    .option("--cursor <cursor>", "Pagination cursor; omit for a time search.")
+    .option("--from <timestamp>", "Inclusive request-start time (ISO timestamp with timezone); requires --to and --workload.")
+    .option("--to <timestamp>", "Exclusive request-start time; time searches return all indexed matches in a window up to 24 hours."))
     .action(async function (this: Command, opts: ListOpts) {
       await runAction(this, () => runList(this, opts));
     });
@@ -155,6 +160,10 @@ function addCaptureOptions(command: Command): Command {
 }
 
 async function runList(cmd: Command, opts: ListOpts): Promise<void> {
+  if (opts.from !== undefined || opts.to !== undefined) {
+    await runTimeSearch(cmd, opts);
+    return;
+  }
   const limit = parseLimit(opts.limit);
   const { project, workload } = await resolveCaptureContext(opts);
   const params = new URLSearchParams({ limit: String(limit) });
@@ -178,6 +187,46 @@ async function runList(cmd: Command, opts: ListOpts): Promise<void> {
     return;
   }
   printCaptureTable(summaries);
+}
+
+async function runTimeSearch(cmd: Command, opts: ListOpts): Promise<void> {
+  const now = new Date();
+  const window = resolveCaptureSearchWindow({ from: opts.from, to: opts.to, now });
+  if (!opts.workload) {
+    throw new Error("Time searches require --workload and a selected project.");
+  }
+  if (opts.cursor !== undefined || cmd.getOptionValueSource("limit") === "cli") {
+    throw new Error("Time searches follow index pages automatically. Omit --limit and --cursor, or narrow --from and --to.");
+  }
+  const { project, workload } = await resolveCaptureContext(opts);
+  const result = await searchWorkloadCaptures({
+    orgId: project.auth.orgId,
+    projectId: project.projectId,
+    workloadId: workload!.id,
+    ...window,
+    now,
+  });
+  if (isJsonMode(cmd)) {
+    process.stdout.write(`${JSON.stringify({
+      project_id: project.projectId,
+      workload_id: workload!.id,
+      ...result,
+      timestamp_basis: "request_start",
+      request_environment: "production",
+      truncated: false,
+      cursor: null,
+    })}\n`);
+    return;
+  }
+  process.stdout.write(`Found ${result.captures.length} indexed capture references in ${window.from} to ${window.to} (end exclusive).\n`);
+  process.stdout.write("Times are request starts; production requests only. Recent requests may appear after indexing completes.\n");
+  if (result.captures.length === 0) return;
+  const width = result.captures.reduce((size, capture) => Math.max(size, capture.request_id.length), "request_id".length);
+  process.stdout.write(`${kleur.bold("request_id".padEnd(width))}  ${kleur.bold("request_started_at")}\n`);
+  for (const capture of result.captures) {
+    process.stdout.write(`${capture.request_id.padEnd(width)}  ${capture.captured_at}\n`);
+  }
+  process.stdout.write("Inspect candidates with understudy captures get <request-id> using the same project and workload.\n");
 }
 
 async function runGet(cmd: Command, requestId: string, opts: CaptureOpts): Promise<void> {

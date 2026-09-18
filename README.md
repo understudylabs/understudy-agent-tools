@@ -288,6 +288,7 @@ understudy workloads list
 understudy workloads create classify --capture
 understudy gateway probe --provider anthropic --project rehearsal --workload classify
 understudy captures list --project rehearsal --workload classify
+understudy captures list --project rehearsal --workload classify --from 2026-06-07T10:14:00Z --to 2026-06-07T10:16:00Z --json
 understudy captures export --request-ids-file request-ids.txt --project rehearsal --out .understudy/capture-batch --include-payload --yes
 understudy traces export <trace-id> --project rehearsal --out .understudy/trace-exports --include-payload --yes
 understudy traces export --trace-ids-file trace-ids.txt --project rehearsal --out .understudy/trace-exports --include-payload --yes
@@ -297,6 +298,11 @@ understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-
 understudy routes show classify --project rehearsal
 understudy routes clear classify --project rehearsal
 ```
+
+To correlate a database execution with hosted captures when no request ID was
+saved, use the timestamp search above. It returns indexed request IDs without
+downloading payloads. See [capture time search](docs/capture-time-search.md) for
+timezones, inspecting candidates, and exporting selected matches.
 
 `routes set` writes control-plane route config: your application keeps calling
 the normal gateway while a percentage of traffic goes to the selected

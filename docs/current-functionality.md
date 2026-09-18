@@ -149,7 +149,15 @@ clear or roll back that route. Application code still calls the normal gateway
 path; the control plane decides what percentage goes to the selected Understudy
 model and what remains passthrough/frontier.
 
-Hosted capture commands are metadata-first. `captures list` and `captures get`
+Hosted capture commands are metadata-first. `captures list --from <timestamp>
+--to <timestamp> --workload <name-or-id>` searches indexed capture references by
+request-start time and follows index pages automatically. Timezones are
+required, the start is inclusive, the end is exclusive, and the requested span
+must be no longer than 24 hours. Time searches omit `--limit` and `--cursor`;
+ordinary listings keep their existing pagination. See
+[capture time search](capture-time-search.md) for correlation and export steps.
+
+`captures list` without timestamps and `captures get`
 redact prompt/completion-bearing fields into presence booleans. Full capture
 export is opt-in with `--include-payload --yes`, writes only to a file, and never
 prints raw payloads to stdout. `traces export` either resolves explicit trace
