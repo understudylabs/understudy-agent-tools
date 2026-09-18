@@ -141,6 +141,22 @@ test("search accepts an empty terminal page without claiming object availability
   assert.equal(result.scanned_count, 0);
 });
 
+test("search preserves fine timestamp precision before applying request-ID ordering", async () => {
+  const first = reference("req_z", "2024-04-01T08:00:00.000100Z");
+  const second = reference("req_a", "2024-04-01T08:00:00.000200Z");
+  const equalInstant = reference("req_b", "2024-04-01T08:00:00.0002Z");
+  let requests = 0;
+  const result = await searchWorkloadCaptures({ ...identity, ...historical, now, requestPage: async body => {
+    requests++;
+    return requests === 1 ? page(body, [first], "opaque-next") : page(body, [second, equalInstant]);
+  } });
+  assert.deepEqual(result.captures, [first, second, equalInstant].map(({ request_id, captured_at }) => ({ request_id, captured_at })));
+  assert.equal(result.pages, 2);
+  await assert.rejects(searchWorkloadCaptures({ ...identity, ...historical, now, requestPage: async body =>
+    page(body, [second, first]),
+  }), /out-of-order/);
+});
+
 test("search rejects canonical scope drift and impossible ingestion cutoffs", async () => {
   for (const drift of [
     { org_id: "org_other" }, { project_id: "proj_other" }, { workload_id: "workload_other" },

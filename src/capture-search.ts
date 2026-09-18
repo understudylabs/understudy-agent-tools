@@ -128,7 +128,7 @@ export async function searchWorkloadCaptures(input: CaptureSearchInput): Promise
           throw new Error("Capture search exceeds 100000 matching references. Narrow --from and --to; no partial result was returned.");
         }
         seenRequests.add(capture.request_id);
-        captures.push({ request_id: capture.request_id, captured_at: new Date(at).toISOString() });
+        captures.push({ request_id: capture.request_id, captured_at: capture.captured_at });
       }
     }
     if (reachedEnd) break;
@@ -179,6 +179,16 @@ function assertReference(input: CaptureSearchInput, window: CaptureSearchWindow,
 function compareReferences(left: WorkloadTraceExportCapture, right: WorkloadTraceExportCapture): number {
   const timeOrder = Date.parse(left.captured_at) - Date.parse(right.captured_at);
   if (timeOrder !== 0) return timeOrder;
+  // The response schema permits more precision than Date.parse preserves.
+  // Timestamps are validated UTC strings; compare remaining fractional digits
+  // before using the request ID to order captures in the same millisecond.
+  const leftFraction = left.captured_at.match(/\.(\d+)Z$/)?.[1] ?? "";
+  const rightFraction = right.captured_at.match(/\.(\d+)Z$/)?.[1] ?? "";
+  const precision = Math.max(leftFraction.length, rightFraction.length);
+  const leftPadded = leftFraction.padEnd(precision, "0");
+  const rightPadded = rightFraction.padEnd(precision, "0");
+  if (leftPadded < rightPadded) return -1;
+  if (leftPadded > rightPadded) return 1;
   for (const key of ["request_id", "capture_key"] as const) {
     if (left[key] < right[key]) return -1;
     if (left[key] > right[key]) return 1;
