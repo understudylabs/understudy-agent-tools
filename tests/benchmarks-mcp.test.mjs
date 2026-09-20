@@ -586,7 +586,7 @@ describe("server wiring", () => {
       configureBenchmarksMcpRoots([]);
       assert.equal(process.env.BENCHMARK_HUB_DATA_DIR, saved); // no-op without roots
       configureBenchmarksMcpRoots(["/tmp/extra-bench"]);
-      assert.equal(process.env.BENCHMARK_HUB_DATA_DIR, `${saved}:${path.resolve("/tmp/extra-bench")}`);
+      assert.equal(process.env.BENCHMARK_HUB_DATA_DIR, `${saved}${path.delimiter}${path.resolve("/tmp/extra-bench")}`);
     } finally {
       process.env.BENCHMARK_HUB_DATA_DIR = saved;
     }
