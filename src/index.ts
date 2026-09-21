@@ -79,6 +79,14 @@ export {
   type VerifiedRejectedPayload,
 } from "./preference-admission.js";
 
+export {
+  orderCheckpointReceipts,
+  readPrivateCheckpoint,
+  writePrivateCheckpoint,
+  type PrivateCheckpointRecord,
+  type PublicCheckpointReceipt,
+} from "./private-checkpoint-cas.js";
+
 export { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "./trace-foundry.js";
 export { serveTraceFoundry } from "./trace-foundry-server.js";
 export {
