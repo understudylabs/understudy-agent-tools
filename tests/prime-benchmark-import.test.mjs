@@ -9,12 +9,14 @@ import { importPrimeBenchmark, inspectPrimeBenchmark } from "../dist/prime-bench
 import { appendPrimeBenchmarkReview, freezePrimeBenchmark } from "../dist/prime-benchmark-lifecycle.js";
 import { comparePrimeModels } from "../dist/prime-benchmark-compare.js";
 import { discoverPrimeScorecards, renderScorecardGallery } from "../dist/prime-scorecard-server.js";
+import { primeTraceDisposition } from "../dist/prime-trace-contract.js";
 import {
   normalizePrimeSampling,
   planPrimeRun,
   primeExecutionCoverage,
   renderProviderAwarePrimeConfig,
   runPrimeEvaluation,
+  validatePrimeTrace,
   watchPrimeBenchmark,
 } from "../dist/prime-benchmark-runner.js";
 
@@ -111,6 +113,16 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
       "synthetic-model": { input: 1, cache_read: 0.1, output: 5, source: "synthetic reviewed fixture price" },
       "synthetic-candidate": { input: 0.5, cache_read: 0.05, output: 2.5, source: "synthetic reviewed fixture price" },
     },
+    availability_annotations: {
+      "synthetic-unavailable": {
+        status: "provider_unavailable",
+        reason: "Repeated explicit upstream 503 overloads left incomplete frozen-task coverage.",
+        receipt_ref: "corrected-v3/provider-availability.json",
+        attempt_rows: 135,
+        clean_tasks: 8,
+        required_tasks: 50,
+      },
+    },
   };
   const configPath = join(root, "config.json");
   writeFileSync(configPath, JSON.stringify(config, null, 2));
@@ -126,8 +138,19 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   const manifest = JSON.parse(readFileSync(join(aggregateOutput, "benchmark.json"), "utf8"));
   assert.equal(manifest.schema_version, "understudy.benchmark.v1");
   assert.equal(manifest.benchmark_id, "synthetic-prime-benchmark-v1");
+  assert.deepEqual(manifest.availability_annotations["synthetic-unavailable"], {
+    status: "provider_unavailable",
+    reason: "Repeated explicit upstream 503 overloads left incomplete frozen-task coverage.",
+    receipt_ref: "corrected-v3/provider-availability.json",
+    attempt_rows: 135,
+    clean_tasks: 8,
+    required_tasks: 50,
+    canonical_score: null,
+    scoring_policy: "excluded_from_leaderboard_and_pareto",
+  });
   const aggregateText = readFileSync(join(aggregateOutput, "rows-prime.jsonl"), "utf8");
   assert.doesNotMatch(aggregateText, /Synthetic private prompt/);
+  assert.doesNotMatch(aggregateText, /synthetic-unavailable/);
   assert.match(aggregateText, /"usd":0\.00155/);
   const comparison = comparePrimeModels(aggregateOutput, "synthetic-model", "synthetic-candidate");
   assert.equal(comparison.comparable_task_count, 1);
@@ -144,10 +167,32 @@ test("imports Prime-native traces into an anonymized benchmark and renders the r
   assert.match(viewer, /Conversation history/);
   assert.match(viewer, /production incumbent/);
   assert.match(viewer, /% vs incumbent/);
+  assert.match(viewer, /provider_unavailable/);
+  assert.match(viewer, /"clean_tasks":8/);
+  assert.match(viewer, /"required_tasks":50/);
+  assert.match(viewer, /clean tasks/);
+  assert.match(viewer, /corrected-v3\/provider-availability\.json/);
+  const diagnosticConfigPath = join(root, "diagnostic-config.json");
+  writeFileSync(diagnosticConfigPath, JSON.stringify({
+    ...config,
+    benchmark_id: "synthetic-prime-diagnostic-v1",
+    name: "Synthetic Prime Diagnostic",
+    benchmark_mode: "diagnostic",
+    scorecard_output_dir: join(root, "private-scorecards", "synthetic-diagnostic"),
+  }, null, 2));
+  assert.throws(
+    () => importPrimeBenchmark(diagnosticConfigPath),
+    /diagnostic benchmark configs may build private scorecards but cannot be aggregate-imported/,
+  );
+  const diagnosticRendered = spawnSync(process.execPath, [renderer, diagnosticConfigPath], { encoding: "utf8" });
+  assert.equal(diagnosticRendered.status, 0, diagnosticRendered.stderr);
+  const diagnosticViewer = readFileSync(join(root, "private-scorecards", "synthetic-diagnostic", "viewer", "index.html"), "utf8");
+  assert.match(diagnosticViewer, /DIAGNOSTIC AUDIT/);
+  assert.match(diagnosticViewer, /Non-authoritative private review/);
   const entries = discoverPrimeScorecards(join(root, "private-scorecards"));
-  assert.equal(entries.length, 1);
-  assert.equal(entries[0].benchmark_id, "synthetic-prime-benchmark-v1");
-  assert.equal(entries[0].rollouts, 2);
+  assert.equal(entries.length, 2);
+  const authoritativeEntry = entries.find((entry) => entry.benchmark_id === "synthetic-prime-benchmark-v1");
+  assert.equal(authoritativeEntry.rollouts, 2);
   const gallery = renderScorecardGallery(entries);
   assert.match(gallery, /Synthetic Prime Benchmark/);
   assert.match(gallery, /\/b\/synthetic-prime-benchmark\//);
@@ -305,7 +350,230 @@ test("a nonempty all-error traces.jsonl is rejected and remains resumable", () =
   assert.equal(coverage.missing, 1);
   assert.equal(coverage.complete, false);
   assert.deepEqual(coverage.missing_task_ids, ["task-synthetic-1"]);
-  assert.ok(coverage.rejected_rows[0].reasons.includes("stop_condition_not_agent_completed"));
+  assert.ok(coverage.rejected_rows[0].reasons.includes("stop_condition_not_scored_terminal"));
   assert.ok(coverage.rejected_rows[0].reasons.includes("provider_call_error"));
   assert.ok(coverage.rejected_rows[0].reasons.includes("missing_final_reward"));
+});
+
+test("imports scored context-fit failures and renders their terminal stop reason", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-prime-context-fit-"));
+  const source = join(root, "runs");
+  mkdirSync(join(source, "incumbent"), { recursive: true });
+  mkdirSync(join(source, "candidate"), { recursive: true });
+  mkdirSync(join(source, "haiku"), { recursive: true });
+  const incumbent = syntheticTrace("incumbent");
+  const contextFailure = syntheticTrace("gpt-5.5", 0);
+  contextFailure.id = "trace-gpt-5.5-context-length";
+  contextFailure.stop_condition = "context_length";
+  contextFailure.metrics.final_state_partial_credit = 0;
+  contextFailure.timing = { generation: { start: 100, end: 101.5 } };
+  const providerContextFailure = syntheticTrace("claude-haiku-4-5", 0);
+  providerContextFailure.id = "trace-haiku-provider-context-window";
+  providerContextFailure.stop_condition = "error";
+  providerContextFailure.errors = [{
+    type: "ProviderError",
+    status_code: 400,
+    message: 'upstream 400: litellm.ContextWindowExceededError: AnthropicError - {"message":"prompt is too long: 287580 tokens > 200000 maximum"}',
+  }];
+  providerContextFailure.calls.push({
+    endpoint: "/chat/completions",
+    error: {
+      type: "ProviderError",
+      status_code: 400,
+      message: 'AnthropicError - {"message":"prompt is too long: 287580 tokens > 200000 maximum"}',
+    },
+  });
+  delete providerContextFailure.rewards;
+  delete providerContextFailure.metrics;
+  providerContextFailure.timing = { generation: { start: 100, end: 101.5 } };
+  writeFileSync(join(source, "incumbent", "traces.jsonl"), `${JSON.stringify(incumbent)}\n`);
+  writeFileSync(join(source, "candidate", "traces.jsonl"), `${JSON.stringify(contextFailure)}\n`);
+  writeFileSync(join(source, "haiku", "traces.jsonl"), `${JSON.stringify(providerContextFailure)}\n`);
+  const configPath = join(root, "config.json");
+  const output = join(root, "aggregate");
+  const scorecard = join(root, "scorecard");
+  writeFileSync(configPath, JSON.stringify({
+    schema_version: "understudy.prime_benchmark_import.v1",
+    benchmark_id: "context-fit-v1",
+    name: "Context Fit",
+    source_dir: source,
+    output_dir: output,
+    scorecard_output_dir: scorecard,
+    verifier_version: "0.2.1",
+    incumbent_model: "incumbent",
+    anonymized: true,
+    environment: { package_ref: "synthetic:context-fit" },
+    tasks: {
+      "task-synthetic-1": {
+        label: "Long-context automation",
+        category_id: "context-fit",
+        summary: ["Exercises a long context.", "Requires tool completion.", "Measures terminal context fit."],
+      },
+    },
+    pricing: {
+      incumbent: { input: 1, cache_read: 0, output: 1, source: "synthetic" },
+      "gpt-5.5": { input: 1, cache_read: 0, output: 1, source: "synthetic" },
+      "claude-haiku-4-5": { input: 1, cache_read: 0, output: 1, source: "synthetic" },
+    },
+  }));
+
+  const validation = validatePrimeTrace(contextFailure, {
+    verifierVersion: "0.2.1",
+    model: "gpt-5.5",
+    taskIds: ["task-synthetic-1"],
+  });
+  assert.equal(validation.accepted, true);
+  const normalizedValidation = validatePrimeTrace(providerContextFailure, {
+    verifierVersion: "0.2.1",
+    model: "claude-haiku-4-5",
+    taskIds: ["task-synthetic-1"],
+  });
+  assert.equal(normalizedValidation.accepted, true);
+  const status = inspectPrimeBenchmark(configPath);
+  assert.equal(status.ready_to_import, true);
+  assert.deepEqual(
+    status.terminal_model_failures,
+    [
+      {
+        trace_id: "trace-gpt-5.5-context-length",
+        stop_condition: "context_length",
+        native_stop_condition: "context_length",
+        normalized: false,
+      },
+      {
+        trace_id: "trace-haiku-provider-context-window",
+        stop_condition: "context_window_exceeded",
+        native_stop_condition: "error",
+        normalized: true,
+      },
+    ],
+  );
+  importPrimeBenchmark(configPath);
+  const rows = readFileSync(join(output, "rows-prime.jsonl"), "utf8")
+    .trim()
+    .split("\n")
+    .map(JSON.parse);
+  const failed = rows.find((row) => row.model === "gpt-5.5");
+  assert.equal(failed.status, "ok");
+  assert.equal(failed.score, 0);
+  assert.equal(failed.stop_condition, "context_length");
+  assert.equal(failed.terminal_outcome, "model_failure");
+  const normalized = rows.find((row) => row.model === "claude-haiku-4-5");
+  assert.equal(normalized.status, "ok");
+  assert.equal(normalized.score, 0);
+  assert.equal(normalized.stop_condition, "context_window_exceeded");
+  assert.equal(normalized.native_stop_condition, "error");
+  assert.equal(normalized.score_normalization, "recognized_context_window_failure_zero");
+
+  const renderer = resolve("runtime-assets/prime-scorecard/build-scorecard.mjs");
+  const rendered = spawnSync(process.execPath, [renderer, configPath], { encoding: "utf8" });
+  assert.equal(rendered.status, 0, rendered.stderr);
+  const viewer = readFileSync(join(scorecard, "viewer", "index.html"), "utf8");
+  assert.match(viewer, /stop reason/);
+  assert.match(viewer, /context_length/);
+  assert.match(viewer, /context_window_exceeded/);
+});
+
+test("context-window normalization rejects transport and unrelated provider failures", () => {
+  const cases = [
+    { type: "ProviderError", status_code: 429, message: "rate limit exceeded" },
+    { type: "ProviderError", status_code: 503, message: "service unavailable" },
+    { type: "ProviderError", status_code: 400, message: "invalid JSON tool arguments" },
+    { type: "NetworkError", status_code: 400, message: "prompt is too long: 300000 tokens > 200000 maximum" },
+  ];
+  for (const error of cases) {
+    const trace = syntheticTrace("candidate", 0);
+    trace.stop_condition = "error";
+    trace.errors = [error];
+    trace.calls.push({ error });
+    delete trace.rewards;
+    delete trace.metrics;
+    const disposition = primeTraceDisposition(trace, "0.2.1");
+    assert.equal(disposition.accepted, false, JSON.stringify(error));
+    assert.equal(disposition.normalized, false, JSON.stringify(error));
+  }
+});
+
+test("normalizes Poolside's exact input-length context-window failure shape", () => {
+  const trace = syntheticTrace("laguna-xs-2.1");
+  trace.stop_condition = "error";
+  delete trace.rewards;
+  delete trace.metrics;
+  trace.errors = [{
+    type: "ProviderError",
+    status_code: 400,
+    message: 'upstream 400: {"error":{"code":400,"message":"Input length 315811 exceeds the maximum allowed input length of 262112 tokens.","type":"Bad Request"}}',
+  }];
+  trace.calls[0].error = {
+    type: "ProviderError",
+    status_code: 400,
+    message: 'upstream 400: {"error":{"code":400,"message":"Input length 315797 exceeds the maximum allowed input length of 262112 tokens.","type":"Bad Request"}}',
+  };
+
+  assert.deepEqual(
+    primeTraceDisposition(trace, "0.2.1"),
+    {
+      accepted: true,
+      normalized: true,
+      stop_condition: "error",
+      display_stop_reason: "context_window_exceeded",
+      terminal_outcome: "model_failure",
+      score: 0,
+      partial_credit: 0,
+      issue: null,
+    },
+  );
+
+  trace.errors[0].message = "Input length is invalid.";
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, false);
+});
+
+test("accepts only recovered, recognized retryable call errors inside a scored completed trace", () => {
+  const trace = syntheticTrace("poolside/laguna-s-2.1");
+  trace.timing = { generation: { start: 100, end: 103 } };
+  trace.calls.splice(1, 0, {
+    error: {
+      type: "ProviderError",
+      status_code: 429,
+      message: 'upstream 429: {"error":"Rate limit exceeded"}',
+    },
+    usage: null,
+    time: { start: 101.5, end: 102 },
+  });
+  trace.calls.push({
+    usage: { prompt_tokens: 1100, cached_input_tokens: 0, completion_tokens: 50 },
+    time: { start: 102, end: 103 },
+  });
+
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, true);
+  assert.equal(validatePrimeTrace(trace, { verifierVersion: "0.2.1" }).accepted, true);
+
+  const terminalTransportFailure = structuredClone(trace);
+  terminalTransportFailure.calls.pop();
+  assert.equal(primeTraceDisposition(terminalTransportFailure, "0.2.1").accepted, false);
+
+  const unrecognized = structuredClone(trace);
+  unrecognized.calls[1].error.message = "upstream 429: unrelated bad request";
+  assert.equal(primeTraceDisposition(unrecognized, "0.2.1").accepted, false);
+});
+
+test("accepts the exact scored OpenAI overlong-prompt call shape", () => {
+  const trace = syntheticTrace("gpt-5.5", 0);
+  trace.stop_condition = "context_length";
+  trace.metrics.final_state_partial_credit = 0;
+  trace.timing = { generation: { start: 100, end: 102 } };
+  trace.calls.push({
+    error: {
+      type: "OverlongPromptError",
+      status_code: 400,
+      message: "upstream 400: OpenAI upstream error: Input tokens exceed the configured limit of 922000 tokens. Your messages resulted in 923456 tokens. Please reduce the length of the messages.",
+    },
+    usage: null,
+    time: { start: 101.5, end: 102 },
+  });
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, true);
+  assert.equal(validatePrimeTrace(trace, { verifierVersion: "0.2.1" }).accepted, true);
+
+  trace.calls[1].error.message = "input was too large";
+  assert.equal(primeTraceDisposition(trace, "0.2.1").accepted, false);
 });

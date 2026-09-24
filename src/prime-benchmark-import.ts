@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { primeTraceDisposition } from "./prime-trace-contract.js";
 
 type Price = { input: number; cache_read: number; output: number; source: string };
 type TaskMetadata = {
@@ -8,6 +9,14 @@ type TaskMetadata = {
   category_id: string;
   summary?: string[];
   split?: "train" | "dev" | "holdout" | "none";
+};
+type AvailabilityAnnotation = {
+  status: "provider_unavailable";
+  reason: string;
+  receipt_ref: string;
+  attempt_rows: number;
+  clean_tasks: number;
+  required_tasks: number;
 };
 type ImportConfig = {
   schema_version: "understudy.prime_benchmark_import.v1";
@@ -18,6 +27,7 @@ type ImportConfig = {
   output_dir: string;
   verifier_version: string;
   incumbent_model: string;
+  benchmark_mode?: "authoritative" | "diagnostic";
   anonymized: boolean;
   environment: {
     package_ref: string;
@@ -27,6 +37,7 @@ type ImportConfig = {
   };
   pricing: Record<string, Price>;
   tasks: Record<string, TaskMetadata>;
+  availability_annotations?: Record<string, AvailabilityAnnotation>;
 };
 
 type PrimeTrace = Record<string, any>;
@@ -51,6 +62,27 @@ function assertConfig(value: unknown): asserts value is ImportConfig {
     throw new Error("config.environment.package_ref is required");
   }
   if (!config.pricing || !config.tasks) throw new Error("config.pricing and config.tasks are required");
+  if (config.benchmark_mode !== undefined && !["authoritative", "diagnostic"].includes(config.benchmark_mode)) {
+    throw new Error("config.benchmark_mode must be authoritative or diagnostic");
+  }
+  for (const [model, annotation] of Object.entries(config.availability_annotations ?? {})) {
+    if (
+      annotation.status !== "provider_unavailable" ||
+      typeof annotation.reason !== "string" ||
+      !annotation.reason ||
+      typeof annotation.receipt_ref !== "string" ||
+      !annotation.receipt_ref ||
+      !Number.isInteger(annotation.attempt_rows) ||
+      annotation.attempt_rows < 1 ||
+      !Number.isInteger(annotation.clean_tasks) ||
+      annotation.clean_tasks < 0 ||
+      !Number.isInteger(annotation.required_tasks) ||
+      annotation.required_tasks < 1 ||
+      annotation.clean_tasks >= annotation.required_tasks
+    ) {
+      throw new Error(`config.availability_annotations.${model} must describe incomplete provider_unavailable coverage`);
+    }
+  }
 }
 
 function listTraceFiles(sourceDir: string): string[] {
@@ -159,21 +191,25 @@ export function importPrimeBenchmark(configPath: string): {
   const configValue = readJson(configFile);
   assertConfig(configValue);
   const config = configValue;
+  if (config.benchmark_mode === "diagnostic") {
+    throw new Error("diagnostic benchmark configs may build private scorecards but cannot be aggregate-imported");
+  }
   const configDir = dirname(configFile);
   const fromConfig = (value: string) => isAbsolute(value) ? value : resolve(configDir, value);
   const sourceDir = fromConfig(config.source_dir);
   const outputDir = fromConfig(config.output_dir);
   const traces = loadPrimeTraces(sourceDir);
   if (traces.length === 0) throw new Error(`no Prime traces found under ${sourceDir}`);
+  for (const model of Object.keys(config.availability_annotations ?? {})) {
+    if (traces.some((trace) => trace.agent?.model === model)) {
+      throw new Error(`availability annotation for ${model} conflicts with discovered scored traces`);
+    }
+  }
 
   for (const trace of traces) {
-    if (
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0
-    ) {
-      throw new Error(`trace ${trace.id ?? "unknown"} is not a completed, error-free Prime ${config.verifier_version} run`);
+    const disposition = primeTraceDisposition(trace, config.verifier_version);
+    if (!disposition.accepted) {
+      throw new Error(`trace ${trace.id ?? "unknown"} is not an importable Prime ${config.verifier_version} scored terminal row: ${disposition.issue}`);
     }
     const taskId = trace.task?.data?.task_id;
     const model = trace.agent?.model;
@@ -221,6 +257,12 @@ export function importPrimeBenchmark(configPath: string): {
       dense_metric: "final_state_partial_credit",
       replayable: false,
     },
+    availability_annotations: Object.fromEntries(
+      Object.entries(config.availability_annotations ?? {}).map(([model, annotation]) => [
+        model,
+        { ...annotation, canonical_score: null, scoring_policy: "excluded_from_leaderboard_and_pareto" },
+      ]),
+    ),
   };
 
   const rows = traces.map((trace) => {
@@ -228,6 +270,7 @@ export function importPrimeBenchmark(configPath: string): {
     const taskId = String(trace.task.data.task_id);
     const tokenUsage = tokensFor(trace);
     const price = config.pricing[model];
+    const disposition = primeTraceDisposition(trace, config.verifier_version);
     return {
       schema_version: "understudy.eval_result.v1",
       run_id: String(trace.run?.id ?? trace.id),
@@ -235,9 +278,13 @@ export function importPrimeBenchmark(configPath: string): {
       runtime_backend: "prime-verifiers",
       task_id: taskId,
       split: config.tasks[taskId].split ?? "none",
-      score: Number(trace.rewards?.final_state ?? 0),
-      subscores: { final_state_partial_credit: Number(trace.metrics?.final_state_partial_credit ?? 0) },
+      score: disposition.score,
+      subscores: { final_state_partial_credit: disposition.partial_credit },
       status: "ok",
+      stop_condition: disposition.display_stop_reason,
+      native_stop_condition: disposition.stop_condition,
+      terminal_outcome: disposition.terminal_outcome,
+      score_normalization: disposition.normalized ? "recognized_context_window_failure_zero" : null,
       model,
       route: "byo-provider",
       cost: { usd: costFor(trace, price), basis: price.source },
@@ -298,13 +345,7 @@ export function inspectPrimeBenchmark(configPath: string): Record<string, unknow
     : resolve(dirname(configFile), config.source_dir);
   const files = listTraceFiles(sourceDir);
   const traces = files.length ? loadPrimeTraces(sourceDir) : [];
-  const invalid = traces.filter(
-    (trace) =>
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0,
-  );
+  const invalid = traces.filter((trace) => !primeTraceDisposition(trace, config.verifier_version).accepted);
   const models = [...new Set(traces.map((trace) => String(trace.agent?.model ?? "unknown")))].sort();
   const tasks = [...new Set(traces.map((trace) => String(trace.task?.data?.task_id ?? "unknown")))].sort();
   const expected = Object.keys(config.tasks).length * Math.max(models.length, 1);
@@ -319,6 +360,21 @@ export function inspectPrimeBenchmark(configPath: string): Record<string, unknow
     models,
     tasks,
     completed_error_free: traces.length - invalid.length,
+    scored_terminal_error_free: traces.length - invalid.length,
+    terminal_model_failures: traces.filter(
+      (trace) => {
+        const disposition = primeTraceDisposition(trace, config.verifier_version);
+        return disposition.accepted && disposition.terminal_outcome === "model_failure";
+      },
+    ).map((trace) => {
+      const disposition = primeTraceDisposition(trace, config.verifier_version);
+      return {
+        trace_id: trace.id ?? "unknown",
+        stop_condition: disposition.display_stop_reason,
+        native_stop_condition: disposition.stop_condition,
+        normalized: disposition.normalized,
+      };
+    }),
     invalid_traces: invalid.map((trace) => trace.id ?? "unknown"),
     ready_to_import:
       traces.length > 0 &&

@@ -28,8 +28,10 @@ Never commit the scorecard merely because the aggregate package is safe.
 
 Every discovered trace must:
 
-- be complete and error-free;
-- stop with `agent_completed`;
+- be complete and either error-free or a narrowly recognized deterministic
+  context-window failure;
+- stop with `agent_completed`, a scored terminal model stop such as
+  `context_length` or `max_turns`, or a recognized context-window error;
 - carry the exact configured `verifiers.version`;
 - identify `agent.model`, `run.id`, and `task.data.task_id`;
 - retain `task.data.outcome_contract.required`;
@@ -41,6 +43,26 @@ Every discovered trace must:
 The importer rejects a corpus when any model lacks reviewed pricing or any task
 lacks explicit anonymized metadata. It also rejects calibration unless the
 declared incumbent strictly passes every frozen task.
+
+Models with incomplete evidence caused by repeatable upstream availability
+failures must not receive a score. An optional `availability_annotations` entry
+may retain their reviewed receipt as `provider_unavailable`; those models are
+shown in a non-scoring lane and are excluded from rows, pass rates, rankings,
+cost comparisons, and the Pareto frontier. An annotated model may not also
+appear in the canonical trace source.
+
+Set `benchmark_mode` to `diagnostic` for a full audit view that deliberately
+preserves incumbent replay misses. Diagnostic configs may build a private
+scorecard, which is visibly labeled non-authoritative, but `import-prime`
+refuses to create an aggregate package from them. Authoritative parity configs
+use `benchmark_mode: "authoritative"` (the default) and retain the strict
+all-frozen-tasks incumbent calibration gate.
+
+A scored terminal trace may retain a recognized transient 429/5xx call attempt
+only when the top-level error list is empty and a later usage-bearing call
+proves recovery inside the same trace. Terminal provider failures, unknown
+transport messages, and retries without a later successful call remain
+rejected.
 
 ## Build and reopen
 
@@ -70,10 +92,12 @@ understudy benchmarks reopen-prime config.json
 ```
 
 `run-prime --dry-run` validates and prints the exact invocation without provider
-execution. `watch-prime` exits only when every discovered native trace is
-complete, error-free, stopped with `agent_completed`, and pinned to the
-configured verifier version. `reopen-prime` serves the scorecard through the
-loopback gallery instead of relying on `file://`.
+execution. `watch-prime` exits only when every discovered native trace has an
+accepted terminal disposition and is pinned to the configured verifier version.
+Provider/transport failures remain rejected, except for narrowly recognized
+deterministic context-window failures that are preserved as score-zero model
+outcomes. `reopen-prime` serves the scorecard through the loopback gallery
+instead of relying on `file://`.
 
 Agents can call the MCP `plan_prime_run` tool to inspect the exact native command
 without spend or data transfer, then use `prime_status` while execution proceeds.
@@ -145,13 +169,23 @@ Prime verifier version, model, run, and task. Resume runs only missing or invali
 tasks. Provider and deployment must be resolved in advance and included in the
 approved allowlist; required ZDR must be explicitly confirmed.
 
-Every provider attempt writes to a private staging directory. Only rows with
-`is_completed=true`, `stop_condition=agent_completed`, no errors, the pinned
-verifier, matching task/model identity, native nodes and calls, usage and timing,
-outcome contract, reward, and partial credit enter `source_dir`. Failed or
-incomplete attempts move append-only to `rejected_dir` with provider/request
-metadata. A nonempty `traces.jsonl` is therefore never treated as completion.
-Only 429/503-style transient failures receive exponential backoff.
+Every provider attempt writes to a private staging directory. Accepted rows
+must be terminal, pinned to the reviewed verifier, match task/model identity,
+and carry the required native evidence described below. Failed or incomplete
+attempts move append-only to `rejected_dir` with provider/request metadata. A
+nonempty `traces.jsonl` is therefore never treated as completion. Only
+429/503-style transient failures receive exponential backoff.
+
+Scored terminal model failures are evidence, not missing rows. Prime
+`context_length` and `max_turns` rows are importable when they are error-free and
+carry final reward plus partial credit. A narrower normalization also accepts a
+terminal ProviderError 400 only when every recorded error explicitly identifies
+a context-window overflow (for example, `ContextWindowExceededError` or
+`prompt is too long: N tokens > M maximum`). The raw trace remains unchanged;
+the aggregate row records score `0`, `terminal_outcome=model_failure`,
+`stop_condition=context_window_exceeded`, and an explicit normalization marker.
+Generic 400s, invalid JSON, 429s, 5xx responses, network errors, and rows without
+recognized terminal evidence remain rejected.
 
 ## Production replication contract
 

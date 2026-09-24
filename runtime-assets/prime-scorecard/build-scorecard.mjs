@@ -11,6 +11,9 @@ if (!["understudy.prime_scorecard.v1", "understudy.prime_benchmark_import.v1"].i
 if (config.anonymized !== true) {
   throw new Error("config.anonymized must be true before building a durable scorecard");
 }
+if (config.benchmark_mode !== undefined && !["authoritative", "diagnostic"].includes(config.benchmark_mode)) {
+  throw new Error("config.benchmark_mode must be authoritative or diagnostic");
+}
 const configDir = dirname(resolvedConfigPath);
 const fromConfig = (value) => isAbsolute(value) ? value : resolve(configDir, value);
 const primeRuns = fromConfig(config.source_dir);
@@ -29,6 +32,59 @@ const discoveredPrimeTraces = modelIds.flatMap((model) =>
     .map(JSON.parse),
 );
 const tracesById = new Map();
+const scoredTerminalStopConditions = new Set(["agent_completed", "context_length", "max_turns"]);
+const contextWindowMessage = /ContextWindowExceededError|prompt is too long:\s*\d+\s*tokens?\s*>\s*\d+\s*maximum|Input length \d+ exceeds the maximum allowed input length of \d+ tokens\.|Input tokens exceed the configured limit of \d+ tokens\.\s*(?:Your input contained|Your messages resulted in) \d+ tokens\.(?:\s*Please reduce the length of the messages\.)?/i;
+const isContextWindowError = (error) =>
+  ["ProviderError", "OverlongPromptError"].includes(error?.type) &&
+  Number(error?.status_code) === 400 &&
+  contextWindowMessage.test(String(error?.message ?? ""));
+const retryableTransportMessages = {
+  429: /upstream 429:.*rate limit exceeded/is,
+  500: /upstream 500:.*internal server error/is,
+  502: /upstream 502:.*provider connection error:.*upstream response stream/is,
+  503: /upstream 503:.*overloaded_error.*provider is temporarily unavailable/is,
+};
+const isRetryableTransportError = (error) =>
+  error?.type === "ProviderError" &&
+  retryableTransportMessages[Number(error?.status_code)]?.test(String(error?.message ?? "")) === true;
+const hasOnlyAcceptedCallErrors = (trace, stopCondition) => {
+  const calls = (trace.calls ?? []).filter((call) => !call?.sampling?.output_config);
+  const errorIndexes = calls.flatMap((call, index) => call?.error ? [index] : []);
+  if (!errorIndexes.length) return true;
+  if (stopCondition === "context_length") return errorIndexes.every((index) => isContextWindowError(calls[index].error));
+  if (stopCondition !== "agent_completed") return false;
+  return errorIndexes.every((index) =>
+    isRetryableTransportError(calls[index].error) &&
+    calls.slice(index + 1).some((later) => !later?.error && later?.usage),
+  );
+};
+const isNormalizedContextWindowFailure = (trace) => {
+  const errors = Array.isArray(trace.errors) ? trace.errors : [];
+  const callErrors = (trace.calls ?? []).map((call) => call?.error).filter(Boolean);
+  const allErrors = [...errors, ...callErrors];
+  return trace.is_completed === true && trace.stop_condition === "error" &&
+    allErrors.length > 0 && allErrors.every(isContextWindowError);
+};
+const traceDisposition = (trace) => {
+  if (trace.verifiers?.version !== config.verifier_version || trace.is_completed !== true) return null;
+  if (isNormalizedContextWindowFailure(trace)) {
+    return { score: 0, partialCredit: 0, stopReason: "context_window_exceeded", normalized: true };
+  }
+  if (
+    !scoredTerminalStopConditions.has(String(trace.stop_condition ?? "")) ||
+    !Array.isArray(trace.errors) ||
+    trace.errors.length > 0 ||
+    !hasOnlyAcceptedCallErrors(trace, String(trace.stop_condition ?? "")) ||
+    !Number.isFinite(trace.rewards?.final_state) ||
+    !Number.isFinite(trace.metrics?.final_state_partial_credit)
+  ) return null;
+  return {
+    score: Number(trace.rewards.final_state),
+    partialCredit: Number(trace.metrics.final_state_partial_credit),
+    stopReason: String(trace.stop_condition),
+    normalized: false,
+  };
+};
 for (const trace of discoveredPrimeTraces) {
   const id = String(trace.id ?? "");
   if (!id) throw new Error("Prime trace is missing its stable id");
@@ -40,17 +96,28 @@ for (const trace of discoveredPrimeTraces) {
   if (!prior) tracesById.set(id, { canonical, trace });
 }
 const primeTraces = [...tracesById.values()].map(({ trace }) => trace);
+const availabilityAnnotations = Object.entries(config.availability_annotations ?? {}).map(([model, annotation]) => ({
+  model,
+  status: annotation.status,
+  reason: annotation.reason,
+  receipt_ref: annotation.receipt_ref,
+  attempt_rows: annotation.attempt_rows,
+  clean_tasks: annotation.clean_tasks,
+  required_tasks: annotation.required_tasks,
+}));
+for (const annotation of availabilityAnnotations) {
+  if (annotation.status !== "provider_unavailable") {
+    throw new Error(`Unsupported availability status for ${annotation.model}: ${annotation.status}`);
+  }
+  if (primeTraces.some((trace) => trace.agent?.model === annotation.model)) {
+    throw new Error(`Availability annotation for ${annotation.model} conflicts with discovered scored traces`);
+  }
+}
 if (
   primeTraces.length === 0 ||
-  primeTraces.some(
-    (trace) =>
-      trace.verifiers?.version !== config.verifier_version ||
-      !trace.is_completed ||
-      trace.stop_condition !== "agent_completed" ||
-      (trace.errors?.length ?? 0) > 0,
-  )
+  primeTraces.some((trace) => !traceDisposition(trace))
 ) {
-  throw new Error(`Refusing to build: every discovered trace must be a completed, error-free Prime Verifiers ${config.verifier_version} run`);
+  throw new Error(`Refusing to build: every discovered trace must be an error-free, scored terminal Prime Verifiers ${config.verifier_version} row`);
 }
 const pricing = config.pricing;
 const contentText = (content) => (Array.isArray(content)
@@ -141,6 +208,7 @@ const rollouts = primeTraces.map((prime) => {
     const calls = prime.calls.filter((call) => !isHarnessTitleCall(call));
     const usage = prime.calls.map((call) => call.usage ?? {});
     const rate = pricing[model];
+    const disposition = traceDisposition(prime);
     if (!rate) throw new Error(`Missing Understudy customer rate card for ${model}`);
     const cost = usage.reduce(
       (sum, row) =>
@@ -160,8 +228,9 @@ const rollouts = primeTraces.map((prime) => {
         : block.name,
     );
     const expected = expectedToolPath(prime);
-    const started = Math.min(...calls.map((call) => call.time.start));
-    const ended = Math.max(...calls.map((call) => call.time.end));
+    const timedCalls = calls.filter((call) => Number.isFinite(call.time?.start) && Number.isFinite(call.time?.end));
+    const started = timedCalls.length ? Math.min(...timedCalls.map((call) => call.time.start)) : 0;
+    const ended = timedCalls.length ? Math.max(...timedCalls.map((call) => call.time.end)) : started;
     const generationStarted = Number(prime.timing?.generation?.start);
     const generationEnded = Number(prime.timing?.generation?.end);
     const latencyMs = Number.isFinite(generationStarted) && Number.isFinite(generationEnded)
@@ -173,14 +242,17 @@ const rollouts = primeTraces.map((prime) => {
       task_id: taskId,
       prompt: taskDetails(prime).label,
       task_summary: taskDetails(prime).summary,
-      strict_pass: prime.rewards.final_state === 1,
-      reward: prime.rewards.final_state,
-      partial_credit: prime.metrics.final_state_partial_credit,
+      strict_pass: disposition.score === 1,
+      reward: disposition.score,
+      partial_credit: disposition.partialCredit,
       turns: calls.length,
       latency_ms: latencyMs,
       tokens: usage.reduce((sum, row) => sum + (row.prompt_tokens ?? 0) + (row.cached_input_tokens ?? 0) + (row.completion_tokens ?? 0), 0),
       cost_usd: cost,
-      terminal_reason: prime.stop_condition,
+      terminal_reason: disposition.stopReason,
+      native_terminal_reason: prime.stop_condition,
+      terminal_outcome: prime.stop_condition === "agent_completed" ? "completed" : "model_failure",
+      score_normalization: disposition.normalized ? "recognized_context_window_failure_zero" : null,
       grading_method: `Prime Verifiers ${config.verifier_version} deterministic final-state contract (no LLM judge or regex)`,
       tool_path: observed,
       expected_tool_path: expected,
@@ -198,9 +270,11 @@ const data = JSON.stringify({
   created_at: new Date().toISOString(),
   benchmark_id: config.benchmark_id,
   name: config.name,
+  benchmark_mode: config.benchmark_mode ?? "authoritative",
   incumbent_model: config.incumbent_model,
   verifier_version: config.verifier_version,
   source: `Prime Verifiers ${config.verifier_version} native traces only`,
+  availability_annotations: availabilityAnnotations,
   rollouts,
 }).replaceAll("</", "<\\/");
 
@@ -213,6 +287,11 @@ const html = String.raw`<!doctype html><html><head><meta charset="utf-8"><meta n
 .layout.summary-mode>aside{display:none}
 .summary-highlights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 .summary-highlights .winner{margin:0;padding:12px 14px}
+.availability-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px}
+.availability-card{border:1px solid #56421f;border-radius:9px;background:#0d0a05;padding:13px}
+.availability-card b,.availability-card span,.availability-card small{display:block}
+.availability-card b{color:var(--amber);margin-bottom:5px}
+.availability-card span{color:#bbb}.availability-card small{color:#777;margin-top:7px;line-height:1.5}
 .model-toggle{all:unset;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
 .model-toggle:before{content:"▸";color:#666;font-size:10px}
 .model-toggle.open:before{content:"▾";color:var(--green)}
@@ -368,6 +447,7 @@ function summaryView(models){
   const cheapest=[...qualified].filter(stat=>Number.isFinite(stat.cost)).sort((a,b)=>a.cost-b.cost)[0];
   const callout=(label,stat,value)=>'<div class="winner"><span>'+label+'</span><b>'+esc(shortModel(stat?.model??"—"))+'</b><small>'+value+'</small></div>';
   const highlights='<div class="summary-highlights">'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'</div>';
+  const availability=D.availability_annotations.length?'<section class="summary-card"><h2>Provider availability · non-scoring</h2><div class="availability-grid">'+D.availability_annotations.map(row=>'<div class="availability-card"><b>'+esc(shortModel(row.model))+'</b><span>'+esc(row.status)+' · '+row.clean_tasks+'/'+row.required_tasks+' clean tasks</span><small>'+esc(row.reason)+'</small><small>'+row.attempt_rows+' attempt rows · receipt '+esc(row.receipt_ref)+'</small></div>').join("")+'</div></section>':"";
   const leaderboard=stats.map((stat,index)=>{
     const open=expandedModel===stat.model;
     const rollouts=stat.rows.map((row,taskIndex)=>'<button class="nested-rollout rollout" data-id="'+esc(row.id)+'"><b>Task '+(taskIndex+1)+' <span class="'+(row.strict_pass?"green":"red")+'">'+row.partial_credit.toFixed(2)+'</span></b><span class="sub">'+esc(row.prompt)+' · '+ms(row.latency_ms)+' · '+usd(row.cost_usd)+'</span></button>').join("");
@@ -375,7 +455,7 @@ function summaryView(models){
     return '<tr><td class="rank">'+(index+1)+'</td><td><button class="model-toggle '+(open?"open":"")+'" data-model="'+esc(stat.model)+'"><b>'+esc(shortModel(stat.model))+'</b></button>'+statusPill(stat)+baseline+'</td><td>'+stat.score.toFixed(3)+(incumbent&&stat!==incumbent?delta(stat.score,incumbent.score):"")+'</td><td>'+Math.round(stat.pass*stat.rows.length)+'/'+stat.rows.length+(incumbent&&stat!==incumbent?delta(stat.pass,incumbent.pass):"")+'</td><td>'+ms(stat.time)+(incumbent&&stat!==incumbent?delta(stat.time,incumbent.time,true):"")+'</td><td>'+usd(stat.cost)+(incumbent&&stat!==incumbent?delta(stat.cost,incumbent.cost,true):"")+'</td><td>'+stat.calls.toFixed(1)+(incumbent&&stat!==incumbent?delta(stat.calls,incumbent.calls,true):"")+'</td></tr>'+(open?'<tr class="rollout-detail"><td colspan="7"><div class="nested-rollouts">'+rollouts+'</div></td></tr>':"");
   }).join("");
   const taskCards=tasks.map((task,index)=>{const rows=stats.map(stat=>D.rollouts.find(row=>row.model===stat.model&&row.task_id===task.task_id)).filter(Boolean);const incumbentRow=rows.find(row=>row.model===D.incumbent_model);return '<section class="task-card"><div class="task-card-head"><div><span>Task '+(index+1)+'</span><b>'+esc(task.prompt)+'</b></div><span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></div><table class="matrix-table"><thead><tr><th>Model</th><th>Score</th><th>Time</th><th>Cost</th><th>Calls</th></tr></thead><tbody>'+rows.map(row=>'<tr><td>'+esc(shortModel(row.model))+(row.model===D.incumbent_model?'<span class="delta">incumbent</span>':"")+'</td><td class="'+(row.strict_pass?"green":"red")+'">'+row.partial_credit.toFixed(2)+(incumbentRow&&row!==incumbentRow?delta(row.partial_credit,incumbentRow.partial_credit):"")+'</td><td>'+ms(row.latency_ms)+(incumbentRow&&row!==incumbentRow?delta(row.latency_ms,incumbentRow.latency_ms,true):"")+'</td><td>'+usd(row.cost_usd)+(incumbentRow&&row!==incumbentRow?delta(row.cost_usd,incumbentRow.cost_usd,true):"")+'</td><td>'+row.turns+(incumbentRow&&row!==incumbentRow?delta(row.turns,incumbentRow.turns,true):"")+'</td></tr>').join("")+'</tbody></table></section>'}).join("");
-  return '<div class="summary-stack">'+highlights+'<section class="summary-card"><h2>Verifier score vs cost per task</h2>'+paretoPlot(stats)+'</section><section class="summary-card"><h2>Model leaderboard</h2><div class="table-scroll"><table class="leaderboard-table"><thead><tr><th>#</th>'+sortHead("model","Model")+sortHead("score","Score")+sortHead("pass","Pass")+sortHead("time","Time / task")+sortHead("cost","Cost / task")+sortHead("calls","Calls")+'</tr></thead><tbody>'+leaderboard+'</tbody></table></div></section><section class="summary-card"><h2>Production task comparison</h2><div class="task-grid">'+taskCards+'</div></section></div>';
+  return '<div class="summary-stack">'+highlights+availability+'<section class="summary-card"><h2>Model leaderboard</h2><div class="table-scroll"><table class="leaderboard-table"><thead><tr><th>#</th>'+sortHead("model","Model")+sortHead("score","Score")+sortHead("pass","Pass")+sortHead("time","Time / task")+sortHead("cost","Cost / task")+sortHead("calls","Calls")+'</tr></thead><tbody>'+leaderboard+'</tbody></table></div></section><section class="summary-card"><h2>Verifier score vs cost per task</h2>'+paretoPlot(stats)+'</section><section class="summary-card"><h2>Production task comparison</h2><div class="task-grid">'+taskCards+'</div></section></div>';
 }
 function summaryOverview(models){
   const stats=modelStats(models),qualified=stats.filter(stat=>stat.pass===1),priced=stats.filter(stat=>Number.isFinite(stat.cost));
@@ -383,13 +463,14 @@ function summaryOverview(models){
   const cheapest=[...qualified].filter(stat=>Number.isFinite(stat.cost)).sort((a,b)=>a.cost-b.cost)[0];
   const best=stats[0];
   const callout=(label,stat,value)=>'<div class="winner"><span>'+label+'</span><b>'+esc(shortModel(stat?.model??"—"))+'</b><small>'+value+'</small></div>';
-  return '<div class="big green">MODEL MATRIX</div><div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">models <b>'+stats.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Models are rows, so new candidates add vertically without clipping. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
+  const mode=D.benchmark_mode==="diagnostic"?'<div class="big amber">DIAGNOSTIC AUDIT</div><div class="sub">Non-authoritative private review; incumbent replay misses are preserved and this config cannot be aggregate-imported.</div>':'<div class="big green">MODEL MATRIX</div>';
+  return mode+'<div class="label">Prime Verifiers '+esc(D.verifier_version)+' only</div>'+callout("highest score",best,best?best.score.toFixed(3):"—")+callout("fastest passing",fastest,fastest?ms(fastest.time):"—")+callout("cheapest passing",cheapest,cheapest?usd(cheapest.cost):"—")+'<div class="label">Coverage</div><div class="metric">scored models <b>'+stats.length+'</b></div><div class="metric">provider unavailable <b>'+D.availability_annotations.length+'</b></div><div class="metric">rollouts <b>'+D.rollouts.length+'</b></div><div class="metric">strict passes <b>'+D.rollouts.filter(row=>row.strict_pass).length+'/'+D.rollouts.length+'</b></div><div class="metric">priced models <b>'+priced.length+'/'+stats.length+'</b></div><div class="sub summary-note">Availability annotations are evidence-only and excluded from scores, rankings, and Pareto. Missing cost stays unavailable instead of using an unreviewed estimate.</div>';
 }
 function render(){
   document.querySelector(".layout").classList.toggle("summary-mode",viewMode==="summary");
   document.querySelector("#count").textContent=D.rollouts.length;
   const models=[...new Set(D.rollouts.map(r=>r.model))];
-  document.querySelector("#list").innerHTML='<button class="summary-button '+(viewMode==="summary"?"on":"")+'" id="view-summary">View summary <span>→</span></button>'+models.map((model,modelIndex)=>{const rows=D.rollouts.filter(r=>r.model===model);return '<details class="model-group" '+(modelIndex<3?"open":"")+'><summary class="model-group-title">'+esc(model.replace("claude-",""))+'<span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></summary>'+rows.map((r,i)=>'<button class="rollout '+(viewMode==="trace"&&r.id===selected.id?"on":"")+'" data-id="'+esc(r.id)+'"><div class="rowtop"><span>Task '+(i+1)+'</span><b class="reward '+(r.strict_pass?"green":"red")+'">'+r.partial_credit.toFixed(2)+'</b></div><div class="prompt">'+esc(r.prompt)+'</div></button>').join("")+'</details>'}).join("");
+  document.querySelector("#list").innerHTML='<button class="summary-button '+(viewMode==="summary"?"on":"")+'" id="view-summary">View summary <span>→</span></button>'+models.map((model,modelIndex)=>{const rows=D.rollouts.filter(r=>r.model===model);return '<details class="model-group" '+(modelIndex<3?"open":"")+'><summary class="model-group-title">'+esc(model.replace("claude-",""))+'<span>'+rows.filter(row=>row.strict_pass).length+'/'+rows.length+' pass</span></summary>'+rows.map((r,i)=>'<button class="rollout '+(viewMode==="trace"&&r.id===selected.id?"on":"")+'" data-id="'+esc(r.id)+'"><div class="rowtop"><span>Task '+(i+1)+(r.terminal_outcome==="model_failure"?' · <span class="amber">'+esc(r.terminal_reason)+'</span>':"")+'</span><b class="reward '+(r.strict_pass?"green":"red")+'">'+r.partial_credit.toFixed(2)+'</b></div><div class="prompt">'+esc(r.prompt)+'</div></button>').join("")+'</details>'}).join("");
   if(viewMode==="summary"){
     document.querySelector("#center-title").textContent="Summary";
     document.querySelector("#history").innerHTML=summaryView(models);
@@ -404,7 +485,7 @@ function render(){
   document.querySelector("#history").innerHTML=taskSummary+conversation+verifier;
   document.querySelector("#reward").className="reward "+(selected.strict_pass?"green":"red");
   document.querySelector("#reward").textContent=selected.partial_credit.toFixed(3);
-  document.querySelector("#overview").innerHTML='<div class="big '+(selected.strict_pass?"green":"red")+'">'+(selected.strict_pass?"PASS":"FAIL")+'</div><div class="label">Prime metrics</div><div class="metric">reward <b>'+selected.reward.toFixed(3)+'</b></div><div class="metric">partial_credit <b>'+selected.partial_credit.toFixed(3)+'</b></div><div class="metric">cost_per_task <b title="'+esc(selected.cost_note)+'">'+usd(selected.cost_usd)+'</b></div><div class="metric">model calls <b>'+selected.turns+'</b></div><div class="metric">latency <b>'+ms(selected.latency_ms)+'</b></div><div class="metric">tokens <b>'+tok(selected.tokens)+'</b></div><div class="label">Native run</div><div class="metric">model <b>'+esc(selected.model)+'</b></div><div class="metric">verifiers <b>'+esc(selected.verifier_version)+'</b></div><div class="metric">harness <b>'+esc(selected.harness)+'</b></div><div class="metric">task <b>'+esc(selected.task_id.slice(-8))+'</b></div><div class="metric">run <b>'+esc(selected.run_id.slice(0,8))+'</b></div><div class="label">Tool path</div><div class="path">'+esc(selected.tool_path.join(" → ")||"none")+'</div>'+selected.misses.map(x=>'<div class="failure">'+esc(x)+'</div>').join("");
+  document.querySelector("#overview").innerHTML='<div class="big '+(selected.strict_pass?"green":"red")+'">'+(selected.strict_pass?"PASS":"FAIL")+'</div><div class="label">Prime metrics</div><div class="metric">reward <b>'+selected.reward.toFixed(3)+'</b></div><div class="metric">partial_credit <b>'+selected.partial_credit.toFixed(3)+'</b></div><div class="metric">stop reason <b class="'+(selected.terminal_outcome==="model_failure"?"amber":"")+'">'+esc(selected.terminal_reason)+'</b></div><div class="metric">cost_per_task <b title="'+esc(selected.cost_note)+'">'+usd(selected.cost_usd)+'</b></div><div class="metric">model calls <b>'+selected.turns+'</b></div><div class="metric">latency <b>'+ms(selected.latency_ms)+'</b></div><div class="metric">tokens <b>'+tok(selected.tokens)+'</b></div><div class="label">Native run</div><div class="metric">model <b>'+esc(selected.model)+'</b></div><div class="metric">verifiers <b>'+esc(selected.verifier_version)+'</b></div><div class="metric">harness <b>'+esc(selected.harness)+'</b></div><div class="metric">task <b>'+esc(selected.task_id.slice(-8))+'</b></div><div class="metric">run <b>'+esc(selected.run_id.slice(0,8))+'</b></div><div class="label">Tool path</div><div class="path">'+esc(selected.tool_path.join(" → ")||"none")+'</div>'+selected.misses.map(x=>'<div class="failure">'+esc(x)+'</div>').join("");
   }
   document.querySelector("#view-summary").addEventListener("click",()=>{viewMode="summary";render()});
   document.querySelectorAll(".sort-button").forEach(button=>button.addEventListener("click",()=>{

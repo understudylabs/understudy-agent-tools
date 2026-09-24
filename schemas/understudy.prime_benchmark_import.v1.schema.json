@@ -16,6 +16,10 @@
     "scorecard_output_dir": {"type": "string", "minLength": 1},
     "verifier_version": {"type": "string", "minLength": 1},
     "incumbent_model": {"type": "string", "minLength": 1},
+    "benchmark_mode": {
+      "enum": ["authoritative", "diagnostic"],
+      "description": "Defaults to authoritative. Diagnostic configs may render private scorecards but the aggregate importer rejects them."
+    },
     "anonymized": {
       "const": true,
       "description": "Fail-closed acknowledgement that durable labels and metadata contain no customer identity. Raw traces remain local."
@@ -58,6 +62,23 @@
           "cache_read": {"type": "number", "minimum": 0},
           "output": {"type": "number", "minimum": 0},
           "source": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "availability_annotations": {
+      "type": "object",
+      "description": "Non-scoring provider availability evidence. Annotated models are excluded from leaderboard and Pareto inputs.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "reason", "receipt_ref", "attempt_rows", "clean_tasks", "required_tasks"],
+        "properties": {
+          "status": {"const": "provider_unavailable"},
+          "reason": {"type": "string", "minLength": 1},
+          "receipt_ref": {"type": "string", "minLength": 1},
+          "attempt_rows": {"type": "integer", "minimum": 1},
+          "clean_tasks": {"type": "integer", "minimum": 0},
+          "required_tasks": {"type": "integer", "minimum": 1}
         }
       }
     }

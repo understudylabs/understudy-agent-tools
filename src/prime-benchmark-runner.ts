@@ -12,6 +12,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 
 import { inspectPrimeBenchmark } from "./prime-benchmark-import.js";
+import { hasOnlyAcceptedCallErrors, primeTraceDisposition } from "./prime-trace-contract.js";
 
 export type PrimeProvider = "openai" | "anthropic" | "openai-compatible" | "understudy";
 export type PrimeSampling = {
@@ -168,9 +169,14 @@ export function validatePrimeTrace(
   const taskId = typeof trace.task?.data?.task_id === "string" ? trace.task.data.task_id : null;
   const model = typeof trace.agent?.model === "string" ? trace.agent.model : null;
   const calls = Array.isArray(trace.calls) ? trace.calls.filter((call: any) => !call?.sampling?.output_config) : [];
+  const disposition = primeTraceDisposition(trace, expected.verifierVersion);
   if (trace.is_completed !== true) reasons.push("is_completed_not_true");
-  if (trace.stop_condition !== "agent_completed") reasons.push("stop_condition_not_agent_completed");
-  if (!Array.isArray(trace.errors) || trace.errors.length > 0) reasons.push("errors_not_empty");
+  if (!disposition.accepted && disposition.issue?.startsWith("unscored stop condition")) {
+    reasons.push("stop_condition_not_scored_terminal");
+  }
+  if (!disposition.normalized && (!Array.isArray(trace.errors) || trace.errors.length > 0)) {
+    reasons.push("errors_not_empty");
+  }
   if (trace.verifiers?.version !== expected.verifierVersion) reasons.push("verifier_version_mismatch");
   if (!trace.run?.id) reasons.push("missing_run_id");
   if (!model) reasons.push("missing_model");
@@ -180,15 +186,20 @@ export function validatePrimeTrace(
   if (!Array.isArray(trace.task?.data?.outcome_contract?.required)) reasons.push("missing_outcome_contract");
   if (!Array.isArray(trace.nodes) || trace.nodes.length === 0) reasons.push("missing_nodes");
   if (calls.length === 0) reasons.push("missing_model_calls");
-  if (calls.some((call: any) => call.error)) reasons.push("provider_call_error");
-  if (calls.some((call: any) => !call.usage || !call.time || !Number.isFinite(call.time.start) || !Number.isFinite(call.time.end))) {
+  if (!disposition.normalized && !hasOnlyAcceptedCallErrors(trace, String(trace.stop_condition ?? ""))) reasons.push("provider_call_error");
+  if (!disposition.normalized && calls.some((call: any) =>
+    !call.time ||
+    !Number.isFinite(call.time.start) ||
+    !Number.isFinite(call.time.end) ||
+    (!call.error && !call.usage)
+  )) {
     reasons.push("missing_call_usage_or_timing");
   }
   if (!Number.isFinite(trace.timing?.generation?.start) || !Number.isFinite(trace.timing?.generation?.end)) {
     reasons.push("missing_generation_timing");
   }
-  if (!Number.isFinite(trace.rewards?.final_state)) reasons.push("missing_final_reward");
-  if (!Number.isFinite(trace.metrics?.final_state_partial_credit)) reasons.push("missing_partial_credit");
+  if (!disposition.normalized && !Number.isFinite(trace.rewards?.final_state)) reasons.push("missing_final_reward");
+  if (!disposition.normalized && !Number.isFinite(trace.metrics?.final_state_partial_credit)) reasons.push("missing_partial_credit");
   return {
     accepted: reasons.length === 0,
     trace_id: String(trace.id ?? "unknown"),
