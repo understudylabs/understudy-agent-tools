@@ -45,6 +45,8 @@ export const TINKER_LORA_SCOPE: Readonly<TinkerLoraScope> = Object.freeze({
 });
 
 const RUN_SCHEMA = "understudy.tinker_sft.run.v1";
+export const TINKER_FINAL_STATE_TTL_SECONDS = null;
+export const TINKER_SAMPLER_TTL_SECONDS = 24 * 60 * 60;
 const MAX_STDIO_BYTES = 1024 * 1024;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
@@ -102,8 +104,10 @@ const RuntimeResultSchema = z.object({
   backend: z.literal("tinker"),
   model: z.string(),
   renderer: z.string(),
+  training_state_path: z.string().min(1),
+  training_state_ttl_seconds: z.null(),
   sampler_state_path: z.string().min(1),
-  checkpoint_ttl_seconds: z.number().int().positive().max(3600),
+  checkpoint_ttl_seconds: z.literal(TINKER_SAMPLER_TTL_SECONDS),
   training: z.object({
     steps: z.number().int().positive(),
     tokens: z.number().int().positive(),
