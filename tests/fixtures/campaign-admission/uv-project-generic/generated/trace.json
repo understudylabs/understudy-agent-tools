@@ -1,0 +1,80 @@
+{
+  "calls": [
+    {
+      "context_overflow_behavior": "fail",
+      "endpoint": "/chat/completions",
+      "finish_reason": "tool_calls",
+      "max_tokens": 256,
+      "messages_sha256": "6f71099eedf6d5b161ceea52fa0663b0c104b5729a77d3a5f4264967b5853808",
+      "model": "synthetic-local",
+      "node": 2,
+      "sampling_sha256": "b779b17d306d67fbd5b415e6b2e82d89e0dc2c4f2e35c57901f7114d3bbd0562",
+      "tools_sha256": "ad4cc5e9dc6e0a8481d7b6b890033bd33fc457c49a875d458d27e4299b761b64"
+    }
+  ],
+  "campaign_id": "public-synthetic-campaign",
+  "errors": [],
+  "execution": {
+    "tool_calls": 1,
+    "verifiers_trajectory_steps": 2
+  },
+  "execution_id": "execution-public-1",
+  "metrics": {
+    "assertion_fraction": 1.0
+  },
+  "nodes": [
+    {
+      "message": {
+        "content": "Only inspect the synthetic record.\n<candidate_policy>Set record alpha to ready with set-record, then report success.</candidate_policy>",
+        "role": "system"
+      },
+      "sampled": false
+    },
+    {
+      "message": {
+        "content": "Set synthetic record alpha to ready.",
+        "role": "user"
+      },
+      "parent": 0,
+      "sampled": false
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "arguments": "{\"id\":\"alpha\",\"status\":\"ready\"}",
+            "id": "call-public-1",
+            "name": "set-record"
+          }
+        ]
+      },
+      "parent": 1,
+      "sampled": true
+    },
+    {
+      "message": {
+        "content": "{\"after\":\"ready\",\"applied\":true,\"before\":\"pending\",\"ok\":true}",
+        "name": "world_toolset_set-record",
+        "role": "tool",
+        "tool_call_id": "call-public-1"
+      },
+      "parent": 2,
+      "sampled": false
+    }
+  ],
+  "ok": true,
+  "request_id": "request-public-1",
+  "rewards": {
+    "assertion_fraction": 1.0
+  },
+  "runtime": "standard-verifiers",
+  "task": {
+    "data": {
+      "split": "train",
+      "task_id": "public-synthetic-mutation-1"
+    }
+  },
+  "verifiers_version": "0.2.2.dev77",
+  "workload_id": "cedar-public-synthetic"
+}

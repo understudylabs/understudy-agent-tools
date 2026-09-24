@@ -1,0 +1,16 @@
+{
+  "campaign_id": "public-synthetic-campaign",
+  "effective_max_tokens": 256,
+  "executable_bundle_sha256": "c2c8a323b8015162a33344491ba882c67e5fe2e3b6089b0ff3769ae3a0862d00",
+  "execution_id": "execution-public-1",
+  "failed_before_sampling": true,
+  "failure": "OverlongPromptError",
+  "oversized_request_sha256": "a47b86e783052357b1268c9ce2b1d1943d197a330f7863a2c2c21664da05008a",
+  "request_id": "request-public-1",
+  "requested_max_tokens": 256,
+  "sample_calls": 0,
+  "schema_version": "understudy.synthetic_overflow_probe.v1",
+  "tool_calls": 0,
+  "trajectory_steps": 0,
+  "workload_id": "cedar-public-synthetic"
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.strict_promotion.v1.schema.json",
+  "title": "understudy.strict_promotion.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "campaign_id", "workload_id", "candidate_id", "parent_ids", "trusted_scorer_contract_sha256", "named_preimages", "scorer_exception_count", "rows", "prompt_bearing_artifacts"],
+  "properties": {
+    "schema_version": { "const": "understudy.strict_promotion.v1" },
+    "campaign_id": { "type": "string", "minLength": 1 },
+    "workload_id": { "type": "string", "minLength": 1 },
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "parent_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "trusted_scorer_contract_sha256": { "$ref": "#/$defs/sha" },
+    "named_preimages": {
+      "type": "object", "additionalProperties": false,
+      "required": ["taskset", "harness", "scorer", "terminal", "export", "promotion", "model", "checkpoint", "dspy"],
+      "properties": {
+        "taskset": { "$ref": "#/$defs/sha" }, "harness": { "$ref": "#/$defs/sha" }, "scorer": { "$ref": "#/$defs/sha" },
+        "terminal": { "$ref": "#/$defs/sha" }, "export": { "$ref": "#/$defs/sha" }, "promotion": { "$ref": "#/$defs/sha" },
+        "model": { "$ref": "#/$defs/sha" }, "checkpoint": { "$ref": "#/$defs/sha" }, "dspy": { "$ref": "#/$defs/sha" }
+      }
+    },
+    "scorer_exception_count": { "type": "integer", "minimum": 0 },
+    "rows": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/row" } },
+    "prompt_bearing_artifacts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/private_artifact" } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "row": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "task_id", "candidate_prompt_sha256", "evaluated_prompt_sha256", "strict_exact", "dense_score", "canonical_row_sha256", "physical_row_sha256", "external_receipt"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 }, "task_id": { "type": "string", "minLength": 1 },
+        "candidate_prompt_sha256": { "$ref": "#/$defs/sha" }, "evaluated_prompt_sha256": { "$ref": "#/$defs/sha" },
+        "strict_exact": { "type": "boolean" }, "dense_score": { "type": "number" },
+        "canonical_row_sha256": { "$ref": "#/$defs/sha" }, "physical_row_sha256": { "$ref": "#/$defs/sha" },
+        "external_receipt": { "type": "object", "additionalProperties": false, "required": ["redacted", "contains_prompt"], "properties": { "redacted": { "const": true }, "contains_prompt": { "const": false } } }
+      }
+    },
+    "private_artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "sha256", "classification", "contains_prompt", "externalized"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha" },
+        "classification": { "const": "private_cas" }, "contains_prompt": { "const": true }, "externalized": { "const": false }
+      }
+    }
+  }
+}
