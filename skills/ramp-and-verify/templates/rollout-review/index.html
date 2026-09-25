@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Understudy rollout review</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --background: light-dark(#f7f8fa, #181818); --foreground: light-dark(#202936, #f4f5f7);
+  --card: light-dark(#fff, #232426); --muted: light-dark(#eef1f5, #2e3034);
+  --muted-foreground: light-dark(#626f80, #acb4c0); --border: light-dark(#dce2e9, #383c42);
+  --primary: light-dark(#1260bc, #8bbfff); --accent: light-dark(#eaf3ff, #21344c);
+  --destructive: light-dark(#9f4f0a, #ffc58f); --warning: light-dark(#fff5e6, #392d1e);
+  --viz-series-1: var(--primary); --viz-series-2: light-dark(#6f7990, #acb6ca);
+  --font-sans: -apple-system, system-ui, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 14px; --shadow-sm: 0 1px 3px #00000008;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--background); color: var(--foreground); font: 14px/1.5 var(--font-sans); }
+button,input,select { font: inherit; }
+button,a,select,input { -webkit-tap-highlight-color: transparent; }
+button,a { touch-action: manipulation; }
+button,.button,select,input { border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); padding: 8px 11px; }
+button,.button,select { cursor: pointer; }
+button:hover,.button:hover { border-color: var(--primary); }
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.button { text-decoration: none; display: inline-block; font-size: 12px; }
+main { max-width: 1360px; padding: 28px 30px 60px; margin: auto; }
+header,.row,.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.brand,.eyebrow { color: var(--muted-foreground); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; font-weight: 650; }
+.brand strong { color: var(--primary); }
+h1 { font-size: 30px; font-weight: 620; letter-spacing: -.035em; margin: 5px 0 0; }
+h2 { font-size: 20px; letter-spacing: -.02em; margin: 0; } h3 { font-size: 15px; margin: 0 0 8px; }
+p { margin: 6px 0 0; } .muted { color: var(--muted-foreground); } .small { font-size: 12px; }
+.exports { display: flex; flex-wrap: wrap; gap: 7px; }
+.notice { background: var(--accent); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin: 18px 0; font-size: 13px; }
+.notice.warning { background: var(--warning); } .notice strong { display: block; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 18px 0; }
+.stat { border-left: 2px solid var(--border); padding: 0 14px; }
+.stat strong { display: block; font-size: 25px; font-weight: 600; letter-spacing: -.03em; }
+.panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 20px; }
+.section-heading { margin: 22px 0 12px; } .section-heading select { max-width: 56%; min-width: 250px; }
+.phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.phase.before { border-top: 3px solid var(--viz-series-2); } .phase.after { border-top: 3px solid var(--viz-series-1); }
+.phase-label { color: var(--primary); text-transform: uppercase; font-size: 11px; letter-spacing: .09em; font-weight: 700; }
+.phase.before .phase-label { color: var(--muted-foreground); }
+.workload { margin: 3px 0 4px; font-size: 16px; overflow-wrap: anywhere; }
+.metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin: 16px 0 12px; }
+.metric strong { font-size: 31px; font-weight: 570; letter-spacing: -.04em; display: block; line-height: 1.2; }
+.metric span { display: block; color: var(--muted-foreground); font-size: 12px; }
+.counts { color: var(--muted-foreground); padding-bottom: 12px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.facts { display: grid; grid-template-columns: 1fr auto; gap: 7px 16px; font-size: 12px; margin: 14px 0 0; }
+.facts dt { color: var(--muted-foreground); } .facts dd { margin: 0; text-align: right; }
+.timing { margin-top: 12px; padding: 12px 15px; background: var(--muted); border-radius: 8px; }
+details { margin-top: 12px; } summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+.limitations { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; font-size: 12px; margin-top: 12px; }
+ul { padding-left: 20px; margin: 8px 0; } li { margin: 5px 0; }
+.workspace { display: grid; grid-template-columns: minmax(260px, 34%) minmax(0, 1fr); gap: 16px; align-items: start; }
+.list-panel { padding: 14px; } .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.filters input { grid-column: 1 / -1; width: 100%; } .filters select { min-width: 0; width: 100%; font-size: 12px; }
+.task-list { display: flex; flex-direction: column; gap: 7px; max-height: 640px; overflow: auto; padding: 3px; }
+.task-card { text-align: left; padding: 12px; border-radius: 9px; width: 100%; }
+.task-card[aria-pressed="true"] { border-color: var(--primary); background: var(--accent); }
+.task-card strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; font-size: 13px; }
+.task-card p { font-size: 12px; color: var(--muted-foreground); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.chip { font-size: 10px; border-radius: 5px; padding: 2px 6px; background: var(--muted); color: var(--muted-foreground); }
+.chip.attention { color: var(--destructive); background: var(--warning); }
+.detail { min-height: 340px; } .detail h2 { font-size: 18px; overflow-wrap: anywhere; }
+.output { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.7; margin: 12px 0; max-height: 300px; overflow: auto; }
+.empty { color: var(--muted-foreground); padding: 25px 10px; font-size: 13px; }
+.table-wrap { overflow: auto; margin-top: 12px; } table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+th,td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted-foreground); font-size: 11px; font-weight: 600; white-space: nowrap; }
+td:first-child { padding-left: 0; } th:first-child { padding-left: 0; }
+.mono { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 var(--font-mono); max-height: 300px; overflow: auto; background: var(--muted); border-radius: 8px; padding: 12px; }
+.request { border-top: 1px solid var(--border); padding: 12px 0 0; }
+.request summary { overflow-wrap: anywhere; } .request p { font-size: 12px; }
+.daily { margin-top: 16px; } .daily button { width: 100%; display: grid; grid-template-columns: 115px 65px minmax(70px,1fr) 75px 75px; gap: 12px; align-items: center; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; padding: 8px 0; text-align: left; font-size: 12px; }
+.daily button[aria-pressed="true"] { color: var(--primary); font-weight: 600; }
+.bar-track { background: var(--muted); border-radius: 3px; height: 6px; } .bar { height: 6px; min-width: 1px; background: var(--viz-series-1); border-radius: 3px; } .bar.before { background: var(--viz-series-2); }
+.daily-label { display: grid; grid-template-columns: 115px 65px minmax(70px,1fr) 75px 75px; gap: 12px; font-size: 10px; color: var(--muted-foreground); padding-bottom: 5px; }
+.gap { font-size: 11px; color: var(--muted-foreground); padding: 10px 0; border-bottom: 1px dashed var(--border); }
+.inline-button { border: 0; background: transparent; padding: 0; color: var(--primary); font-size: 12px; }
+footer { font-size: 11px; color: var(--muted-foreground); margin-top: 25px; }
+@media (max-width: 760px) { main { padding: 18px 16px 40px; } header { align-items: start; } h1 { font-size: 25px; } .exports { justify-content: flex-end; max-width: 160px; } .phase-grid,.workspace,.limitations { grid-template-columns: 1fr; } .stats { gap: 4px; } .stat { padding: 0 8px; } .stat strong { font-size: 22px; } .stat span { font-size: 10px; } .section-heading { flex-wrap: wrap; } .section-heading select { width: 100%; max-width: 100%; } .task-list { max-height: 350px; } .daily button,.daily-label { grid-template-columns: 83px 42px minmax(35px,1fr) 51px 53px; gap: 6px; font-size: 10px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="brand"><strong>Understudy</strong> / Local evidence</div><h1>Rollout review</h1></div>
+    <div class="exports"><a class="button" href="./report.json" download="rollout-review.json">Export report JSON</a><a class="button" href="./request-ids.json" download="request-ids.json">Export request IDs</a></div>
+  </header>
+  <div class="notice"><strong>What changed for the same users?</strong>Compare before and after within one user and application environment. Observed errors and endings are evidence for review; they do not establish business quality or a causal model effect.</div>
+  <div id="failure" hidden class="notice warning" role="alert"></div>
+  <div id="app" hidden>
+    <div id="stats" class="stats"></div>
+    <div class="section-heading"><div><div class="eyebrow">Before → after</div><h2 id="cohort-heading">Comparable cohorts</h2></div><label class="sr-label"><span class="small muted">User / application environment </span><select id="cohort" aria-label="User and application environment"></select></label></div>
+    <p class="small muted" id="cohort-note"></p>
+    <div id="phases" class="phase-grid" style="margin-top:12px"></div>
+    <div id="timing" class="timing small"></div>
+    <details id="evidence-limits" class="panel"><summary>Grouping, missing evidence, and interpretation</summary><div id="limitations" class="limitations"></div></details>
+    <details class="panel"><summary>Daily requests per task · select a day to inspect its tasks</summary><div id="daily" class="daily"></div></details>
+    <div class="section-heading"><div><div class="eyebrow">Review the evidence</div><h2>Tasks, then requests</h2></div><span id="task-count" class="small muted" aria-live="polite"></span></div>
+    <p id="day-filter" class="small muted" hidden></p>
+    <div class="workspace" style="margin-top:12px">
+      <section class="panel list-panel" aria-label="Task inbox">
+        <div class="filters"><input id="search" type="search" placeholder="Search task, request, or model" aria-label="Search tasks"><select id="period" aria-label="Period"><option value="all">Both periods</option><option value="before">Before only</option><option value="after">After only</option></select><select id="signal" aria-label="Evidence filter"><option value="all">All tasks</option><option value="attention">Worth a closer look</option><option value="errors">Observed errors</option><option value="no-ending">No observed ending</option><option value="ungrouped">Ungrouped requests</option><option value="excluded">Excluded requests</option><option value="duplicate">Duplicate captures</option></select></div>
+        <div id="task-list" class="task-list"></div>
+      </section>
+      <section id="detail" class="panel detail" aria-label="Selected task detail" aria-live="polite"></section>
+    </div>
+  </div>
+  <footer>Private local artifact. No inference, replay, external assets, or uploads. Exports retain private identifiers and evidence; review them before sharing.</footer>
+</main>
+<script src="./rollout-data.js"></script>
+<script>
+(() => {
+  'use strict';
+  const report = window.ROLLOUT_REVIEW;
+  const $ = id => document.getElementById(id);
+  const arr = value => Array.isArray(value) ? value : [];
+  const str = value => value == null ? '' : String(value);
+  const num = (value, digits = 0) => typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits }) : '—';
+  const text = (tag, value, className) => { const node = document.createElement(tag); node.textContent = str(value); if (className) node.className = className; return node; };
+  const append = (parent, ...children) => { children.filter(Boolean).forEach(child => parent.append(child)); return parent; };
+  const human = value => str(value).replaceAll('_', ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+  const known = value => value == null || value === '' ? 'Unknown' : str(value);
+  const date = value => { const parsed = new Date(value); return Number.isNaN(parsed.valueOf()) ? 'Unknown date' : parsed.toISOString().slice(0, 10); };
+  const windowText = side => side ? `${str(side.from) || 'Unknown start'} → ${str(side.to) || 'Unknown end'}` : 'No window supplied';
+  const fraction = (part, total) => `${num(part)} / ${num(total)}${total > 0 && typeof part === 'number' ? ` · ${num(part / total * 100, 1)}%` : ''}`;
+  const state = { group: '', selected: null, day: null };
+  let records, groups, tasks;
+
+  function list(values) { return append(text('ul'), ...values.map(value => text('li', typeof value === 'string' ? value : JSON.stringify(value)))); }
+  function dl(entries) { const node = text('dl', '', 'facts'); entries.forEach(([label, value]) => append(node, text('dt', label), text('dd', value))); return node; }
+  function chip(value, attention = false) { return text('span', value, `chip${attention ? ' attention' : ''}`); }
+  function groupTasks() {
+    const group = groups.find(item => item.key === state.group);
+    return group ? tasks.filter(task => task.userId === group.userId && task.environment === group.environment) : tasks;
+  }
+  function taskRecords(task) { return arr(task.requestRecordIds).map(id => records.get(id)).filter(Boolean); }
+  function lastText(task) { return taskRecords(task).slice().reverse().map(request => request.finalText).find(value => typeof value === 'string' && value.trim()) || ''; }
+  function errors(task) { return (task.httpErrorRequests || 0) > 0 || (task.nativeToolErrors || 0) > 0 || (task.argumentValidationErrors || 0) > 0; }
+  function attention(task) { return errors(task) || !task.observedTerminal || arr(task.flags).length > 0 || !task.comparisonEligible; }
+  function taskDay(task) { return date(taskRecords(task).map(request => request.timestamp).filter(Boolean).sort()[0]); }
+  function metricsFor(side, chosen) {
+    const group = groups.find(item => item.key === state.group);
+    if (group) return group[side];
+    const phaseTasks = chosen.filter(task => task.side === side && task.comparisonEligible);
+    const values = phaseTasks.map(task => task.requestCount).sort((a,b) => a-b);
+    const n = values.length;
+    const pct = fraction => n ? values[Math.max(0, Math.ceil(fraction * n) - 1)] : null;
+    return { tasks:n, requests:values.reduce((a,b) => a+b,0), requestsPerTask:{n,mean:n ? values.reduce((a,b) => a+b,0)/n : null,median:n ? (n%2 ? values[(n-1)/2] : (values[n/2-1]+values[n/2])/2) : null,p90:pct(.9)},observedTerminalTasks:phaseTasks.filter(task=>task.observedTerminal).length,httpErrorRequests:phaseTasks.reduce((sum,task)=>sum+(task.httpErrorRequests||0),0),nativeToolErrorTasks:phaseTasks.filter(task=>(task.nativeToolErrors||0)>0).length,argumentValidationErrorTasks:phaseTasks.filter(task=>(task.argumentValidationErrors||0)>0).length,argumentValidationErrors:phaseTasks.reduce((sum,task)=>sum+(task.argumentValidationErrors||0),0),mixedModelTasks:phaseTasks.filter(task=>arr(task.observedModels).length>1).length,censoredTasks:phaseTasks.filter(task=>arr(task.flags).some(flag=>['crosses_declared_window','start_not_observed','terminal_not_observed'].includes(flag))).length };
+  }
+  function renderPhases() {
+    const chosen = groupTasks();
+    const group = groups.find(item => item.key === state.group);
+    $('cohort-heading').textContent = group ? `${known(group.userId)} · ${known(group.environment)}` : 'All groups · mixed composition';
+    $('cohort-note').textContent = group ? (group.status === 'comparable' ? 'Same captured user and application environment in both windows. Tasks can still differ in difficulty, tools, or inputs.' : 'Only one period has eligible tasks for this group. A before/after change cannot be estimated here.') : 'Pooled totals mix users, environments, and task composition. Select a comparable cohort before interpreting a change.';
+    $('phases').replaceChildren();
+    ['before','after'].forEach(side => {
+      const metric = metricsFor(side, chosen);
+      const scope = report.sides && report.sides[side];
+      const card = text('section', '', `panel phase ${side}`);
+      append(card, text('div', side, 'phase-label'), text('h3', known(scope && (scope.workloadName || scope.workload)), 'workload'), text('p', windowText(scope), 'small muted'));
+      if (!metric || !metric.tasks) { append(card, text('p', 'No eligible captured tasks in this cohort and period.', 'empty')); $('phases').append(card); return; }
+      const cells = text('div','','metrics');
+      [['Mean', metric.requestsPerTask.mean],['Median', metric.requestsPerTask.median],['P90', metric.requestsPerTask.p90]].forEach(([label,value]) => append(cells, append(text('div','','metric'),text('strong',num(value,2)),text('span',`${label} requests / task`))));
+      const phaseTasks = chosen.filter(task => task.side === side && task.comparisonEligible);
+      const models = [...new Set(phaseTasks.flatMap(task => arr(task.observedModels)))];
+      append(card, cells, text('div',`${num(metric.tasks)} eligible tasks · ${num(metric.requests)} captured requests · observed models: ${models.length ? models.join(', ') : 'unknown'}`,'counts'), dl([
+        ['Observed ending · tasks',fraction(metric.observedTerminalTasks, metric.tasks)],
+        ['Native tool errors · tasks',fraction(metric.nativeToolErrorTasks, metric.tasks)],
+        ['Argument validation errors · tasks',fraction(metric.argumentValidationErrorTasks, metric.tasks)],
+        ['Argument validation errors · distinct events',num(metric.argumentValidationErrors)],
+        ['HTTP errors · requests',fraction(metric.httpErrorRequests, metric.requests)],
+        ['Censored / incomplete · tasks',fraction(metric.censoredTasks, metric.tasks)],
+        ['Mixed observed models · included tasks',fraction(metric.mixedModelTasks, metric.tasks)],
+        ['Excluded from comparison · tasks',num(chosen.filter(task=>task.side===side&&!task.comparisonEligible).length)]
+      ]));
+      if (report.durationBasis && metric.requestDurationSumMs) {
+        const timings=append(text('details'),text('summary','Recorded duration and sensitivity'));
+        append(timings,text('p','Per-task sums of recorded request measurements. Overlapping requests and missing evidence prevent interpreting these as task elapsed time.','small muted'),dl([
+          ['Complete task sums',fraction(metric.requestDurationSumMs.n,metric.tasks)],
+          ['Median recorded sum',`${num(metric.requestDurationSumMs.median,1)} ms`],
+          ['P90 recorded sum',`${num(metric.requestDurationSumMs.p90,1)} ms`],
+          ['Requests missing measurements',fraction(metric.missingDurationRequests,metric.requests)],
+          ['Mean requests/task after dropping largest task',num(metric.maxDropSensitivity && metric.maxDropSensitivity.requestsPerTask.mean,2)]
+        ]));
+        arr(metric.topSlowRequests).forEach(request=>{ const task=tasks.find(task=>arr(task.requestRecordIds).includes(request.recordId)); if (!task) return; const button=text('button',`${known(request.requestId)} · ${num(request.durationMs,1)} ms`,'inline-button mono'); button.type='button'; button.addEventListener('click',()=>{state.day=null;$('period').value='all';$('signal').value='all';$('search').value='';selectTask(task.id);$('detail').scrollIntoView({block:'start',behavior:'smooth'});}); append(timings,append(text('p'),button)); });
+        card.append(timings);
+      }
+      $('phases').append(card);
+    });
+    $('timing').replaceChildren(text('strong', report.durationBasis ? 'Recorded duration basis: ' : 'Latency is not compared. '), document.createTextNode(report.durationBasis ? `${report.durationBasis}. Any task duration shown is a sum of recorded request measurements, not verified task elapsed time. Missing measurements are not zero.` : 'No explicit comparable duration basis was supplied. Request counts and observed evidence remain available.'));
+    renderDaily(chosen);
+  }
+  function renderDaily(chosen) {
+    const cells = new Map();
+    chosen.filter(task => task.comparisonEligible).forEach(task => { const day = taskDay(task); const key = `${task.side}|${day}`; if (!cells.has(key)) cells.set(key,{side:task.side,day,tasks:0,requests:0}); const cell=cells.get(key); cell.tasks++; cell.requests+=task.requestCount; });
+    const rows = [...cells.values()].sort((a,b) => a.day.localeCompare(b.day) || a.side.localeCompare(b.side));
+    const max = Math.max(1,...rows.map(row=>row.requests/row.tasks));
+    $('daily').replaceChildren(append(text('div','','daily-label'),...['UTC day','Period','Mean requests / task','Requests','Tasks'].map(label=>text('span',label))));
+    if (!rows.length) { $('daily').append(text('p','No eligible tasks with daily evidence.','empty')); return; }
+    let previous;
+    rows.forEach(row => {
+      if (previous && Number.isFinite(Date.parse(row.day)) && Date.parse(row.day) - Date.parse(previous.day) > 86400000) $('daily').append(text('div','Unobserved gap · no task-day evidence shown','gap'));
+      const button = text('button'); button.type='button'; button.setAttribute('aria-pressed',String(state.day === `${row.side}|${row.day}`));
+      const track = text('span','','bar-track'); const bar = text('span','',`bar ${row.side}`); bar.style.display='block'; bar.style.width=`${row.requests/row.tasks/max*100}%`; track.append(bar); track.title=`${num(row.requests/row.tasks,2)} requests per task`;
+      append(button,text('span',row.day),text('span',row.side),append(text('span'),text('span',num(row.requests/row.tasks,2)),track),text('span',num(row.requests)),text('span',num(row.tasks)));
+      button.addEventListener('click',()=> { state.day=state.day===`${row.side}|${row.day}` ? null : `${row.side}|${row.day}`; renderDaily(chosen); renderList(); });
+      $('daily').append(button); previous=row;
+    });
+    $('daily').append(text('p','Tasks are assigned to their earliest captured request day. Means use eligible tasks in the selected cohort. Days without captures are not zero-traffic days.','small muted'));
+  }
+  function renderLimits() {
+    const left = append(text('div'),text('h3','How to read this comparison'),list([
+      'Tasks are reconstructed only from the configured task identifier. Request IDs remain available below for audit.',
+      'Missing user, environment, or task identity leaves requests ungrouped. Tasks crossing windows or appearing on both sides are excluded. Mixed-model and censored tasks remain included with visible flags; this is not a clean model-only comparison.',
+      'An observed model ending is a captured protocol event, not verified business completion. Absence of an error is not proof of quality.',
+      'Before/after evidence is observational. User matching does not hold case difficulty, prompts, tools, or application changes constant.',
+      'Worth a closer look includes observed errors, missing endings, evidence flags, and tasks excluded from the comparison. These are inspection prompts, not grades.'
+    ]));
+    const right = append(text('div'),text('h3','Snapshot limitations'),list(arr(report.caveats)));
+    const accounting = Object.entries(report.accounting || {}).map(([key,value]) => [human(key), typeof value === 'object' && value !== null ? JSON.stringify(value) : str(value)]);
+    append(right,text('h3','Evidence accounting'),dl(accounting));
+    append(left,text('h3','Explicit grouping selectors'),dl(Object.entries(report.selectors||{}).map(([key,value])=>[human(key),value])));
+    if (report.scope && Object.keys(report.scope).length) append(right,text('h3','Source provenance'),text('pre',JSON.stringify(report.scope,null,2)));
+    $('limitations').replaceChildren(left,right);
+  }
+  function filteredTasks() {
+    const query = $('search').value.trim().toLowerCase(); const side=$('period').value; const filter=$('signal').value;
+    return groupTasks().filter(task => (side==='all'||task.side===side) && (!state.day||`${task.side}|${taskDay(task)}`===state.day) && (filter==='all'||filter==='attention'&&attention(task)||filter==='errors'&&errors(task)||filter==='no-ending'&&!task.observedTerminal) && (!query||[task.taskId,task.id,...arr(task.requestIds),...arr(task.observedModels)].join(' ').toLowerCase().includes(query))).sort((a,b)=>Number(attention(b))-Number(attention(a))||taskDay(b).localeCompare(taskDay(a))||str(a.id).localeCompare(str(b.id)));
+  }
+  function renderList() {
+    const shown = filteredTasks(); $('task-list').replaceChildren();
+    $('day-filter').hidden=!state.day; $('day-filter').replaceChildren();
+    if (state.day) { const reset=text('button','Clear day filter','inline-button'); reset.type='button'; reset.addEventListener('click',()=>{state.day=null;renderPhases();renderList();}); append($('day-filter'),document.createTextNode(`Showing ${state.day.replace('|',' · ')} · `),reset); }
+    if (['ungrouped','excluded','duplicate'].includes($('signal').value)) { renderUngrouped(); return; }
+    $('task-count').textContent=`${num(shown.length)} tasks shown · ${num(groupTasks().length)} in selected scope`;
+    shown.forEach(task => {
+      const button=text('button','','task-card'); button.type='button'; button.setAttribute('aria-pressed',String(task.id===state.selected));
+      append(button,text('strong',`Task ${known(task.taskId)}`),text('p',`${taskDay(task)} · ${arr(task.observedModels).join(', ')||'Unknown observed model'}${errors(task)?` · ${num(task.nativeToolErrors)} tool errors, ${num(task.httpErrorRequests)} HTTP errors`:''}`),append(text('div','','chips'),chip(task.side),chip(`${num(task.requestCount)} requests`),chip(task.observedTerminal ? 'Ending observed' : 'Ending not observed',!task.observedTerminal),attention(task)?chip('Closer look',true):null));
+      button.addEventListener('click',()=>selectTask(task.id)); $('task-list').append(button);
+    });
+    if (!shown.length) $('task-list').append(text('p','No tasks match these filters. Missing evidence is not a quality verdict.','empty'));
+    if (state.selected && !shown.some(task=>task.id===state.selected)) { state.selected=null; showEmptyDetail('Select a task from this filtered evidence.'); }
+    if (!state.selected) showEmptyDetail('Select a task to see its captured output, evidence flags, and request ledger.');
+  }
+  function renderUngrouped() {
+    const group=groups.find(item=>item.key===state.group); const query=$('search').value.trim().toLowerCase();
+    const disposition=$('signal').value;
+    const shown=report.requests.filter(request=>request.disposition===disposition&&(!group||request.userId===group.userId&&request.environment===group.environment)&&($('period').value==='all'||request.side===$('period').value)&&(!state.day||`${request.side}|${date(request.timestamp)}`===state.day)&&(!query||[request.requestId,request.recordId,request.observedModel].join(' ').toLowerCase().includes(query)));
+    $('task-count').textContent=`${num(shown.length)} ${disposition} requests shown`;
+    shown.forEach(request=> { const button=text('button','','task-card'); button.type='button'; append(button,text('strong',known(request.requestId)),text('p',arr(request.reasons).join(' · ')||'Insufficient identity for task grouping'),chip(request.side)); button.addEventListener('click',()=>{$('detail').replaceChildren(text('h2',`${human(disposition)} request`),text('p','This request is kept outside task denominators.','muted'),requestDetail(request,true));}); $('task-list').append(button); });
+    if (!shown.length) $('task-list').append(text('p',`No ${disposition} requests in this filter.`,'empty'));
+    state.selected=null; showEmptyDetail('Ungrouped, excluded, and duplicate records remain separate. Select one to inspect its evidence and exclusion reason.');
+  }
+  function showEmptyDetail(message) { $('detail').replaceChildren(text('div','Task evidence','eyebrow'),text('p',message,'empty')); }
+  function selectTask(id) {
+    const task=tasks.find(item=>item.id===id); if (!task) { showEmptyDetail('The requested task is unavailable in this snapshot.'); return; }
+    state.selected=id;
+    try { history.replaceState(null,'',`#${encodeURIComponent(id)}`); } catch { /* File-origin history may be unavailable. */ }
+    renderList(); renderTask(task);
+  }
+  function requestDetail(request,open=false) {
+    const node=text('details','','request'); node.open=open;
+    append(node,text('summary',`${known(request.requestId)} · ${known(request.timestamp)} · ${known(request.observedModel)}`),dl([
+      ['HTTP status',known(request.statusCode)],['Requested model',known(request.requestedModel)],['Observed model source',known(request.modelSource)],['Ending observed',request.observedTerminal?'Yes · protocol evidence only':'No'],['Native tool errors',num(request.nativeToolErrors)],['Duration',report.durationBasis ? `${num(request.durationMs,1)} ms · ${report.durationBasis}` : 'Not compared · basis unspecified']
+    ]));
+    if (arr(request.flags).length || arr(request.reasons).length) node.append(list([...arr(request.flags),...arr(request.reasons)].map(human)));
+    if (request.source && Object.keys(request.source).length) append(node,text('p','Private source reference · use the exact request ID to inspect the original capture','eyebrow'),text('pre',JSON.stringify(request.source,null,2)));
+    if (request.finalText) append(node,text('p','Captured final text','eyebrow'),text('div',request.finalText,'output'));
+    const events=arr(request.toolEvents);
+    if (events.length) { const tools=text('details'); append(tools,text('summary',`${num(events.length)} observed tool events · structured evidence`)); events.forEach(event=>tools.append(text('pre',JSON.stringify(event,null,2)))); node.append(tools); }
+    return node;
+  }
+  function renderTask(task) {
+    const requests=taskRecords(task); const detail=$('detail');
+    detail.replaceChildren(text('div',`${task.side} · ${known(task.userId)} · ${known(task.environment)}`,'eyebrow'),text('h2',`Task ${known(task.taskId)}`));
+    append(detail,append(text('div','','chips'),chip(`${num(task.requestCount)} requests`),chip(task.observedTerminal?'Ending observed':'Ending not observed',!task.observedTerminal),chip(task.comparisonEligible?'Included in comparison':'Excluded from comparison',!task.comparisonEligible)));
+    append(detail,text('p','Observed task evidence','eyebrow'),text('p',task.observedTerminal?'A protocol ending was observed on the last captured request. This does not verify the task’s business outcome.':'No protocol ending was observed on the last captured request. The task may continue outside the captured evidence.','output'),text('p','Prompts, completions, tool arguments, and tool results are intentionally omitted from this metadata report. To assess correctness, inspect the original private captures using the exact request IDs and source references below, then check the application’s resulting state.','small muted'));
+    if (attention(task)) { const warning=text('div','','notice warning'); append(warning,text('strong','Why take a closer look?'),list([
+      ...(task.httpErrorRequests ? [`${num(task.httpErrorRequests)} request(s) with observed HTTP errors.`] : []),
+      ...(task.nativeToolErrors ? [`${num(task.nativeToolErrors)} observed native tool error(s).`] : []),
+      ...(task.argumentValidationErrors ? [`${num(task.argumentValidationErrors)} observed argument validation error(s).`] : []),
+      ...(!task.observedTerminal ? ['No protocol ending was captured. This may reflect missing continuation evidence.'] : []),
+      ...(!task.comparisonEligible ? ['Task excluded from comparison; inspect identity, grouping, and model flags.'] : []),
+      ...arr(task.flags).map(human)
+    ])); detail.append(warning); }
+    append(detail,dl([['Captured request IDs',num(arr(task.requestIds).length)],['Observed models',arr(task.observedModels).join(', ')||'Unknown'],['Recorded duration sum',report.durationBasis ? `${num(task.durationSumMs,1)} ms · ${num(task.durationObservedRequests)} / ${num(task.requestCount)} requests measured` : 'Not compared · duration basis unspecified']]));
+    detail.append(text('p','Request ledger','eyebrow'));
+    const table=text('table'); append(table,append(text('thead'),append(text('tr'),...['Request ID','Observed model','HTTP','Ending'].map(label=>text('th',label)))));
+    const body=text('tbody'); requests.forEach(request=>append(body,append(text('tr'),text('td',known(request.requestId),'mono'),text('td',known(request.observedModel)),text('td',known(request.statusCode)),text('td',request.observedTerminal?'Observed':'Not observed')))); table.append(body); detail.append(append(text('div','','table-wrap'),table));
+    requests.forEach(request=>detail.append(requestDetail(request)));
+  }
+  try {
+    if (!report || report.schema_version !== 'understudy.rollout-review.v1' || !Array.isArray(report.tasks) || !Array.isArray(report.requests)) throw new Error('missing or unsupported report');
+    records=new Map(report.requests.map(request=>[request.recordId,request])); groups=arr(report.comparableGroups); tasks=report.tasks;
+    const before=tasks.filter(task=>task.side==='before'); const after=tasks.filter(task=>task.side==='after');
+    [['Before tasks',before.length],['After tasks',after.length],['Comparable groups',groups.filter(group=>group.status==='comparable').length],['Ungrouped requests',arr(report.ungrouped).length]].forEach(([label,value])=>$('stats').append(append(text('div','','stat'),text('strong',num(value)),text('span',label,'small muted'))));
+    const sorted=groups.slice().sort((a,b)=>Number(b.status==='comparable')-Number(a.status==='comparable')||str(a.userId).localeCompare(str(b.userId))||str(a.environment).localeCompare(str(b.environment)));
+    sorted.forEach(group=> { const option=text('option',`${known(group.userId)} · ${known(group.environment)}${group.status==='comparable'?'':` · ${human(group.status)}`}`); option.value=group.key; $('cohort').append(option); });
+    const all=text('option','All groups · mixed composition'); all.value=''; $('cohort').append(all); state.group=sorted[0] ? sorted[0].key : ''; $('cohort').value=state.group;
+    $('cohort').addEventListener('change',()=> { state.group=$('cohort').value; state.day=null; state.selected=null; renderPhases();renderList(); });
+    ['search','period','signal'].forEach(id=>$(id).addEventListener(id==='search'?'input':'change',renderList));
+    renderLimits();renderPhases();renderList();$('app').hidden=false;
+    if (location.hash) {
+      let requested=null; try { requested=decodeURIComponent(location.hash.slice(1)); } catch { /* Malformed hashes have no task identity. */ }
+      const task=tasks.find(item=>item.id===requested);
+      if (task) { const group=groups.find(item=>item.userId===task.userId&&item.environment===task.environment); state.group=group?group.key:''; $('cohort').value=state.group;renderPhases();selectTask(task.id); }
+      else showEmptyDetail('The requested task is unavailable in this snapshot. Select a task from the inbox.');
+    }
+  } catch {
+    $('failure').hidden=false; $('failure').textContent='This local report could not be loaded. Keep index.html and rollout-data.js together, or rebuild the viewer from the saved evidence.';
+  }
+})();
+</script>
+</body>
+</html>

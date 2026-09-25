@@ -169,6 +169,21 @@ paths, and hashes; there is no unbounded all-traces operation. `evals build`
 uses the same one-day primitive before handing semantic authoring to the coding
 agent.
 
+`traces review-rollout --spec <private-spec.json> --out <private-directory>`
+builds an offline before/after task review from verified local sources.
+Adding `--download --include-payload --yes` first acquires all indexed production
+captures within the explicit windows through customer-scoped APIs. The strict
+spec fixes organization/project, both workload names/IDs, UTC windows, and JSON
+pointers for execution ID, user ID and application environment. Exports retain
+frozen request inventories and local byte hashes; incomplete or mismatched
+sources fail instead of producing a complete-looking report. Task comparisons
+require explicit execution identities. Missing identities stay visible and are
+not replaced with guessed trace/time-based groups. Metrics are observational:
+requests/task, captured terminal/error evidence, and optional request-duration
+sums with a declared basis. They do not score business correctness, establish
+causal model effects, or change traffic. See the
+[rollout review procedure](../skills/ramp-and-verify/references/review-rollout.md).
+
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
 unapproved metrics, proxy-only metrics, or contaminated proof packets, and never

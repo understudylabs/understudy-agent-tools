@@ -5,10 +5,12 @@ import { serveTraceFoundry } from "../trace-foundry-server.js";
 import { authorOverview, authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveEscalationModel, resolveGatewayAuth } from "../trace-author.js";
 import { renderTraceViewer } from "../trace-viewer.js";
 import { registerHostedTraceExportCommand } from "./trace-exports.js";
+import { registerRolloutReviewCommand } from "./rollout-review.js";
 
 export function registerTracesCommand(program: Command): void {
   const traces = program.command("traces").description("Inspect local traces, export hosted captures, and compile benchmark environments");
   registerHostedTraceExportCommand(traces);
+  registerRolloutReviewCommand(traces);
   traces.command("build-viewer")
     .description("Build a private local viewer for one trace's model calls, prompts, and tools")
     .option("--source <path>", "Local capture file or directory", ".understudy/captures")

@@ -243,7 +243,12 @@ shows headroom, no hosted RL until the local arms plateau.
   over repeated rollouts to catch intermittent failures, and emits the
   launch verdict `ramp-and-verify`'s pre-ramp gate consumes. Includes the
   proactive pre-commit-style hook recipes.
-- [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
+- [`ramp-and-verify`](ramp-and-verify/SKILL.md) also owns the read-only
+  [historical rollout review](ramp-and-verify/references/review-rollout.md):
+  explicit workload and before/after windows, complete indexed capture exports,
+  verified private sources, and a per-user task comparison view. The CLI owns
+  acquisition, accounting and statistics; no model call or route change occurs.
+  Its production branch owns the last mile after a
   route decision: pre-ramp repeat-replay stability gates, a staged traffic
   ladder (5% → 25% → 100%) on the gateway dial inside one activated rollout
   envelope, routed-vs-passthrough verification from captures at each step,

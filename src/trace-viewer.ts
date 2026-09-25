@@ -288,6 +288,11 @@ function responseView(value: unknown): Obj {
   };
 }
 
+/** Pure transport projection for local evidence readers; contains no I/O. */
+export function normalizeTraceResponse(value: unknown): Obj {
+  return responseView(value);
+}
+
 function capturedAt(value: unknown): string | null {
   const numeric = typeof value === "number"
     ? value

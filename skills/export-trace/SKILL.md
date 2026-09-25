@@ -1,6 +1,6 @@
 ---
 name: export-trace
-description: Use when a developer provides a hosted Understudy trace_id or asks "get this trace", "download this trace", "show every request in this trace", or "export these trace IDs". Resolves trace membership through the customer trace lookup API, exports linked captures privately, and hands local files to the trace viewer or ingest-traces.
+description: Use for "get this trace", "show every request in this trace", "export these trace IDs", or "download this workload's captures for a day". Resolves explicit traces or a bounded workload window through customer APIs, exports captures privately, and hands local files to the trace viewer or ingest-traces.
 ---
 
 # Export Trace
@@ -8,6 +8,10 @@ description: Use when a developer provides a hosted Understudy trace_id or asks 
 Retrieve one explicit hosted trace without scanning the capture catalog. Resolve
 its request IDs through the customer trace lookup endpoint, then reuse the
 bounded request capture exporter.
+
+For a named workload day rather than explicit trace IDs, use the workload
+flow below. For a before/after task comparison, use
+[`../ramp-and-verify/references/review-rollout.md`](../ramp-and-verify/references/review-rollout.md).
 
 ## Safety Gates
 
@@ -34,7 +38,7 @@ node dist/bin.js status --json
 
 Use `node dist/bin.js` in place of `understudy` below when necessary.
 
-## Flow
+## Explicit trace flow
 
 1. Resolve the project from repo config or an explicit `--project` /
    `--project-id`. Resolve `--workload` only when the developer supplied or
@@ -80,6 +84,24 @@ Use `node dist/bin.js` in place of `understudy` below when necessary.
 
 6. When the developer wants an eval, cost profile, or benchmark from the local
    files, hand off to [`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md).
+
+## Workload day flow
+
+Resolve one exact organization/project/workload. With authorization for full
+payloads, export a completed UTC calendar day:
+
+```sh
+understudy traces export --org <org-id> --project-id <project-id> \
+  --workload <name-or-id> --date <YYYY-MM-DD> \
+  --out .understudy/traces/<run> --include-payload --yes
+```
+
+`--last 1d` instead selects the last 24 hours. Inspect `source/summary.json`
+and `source/skipped.jsonl`: any skipped capture means some indexed captures
+were not materialized. Local hashes prove the saved bytes, not uncaptured
+traffic coverage. Never silently present a skipped export as complete.
+For arbitrary paired windows and verified request accounting, use the rollout
+review flow linked above rather than hand-merging independent day exports.
 
 ## Failure Handling
 
