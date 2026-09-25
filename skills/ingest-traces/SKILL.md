@@ -10,6 +10,11 @@ metadata:
 
 # Ingest Traces
 
+For a workload's before/after rollout comparison and per-user task view, use
+[`../ramp-and-verify/references/review-rollout.md`](../ramp-and-verify/references/review-rollout.md).
+Its frozen source ledger preserves every inventoried request; benchmark sample
+selection and retry removal in the ingestion flow must not alter rollout counts.
+
 [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) assumes a local
 harness can be attached and run. Many workloads arrive the other way around:
 the traces already exist — in an object-store bucket, a provider log export,

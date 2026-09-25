@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 
 import { findProjectRoot } from "../config/paths.js";
-import { request } from "./http.js";
+import { request, type RequestResponse } from "./http.js";
 import { type ResolvedProject } from "./projects.js";
 
 export const WORKLOAD_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,62}$/;
@@ -38,14 +38,34 @@ export type Workload = z.infer<typeof WorkloadSchema>;
 export type RouteResponse = z.infer<typeof RouteResponseSchema>;
 
 export async function listWorkloads(project: ResolvedProject): Promise<Workload[]> {
-  const res = await request(
-    {
-      url: `/admin/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
-      orgId: project.auth.orgId,
-    },
-    ListWorkloadsResponseSchema,
-  );
-  return res.data.workloads;
+  const result: Workload[] = [];
+  const seenCursors = new Set<string>();
+  const seenIds = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const suffix: string = cursor === null ? "" : `?cursor=${encodeURIComponent(cursor)}`;
+    const res: RequestResponse<z.infer<typeof ListWorkloadsResponseSchema>> = await request(
+      {
+        url: `/admin/v1/orgs/${encodeURIComponent(project.auth.orgId)}/projects/${encodeURIComponent(project.projectId)}/workloads${suffix}`,
+        orgId: project.auth.orgId,
+      },
+      ListWorkloadsResponseSchema,
+    );
+    for (const workload of res.data.workloads) {
+      if (workload.project_id !== undefined && workload.project_id !== project.projectId) {
+        throw new Error("Workload inventory returned a different project.");
+      }
+      if (seenIds.has(workload.id)) throw new Error("Workload inventory repeated an ID across pages.");
+      seenIds.add(workload.id);
+      result.push(workload);
+    }
+    cursor = res.data.cursor ?? null;
+    if (cursor !== null) {
+      if (!cursor || seenCursors.has(cursor)) throw new Error("Workload inventory returned an invalid or repeated cursor.");
+      seenCursors.add(cursor);
+    }
+  } while (cursor !== null);
+  return result;
 }
 
 export async function resolveWorkload(project: ResolvedProject, value: string): Promise<Workload> {
@@ -60,7 +80,9 @@ export async function resolveWorkload(project: ResolvedProject, value: string): 
     };
   }
   const workloads = await listWorkloads(project);
-  const workload = workloads.find((candidate) => candidate.name === value);
+  const matches = workloads.filter((candidate) => candidate.name === value);
+  if (matches.length > 1) throw new Error(`Workload name ${value} is ambiguous. Select an exact workload ID.`);
+  const workload = matches[0];
   if (!workload) {
     const projectLabel = project.projectSlug ?? project.projectId;
     throw new Error(`No workload named ${value} in project ${projectLabel}. Run \`understudy workloads list\` or create it.`);

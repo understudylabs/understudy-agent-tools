@@ -10,6 +10,11 @@ metadata:
 
 # Check Routing Health
 
+For a historical workload comparison organized by user and task, follow
+[`../ramp-and-verify/references/review-rollout.md`](../ramp-and-verify/references/review-rollout.md).
+It complements aggregate health with exact private request provenance and does
+not authorize traffic changes.
+
 Use this worker when the developer wants to know whether Understudy routing is
 causing errors, which workloads are routed, whether a declared route is really
 taking effect, or where their gateway usage and spend goes. These are read-only

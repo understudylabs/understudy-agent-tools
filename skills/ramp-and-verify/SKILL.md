@@ -1,6 +1,6 @@
 ---
 name: ramp-and-verify
-description: Use after a route decision exists and a candidate model must take live traffic safely — "ramp this route", "move 25% of traffic to the new model", "did the route change regress anything", "roll this back", "prove the savings are real". Pre-ramp stability gates, a staged traffic ladder through the Understudy gateway dial, routed-vs-passthrough verification from captures at each step, and explicit rollback triggers.
+description: Use for "review this rollout", "compare this workload before and after", "make a task-level rollout view", "ramp this route", or "roll this back". Reads captured traffic into a private reproducible comparison, or applies approved staged traffic changes after a route decision. Historical review is read-only; traffic changes require approval.
 metadata:
   understudy:
     mode: production
@@ -9,6 +9,17 @@ metadata:
 ---
 
 # Ramp and Verify
+
+## Choose the workflow first
+
+For **existing traffic** — select a workload, download its captures, compare
+before/after, or build a task-level view — follow
+[`references/review-rollout.md`](references/review-rollout.md) and stop there.
+This is a read-only workflow. It does not require an eval verdict, probes,
+replays, inference, or permission to change traffic. The production approval
+metadata and the pre-ramp gates below apply to traffic changes only.
+
+For a requested **traffic change**, continue with the ramp procedure below.
 
 Every successful journey through this library ends the same way: a candidate
 won on a frozen eval and a route decision says ship it. This worker owns the

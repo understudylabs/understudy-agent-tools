@@ -191,6 +191,10 @@ Identify the developer's current stage and load exactly one:
   verdict first: "will this work in prod", "run a simulator before I flip
   traffic", "gate model changes like a pre-commit check" →
   [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md).
+- **Historical rollout review** — "compare this workload before and after",
+  "download all traces for this rollout", or "make a task-level rollout view"
+  → [`../ramp-and-verify/references/review-rollout.md`](../ramp-and-verify/references/review-rollout.md).
+  This branch reads captured traffic; it does not change routes or run inference.
 - **Production ramp / rollback** — a route decision exists and live traffic
   must move safely: "ramp this route", "move 25% of traffic to the new model",
   "did the route change regress anything", "roll this back", "prove the
