@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 
 import { searchWorkloadCaptures, type CaptureSearchInput, type CaptureSearchResult } from "./capture-search.js";
@@ -8,7 +9,7 @@ import { exportCapturesByRequestIds, writePrivateText, type CaptureBatchExportIn
 import { acquireEvalBuildLease } from "./evals/build-state.js";
 import { request, UnderstudyApiError } from "./internal/http.js";
 import { WorkloadSchema } from "./internal/workloads.js";
-import type { RolloutReviewInput } from "./rollout-review.js";
+import { validateIdentitySelectors, type RolloutReviewInput } from "./rollout-review.js";
 
 const DAY_MS = 86_400_000;
 const SIDES = ["before", "after"] as const;
@@ -87,6 +88,7 @@ export function loadReviewSpec(path: string): RolloutReviewSpec {
 export async function acquireRolloutSources(input: RolloutReviewSpec, outputDir: string, dependencies: RolloutSourceDependencies = {}): Promise<RolloutReviewInput> {
   const spec = parseSpec(input);
   const root = normalizePath(outputDir);
+  assertPrivateRolloutOutput(root);
   privateDirectory(root);
   const release = acquireEvalBuildLease(join(root, "sources"));
   try {
@@ -175,6 +177,7 @@ export async function acquireRolloutSources(input: RolloutReviewSpec, outputDir:
 export function readRolloutSources(input: RolloutReviewSpec, outputDir: string): RolloutReviewInput {
   const spec = parseSpec(input);
   const root = normalizePath(outputDir);
+  assertPrivateRolloutOutput(root);
   const paths = sourcePaths(root);
   if (canonical(parseSpec(readJson(paths.spec))) !== canonical(spec)) throw new Error("Source spec does not match this review.");
   const inventory = parsePrivate(inventorySchema, paths.inventory, "inventory");
@@ -193,6 +196,7 @@ export function readRolloutSources(input: RolloutReviewSpec, outputDir: string):
 function parseSpec(value: unknown): RolloutReviewSpec {
   const parsed = specSchema.safeParse(value);
   if (!parsed.success) throw new Error(`Invalid rollout review spec: ${parsed.error.issues.map(issue => `${issue.path.join(".") || "spec"}: ${issue.message}`).join("; ")}`);
+  validateIdentitySelectors(parsed.data.selectors);
   return parsed.data;
 }
 
@@ -310,6 +314,45 @@ function normalizePath(path: string): string {
     }
   }
   return absolute;
+}
+
+/** Reject commit-visible destinations before source discovery, auth or payload download. */
+function assertPrivateRolloutOutput(root: string): void {
+  assertNoSymlinks(root);
+  let existing = root;
+  while (!existsSync(existing)) existing = dirname(existing);
+  if (!lstatSync(existing).isDirectory()) throw new Error("Rollout output must be a directory.");
+
+  // Inspect the destination's repository, never a caller's GIT_DIR/index override.
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
+  env.LC_ALL = "C";
+  env.GIT_OPTIONAL_LOCKS = "0";
+  const git = (directory: string, args: string[]) => spawnSync("git", ["-C", directory, ...args], {
+    encoding: "utf8", timeout: 5_000, maxBuffer: 16 * 1024 * 1024, env,
+  });
+  const discovered = git(existing, ["rev-parse", "--show-toplevel"]);
+  if (discovered.status !== 0 || discovered.error) {
+    let ancestor = existing;
+    let marker = false;
+    for (;;) {
+      if (existsSync(join(ancestor, ".git"))) { marker = true; break; }
+      const parent = dirname(ancestor); if (parent === ancestor) break; ancestor = parent;
+    }
+    if (!marker && !discovered.error && discovered.status === 128 && /^fatal: not a git repository(?: \(|:)/.test(discovered.stderr)) return;
+    throw new Error("Cannot verify rollout output Git privacy; choose a verifiable ignored directory or a private directory outside Git.");
+  }
+  const repository = normalizePath(discovered.stdout.trim());
+  const output = relative(repository, root);
+  if (!output || output === ".." || output.startsWith(`..${sep}`) || isAbsolute(output)) {
+    throw new Error("Rollout output inside Git must be an ignored child directory with no tracked files.");
+  }
+  const tracked = git(repository, ["--literal-pathspecs", "ls-files", "--cached", "-z", "--", output]);
+  if (tracked.error || tracked.status !== 0) throw new Error("Cannot verify that rollout output contains no tracked files.");
+  if (tracked.stdout.length > 0) throw new Error("Rollout output contains tracked files; choose a new ignored directory with no tracked descendants.");
+  const ignored = git(repository, ["check-ignore", "--quiet", "--no-index", "--", `${output}${sep}`]);
+  if (ignored.error || ignored.status !== 0) {
+    throw new Error("Rollout output inside Git must be ignored. Add the destination directory to Git exclusions before downloading captures, or choose a private directory outside Git.");
+  }
 }
 function assertNoSymlinks(path: string): void {
   let current = normalizePath(path);

@@ -53,6 +53,33 @@ from names/domains, or group by nearby timestamps, similar prompts, or trace ID.
 If no execution ID is captured, explain that trustworthy task comparisons need
 that instrumentation; the request inventory remains available for inspection.
 
+Identity selectors are validated before acquisition and again when building the
+report. Supported locations are nested fields under envelope `metadata` or
+`tags`, or under the `metadata`/`tags` of `customer_request_body`, `request_body`,
+or `request` (with an optional `body` wrapper). Supported top-level keys are:
+
+| Selector | Top-level keys |
+| --- | --- |
+| `taskId` | `task`, `task_id`, `taskId`, `execution`, `execution_id`, `executionId`, `run_id`, `runId` |
+| `userId` | `user`, `user_id`, `userId`, `end_user_id`, `endUserId`, `customer_user_id`, `customerUserId` |
+| `environment` | `environment`, `app_environment`, `appEnvironment`, `request_environment`, `requestEnvironment` |
+
+Prompt, message/content, header, and credential paths are rejected, including
+sensitive keys nested inside metadata. Sensitive-key matching uses exact keys
+with common casing and separator variants; `token` is prohibited while an
+application's `execution_token` remains supported. Use nested metadata for
+other application identity keys; do not move payloads or credentials there to
+bypass this boundary.
+
+Selected values must be finite numbers or compact nonempty strings of at most
+512 characters, without whitespace or control characters. Invalid values stay
+missing/ungrouped; they are never hashed or replaced with invented identities.
+Human-readable labels containing spaces require a separate stable compact
+identifier. This is a location and identifier-shape guard, **not secret
+scrubbing**: a compact secret incorrectly stored in an allowed metadata field
+cannot be distinguished from an identifier. The spec, report, and exports
+retain private identifiers and must stay private until reviewed for sharing.
+
 Optional latency requires `durationMs` plus a written `durationBasis`: the
 field's measured start/end and whether it overlaps other timers. Without a
 known basis, omit latency. Never sum phase timers or subtract an apparent
@@ -62,7 +89,11 @@ not user-visible task wall time; parallel calls and tool execution differ.
 ## 2. Write the private spec
 
 Create `.understudy/rollout-reviews/<run>/spec.json`, mode `0600`, inside an
-owner-private directory. The following is **synthetic syntax only**; replace
+owner-private directory. Output must be outside Git, or an ignored directory
+with no tracked descendants; `.understudy/` is not assumed to be ignored. The
+CLI verifies this before discovery/download and for offline builds/rebuilds.
+If needed, add the destination to Git exclusions or choose a private directory
+outside the repository. The following is **synthetic syntax only**; replace
 every scope, time and pointer with the agreed values before running:
 
 ```json
@@ -90,7 +121,7 @@ every scope, time and pointer with the agreed values before running:
 }
 ```
 
-The selector document decodes JSON request/response bodies before lookup.
+The selector document decodes supported JSON request bodies before lookup.
 For example, a field inside a request body's metadata can use
 `/request/body/metadata/execution_id`. Do not change the spec after acquisition;
 use a new output directory for a different comparison.

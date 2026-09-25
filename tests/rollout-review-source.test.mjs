@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
@@ -20,6 +21,8 @@ function temp(t) { const dir = mkdtempSync(join(realpathSync(tmpdir()), "rollout
 function json(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function digest(value) { return createHash("sha256").update(value).digest("hex"); }
 function save(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 }); }
+function git(root, ...args) { return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }); }
+function repository(t) { const root = temp(t); git(root, "init", "--quiet"); return root; }
 function isolatedCredentials(t) {
   const directory = temp(t); const original = os.homedir;
   os.homedir = () => directory; syncBuiltinESMExports();
@@ -107,6 +110,75 @@ test("zero matches are complete capture availability with empty denominators, no
   assert.equal(setup.state.batches.length, 0); assert.equal(json(join(root, "sources", "receipt.json")).complete, true);
 });
 
+test("Git-visible destinations fail before discovery, authentication, writes or downloads", async t => {
+  const repo = repository(t);
+  for (const output of [repo, join(repo, "visible"), join(repo, "new", "nested")]) {
+    const setup = hooks();
+    await assert.rejects(acquireRolloutSources(spec(), output, setup.dependencies), /ignored/);
+    assert.equal(setup.state.listings, 0); assert.equal(setup.state.searches.length, 0); assert.equal(setup.state.batches.length, 0);
+    assert.equal(existsSync(join(output, "sources")), false);
+    if (output !== repo) assert.equal(existsSync(output), false);
+  }
+});
+
+test("payload and authentication selectors fail before acquisition without exposing their paths", async t => {
+  for (const pointer of ["/request/body/messages/0/content", "/request/headers/Authorization"]) {
+    const selected = spec(); selected.selectors.userId = pointer;
+    const output = join(temp(t), "not-created"); const setup = hooks(selected);
+    await assert.rejects(acquireRolloutSources(selected, output, setup.dependencies), error => {
+      assert.match(error.message, /Unsupported userId selector/); assert.ok(!error.message.includes(pointer)); return true;
+    });
+    assert.equal(setup.state.listings, 0); assert.equal(setup.state.searches.length, 0); assert.equal(setup.state.batches.length, 0);
+    assert.equal(existsSync(output), false);
+  }
+});
+
+test("ignored Git output is accepted but force-tracked descendants and repository roots are rejected", async t => {
+  const repo = repository(t);
+  writeFileSync(join(repo, ".gitignore"), "private/\n");
+  const output = join(repo, "private", "review");
+  await acquireRolloutSources(spec(), output, hooks().dependencies);
+  assert.equal(statSync(output).mode & 0o777, 0o700);
+  assert.equal(git(repo, "status", "--porcelain", "--untracked-files=all", "--", "private"), "");
+  const tracked = join(output, "tracked.json"); save(tracked, { synthetic: true });
+  git(repo, "add", "--force", "--", "private/review/tracked.json");
+  const setup = hooks();
+  await assert.rejects(acquireRolloutSources(spec(), output, setup.dependencies), /tracked/);
+  assert.equal(setup.state.listings, 0);
+  assert.throws(() => readRolloutSources(spec(), output), /tracked/);
+  // Ignore matching does not make a tracked entry safe, even after its working file disappears.
+  rmSync(tracked);
+  await assert.rejects(acquireRolloutSources(spec(), output, setup.dependencies), /tracked/);
+});
+
+test("Git exclusions are checked again on completed resume and offline rebuild", async t => {
+  const repo = repository(t); const ignore = join(repo, ".gitignore");
+  writeFileSync(ignore, "private/\n"); const output = join(repo, "private", "review");
+  await acquireRolloutSources(spec(), output, hooks().dependencies);
+  writeFileSync(ignore, ""); const setup = hooks();
+  await assert.rejects(acquireRolloutSources(spec(), output, setup.dependencies), /ignored/);
+  assert.equal(setup.state.listings, 0);
+  assert.throws(() => readRolloutSources(spec(), output), /ignored/);
+});
+
+test("an ignored sibling or caller Git override cannot hide a visible output", async t => {
+  const repo = repository(t); const other = repository(t);
+  writeFileSync(join(repo, ".gitignore"), "private/\n");
+  writeFileSync(join(other, ".gitignore"), "*\n");
+  const previous = process.env.GIT_DIR; process.env.GIT_DIR = join(other, ".git");
+  t.after(() => { if (previous === undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR = previous; });
+  const setup = hooks();
+  await assert.rejects(acquireRolloutSources(spec(), join(repo, "private-visible"), setup.dependencies), /ignored/);
+  assert.equal(setup.state.listings, 0);
+});
+
+test("unverifiable Git metadata fails closed before acquisition", async t => {
+  const repo = temp(t); writeFileSync(join(repo, ".git"), "gitdir: /synthetic-missing-git-directory\n");
+  const setup = hooks();
+  await assert.rejects(acquireRolloutSources(spec(), join(repo, "private"), setup.dependencies), /Cannot verify/);
+  assert.equal(setup.state.listings, 0); assert.equal(existsSync(join(repo, "private")), false);
+});
+
 test("missing or skipped payloads are incomplete and cannot build", async t => {
   for (const override of [{ ok: false, failed: 1 }, { skipped: 1, written: 1 }, { include_payload: false }]) {
     const root = temp(t); const setup = hooks(); const exportBatch = setup.dependencies.exportBatch;
@@ -167,7 +239,7 @@ test("local reads reject changed payload bytes, inventory commitments, member se
     if (kind === "inventory") { const target = join(root, "sources", "inventory.json"); writeFileSync(target, `${readFileSync(target, "utf8")} `); }
     if (kind === "member") { receipt.captures.before.pop(); save(path, receipt); }
     if (kind === "path") { receipt.captures.before[0].path = "../outside.json"; save(path, receipt); }
-    const value = spec(); if (kind === "spec") value.selectors.userId = "/different";
+    const value = spec(); if (kind === "spec") value.selectors.userId = "/metadata/different";
     assert.throws(() => readRolloutSources(value, root), /changed|hash|cover|path|spec/);
   }
 });

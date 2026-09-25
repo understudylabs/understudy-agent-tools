@@ -207,3 +207,33 @@ test("cross-side identities, scope mismatch, mixed models and sensitive source p
   assert.equal(report.accounting.excludedRecords, 1);
   assert.ok(report.requests[0].reasons.includes("declared_scope_mismatch"));
 });
+
+test("pooled metrics retain duration coverage and outliers across cohorts without treating partial sums as complete", () => {
+  const completeA = capture("complete-a", "complete-a", { envelope: { duration: 100 } });
+  const completeB = capture("complete-b", "complete-b", { envelope: { duration: 300 } });
+  const partialA = capture("partial-a", "partial", { envelope: { duration: 900, metadata: { execution: "partial", user: "synthetic-second-user", environment: "production" } } });
+  const partialB = capture("partial-b", "partial", { envelope: { ts: "2026-01-01T12:00:01Z", metadata: { ...partialA.capture.metadata } } });
+  const boundaryA = capture("boundary-a", "boundary", { envelope: { duration: 9999 } });
+  const boundaryB = capture("boundary-b", "boundary", { envelope: { duration: 9999, ts: "2026-01-02T00:00:01Z" } });
+  const ungrouped = capture("ungrouped", null, { envelope: { duration: 99999 } });
+  const report = buildRolloutReview(input([completeA, completeB, partialA, partialB, boundaryA, boundaryB, ungrouped], [], {
+    selectors: { ...selectors, durationMs: "/duration" }, durationBasis: "Synthetic request measurement",
+  }));
+  assert.equal(report.comparableGroups.length, 2);
+  const pooled = report.pooledMetrics.before;
+  assert.equal(pooled.tasks, 3);
+  assert.equal(pooled.requests, 4);
+  assert.equal(pooled.requestsPerTask.mean, 4 / 3);
+  assert.deepEqual(pooled.requestDurationSumMs, { n: 2, mean: 200, median: 200, p90: 300, min: 100, max: 300 });
+  assert.deepEqual(pooled.requestDurationMs, { n: 3, mean: 1300 / 3, median: 300, p90: 900, min: 100, max: 900 });
+  assert.equal(pooled.missingDurationRequests, 1);
+  assert.deepEqual(pooled.topSlowRequests.map(row => row.requestId), ["partial-a", "complete-b", "complete-a"]);
+  assert.equal(pooled.maxDropSensitivity.requestsPerTask.mean, 1);
+  assert.equal(pooled.maxDropSensitivity.requestDurationSumMs.mean, 100);
+  assert.equal(report.pooledMetrics.after, null);
+
+  const noDurations = buildRolloutReview(input([capture("missing", "missing")]));
+  assert.equal(noDurations.pooledMetrics.before.requestDurationSumMs.median, null);
+  assert.equal(noDurations.pooledMetrics.before.missingDurationRequests, 1);
+  assert.deepEqual(noDurations.pooledMetrics.before.topSlowRequests, []);
+});

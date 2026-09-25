@@ -44,6 +44,7 @@ export type RolloutReviewReport = {
   scope: ReviewScope;
   sides: Record<ReviewSide, { workload: string; workloadName?: string; from: string; to: string }>;
   requests: ReviewRequest[]; tasks: ReviewTask[]; ungrouped: ReviewRequest[]; comparableGroups: ComparableGroup[];
+  pooledMetrics: Record<ReviewSide, TaskMetrics | null>;
   accounting: { inputRecords: number; groupedRecords: number; ungroupedRecords: number; excludedRecords: number; duplicateRecords: number; uniqueRequestIds: number; tasks: number; reconciled: boolean };
   caveats: string[];
   privacy: { local_only: true; provider_called: false; raw_payloads_included: false; contains_private_identifiers: true };
@@ -85,6 +86,48 @@ export function readJsonPointer(document: unknown, pointer: string): PointerSele
     value = (value as ObjectValue)[key];
   }
   return { status: "found", value };
+}
+
+const identityRootKeys = {
+  taskId: new Set(["task", "task_id", "taskId", "execution", "execution_id", "executionId", "run_id", "runId"]),
+  userId: new Set(["user", "user_id", "userId", "end_user_id", "endUserId", "customer_user_id", "customerUserId"]),
+  environment: new Set(["environment", "app_environment", "appEnvironment", "request_environment", "requestEnvironment"]),
+};
+const requestIdentityRoots = new Set(["customer_request_body", "request_body", "request"]);
+// Exact keys, normalized for common naming styles; execution_token is not token.
+const prohibitedIdentityKeys = new Set([
+  "authorization", "proxyauthorization", "auth", "authentication", "apikey", "xapikey", "apitoken", "authtoken", "token", "accesstoken", "refreshtoken", "idtoken", "bearer", "bearertoken",
+  "password", "passwd", "secret", "secretkey", "clientsecret", "privatekey", "credentials", "credential", "cookie", "setcookie", "headers", "header",
+  "prompt", "prompts", "prompttext", "systemprompt", "messages", "message", "content", "text", "input", "inputtext", "output", "outputtext", "completion", "completions",
+  "reasoning", "thinking", "arguments", "toolarguments", "toolresults", "requestbody", "responsebody", "body", "constructor", "prototype", "proto",
+]);
+
+/** Identity selectors are metadata locations, never a general payload-extraction API. */
+export function validateIdentitySelectors(selectors: unknown): void {
+  const values = object(selectors);
+  for (const name of ["taskId", "userId", "environment"] as const) {
+    const pointer = values[name];
+    if (typeof pointer !== "string" || pointer.length > 2048 || pointer === "" || readJsonPointer({}, pointer).status === "invalid") {
+      throw new Error(`Invalid RFC6901 ${name} selector.`);
+    }
+    const keys = pointer.slice(1).split("/").map(key => key.replace(/~1/g, "/").replace(/~0/g, "~"));
+    if (keys.length === 1 && identityRootKeys[name].has(keys[0])) continue;
+    let metadataKeys = keys;
+    if (requestIdentityRoots.has(keys[0])) {
+      metadataKeys = keys.slice(1);
+      if (metadataKeys[0] === "body") metadataKeys = metadataKeys.slice(1);
+    }
+    const supportedContainer = ["metadata", "tags"].includes(metadataKeys[0]) && metadataKeys.length > 1;
+    const unsafeKey = metadataKeys.slice(1).some(key => !key || /[\u0000-\u001f\u007f-\u009f\u2028\u2029/\\~]/u.test(key) || prohibitedIdentityKeys.has(key.toLowerCase().replace(/[-_\s]/gu, "")));
+    if (!supportedContainer || unsafeKey) {
+      throw new Error(`Unsupported ${name} selector. Use an explicit identity key or a non-sensitive metadata/tags field; payload and credential paths are prohibited.`);
+    }
+  }
+}
+
+function selectedIdentity(value: unknown): string | null {
+  const selected = identifier(value);
+  return selected !== null && selected.length <= 512 && !/[\s\u0000-\u001f\u007f-\u009f]/u.test(selected) ? selected : null;
 }
 
 export function summarizeNumbers(input: number[]): NumberSummary {
@@ -202,7 +245,7 @@ function normalize(input: ReviewCaptureInput, side: ReviewSide, index: number, p
   const flags: string[] = [];
   const select = (name: "taskId" | "userId" | "environment") => {
     const selected = readJsonPointer(envelope, selectors[name]);
-    const value = selected.status === "found" ? identifier(selected.value) : null;
+    const value = selected.status === "found" ? selectedIdentity(selected.value) : null;
     if (value === null) flags.push(`missing_or_invalid_${name}_selector`);
     return value;
   };
@@ -238,9 +281,7 @@ function normalize(input: ReviewCaptureInput, side: ReviewSide, index: number, p
 }
 
 function validateInput(input: RolloutReviewInput): void {
-  for (const key of ["taskId", "userId", "environment"] as const) {
-    if (typeof input.selectors?.[key] !== "string" || readJsonPointer({}, input.selectors[key]).status === "invalid") throw new Error(`Invalid RFC6901 ${key} selector.`);
-  }
+  validateIdentitySelectors(input.selectors);
   if (input.selectors.durationMs !== undefined && readJsonPointer({}, input.selectors.durationMs).status === "invalid") throw new Error("Invalid RFC6901 durationMs selector.");
   if (Boolean(input.selectors.durationMs !== undefined) !== Boolean(input.durationBasis?.trim())) throw new Error("durationMs selector and explicit durationBasis must be supplied together.");
   for (const side of ["before", "after"] as const) {
@@ -365,6 +406,10 @@ export function buildRolloutReview(input: RolloutReviewInput): RolloutReviewRepo
     const before = values.filter(task => task.side === "before"), after = values.filter(task => task.side === "after");
     return { key, userId: values[0].userId, environment: values[0].environment, status: before.length && after.length ? "comparable" : before.length ? "before_only" : "after_only", before: before.length ? metrics(before, requests) : null, after: after.length ? metrics(after, requests) : null };
   }).sort((a, b) => a.key.localeCompare(b.key));
+  const pooledMetrics = Object.fromEntries((["before", "after"] as const).map(side => {
+    const eligible = tasks.filter(task => task.side === side && task.comparisonEligible);
+    return [side, eligible.length ? metrics(eligible, requests) : null];
+  })) as Record<ReviewSide, TaskMetrics | null>;
   const count = (disposition: ReviewRequest["disposition"]) => requests.filter(row => row.disposition === disposition).length;
   const accounting = { inputRecords: requests.length, groupedRecords: count("grouped"), ungroupedRecords: count("ungrouped"), excludedRecords: count("excluded"), duplicateRecords: count("duplicate"), uniqueRequestIds: new Set(requests.map(row => row.requestId).filter(Boolean)).size, tasks: tasks.length, reconciled: false };
   accounting.reconciled = accounting.inputRecords === accounting.groupedRecords + accounting.ungroupedRecords + accounting.excludedRecords + accounting.duplicateRecords && tasks.reduce((sum, task) => sum + task.requestCount, 0) === accounting.groupedRecords;
@@ -372,7 +417,7 @@ export function buildRolloutReview(input: RolloutReviewInput): RolloutReviewRepo
   return { schema_version: "understudy.rollout-review.v1", selectors: { ...input.selectors }, durationBasis: input.durationBasis?.trim() ?? null,
     scope: { ...input.scope, ...(input.scope?.sourceManifest ? { sourceManifest: safeSource(input.scope.sourceManifest) } : {}) },
     sides: { before: { workload: input.before.workload, ...(input.before.workloadName ? { workloadName: input.before.workloadName } : {}), from: input.before.from, to: input.before.to }, after: { workload: input.after.workload, ...(input.after.workloadName ? { workloadName: input.after.workloadName } : {}), from: input.after.from, to: input.after.to } },
-    requests, tasks, ungrouped: requests.filter(row => row.disposition === "ungrouped"), comparableGroups, accounting,
+    requests, tasks, ungrouped: requests.filter(row => row.disposition === "ungrouped"), comparableGroups, pooledMetrics, accounting,
     caveats: ["Tasks require exact explicit task, user and application-environment selectors. No trace, prompt or tool-history inference is used.",
       "Comparable means matching observed user and application environment across the two declared workloads; this is observational, not a causal model-quality comparison.",
       "An observed terminal response or a successful tool receipt does not establish business correctness.",
@@ -382,6 +427,7 @@ export function buildRolloutReview(input: RolloutReviewInput): RolloutReviewRepo
       "Duration sums are null if any request duration is missing. Raw capture latency is not assumed to cover the full streamed response.",
       "Median uses the middle value or midpoint; p90 uses nearest rank. Max-drop sensitivity removes one largest task observation, without changing primary metrics.",
       "Tool histories are deduplicated by identity, exact content, preceding history and occurrence position. Rewritten historical context may prevent deduplication; reused call IDs with changed content are flagged, never silently paired.",
+      "Identity selectors accept only supported metadata locations and compact scalar identifiers. This prevents payload-path extraction, but allowed metadata values are not automatically scrubbed of secrets.",
       "This report omits raw envelopes, headers, prompts, completions, tool arguments and results; it retains private identifiers and structural fingerprints."],
     privacy: { local_only: true, provider_called: false, raw_payloads_included: false, contains_private_identifiers: true } };
 }

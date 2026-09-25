@@ -74,6 +74,7 @@ function viewerReport(input: RolloutReviewReport): RolloutReviewReport {
     })),
     ungrouped: array(input.ungrouped).map(request),
     comparableGroups: input.comparableGroups.map(row => ({ ...scalars(row, ["key", "userId", "environment", "status"]), before: metrics(row.before), after: metrics(row.after) })),
+    pooledMetrics: { before: metrics(input.pooledMetrics?.before), after: metrics(input.pooledMetrics?.after) },
     accounting: scalars(input.accounting, ["inputRecords", "groupedRecords", "ungroupedRecords", "excludedRecords", "duplicateRecords", "uniqueRequestIds", "tasks", "reconciled"]),
     caveats: strings(input.caveats),
     privacy: { local_only: true, provider_called: false, raw_payloads_included: false, contains_private_identifiers: true },

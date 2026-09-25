@@ -59,6 +59,7 @@ test("writes a private offline report, metadata projection, and auditable ID led
   const data = loadData(output);
   assert.deepEqual(data.accounting, input.accounting);
   assert.deepEqual(data.comparableGroups, JSON.parse(JSON.stringify(input.comparableGroups)));
+  assert.deepEqual(data.pooledMetrics, JSON.parse(JSON.stringify(input.pooledMetrics)));
   assert.deepEqual(data.tasks, input.tasks);
   assert.deepEqual(JSON.parse(readFileSync(result.artifacts.report, "utf8")), data);
   const ids = JSON.parse(readFileSync(result.artifacts.request_ids, "utf8"));
@@ -103,6 +104,8 @@ test("allowlists nested metadata and excludes unexpected raw bodies, headers, pa
   input.requests[0].toolEvents = [{ kind: "call", name: "synthetic-tool", callId: "synthetic-call", fingerprint: "b".repeat(64), isError: false, argumentValidation: false, origin: "response", arguments: privateMarker, headers: { authorization: privateMarker } }];
   input.tasks[0].response = { content: privateMarker };
   input.comparableGroups[0].before.raw = privateMarker;
+  input.pooledMetrics.before.raw = privateMarker;
+  input.pooledMetrics.before.topSlowRequests[0].raw = privateMarker;
   input.caveats.push({ raw: privateMarker });
   const output = outputPath();
   const result = renderRolloutReview(input, output);
@@ -219,4 +222,41 @@ test("ungrouped evidence stays outside task counts and latency is hidden without
   assert.match(elements.get("detail").textContent, /synthetic-ungrouped-request/);
   assert.match(elements.get("detail").textContent, /outside task denominators/);
   assert.match(elements.get("detail").textContent, /basis unspecified/);
+});
+
+test("All groups preserves pooled duration coverage and slow-request task links across cohorts", () => {
+  const baseline = capture("before", "synthetic-complete-request", "synthetic-complete-task");
+  const measured = capture("before", "synthetic-slow-request", "synthetic-partial-task");
+  measured.capture.metadata.user = "synthetic-second-user";
+  measured.capture.measured_ms = 900;
+  const missing = capture("before", "synthetic-missing-request", "synthetic-partial-task");
+  missing.capture.metadata.user = "synthetic-second-user";
+  missing.capture.ts = "2026-01-01T12:00:01Z";
+  delete missing.capture.measured_ms;
+  const input = buildRolloutReview({
+    before: { workload: "synthetic-before", from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z", captures: [baseline, measured, missing] },
+    after: { workload: "synthetic-after", from: "2026-02-01T00:00:00Z", to: "2026-02-02T00:00:00Z", captures: [] },
+    selectors: { taskId: "/metadata/task", userId: "/metadata/user", environment: "/metadata/environment", durationMs: "/measured_ms" },
+    durationBasis: "Synthetic request measurement",
+  });
+  const elements = mountedViewer("", input);
+  elements.get("cohort").value = "";
+  elements.get("cohort").events.change();
+  assert.match(elements.get("cohort-heading").textContent, /All groups/);
+  assert.match(elements.get("cohort-note").textContent, /Pooled totals mix users/);
+  const before = elements.get("phases").children[0];
+  assert.match(before.textContent, /Recorded duration and sensitivity/);
+  assert.match(before.textContent, /Complete task sums1 \/ 2/);
+  assert.match(before.textContent, /Median recorded sum120\.0 ms/);
+  assert.match(before.textContent, /Requests missing measurements1 \/ 3/);
+  assert.match(before.textContent, /Mean requests\/task after dropping largest task1\.00/);
+  assert.match(elements.get("phases").children[1].textContent, /No eligible captured tasks/);
+  const descendants = node => [node, ...node.children.flatMap(descendants)];
+  const slowLink = descendants(before).find(node => node.tagName === "button" && node.textContent.includes("synthetic-slow-request"));
+  assert.ok(slowLink, "the longest measured request stays inspectable even when its task has incomplete duration coverage");
+  slowLink.events.click();
+  assert.match(elements.get("detail").textContent, /Task synthetic-partial-task/);
+  assert.match(elements.get("detail").textContent, /Recorded duration sum— ms · 1 \/ 2 requests measured/);
+  assert.match(elements.get("detail").textContent, /synthetic-slow-request/);
+  assert.match(elements.get("detail").textContent, /synthetic-missing-request/);
 });

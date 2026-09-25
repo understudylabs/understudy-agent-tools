@@ -150,14 +150,10 @@ footer { font-size: 11px; color: var(--muted-foreground); margin-top: 25px; }
   function errors(task) { return (task.httpErrorRequests || 0) > 0 || (task.nativeToolErrors || 0) > 0 || (task.argumentValidationErrors || 0) > 0; }
   function attention(task) { return errors(task) || !task.observedTerminal || arr(task.flags).length > 0 || !task.comparisonEligible; }
   function taskDay(task) { return date(taskRecords(task).map(request => request.timestamp).filter(Boolean).sort()[0]); }
-  function metricsFor(side, chosen) {
+  function metricsFor(side) {
     const group = groups.find(item => item.key === state.group);
     if (group) return group[side];
-    const phaseTasks = chosen.filter(task => task.side === side && task.comparisonEligible);
-    const values = phaseTasks.map(task => task.requestCount).sort((a,b) => a-b);
-    const n = values.length;
-    const pct = fraction => n ? values[Math.max(0, Math.ceil(fraction * n) - 1)] : null;
-    return { tasks:n, requests:values.reduce((a,b) => a+b,0), requestsPerTask:{n,mean:n ? values.reduce((a,b) => a+b,0)/n : null,median:n ? (n%2 ? values[(n-1)/2] : (values[n/2-1]+values[n/2])/2) : null,p90:pct(.9)},observedTerminalTasks:phaseTasks.filter(task=>task.observedTerminal).length,httpErrorRequests:phaseTasks.reduce((sum,task)=>sum+(task.httpErrorRequests||0),0),nativeToolErrorTasks:phaseTasks.filter(task=>(task.nativeToolErrors||0)>0).length,argumentValidationErrorTasks:phaseTasks.filter(task=>(task.argumentValidationErrors||0)>0).length,argumentValidationErrors:phaseTasks.reduce((sum,task)=>sum+(task.argumentValidationErrors||0),0),mixedModelTasks:phaseTasks.filter(task=>arr(task.observedModels).length>1).length,censoredTasks:phaseTasks.filter(task=>arr(task.flags).some(flag=>['crosses_declared_window','start_not_observed','terminal_not_observed'].includes(flag))).length };
+    return report.pooledMetrics && report.pooledMetrics[side];
   }
   function renderPhases() {
     const chosen = groupTasks();
@@ -166,7 +162,7 @@ footer { font-size: 11px; color: var(--muted-foreground); margin-top: 25px; }
     $('cohort-note').textContent = group ? (group.status === 'comparable' ? 'Same captured user and application environment in both windows. Tasks can still differ in difficulty, tools, or inputs.' : 'Only one period has eligible tasks for this group. A before/after change cannot be estimated here.') : 'Pooled totals mix users, environments, and task composition. Select a comparable cohort before interpreting a change.';
     $('phases').replaceChildren();
     ['before','after'].forEach(side => {
-      const metric = metricsFor(side, chosen);
+      const metric = metricsFor(side);
       const scope = report.sides && report.sides[side];
       const card = text('section', '', `panel phase ${side}`);
       append(card, text('div', side, 'phase-label'), text('h3', known(scope && (scope.workloadName || scope.workload)), 'workload'), text('p', windowText(scope), 'small muted'));
