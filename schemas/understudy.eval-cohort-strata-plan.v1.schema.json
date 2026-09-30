@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval-cohort-strata-plan.v1.schema.json",
+  "title": "understudy.eval-cohort-strata-plan.v1",
+  "description": "Local, metadata-only stratified cohort plan derived from materialized trace artifacts (issue #281 phase 1). Contains execution ids, stratum labels, and counts only — never payload-derived fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "created_at", "seed", "inputs", "config", "pool",
+    "strata", "selection", "coverage", "ready", "blocking", "expansion_of",
+    "stability", "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": "understudy.eval-cohort-strata-plan.v1" },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "seed": { "$ref": "#/$defs/nonempty" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execution_index", "execution_index_sha256", "tasks"],
+      "properties": {
+        "execution_index": { "$ref": "#/$defs/nonempty" },
+        "execution_index_sha256": { "$ref": "#/$defs/sha" },
+        "tasks": { "oneOf": [{ "$ref": "#/$defs/nonempty" }, { "type": "null" }] }
+      }
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axes", "target_per_stratum", "rare_threshold", "high_consequence_tags"],
+      "properties": {
+        "axes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["outcome", "mode", "turns", "confidence", "tag"] }
+        },
+        "target_per_stratum": { "type": "integer", "minimum": 1 },
+        "rare_threshold": { "type": "integer", "minimum": 0 },
+        "high_consequence_tags": { "type": "array", "items": { "$ref": "#/$defs/nonempty" } }
+      }
+    },
+    "pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index_rows", "eligible", "excluded"],
+      "properties": {
+        "index_rows": { "$ref": "#/$defs/count" },
+        "eligible": { "$ref": "#/$defs/count" },
+        "excluded": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason", "count"],
+            "properties": {
+              "reason": {
+                "enum": [
+                  "source_excluded", "missing_execution_group", "lineage_ambiguous",
+                  "lineage_unlinked", "missing_task", "duplicate_execution_group"
+                ]
+              },
+              "count": { "$ref": "#/$defs/count" }
+            }
+          }
+        }
+      }
+    },
+    "strata": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["axis", "value", "available", "target", "selected", "rule"],
+        "properties": {
+          "axis": { "enum": ["outcome", "mode", "turns", "confidence", "tag"] },
+          "value": { "$ref": "#/$defs/nonempty" },
+          "available": { "$ref": "#/$defs/count" },
+          "target": { "type": "integer", "minimum": 1 },
+          "selected": { "$ref": "#/$defs/count" },
+          "rule": {
+            "enum": [
+              "saturated_rare", "saturated_high_consequence", "saturated",
+              "sampled", "uncovered"
+            ]
+          }
+        }
+      }
+    },
+    "selection": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["execution_group", "task_id", "strata", "frozen"],
+        "properties": {
+          "execution_group": { "$ref": "#/$defs/nonempty" },
+          "task_id": { "$ref": "#/$defs/nonempty" },
+          "strata": { "type": "array", "items": { "$ref": "#/$defs/nonempty" } },
+          "frozen": { "type": "boolean" }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uncovered_strata", "underfilled_strata"],
+      "properties": {
+        "uncovered_strata": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["axis", "value"],
+            "properties": {
+              "axis": { "enum": ["outcome", "mode", "turns", "confidence", "tag"] },
+              "value": { "$ref": "#/$defs/nonempty" }
+            }
+          }
+        },
+        "underfilled_strata": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["axis", "value", "available", "target"],
+            "properties": {
+              "axis": { "enum": ["outcome", "mode", "turns", "confidence", "tag"] },
+              "value": { "$ref": "#/$defs/nonempty" },
+              "available": { "$ref": "#/$defs/count" },
+              "target": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "ready": { "type": "boolean" },
+    "blocking": { "type": "array", "items": { "$ref": "#/$defs/nonempty" } },
+    "expansion_of": { "oneOf": [{ "$ref": "#/$defs/sha" }, { "type": "null" }] },
+    "stability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "tolerance", "moved"],
+      "properties": {
+        "status": { "enum": ["not_applicable", "stable", "unstable"] },
+        "tolerance": { "type": "number", "minimum": 0 },
+        "moved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["axis", "value", "before", "after"],
+            "properties": {
+              "axis": { "enum": ["outcome", "mode", "turns", "confidence", "tag"] },
+              "value": { "$ref": "#/$defs/nonempty" },
+              "before": { "type": "number" },
+              "after": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_only", "payload_fields_read", "upload_performed"],
+      "properties": {
+        "local_only": { "const": true },
+        "payload_fields_read": { "const": false },
+        "upload_performed": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "nonempty": { "type": "string", "minLength": 1 },
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time" }
+  }
+}
