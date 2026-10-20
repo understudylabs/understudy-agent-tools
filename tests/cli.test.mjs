@@ -678,6 +678,14 @@ async function withHostedFixture(fn) {
           "x-ratelimit-reset-requests": "2s",
         });
       }
+      if (url.pathname === "/v1/chat/completions") {
+        const model = body.model === "gpt-6.1-sol-backup-fixture" ? "gpt-6-sol" : body.model;
+        if (body.stream) {
+          res.writeHead(200, { "content-type": "text/event-stream", "x-understudy-request-id": "req_probe" });
+          return res.end(`data: ${JSON.stringify({ model, choices: [{ delta: { content: "SECRET_COMPLETION" } }] })}\n\ndata: [DONE]\n\n`);
+        }
+        return send(200, { model, choices: [{ message: { content: "SECRET_COMPLETION" } }] }, { "x-understudy-request-id": "req_probe" });
+      }
       return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
     }
     return send(404, { message: `${req.method} ${url.pathname}` });
@@ -4561,6 +4569,7 @@ class ScoreWithFeedback:
       assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
       assert.equal(openaiRequest.body.stream, true);
       assert.equal(openaiRequest.body.max_tokens, 8);
+      assert.equal(JSON.parse(openai.stdout).served_model, "gpt-4o-mini");
 
       const gpt5 = await runWithEnvAsync([
         "--json", "gateway", "probe", "--provider", "openai", "--model", "gpt-5.4-mini",
@@ -4570,11 +4579,33 @@ class ScoreWithFeedback:
       assert.equal(gpt5Request.body.max_completion_tokens, 8);
       assert.equal(gpt5Request.body.max_tokens, undefined);
 
+      for (const model of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol"]) {
+        const probe = await runWithEnvAsync([
+          "--json", "gateway", "probe", "--provider", "openai", "--model", model,
+        ], env, repo);
+        assert.equal(probe.status, 0, probe.stderr);
+        assert.equal(requests.at(-1).body.max_completion_tokens, 8);
+        assert.equal(requests.at(-1).body.max_tokens, undefined);
+        assert.equal(JSON.parse(probe.stdout).served_model, model);
+        assert.equal(JSON.parse(probe.stdout).model_matches_request, true);
+      }
+
+      const backup = await runWithEnvAsync([
+        "--json", "gateway", "probe", "--provider", "openai", "--model", "gpt-6.1-sol-backup-fixture",
+      ], env, repo);
+      assert.notEqual(backup.status, 0, "a successful backup must not pass a model probe");
+      const backupPayload = JSON.parse(backup.stdout);
+      assert.deepEqual(
+        { ok: backupPayload.ok, status: backupPayload.status, served_model: backupPayload.served_model, model_matches_request: backupPayload.model_matches_request },
+        { ok: false, status: 200, served_model: "gpt-6-sol", model_matches_request: false },
+      );
+
       // --no-stream is the explicit opt-out for reproducing buffered behavior.
       const buffered = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai", "--no-stream"], env, repo);
       assert.equal(buffered.status, 0, buffered.stderr);
       assert.equal(requests.at(-1).body.stream, false);
       assert.equal(JSON.parse(buffered.stdout).response_kind, "json");
+      assert.equal(JSON.parse(buffered.stdout).served_model, "gpt-4o-mini");
 
       const failed = await runWithEnvAsync([
         "--json", "gateway", "probe", "--provider", "openai", "--model", "fixture-error", "--no-stream",

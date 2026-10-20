@@ -131,12 +131,18 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   const text = await res.text();
   const requestId = res.headers.get("x-understudy-request-id");
   const diagnostics = responseDiagnostics(res, text);
+  const requestedModel = opts.model ?? body.model;
+  const servedModel = opts.provider === "openai" ? openAIServedModel(text) : null;
+  const modelMatchesRequest = opts.provider === "openai" ? servedModel === requestedModel : null;
+  const ok = res.ok && modelMatchesRequest !== false;
   const payload = {
-    ok: res.ok,
+    ok,
     status: res.status,
     provider: opts.provider,
     endpoint,
-    requested_model: opts.model ?? body.model,
+    requested_model: requestedModel,
+    served_model: servedModel,
+    model_matches_request: modelMatchesRequest,
     request_id: requestId,
     latency_ms: latencyMs,
     project: opts.project ?? null,
@@ -145,7 +151,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
     response_kind: opts.stream ? "stream" : responseKind(text),
     ...diagnostics,
   };
-  if (!res.ok) process.exitCode = 1;
+  if (!ok) process.exitCode = 1;
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return;
@@ -154,11 +160,14 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
   process.stdout.write(`provider ${opts.provider}\n`);
   process.stdout.write(`endpoint ${endpoint}\n`);
   process.stdout.write(`requested_model ${payload.requested_model}\n`);
+  if (opts.provider === "openai") {
+    process.stdout.write(`served_model ${servedModel ?? "(missing)"}\n`);
+  }
   process.stdout.write(`project ${payload.project ?? "(none)"}\n`);
   process.stdout.write(`workload ${payload.workload ?? "(none)"}\n`);
   process.stdout.write(`request_id ${requestId ?? "(none)"}\n`);
   process.stdout.write(`latency_ms ${latencyMs}\n`);
-  process.stdout.write(`${res.ok ? kleur.green("response received") : kleur.red("response failed")}\n`);
+  process.stdout.write(`${ok ? kleur.green("probe passed") : kleur.red(res.ok ? "served model mismatch" : "response failed")}\n`);
 }
 
 function responseDiagnostics(res: Response, text: string): Record<string, string | null> {
@@ -204,7 +213,7 @@ function headerFirst(headers: Headers, names: string[]): string | null {
 }
 
 function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Record<string, unknown> {
-  const tokenLimit = model.startsWith("gpt-5")
+  const tokenLimit = /^gpt-(?:5|6)(?:[.-]|$)/.test(model)
     ? { max_completion_tokens: maxTokens }
     : { max_tokens: maxTokens };
   return {
@@ -213,6 +222,19 @@ function openAIProbeBody(model: string, maxTokens: number, stream: boolean): Rec
     stream,
     messages: [{ role: "user", content: "Reply with the single word ok." }],
   };
+}
+
+function openAIServedModel(text: string): string | null {
+  const candidates = [text, ...text.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim())];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as { model?: unknown };
+      if (typeof parsed.model === "string" && parsed.model.length > 0) return parsed.model;
+    } catch {
+      // Ignore non-JSON SSE frames such as [DONE].
+    }
+  }
+  return null;
 }
 
 function resolveGatewayUrl(override?: string): string {
