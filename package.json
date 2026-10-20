@@ -47,14 +47,14 @@
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "2.0.59",
-    "@anthropic-ai/sdk": "^0.102.0",
-    "@inquirer/prompts": "^8.4.3",
+    "@anthropic-ai/sdk": "^0.135.0",
+    "@inquirer/prompts": "^8.7.3",
     "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "6.0.224",
     "commander": "^14.0.3",
     "kleur": "^4.1.5",
     "openai": "^6.42.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "0.80.6",
