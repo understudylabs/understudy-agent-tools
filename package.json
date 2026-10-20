@@ -51,7 +51,7 @@
     "@inquirer/prompts": "^8.4.3",
     "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "6.0.224",
-    "commander": "^14.0.3",
+    "commander": "^15.0.0",
     "kleur": "^4.1.5",
     "openai": "^6.42.0",
     "zod": "^4.4.3"
