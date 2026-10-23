@@ -88,7 +88,7 @@ export function registerOptimizeWorkloadCommand(program: Command): void {
     .option("--frontier-type <name>", "GEPA Pareto frontier: instance (default), or objective, hybrid, cartesian (need --task-spec)")
     .option("--use-merge", "Enable GEPA candidate merging")
     .option("--max-merge-invocations <number>", "Maximum GEPA merge invocations", "5")
-    .option("--num-threads <number>", "GEPA worker threads", "1")
+    .option("--num-threads <number>", "GEPA worker threads: 16, or 1 with --program-bridge (the spend ledger throttles them near the cap)")
     .option("--seed <number>", "GEPA random seed", "0")
     .option("--log-dir <path>", "Owner-only GEPA log directory used for safe resume")
     .option("--track-stats", "Persist upstream GEPA optimization statistics (always on for dspy-gepa best-output tracking)")

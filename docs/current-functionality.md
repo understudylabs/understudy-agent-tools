@@ -69,7 +69,7 @@ understudy route-decision plan --workload-card .understudy/workload-discovery/wo
 understudy skills --search gepa
 understudy optimize-workload check --repo .
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model student-model --reflection-model reflection-model --budget-usd <approved-usd> --input-usd-per-million <conservative-input-price> --output-usd-per-million <conservative-output-price> --num-threads 1 --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model student-model --reflection-model reflection-model --budget-usd <approved-usd> --input-usd-per-million <conservative-input-price> --output-usd-per-million <conservative-output-price> --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```

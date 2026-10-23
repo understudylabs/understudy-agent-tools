@@ -158,8 +158,17 @@ validator kinds in [`reference.md`](reference.md):
    first result page; tighten the stop condition" or "answer omitted the date
    filter the question required; add it to the query plan" — rather than a bare
    `0`.
-   Start new GEPA runs with `--num-threads 1`; use pareto selection and opt into
-   merge only when the approved budget covers it. For a workload-owned program,
+   Set `--budget-usd` to what the user approved spending, not padded: the spend
+   governor throttles calls near the cap, keeps a holdout reserve while
+   optimizing, and stops GEPA between iterations before the cap, finishing with
+   the best candidate (`stopped_by: "spend-governor"`, exit 0); the
+   `spend-rate` events and `--progress` lines show spend, rate and projection.
+   `--num-threads` defaults to 16 (1 with `--program-bridge`); resume a run
+   started before that default with `--num-threads 1`. Keep
+   `--reflection-max-tokens` at 2,048-4,096: the stopper keeps one worst-case
+   reflection reservation of headroom, so a larger cap ends a capped run early.
+   Use pareto selection and opt into merge only
+   when the approved budget covers it. For a workload-owned program,
    first pass `--program-bridge ... --admission-only`, inspect its hashed offline
    and one-episode live receipt, then compile separately with the exact
    `--admission-receipt`. Admission must fail unless provider-free validation

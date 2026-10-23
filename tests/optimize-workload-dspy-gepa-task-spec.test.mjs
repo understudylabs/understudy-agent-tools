@@ -754,46 +754,85 @@ open(sys.argv[1], "w").write(str(server.server_port))
 server.serve_forever()
 `;
 
+// Starts the local mock provider, runs fn(port, callLog), and stops it.
+function withMockProvider(repo, fn) {
+  const portFile = join(repo, "port");
+  const callLog = join(repo, "calls.jsonl");
+  const mockPath = join(repo, "mock.py");
+  writeFileSync(mockPath, mockSource);
+  const server = spawn("python3", [mockPath, portFile, callLog], { stdio: "ignore" });
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(portFile) && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+    return fn(readFileSync(portFile, "utf8").trim(), callLog);
+  } finally {
+    server.kill();
+  }
+}
+
+function runRealEngine(repo, port, args) {
+  const runtime = writeRuntime(repo);
+  const specPath = writeJson(repo, "task-spec.json", facilitySpec());
+  const samplesPath = writeJson(repo, "samples.json", facilityRows());
+  return spawnSync(realDspyPython, [
+    "-I", runtime, "dspy-gepa", "--repo", repo, "--samples", samplesPath, "--task-spec", specPath,
+    "--model", "student-model", "--reflection-model", "reflection-model",
+    "--max-tokens", "512", "--track-stats", "true", "--prices-from-gateway", "off",
+    "--frontier-type", "hybrid", "--evaluate-holdout", ...args,
+  ], {
+    encoding: "utf8",
+    cwd: repo,
+    env: { ...baseEnv, UNDERSTUDY_API_KEY: "fixture-key", UNDERSTUDY_GATEWAY_URL: `http://127.0.0.1:${port}` },
+    timeout: 300_000,
+  });
+}
+
 describe("dspy-gepa task spec on the real engine", () => {
   it("climbs a three-predictor Facility Support program against a local mock", { skip: !realDspyPython }, () =>
-    withRepo((repo) => {
-      const runtime = writeRuntime(repo);
-      const portFile = join(repo, "port");
-      const callLog = join(repo, "calls.jsonl");
-      const mockPath = join(repo, "mock.py");
-      writeFileSync(mockPath, mockSource);
-      const server = spawn("python3", [mockPath, portFile, callLog], { stdio: "ignore" });
-      try {
-        const deadline = Date.now() + 10_000;
-        while (!existsSync(portFile) && Date.now() < deadline) {
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-        }
-        const port = readFileSync(portFile, "utf8").trim();
-        const specPath = writeJson(repo, "task-spec.json", facilitySpec());
-        const samplesPath = writeJson(repo, "samples.json", facilityRows());
-        const result = spawnSync(realDspyPython, [
-          "-I", runtime, "dspy-gepa", "--repo", repo, "--samples", samplesPath, "--task-spec", specPath,
-          "--model", "student-model", "--reflection-model", "reflection-model", "--max-metric-calls", "30",
-          "--max-tokens", "512", "--track-stats", "true", "--prices-from-gateway", "off",
-          "--frontier-type", "hybrid", "--evaluate-holdout", ...spendArgs,
-        ], {
-          encoding: "utf8",
-          cwd: repo,
-          env: { ...baseEnv, UNDERSTUDY_API_KEY: "fixture-key", UNDERSTUDY_GATEWAY_URL: `http://127.0.0.1:${port}` },
-          timeout: 300_000,
-        });
-        assert.equal(result.status, 0, result.stderr.slice(-2000));
-        const candidate = readJson(join(optimizeDir(repo), "candidate.json"));
-        assert.deepEqual(Object.keys(candidate.predictors).sort(), ["categories", "sentiment", "urgency"]);
-        assert.equal(candidate.predictors.urgency.dspy_predictor, "urgency.predict");
-        assert.equal(candidate.instructions_changed, true);
-        const evaluation = readJson(join(runDir(repo), "holdout-evaluation.json"));
-        assert.equal(evaluation.status, "complete");
-        assert.ok(evaluation.optimized.score > evaluation.baseline.score);
-        assert.deepEqual(evaluation.predictors, ["urgency", "sentiment", "categories"]);
-        assert.deepEqual(Object.keys(evaluation.optimized.by_predictor).sort(), ["categories", "sentiment", "urgency"]);
-      } finally {
-        server.kill();
-      }
-    }));
+    withRepo((repo) => withMockProvider(repo, (port) => {
+      const result = runRealEngine(repo, port, ["--max-metric-calls", "30", ...spendArgs]);
+      assert.equal(result.status, 0, result.stderr.slice(-2000));
+      const candidate = readJson(join(optimizeDir(repo), "candidate.json"));
+      assert.deepEqual(Object.keys(candidate.predictors).sort(), ["categories", "sentiment", "urgency"]);
+      assert.equal(candidate.predictors.urgency.dspy_predictor, "urgency.predict");
+      assert.equal(candidate.instructions_changed, true);
+      assert.equal(candidate.stopped_by, null);
+      const evaluation = readJson(join(runDir(repo), "holdout-evaluation.json"));
+      assert.equal(evaluation.status, "complete");
+      assert.ok(evaluation.optimized.score > evaluation.baseline.score);
+      assert.deepEqual(evaluation.predictors, ["urgency", "sentiment", "categories"]);
+      assert.deepEqual(Object.keys(evaluation.optimized.by_predictor).sort(), ["categories", "sentiment", "urgency"]);
+    })));
+
+  it("stops a real GEPA run before a tight cap, keeps its best candidate, and scores the holdout", { skip: !realDspyPython }, () =>
+    withRepo((repo) => withMockProvider(repo, (port) => {
+      const cap = 0.05;
+      const result = runRealEngine(repo, port, [
+        "--max-metric-calls", "5000", "--rounds", "3",
+        "--budget-usd", String(cap), "--input-usd-per-million", "1", "--output-usd-per-million", "2",
+      ]);
+      assert.equal(result.status, 0, result.stderr.slice(-2000));
+      // DSPy's progress bars share stdout with the payload, so read the run state.
+      const payload = readJson(join(runDir(repo), "run-state.json"));
+      assert.equal(payload.status, "candidate-created");
+      assert.equal(payload.stopped_by, "spend-governor");
+      const candidate = readJson(join(optimizeDir(repo), "candidate.json"));
+      assert.equal(candidate.stopped_by, "spend-governor");
+      assert.equal(candidate.rounds.length, 1);
+      assert.equal(candidate.instructions_changed, true);
+      const evaluation = readJson(join(runDir(repo), "holdout-evaluation.json"));
+      assert.equal(evaluation.status, "complete");
+      assert.ok(evaluation.optimized.score > evaluation.baseline.score);
+      // Stopped between iterations, before any call was refused, inside the cap.
+      const evidence = payload.spend_evidence;
+      assert.equal(evidence.calls_attempted, evidence.calls_completed);
+      assert.equal(evidence.spend_governor.phase_refusals, 0);
+      assert.ok(evidence.reserved_upper_bound_usd <= cap);
+      const events = readFileSync(join(runDir(repo), "events.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      assert.equal(events.some((event) => event.event === "budget-blocked"), false);
+      assert.equal(events.filter((event) => event.event === "budget-stop").length, 1);
+      assert.ok(events.filter((event) => event.event === "spend-rate").length >= 2);
+    })));
 });

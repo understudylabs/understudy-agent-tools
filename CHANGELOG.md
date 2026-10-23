@@ -32,6 +32,36 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **`dspy-gepa` spend governor.** Runs now stop gracefully before
+  `--budget-usd` instead of failing near it. The spend ledger throttles: a call
+  that would fit once in-flight calls settle waits for them (bounded at 90 s,
+  under DSPy's 120 s straggler timeout) instead of ending the run
+  `budget-blocked`. With `--evaluate-holdout`, optimization runs under the cap
+  minus a holdout reserve (the 90th-percentile settled student call x the
+  observed parse-fallback calls per predictor invocation, calibrated from the
+  baseline call) and the holdout runs under the full cap. A call left over from
+  optimization (still waiting, or from a straggler thread DSPy abandoned) is
+  refused once the phase changes (`late-call-refused`), and in-flight calls are
+  drained before spend evidence is sampled. A dev evaluation during which calls
+  were refused (DSPy scores them as 0 rows) is marked `partial`, never becomes
+  best-so-far, and is left out of `gepa_stats`; a run with no fully scored
+  candidate fails `budget-blocked` (`no-candidate-fully-scored`). A new
+  GEPA stop callback ends optimization between iterations when the next one
+  could cross that limit; the run then finalizes with GEPA's best candidate
+  (`stopped_by: "spend-governor"` in `candidate.json`, the proof packet, run
+  state and payload), scores the holdout, and exits 0 with `candidate-created`.
+  New events `spend-rate` (per iteration: committed, in-flight and attributed
+  spend, USD/min over the run and the last minute, projected spend for the
+  metric-call budget, minutes to the limit), `spend-throttled`, `budget-stop`
+  and a one-time `spend-projection-warning`; `--progress` prints one spend line
+  per iteration, and `spend_evidence.spend_governor` carries the latest
+  snapshot. The hard guarantee is unchanged: committed spend plus every
+  in-flight reservation never exceeds the cap. A call the full cap cannot fit
+  still ends the run `budget-blocked` (exit 4) or the holdout
+  `incomplete-budget`. Set the cap to what you are willing to spend; no padding
+  for threads or the holdout. The stopper keeps one worst-case call of
+  headroom, so keep `--reflection-max-tokens` at 2,048-4,096: a 16,000-token
+  cap reserves several times what proposals use and ends a capped run early.
 - **`dspy-gepa` multi-predictor task specs.** `--task-spec PATH`
   (`understudy.dspy_gepa_task_spec.v1`) declares several typed predictors over
   shared inputs, the shape of DSPy's GEPA Facility Support Analyzer tutorial,
@@ -200,6 +230,16 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Changed
 
+- **`dspy-gepa` `--num-threads` defaults to 16** (was 1) for sample and
+  task-spec runs, in the CLI and the runtime, and stays part of the hash-bound
+  config. Live runs at 32 threads through the Understudy gateway had no
+  failures, and the spend governor throttles threads near the cap.
+  `--program-bridge` runs keep 1: bridge workload Python may hold stateful tools
+  and the bridge contract promises no thread safety. Because the thread count is
+  hash-bound, a run started before this change (an in-progress `--log-dir`, or
+  an admission receipt) fails `resume-log-config-mismatch` /
+  `admission-receipt-config-hash-mismatch` on the identical command; pass
+  `--num-threads 1` to resume it.
 - **`dspy-gepa` runs on DSPy 3.4.1 and GEPA 0.1.4.** The v2 runtime now pins
   `dspy==3.4.1`, `gepa[dspy]==0.1.4`, and `cloudpickle==3.1.2` with a bounded
   `litellm>=1.83,<2` on Python 3.13, and records all four in its package

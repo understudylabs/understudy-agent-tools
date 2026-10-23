@@ -288,7 +288,9 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
         "--max-merge-invocations",
         String(nonNegativeInteger(options.maxMergeInvocations ?? "5", "--max-merge-invocations")),
         "--num-threads",
-        String(positiveInteger(options.numThreads ?? "1", "--num-threads")),
+        // 16 for the built-in scaffold; a bridge runs workload Python with no
+        // thread-safety contract, so it keeps 1 unless asked.
+        String(positiveInteger(options.numThreads ?? (options.programBridge ? "1" : "16"), "--num-threads")),
         "--seed",
         String(integer(options.seed ?? "0", "--seed")),
         "--log-dir",
