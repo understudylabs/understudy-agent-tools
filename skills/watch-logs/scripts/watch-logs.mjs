@@ -107,10 +107,10 @@ export function snapshotSource(source) {
     return { content: parts.join("\n"), detail: `${paths.length} file(s)` };
   }
   if (source.type === "command") {
-    const result = spawnSync("/bin/sh", ["-c", source.command], {
-      encoding: "utf8",
-      timeout: source.timeout_ms ?? DEFAULT_COMMAND_TIMEOUT_MS,
-    });
+    const timeout = source.timeout_ms ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const result = process.platform === "win32"
+      ? spawnSync(source.command, { shell: true, encoding: "utf8", timeout })
+      : spawnSync("/bin/sh", ["-c", source.command], { encoding: "utf8", timeout });
     const exit = result.status ?? `signal:${result.signal ?? "unknown"}`;
     return {
       content: `exit=${exit}\n--- stdout ---\n${result.stdout ?? ""}\n--- stderr ---\n${result.stderr ?? ""}`,

@@ -113,7 +113,8 @@ describe("watch-logs check trigger", () => {
   it("command sources hash exit code and output", () => {
     const probe = join(dir, "probe.txt");
     writeFileSync(probe, "healthy\n");
-    const configPath = writeConfig([{ id: "probe", type: "command", command: `cat ${probe}` }]);
+    const cmd = process.platform === "win32" ? `type "${probe}"` : `cat "${probe}"`;
+    const configPath = writeConfig([{ id: "probe", type: "command", command: cmd }]);
 
     assert.equal(check(configPath).status, 1);
     assert.equal(check(configPath).status, 0);
